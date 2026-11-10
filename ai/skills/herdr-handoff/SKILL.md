@@ -31,7 +31,8 @@ rather than trusting the examples here.
 
 - The user asks for it.
 - Part of the work is independent of yours and can run alongside it.
-- Your context is nearly full and the rest needs a fresh start.
+- Your context is above the 200k handoff level. Run `pde-context` at
+  each milestone, such as a merged PR, to check.
 
 When the user has not asked, propose the handoff and wait for a yes.
 Herdr's skill says to create a workspace or tab only when the user
@@ -56,7 +57,11 @@ model can run the loop from them.
    [references/handoff-template.md](references/handoff-template.md).
 3. Copy into it every result that lives only in this conversation,
    such as subagent reports and review findings. The new session
-   cannot see them, so they are lost otherwise.
+   cannot see them, so they are lost otherwise. When the handoff
+   pauses the work and no session takes it now, also list each
+   uncommitted file, unpushed branch and worktree you leave, and each
+   question waiting on the user, word for word. Leave the files as
+   they are.
 4. Never write a secret into it. Name where the secret lives instead,
    such as a sops file the new session reads with `pde-sops-peek`.
 5. Reread it as a reader with no earlier context. Explain each label
@@ -82,10 +87,15 @@ model can run the loop from them.
   the ownership change there too.
 - After the handoff, stop changing what you handed over.
 - When ownership moves later, tell the user. Tell the new session,
-  and the hub when one runs, with `scripts/send.sh` of
-  [herdr-hub](../herdr-hub/SKILL.md), as its Send to a session says.
-  The script waits while the session is `blocked` or the user is in
-  its pane.
+  and the hub when one runs, with `hub send`, as Send to a session of
+  [herdr-hub](../herdr-hub/SKILL.md) says. It holds the message while
+  the session is busy or the user is in its pane, and a hub's
+  `hub next` sends it later. Without a hub, nothing sends a held
+  message, so first wait in the background with
+  `herdr agent wait <name> --until idle --until done`, then run
+  `hub send` with the handoff folder as its run folder. If it prints
+  `held`, the user is in the pane. Delete
+  `<handoff folder>/send-<name>.json` and try again later.
 - The handoff tells the new session to write progress-only news, such
   as "rehearsal passed", to its own status file. It names a report
   file, `report-<name>.md` in this session's run folder or the
@@ -101,8 +111,10 @@ model can run the loop from them.
 
   When it returns at `blocked`, tell the user. Otherwise read the
   report, then rename it to `report-<name>.read`. No report file
-  means no news. Watch each session of herdr-hub covers a session
-  that is already `idle` or `blocked`, or runs on another machine.
+  means no news. Never start it on a session that is already `idle`
+  or `done`, since it returns at once. After it returns at `blocked`,
+  wait with only `--until idle` and `--until done`. A hub learns of
+  reports with `hub next` instead, as Wake on news of herdr-hub says.
 - A question in the new session's report is yours to answer. An
   approval or question shown in its own pane while it is `blocked`
   stays the user's.
@@ -153,8 +165,14 @@ model can run the loop from them.
    names one.
 
    To choose a model, pass the agent's own model flag after `--`.
-   OpenCode has no model flag, so it uses the `model` set in
-   `~/.config/opencode/opencode.json`.
+   For OpenCode, put `--model <provider>/<model>` first, such as
+   `-- --model github-copilot/claude-sonnet-5 --auto`. Names differ
+   between machines, so take one from `opencode models` on the machine
+   that runs the session. PDE's `opencode` launcher makes a session on
+   that model and opens it. For a name not in that list, it prints
+   close names and exits, so the start fails; read them with
+   `herdr pane read <pane>`. Without `--model`, OpenCode uses the
+   `model` set in `~/.config/opencode/opencode.json`.
 5. Send a short prompt that points to the file, such as "Read the
    handoff at <path> and follow it. Load each skill it names when it
    says. Start by <step>. Do not edit <file> yet." Keep the brief in the
@@ -190,6 +208,28 @@ that approval is theirs to give. When the machine's data must stay on
 it, the handoff asks for counts and pass or fail results in reports,
 never lists of names or file contents.
 
+## Record the handoff on its card
+
+When the work has a kanban card, record the handoff on the card with
+the `card` command:
+
+- When a new session takes the work, once it works, add a Log note
+  with the handoff file's path, then link the new session:
+
+      card note <KEY> "Handoff <handoff path>"
+      card link <KEY> --session <name>
+
+- When the work pauses with a handoff and no session takes it now,
+  move the card from active back to ready with a note that names the
+  handoff:
+
+      card move <KEY> ready --why "Paused; handoff <handoff path>"
+
+  A card in review cannot move back to ready. It stays in review,
+  with only the note:
+
+      card note <KEY> "Paused; handoff <handoff path>"
+
 ## Tell the user
 
 Write the message by the `status-updates` skill. Give:
@@ -222,13 +262,19 @@ or revising this skill.
   finishing.
 - The message to the user names the workspace or tab, the agent, the
   handoff file and the model.
+- When a hub runs, the handoff says the new session sends a merge or
+  pull request edit request only after the hub says the user reviewed
+  that pull request.
+- When the work has a card, the card has the handoff's Log note and
+  the new session, or is back in ready with a note naming the handoff.
 
 ## Rules
 
 - Use the `herdr` CLI, not a harness plugin, so this works in any
   agent.
-- Never close the new workspace, tab or agent. They belong to the
-  user.
+- Never close the new session's workspace, tab or agent. When a hub
+  runs, the new session closes its own tab, as Cleanup of herdr-hub
+  says. Otherwise they belong to the user.
 - Never answer an approval or question shown in the new agent's
   pane. Answer only what it writes in its report.
 - Filter `herdr agent list` with `jq`, and never print the whole

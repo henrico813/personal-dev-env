@@ -50,8 +50,8 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 
 	// Files from the previous install, including a plain-file pde-pr-approve.
 	for _, name := range []string{
-		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review", "skill-lessons",
-		"prs",
+		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "glimmer", "skill-lessons",
+		"hub", "prs",
 	} {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
 	}
@@ -75,8 +75,8 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 		t.Fatalf("Rollback() error = %v", err)
 	}
 	for _, name := range []string{
-		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review", "skill-lessons",
-		"prs",
+		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "glimmer", "skill-lessons",
+		"hub", "prs",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n")
 	}
@@ -110,7 +110,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	}
 
 	// A tool left out of the source hashes would never rebuild after a change.
-	writeBuildFile(t, filepath.Join(repoRoot, "pde-comment-review-rs", "input.txt"), "changed\n", 0o644)
+	writeBuildFile(t, filepath.Join(repoRoot, "glimmer", "input.txt"), "changed\n", 0o644)
 	journal, err = manager.Reconcile("full")
 	if err != nil {
 		t.Fatalf("changed Reconcile() error = %v", err)
@@ -240,8 +240,8 @@ func TestBrokenSkillLessonsRevertsEveryTool(t *testing.T) {
 	manager := newFixtureManager(t, home, repoRoot, filepath.Join(t.TempDir(), "build.log"))
 	writeBuildFixture(t, manager.python, "#!/bin/sh\nprintf '%s\\n' '#!/bin/sh' 'exit 1' > \"$3\"\nchmod +x \"$3\"\n")
 	names := []string{
-		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review", "skill-lessons",
-		"prs",
+		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "glimmer", "skill-lessons",
+		"hub", "prs",
 	}
 	for _, name := range names {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
@@ -283,16 +283,16 @@ func TestClientBlinkPinMatchesBuildPin(t *testing.T) {
 	}
 }
 
-// A failed check of the Rust review tool must put back every old tool,
-// including the Go review tool it replaces, or Ctrl+b e stops opening.
+// A failed check of glimmer must put back every old tool, or Ctrl+b e stops
+// opening.
 func TestBrokenReviewToolRestoresEveryTool(t *testing.T) {
 	home, repoRoot := t.TempDir(), t.TempDir()
 	writeBuildSources(t, repoRoot)
 	manager := newFixtureManager(t, home, repoRoot, filepath.Join(t.TempDir(), "build.log"))
-	writeBuildFile(t, filepath.Join(repoRoot, "pde-comment-review-rs", "fail-help"), "fail\n", 0o644)
+	writeBuildFile(t, filepath.Join(repoRoot, "glimmer", "fail-help"), "fail\n", 0o644)
 	names := []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve",
-		"pde-comment-review", "skill-lessons", "prs",
+		"glimmer", "skill-lessons", "hub", "prs",
 	}
 	for _, name := range names {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
@@ -301,7 +301,7 @@ func TestBrokenReviewToolRestoresEveryTool(t *testing.T) {
 
 	_, err := manager.Reconcile("full")
 
-	if err == nil || !strings.Contains(err.Error(), "verify pde-comment-review") {
+	if err == nil || !strings.Contains(err.Error(), "verify glimmer") {
 		t.Fatalf("Reconcile() error = %v, want the review tool check to fail", err)
 	}
 	for _, name := range names {
@@ -314,9 +314,9 @@ func TestBrokenReviewToolRestoresEveryTool(t *testing.T) {
 	}
 }
 
-// A client laptop has no Go or Rust, so any build but skill-lessons, which
-// only zips Python files, would fail every client install.
-func TestClientBuildsOnlySkillLessons(t *testing.T) {
+// A client laptop has no Go or Rust, so any build but skill-lessons and hub,
+// which only zip Python files, would fail every client install.
+func TestClientBuildsOnlyPythonTools(t *testing.T) {
 	home, repoRoot := t.TempDir(), t.TempDir()
 	writeBuildSources(t, repoRoot)
 	logPath := filepath.Join(t.TempDir(), "build.log")
@@ -330,8 +330,8 @@ func TestClientBuildsOnlySkillLessons(t *testing.T) {
 	if err := journal.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	if got := readBuildLog(t, logPath); got != "python\n" {
-		t.Fatalf("build log = %q, want one python build", got)
+	if got := readBuildLog(t, logPath); got != "python\npython\n" {
+		t.Fatalf("build log = %q, want two python builds", got)
 	}
 }
 
@@ -357,7 +357,7 @@ func newCommittedManager(t *testing.T) (manager Manager, repoRoot, logPath strin
 func writeBuildSources(t *testing.T, repoRoot string) {
 	t.Helper()
 	for _, source := range []string{
-		"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2", "pde-comment-review-rs", "prs",
+		"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2", "glimmer", "prs",
 	} {
 		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
 	}
@@ -365,6 +365,9 @@ func writeBuildSources(t *testing.T, repoRoot string) {
 	writeBuildFile(t, filepath.Join(root, "build.py"), "build\n", 0o644)
 	writeBuildFile(t, filepath.Join(root, "src", "skill_lessons", "cli.py"), "cli\n", 0o644)
 	writeBuildFile(t, filepath.Join(root, "tests", "test_cli.py"), "tests\n", 0o644)
+	hub := filepath.Join(repoRoot, "hub")
+	writeBuildFile(t, filepath.Join(hub, "build.py"), "build\n", 0o644)
+	writeBuildFile(t, filepath.Join(hub, "src", "hub", "cli.py"), "cli\n", 0o644)
 }
 
 func newFixtureManager(t *testing.T, home, repoRoot, logPath string) Manager {
@@ -666,7 +669,7 @@ printf '%%s\n' cache > "$CARGO_HOME/content"
 output=$target/release/$name
 mkdir -p "$(dirname "$output")"
 printf '%%s\n' '#!/bin/sh' 'exit 0' '# built by cargo' > "$output"
-if [ "$name" = pde-comment-review ] && [ -f fail-help ]; then
+if [ "$name" = glimmer ] && [ -f fail-help ]; then
   printf '%%s\n' '#!/bin/sh' 'exit 1' > "$output"
 fi
 chmod +x "$output"
@@ -699,8 +702,9 @@ func assertBuildOutputs(t *testing.T, home string) {
 		"opencode-inline-shim": "go",
 		"vibe":                 "cargo",
 		"pde-gh-write":         "go",
-		"pde-comment-review":   "cargo",
+		"glimmer":              "cargo",
 		"skill-lessons":        "python",
+		"hub":                  "python",
 		"prs":                  "go",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "#!/bin/sh\nexit 0\n# built by "+tool+"\n")
@@ -724,7 +728,7 @@ func assertBuildArtifactsRemoved(t *testing.T, stageRoot string) {
 		filepath.Join(stageRoot, "planner"),
 		filepath.Join(stageRoot, "opencode-inline-shim"),
 		filepath.Join(stageRoot, "vibe-target"),
-		filepath.Join(stageRoot, "comment-review-target"),
+		filepath.Join(stageRoot, "glimmer-target"),
 		filepath.Join(stageRoot, "go-cache"),
 		filepath.Join(stageRoot, "go-mod-cache"),
 		filepath.Join(stageRoot, "cargo-home"),

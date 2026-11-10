@@ -14,6 +14,7 @@ __pycache__/
 venv/
 ai/.venv/
 skill-lessons/.venv/
+hub/.venv/
 ENV/
 
 # IDE / Editor
@@ -42,4 +43,4 @@ planner/planner
 pde-installer/pde-installer
 pde-installer/pde-installer.exe
 vibe/target/
-pde-comment-review-rs/target/
+glimmer/target/

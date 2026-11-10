@@ -146,8 +146,8 @@ func (m Manager) Reconcile(selected profile.Profile) (*fsutil.Journal, error) {
 		}
 	}()
 	cargoTargets := map[string]string{
-		"vibe":               filepath.Join(stageRoot, "vibe-target"),
-		"pde-comment-review": filepath.Join(stageRoot, "comment-review-target"),
+		"vibe":    filepath.Join(stageRoot, "vibe-target"),
+		"glimmer": filepath.Join(stageRoot, "glimmer-target"),
 	}
 	for _, spec := range specs {
 		if err := fsutil.GuardHome(m.Home, stageRoot); err != nil {
@@ -658,15 +658,15 @@ func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []bu
 			// pde-gh-write has no side-effect-free help mode, so it has no verifyArg.
 		},
 		{
-			name:   "pde-comment-review",
-			source: filepath.Join(m.RepoRoot, "pde-comment-review-rs"),
-			output: filepath.Join(stageRoot, "comment-review-target", "release", "pde-comment-review"),
+			name:   "glimmer",
+			source: filepath.Join(m.RepoRoot, "glimmer"),
+			output: filepath.Join(stageRoot, "glimmer-target", "release", "glimmer"),
 			command: run.Command{
 				Name: cargo,
 				Args: []string{
-					"build", "--locked", "--release", "--bin", "pde-comment-review", "--target-dir", filepath.Join(stageRoot, "comment-review-target"),
+					"build", "--locked", "--release", "--bin", "glimmer", "--target-dir", filepath.Join(stageRoot, "glimmer-target"),
 				},
-				Dir: filepath.Join(m.RepoRoot, "pde-comment-review-rs"), Env: environment,
+				Dir: filepath.Join(m.RepoRoot, "glimmer"), Env: environment,
 			},
 			verifyArg: "help",
 		},
@@ -681,6 +681,18 @@ func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []bu
 			},
 			verifyArg:     "--version",
 			pythonPackage: "skill_lessons",
+		},
+		{
+			name:   "hub",
+			source: filepath.Join(m.RepoRoot, "hub"),
+			output: filepath.Join(stageRoot, "hub"),
+			command: run.Command{
+				Name: m.python,
+				Args: []string{"-I", "build.py", filepath.Join(stageRoot, "hub")},
+				Dir:  filepath.Join(m.RepoRoot, "hub"), Env: environment,
+			},
+			verifyArg:     "--version",
+			pythonPackage: "hub",
 		},
 		{
 			name:   "prs",
