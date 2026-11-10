@@ -78,9 +78,37 @@ tokens.
 
 ### 4. Local models
 
-Name the jobs in this session a script could check, such as running
-tests or cleaning up worktrees. For how to brief a model on such a
-job, point to the Local model section of
+The user wants local models able to run the whole workflow,
+including the hub, its workers and session reviews, if cloud models
+become unavailable.
+While cloud models are available, local models should do work that
+cuts cloud tokens. Answer both in two required sections, for each
+role the session used, workers as well as the hub. A list of jobs a
+script could check is not enough.
+
+- Fallback map: for each role, such as hub, planner, implementer,
+  reviewer or merge worker, the local model that would run it, what
+  breaks, what would make it work, and the evidence, a measurement
+  or a trial.
+- Efficiency map: each large reading, sorting, summarizing or
+  checking step a local model could do now, so the cloud model reads
+  a short result. Give its tokens from the script or a named query,
+  the check that makes the local result safe to trust, and the
+  saving, marked measured or estimate.
+
+Find a trial in an earlier review in the session-reviews folder whose
+role this session used. Rerun it on the same local model, and give
+its result in a Trials section. If you ran none, say so there and
+why.
+
+At least one of step 2's proposals, or one lesson, helps a local
+model take over a workflow. It may use cloud and local models
+together, or a script that a local agent can run and that saves a
+cloud agent tokens. Proposals from the two maps count toward step
+2's limit of three.
+
+To brief a local model on a job a script checks, point to the Local
+model section of
 [roadmap-run's prompts](../roadmap-run/references/prompts.md) rather
 than restating it. Keep cheap cloud models, such as
 `openai/gpt-6-luna`, apart from local ones, such as `goog/qwen3.8`:
@@ -122,7 +150,10 @@ below. Then wait. Change nothing until the user answers.
     Lessons to save, pick by number
     1. <rule> -> <skill>
 
-    Local models: <jobs a script checks, or "none in this session">.
+    Fallback: <the role least ready for a local model, and its fix>.
+    Efficiency: <the largest step a local model could take, and its
+    saving>.
+    Trials: <the trial and its result, or "none ran">.
 
     Reply with the numbers to apply.
 
@@ -162,6 +193,10 @@ review, and the user can move it into this list by a pull request.
 - At most three proposals, each with a saving marked measured or
   estimate, and where it would live.
 - No proposal is on the Do not propose list or a lesson.
+- The review has a Fallback map, an Efficiency map and a Trials
+  section, covering every role the session used.
+- A proposal or a lesson helps a local model take over a workflow,
+  as step 4 asks.
 - No dollars.
 - The fresh check ran, or the message says it did not.
 - Nothing was changed.
