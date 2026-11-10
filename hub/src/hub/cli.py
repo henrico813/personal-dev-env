@@ -5,6 +5,7 @@ Usage::
     hub [--machine LABEL] status --run DIR   sessions, then active cards
     hub [--machine LABEL] send --run DIR NAME MESSAGE
     hub next --run DIR [--timeout SECONDS]   wait for news, print one line
+    hub read --run DIR NAME [--note TEXT]    print, archive, log a report
     hub [--machine LABEL] flag NAME
     hub [--machine LABEL] unflag NAME
     hub handoff --run DIR NAME HANDOFF       start the next hub
@@ -16,7 +17,9 @@ Read ``main`` first, then the ``run_<command>`` function of each command.
 The hub's run folder DIR holds these files:
 
 - ``report-NAME.md``: news from session NAME that the hub has not read.
-  The hub renames it to ``report-NAME.read`` once handled.
+  ``hub read`` renames it to ``report-NAME.HHMM.read``, with the time.
+- ``notes.md``: the hub's log for the user. ``hub read --note`` adds
+  a line to it.
 - ``send-NAME.json``: a message that waits until NAME is free. The
   ``hub next`` that runs in the background sends it.
 - ``send-NAME.sending``: a message being sent. One left behind means
@@ -44,6 +47,7 @@ from hub.flag import run_flag, run_unflag
 from hub.handoff import run_handoff
 from hub.herdr import HerdrError
 from hub.morning import run_morning
+from hub.read import run_read
 from hub.send import run_next, run_send
 from hub.status import run_status
 
@@ -100,6 +104,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     wait.add_argument("--run", type=Path, required=True)
     wait.add_argument("--timeout", type=float, help="give up after SECONDS")
     wait.set_defaults(command=run_next)
+
+    read = commands.add_parser("read", help="print, archive and log a report")
+    read.add_argument("--run", type=Path, required=True)
+    read.add_argument("name")
+    read.add_argument("--note", help="a line to add to notes.md")
+    read.set_defaults(command=run_read)
 
     flag = commands.add_parser("flag", help="mark a session's pane")
     flag.add_argument("name")
