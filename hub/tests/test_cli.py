@@ -1052,8 +1052,8 @@ class TestHandoff:
         )
 
 
-class TestWaiting:
-    """``hub waiting``, the one message of what waits on the user."""
+class TestBrief:
+    """``hub brief``, the one message of what waits on the user."""
 
     DECISION = (
         "## New model overnight\n"
@@ -1067,7 +1067,7 @@ class TestWaiting:
         "If no reply: A.\n"
     )
 
-    def test_waiting_prints_reviews_then_decisions_whole(
+    def test_brief_prints_reviews_then_decisions_whole(
         self, hub: Run, run_folder: Path
     ) -> None:
         """Pull requests come first, then each question in full.
@@ -1079,7 +1079,7 @@ class TestWaiting:
         (run_folder / "reviews.md").write_text("# PRs\n\n| #1 | Fix |\n")
         (run_folder / "decisions.md").write_text(self.DECISION)
 
-        result = hub("waiting", "--run", str(run_folder))
+        result = hub("brief", "--run", str(run_folder))
 
         assert result.returncode == 0
         assert result.stdout == (
@@ -1093,7 +1093,7 @@ class TestWaiting:
             "If no reply: A.\n"
         )
 
-    def test_waiting_refuses_entry_missing_parts(
+    def test_brief_refuses_entry_missing_parts(
         self, hub: Run, run_folder: Path
     ) -> None:
         """An entry missing Recommended and If no reply lines exits 2.
@@ -1106,7 +1106,7 @@ class TestWaiting:
             "## Pause cards\n\nPause stale cards?\n\n- A. Yes\n- B. No\n"
         )
 
-        result = hub("waiting", "--run", str(run_folder))
+        result = hub("brief", "--run", str(run_folder))
 
         assert result.returncode == 2
         assert result.stdout == ""
