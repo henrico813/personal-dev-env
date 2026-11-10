@@ -25,6 +25,7 @@ hub [--machine LABEL] flag NAME
 hub [--machine LABEL] unflag NAME
 hub handoff --run DIR NAME HANDOFF       start the next hub
 hub brief --run DIR                      what waits on the user
+hub clean                                close finished tabs
 hub auto ready --run DIR                 ready cards, for sorting
 hub auto check --run DIR                 check the run's card list
 hub auto approve --run DIR N REPLY       save the user's approval
@@ -96,6 +97,20 @@ machine to every `herdr` call, as `herdr --machine` does.
   `DIR/decisions.md` in full. It exits 2, printing nothing, when an
   entry lacks its question, two choices, `Recommended:` or
   `If no reply:`.
+- `clean` closes each tab whose work is finished and prints a
+  `closed` line for it. A tab with an agent closes when the agent's
+  name starts with the key of an accepted or dropped card, the agent
+  is `idle` or `done`, and the card's worktrees hold no uncommitted
+  files or unpushed commits. Those worktrees are the linked worktree
+  the agent works in and each one whose branch holds the card's key
+  in lowercase. The main checkout is not checked for unsaved work,
+  since it holds the user's own files. A tab with no agent closes
+  when its shell runs nothing. A tab closes only when all its panes
+  may close, and the hub's own tab and the tab the user looks at
+  always stay. A `kept` line names a finished card's agent that
+  still works or holds unsaved work. With nothing closed it prints
+  `nothing to close`. It exits 2 with `--machine`, since it runs git
+  on this machine.
 - `auto` runs the steps of an auto run, which the `auto-run` skill
   describes. DIR is the auto run's folder. `ready` writes the title,
   project, Context and Acceptance Criteria of every ready card to
