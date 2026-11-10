@@ -274,7 +274,7 @@ show the entry in full. Delete the entry once the user answers, and
 record the answer in `rules.md` when it stands for later. Bring the
 user everything that waits on them with:
 
-    hub morning --run "<run folder>"
+    hub waiting --run "<run folder>"
 
 It prints `reviews.md`, then every entry. It exits 2, naming the
 entry, when one lacks its question, two choices, `Recommended:` or

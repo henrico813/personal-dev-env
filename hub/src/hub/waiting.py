@@ -1,4 +1,4 @@
-"""Run ``hub morning``, which prints everything that waits on the user.
+"""Run ``hub waiting``, which prints everything that waits on the user.
 
 ``decisions.md`` in the run folder holds one entry per question for
 the user, so a message can show each question in full instead of
@@ -28,11 +28,11 @@ from pathlib import Path
 FIELDS = ("Recommended:", "If no reply:", "Depends on:")
 
 
-def run_morning(args: argparse.Namespace) -> int:
+def run_waiting(args: argparse.Namespace) -> int:
     """Print reviews.md, then every entry of decisions.md in full.
 
     Args:
-        args: The parsed ``morning`` command line.
+        args: The parsed ``waiting`` command line.
 
     Returns:
         0 after printing, or 2, printing nothing on standard output,
