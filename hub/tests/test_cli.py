@@ -963,8 +963,8 @@ class TestHandoff:
         )
 
 
-class TestMorning:
-    """``hub morning``, the one message of what waits on the user."""
+class TestWaiting:
+    """``hub waiting``, the one message of what waits on the user."""
 
     DECISION = (
         "## New model overnight\n"
@@ -978,19 +978,19 @@ class TestMorning:
         "If no reply: A.\n"
     )
 
-    def test_morning_prints_reviews_then_decisions_whole(
+    def test_waiting_prints_reviews_then_decisions_whole(
         self, hub: Run, run_folder: Path
     ) -> None:
         """Pull requests come first, then each question in full.
 
         Hubs named open questions by number alone, and the user had to
         ask what they were. Printing every line of each entry means
-        the morning message never refers to text the user cannot see.
+        the message never refers to text the user cannot see.
         """
         (run_folder / "reviews.md").write_text("# PRs\n\n| #1 | Fix |\n")
         (run_folder / "decisions.md").write_text(self.DECISION)
 
-        result = hub("morning", "--run", str(run_folder))
+        result = hub("waiting", "--run", str(run_folder))
 
         assert result.returncode == 0
         assert result.stdout == (
@@ -1004,12 +1004,12 @@ class TestMorning:
             "If no reply: A.\n"
         )
 
-    def test_morning_refuses_entry_missing_parts(
+    def test_waiting_refuses_entry_missing_parts(
         self, hub: Run, run_folder: Path
     ) -> None:
         """An entry missing Recommended and If no reply lines exits 2.
 
-        The user decides from the morning message alone, often away
+        The user decides from this message alone, often away
         from the desk, so an entry that leaves out what happens with
         no reply cannot go out.
         """
@@ -1017,7 +1017,7 @@ class TestMorning:
             "## Pause cards\n\nPause stale cards?\n\n- A. Yes\n- B. No\n"
         )
 
-        result = hub("morning", "--run", str(run_folder))
+        result = hub("waiting", "--run", str(run_folder))
 
         assert result.returncode == 2
         assert result.stdout == ""

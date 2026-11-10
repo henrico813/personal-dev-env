@@ -8,7 +8,7 @@ Usage::
     hub [--machine LABEL] flag NAME
     hub [--machine LABEL] unflag NAME
     hub handoff --run DIR NAME HANDOFF       start the next hub
-    hub morning --run DIR                    what waits on the user
+    hub waiting --run DIR                    what waits on the user
     hub --version
 
 Read ``main`` first, then the ``run_<command>`` function of each command.
@@ -27,7 +27,7 @@ The hub's run folder DIR holds these files:
 - ``rules.md``: the user's standing decisions. ``hub handoff`` starts
   the next hub on the model of its last ``--model '...'``.
 - ``reviews.md`` and ``decisions.md``: the pull requests and questions
-  that wait on the user, which ``hub morning`` prints.
+  that wait on the user, which ``hub waiting`` prints.
 
 ``HUB_POLL_SECONDS`` sets how often ``hub next`` and ``hub handoff``
 check, 5 by default.
@@ -43,9 +43,9 @@ from hub import __version__
 from hub.flag import run_flag, run_unflag
 from hub.handoff import run_handoff
 from hub.herdr import HerdrError
-from hub.morning import run_morning
 from hub.send import run_next, run_send
 from hub.status import run_status
+from hub.waiting import run_waiting
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -117,8 +117,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     handoff.add_argument("handoff", type=Path)
     handoff.set_defaults(command=run_handoff)
 
-    morning = commands.add_parser("morning", help="what waits on the user")
-    morning.add_argument("--run", type=Path, required=True)
-    morning.set_defaults(command=run_morning)
+    waiting = commands.add_parser("waiting", help="what waits on the user")
+    waiting.add_argument("--run", type=Path, required=True)
+    waiting.set_defaults(command=run_waiting)
 
     return parser.parse_args(argv)
