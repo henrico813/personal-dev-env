@@ -32,6 +32,8 @@ func setupFlow(t *testing.T, tail string) flowEnv {
 	t.Setenv("PDE_GH_GATE", env.gate)
 	approvaltest.Replace(t, &answerTimeout, 100*time.Millisecond)
 	approvaltest.Replace[io.Writer](t, &stderr, env.output)
+	// A passing fake, so no test runs the installed git-messages msg.
+	approvaltest.Replace(t, &msgCommand, []string{approvaltest.WriteScript(t, dir, "msg", "exit 0")})
 	return env
 }
 

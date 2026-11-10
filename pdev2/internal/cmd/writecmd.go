@@ -24,6 +24,11 @@ func requestWrite(args []string) int {
 		return printError(errors.New("cannot find the real gh executable"))
 	}
 	req = scopeRequest(req)
+	// Checked before any record exists, so nobody is asked to approve it.
+	if refusal := findTitleRefusal(req, gh); refusal != "" {
+		fmt.Fprintf(stderr, "pde-gh-write: refused the title before asking for approval: %s\n", refusal)
+		return exitRejected
+	}
 	state, err := loadOrCreate(req, gh)
 	if err != nil {
 		return printError(err)

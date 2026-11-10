@@ -24,6 +24,14 @@ posts:
   `gh` may take it as that option's value.
 - `--` and everything after it.
 
+A `pr create` or `pr edit` title is refused before anyone is asked to
+approve it when the git-messages check, `msg check-type`, refuses it,
+such as a `docs` title on a PR that changes a skill or AGENTS.md file.
+For `pr edit` the check reads the PR's files from `gh pr diff`, and is
+skipped with a warning when that fails. For `pr create` it reads the
+checkout's branch since it left `--base`, or the default branch. When
+msg or `python3` is missing, the check is skipped with a warning.
+
 ## States
 
 | State | Set by | Meaning |
