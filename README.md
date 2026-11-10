@@ -198,7 +198,7 @@ stay aligned with the rest of the tree. `install client` installs only
 
 ## Privacy Checks
 
-This repository is public. `scripts/privacy-scan` runs gitleaks with the
+This repository is public. `ci/scan` runs gitleaks with the
 rules in `.gitleaks.toml`, which find secrets, personal email addresses, LAN
 and tailnet addresses, real home folders, and network-drive paths. It also
 blocks the owner's private names, which stay encrypted outside the
@@ -210,8 +210,8 @@ repository and are never committed or printed.
   needs gitleaks from the aqua profile, and checks private names only where the
   sops list exists. If `core.hooksPath` is set to `.git/hooks`, which pre-commit
   refuses, first run `git config --unset core.hooksPath`.
-- Edit the private names with `scripts/private-terms edit`, then copy them
-  to CI's `PRIVATE_TERMS` secret with `scripts/private-terms push`.
+- Edit the private names with `ci/terms edit`, then copy them
+  to CI's `PRIVATE_TERMS` secret with `ci/terms push`.
 
 ## Requirements
 

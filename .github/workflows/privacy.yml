@@ -25,11 +25,11 @@ jobs:
           tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
           echo "$RUNNER_TEMP" >>"$GITHUB_PATH"
       - name: test the scan
-        run: bash scripts/test/privacy-scan.sh
+        run: bash ci/test/scan.sh
       - name: scan files
         env:
           PRIVATE_TERMS: ${{ secrets.PRIVATE_TERMS }}
-        run: bash scripts/privacy-scan tree
+        run: bash ci/scan tree
       # The text goes through env, so a title cannot run as shell code.
       - name: scan commits and pull request text
         if: github.event_name == 'pull_request'
@@ -40,5 +40,5 @@ jobs:
           TITLE: ${{ github.event.pull_request.title }}
           BODY: ${{ github.event.pull_request.body }}
         run: |
-          bash scripts/privacy-scan commits "$BASE" "$HEAD"
-          printf '%s\n\n%s\n' "$TITLE" "$BODY" | bash scripts/privacy-scan text /dev/stdin
+          bash ci/scan commits "$BASE" "$HEAD"
+          printf '%s\n\n%s\n' "$TITLE" "$BODY" | bash ci/scan text /dev/stdin

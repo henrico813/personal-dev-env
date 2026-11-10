@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Keeps the owner's list of private names that scripts/privacy-scan blocks.
+# Keeps the owner's list of private names that ci/scan blocks.
 # The list stays encrypted with sops, and this command never prints it.
 #
-#   scripts/private-terms edit   # edit the list, one name per item
-#   scripts/private-terms push   # copy it to the PRIVATE_TERMS secret for CI
+#   ci/terms edit   # edit the list, one name per item
+#   ci/terms push   # copy it to the PRIVATE_TERMS secret for CI
 set -euo pipefail
 
 terms_file=${PDE_PRIVATE_TERMS_FILE:-$HOME/.config/pde/private-terms.sops.yaml}
@@ -30,7 +30,7 @@ push)
         jq -r '.[]' | gh secret set PRIVATE_TERMS
     ;;
 *)
-    printf 'usage: private-terms edit | push\n' >&2
+    printf 'usage: terms edit | push\n' >&2
     exit 2
     ;;
 esac

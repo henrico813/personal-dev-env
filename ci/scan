@@ -3,20 +3,20 @@
 # reach this public repository. Prints each finding's rule and place, never
 # the matched text, and withholds any path that holds a private name.
 #
-#   scripts/privacy-scan staged             # changes staged for commit
-#   scripts/privacy-scan tree               # every file in HEAD
-#   scripts/privacy-scan commits BASE HEAD  # added lines, messages, authors
-#   scripts/privacy-scan text FILE          # pull request text, or /dev/stdin
+#   ci/scan staged             # changes staged for commit
+#   ci/scan tree               # every file in HEAD
+#   ci/scan commits BASE HEAD  # added lines, messages, authors
+#   ci/scan text FILE          # pull request text, or /dev/stdin
 set -euo pipefail
 
-usage='usage: privacy-scan staged | tree | commits BASE HEAD | text FILE'
+usage='usage: scan staged | tree | commits BASE HEAD | text FILE'
 repo=$(git rev-parse --show-toplevel)
 terms_file=${PDE_PRIVATE_TERMS_FILE:-$HOME/.config/pde/private-terms.sops.yaml}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 # CI passes the list in PRIVATE_TERMS. Elsewhere it comes from the sops
-# file that scripts/private-terms edits.
+# file that ci/terms edits.
 read_terms() {
     if [[ -n ${PRIVATE_TERMS:-} ]]; then
         printf '%s\n' "$PRIVATE_TERMS"
@@ -35,17 +35,17 @@ build_pattern() {
 }
 
 pattern=$(read_terms | build_pattern) ||
-    { printf 'privacy-scan: cannot read the private terms\n' >&2; exit 2; }
+    { printf 'scan: cannot read the private terms\n' >&2; exit 2; }
 if [[ $pattern == *"'''"* ]]; then
-    printf 'privacy-scan: a private term holds three single quotes, which the rules cannot hold\n' >&2
+    printf 'scan: a private term holds three single quotes, which the rules cannot hold\n' >&2
     exit 2
 fi
 if [[ -z $pattern ]]; then
     if [[ -n ${CI:-} ]]; then
-        printf 'privacy-scan: the PRIVATE_TERMS secret is empty or missing\n' >&2
+        printf 'scan: the PRIVATE_TERMS secret is empty or missing\n' >&2
         exit 2
     fi
-    printf 'privacy-scan: no private terms at %s; checking secrets and personal data only\n' "$terms_file" >&2
+    printf 'scan: no private terms at %s; checking secrets and personal data only\n' "$terms_file" >&2
 fi
 
 config=$work/gitleaks.toml
@@ -73,7 +73,7 @@ run_gitleaks() {
         --redact --ignore-gitleaks-allow --exit-code 0 \
         --report-format json --report-path "$report" 2>"$work/errors" ||
         [[ -s $work/errors ]]; then
-        printf 'privacy-scan: gitleaks failed on %s; run it by hand to see why\n' "$label" >&2
+        printf 'scan: gitleaks failed on %s; run it by hand to see why\n' "$label" >&2
         exit 2
     fi
     jq -r --arg label "$label" --arg pattern "$pattern" '.[] |
@@ -82,7 +82,7 @@ run_gitleaks() {
             then "(path withheld)" else "\($file):\(.StartLine)" end)
         + (if .Commit == "" then "" else " in \(.Commit[0:12])" end)' "$report" \
         >>"$findings" 2>"$work/errors" || {
-        printf 'privacy-scan: jq failed on %s\n' "$label" >&2
+        printf 'scan: jq failed on %s\n' "$label" >&2
         exit 2
     }
 }
@@ -123,6 +123,6 @@ fi
 
 if [[ -s $findings ]]; then
     sort -u "$findings"
-    printf 'privacy-scan: found private or secret text; replace it before it goes public\n' >&2
+    printf 'scan: found private or secret text; replace it before it goes public\n' >&2
     exit 1
 fi

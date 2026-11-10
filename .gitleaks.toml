@@ -1,4 +1,4 @@
-# Rules for scripts/privacy-scan, on top of gitleaks' secret rules. The
+# Rules for ci/scan, on top of gitleaks' secret rules. The
 # owner's private names are added at run time and are never committed.
 [extend]
 useDefault = true
