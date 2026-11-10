@@ -24,6 +24,10 @@ hub [--machine LABEL] flag NAME
 hub [--machine LABEL] unflag NAME
 hub handoff --run DIR NAME HANDOFF       start the next hub
 hub brief --run DIR                      what waits on the user
+hub auto ready --run DIR                 ready cards, for sorting
+hub auto check --run DIR                 check the run's card list
+hub auto approve --run DIR N REPLY       save the user's approval
+hub auto now --run DIR                   one line per run card
 hub --version
 ```
 
@@ -78,9 +82,24 @@ machine to every `herdr` call, as `herdr --machine` does.
   `DIR/decisions.md` in full. It exits 2, printing nothing, when an
   entry lacks its question, two choices, `Recommended:` or
   `If no reply:`.
+- `auto` runs the steps of an auto run, which the `auto-run` skill
+  describes. DIR is the auto run's folder. `ready` writes the title,
+  project, Context and Acceptance Criteria of every ready card to
+  `DIR/ready.md` and prints it. `check` exits 2, naming each problem,
+  when `DIR/run.md` lacks its `# Auto run N` title or a card under
+  `## Run`, lists a card that is not ready or lists one twice, or
+  leaves out a ready card. `approve` writes `DIR/approved.md`, with
+  the time, REPLY and `run.md`, only when REPLY is `approve run N`,
+  ignoring case, spaces, quotes and end punctuation, the list passes `check` and N is its number; otherwise it exits 2.
+  `now` writes `DIR/brief-now.md` and prints it: one line per card
+  under `## Run`, from the first line of `DIR/status-<key>-auto.md`,
+  marked `(needs you)` while a `decisions.md` entry's title starts
+  with the key, then the number of questions and each one's title. It
+  exits 2 before the run is approved.
 
-Exit codes are 0 when the command did its work, 1 when a `herdr` call
-failed, with Herdr's message on standard error, and 2 when refused.
+Exit codes are 0 when the command did its work, 1 when a `herdr` or
+`card` call failed, with its message on standard error, and 2 when
+refused.
 
 ## Files in the run folder
 
@@ -95,6 +114,10 @@ failed, with Herdr's message on standard error, and 2 when refused.
 | `rules.md` | The user's standing decisions, written by the hub. |
 | `reviews.md` | Pull requests that wait for the user's review. |
 | `decisions.md` | One `## <title>` entry per question for the user. `src/hub/brief.py` shows the form. |
+| `ready.md` | An auto run's ready cards, written by `hub auto ready`. |
+| `run.md` | The auto run's card list, written by the front hub. `src/hub/auto.py` shows the form. |
+| `approved.md` | The approved list, with the time and the user's reply. |
+| `brief-now.md` | One line per run card, written by `hub auto now`. |
 
 ## Tests
 
