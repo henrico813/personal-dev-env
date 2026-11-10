@@ -203,6 +203,8 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".local/state/surveil",
 		".local/bin/pde-comment-checker",
 		".local/bin/pde-comment-review-next",
+		".local/bin/pde-comment-review",
+		".local/share/pde/herdr-plugins/pde-comment-review",
 	}
 	developmentTools := []string{
 		".local/bin/pde-gh-write",
@@ -455,7 +457,7 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"scope=\"tm-${slug}-${hash[1,8]}\"",
 				"herdr_bin=\"$(command -v herdr)\"",
 				"tmux new-session -d -s \"$session\" -n herdr",
-				"exec ${(q)herdr_bin} --session default",
+				`herdr_command="exec env SSH_TTY=\"\$(tty)\" ${(q)herdr_bin} --session default"`,
 				"for window in herdr shell",
 				"@tm-root",
 				"Usage: tw [directory] [left_cmd] [top_cmd] [bottom_cmd] [right_cmd]",
@@ -499,7 +501,7 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"scope=\"tm-${slug}-${hash[1,8]}\"",
 				"herdr_bin=\"$(command -v herdr)\"",
 				"tmux new-session -d -s \"$session\" -n herdr",
-				"exec ${(q)herdr_bin} --session default",
+				`herdr_command="exec env SSH_TTY=\"\$(tty)\" ${(q)herdr_bin} --session default"`,
 				"for window in herdr shell",
 				"@tm-root",
 				"Usage: tw [directory] [left_cmd] [top_cmd] [bottom_cmd] [right_cmd]",

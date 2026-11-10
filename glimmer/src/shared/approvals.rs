@@ -1,0 +1,399 @@
+//! This module loads and adds the user's decisions on comments, and compares
+//! each comment with them. Read the `load(dir)`, `add(dir, new_approvals)`,
+//! and `Approvals::compare(comment)` functions to understand the module.
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Display;
+use std::fs::{self, File};
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use super::comments::Comment;
+use super::git;
+use super::{Error, ErrorCode};
+
+const APPROVALS_FILE: &str = "code-comments.json";
+const LOCK_FILE: &str = "code-comments.json.lock";
+const TEMP_FILE: &str = "code-comments.json.tmp";
+const BACKUP_FILE: &str = "code-comments.json.backup";
+
+/// Loads the decisions, or none when the file is missing. Refuses a field
+/// it does not know, so an older program cannot drop it when it adds decisions.
+pub fn load(dir: &Path) -> Result<Approvals, Error> {
+    load_file(&find_approvals_folder(dir)?.join(APPROVALS_FILE))
+}
+
+/// Loads the decisions from one approvals file, as `load` does.
+pub(crate) fn load_file(path: &Path) -> Result<Approvals, Error> {
+    Ok(read_saved_file(path)?.into_approvals())
+}
+
+/// Adds decisions after the stored ones and keeps the rest of the file.
+/// Another add waits for the lock, so neither loses its decisions.
+pub fn add(dir: &Path, new_approvals: &[Approval]) -> Result<(), Error> {
+    let folder = find_approvals_folder(dir)?;
+    let path = folder.join(APPROVALS_FILE);
+    // `_lock` holds the lock until this function returns, after the write.
+    let _lock = lock_approvals(&folder).map_err(|error| save_error(&path, error))?;
+    let mut saved = read_saved_file(&path)?;
+    for approval in new_approvals {
+        saved.approved.push(SavedApproval {
+            approval: approval.clone(),
+            unknown_fields: BTreeMap::new(),
+        });
+    }
+    write_saved_file(&folder, &saved).map_err(|error| save_error(&path, error))
+}
+
+/// Removes each approval or cut that `is_gone` returns true for, keeps the
+/// rest in order, and returns the removed ones. Backs the file up before it
+/// writes. Writes nothing when `is_gone` fails or returns true for none.
+pub fn remove(
+    dir: &Path,
+    mut is_gone: impl FnMut(&Approval) -> Result<bool, Error>,
+) -> Result<(Vec<Approval>, ApprovalsBackup), Error> {
+    let folder = find_approvals_folder(dir)?;
+    let path = folder.join(APPROVALS_FILE);
+    // `_lock` holds the lock until this function returns, after the write.
+    let _lock = lock_approvals(&folder).map_err(|error| save_error(&path, error))?;
+    let mut saved = read_saved_file(&path)?;
+    let mut removed = Vec::new();
+    let mut kept = Vec::new();
+    for decision in saved.approved.drain(..) {
+        if is_gone(&decision.approval)? {
+            removed.push(decision.approval);
+        } else {
+            kept.push(decision);
+        }
+    }
+    if removed.is_empty() {
+        return Ok((removed, ApprovalsBackup::NothingWritten));
+    }
+    saved.approved = kept;
+    let backup = back_up_approvals_file(&folder).map_err(|error| save_error(&path, error))?;
+    write_saved_file(&folder, &saved).map_err(|error| save_error(&path, error))?;
+    Ok((removed, ApprovalsBackup::SavedAt(backup)))
+}
+
+impl Approvals {
+    /// Checks the comment against the decisions for its file and name. A
+    /// comment with no name is always undecided.
+    pub fn compare(&self, comment: &Comment) -> DecisionMatch {
+        let Some(name) = &comment.name else {
+            return DecisionMatch::Undecided;
+        };
+        let decisions: Vec<&Approval> = self
+            .approved
+            .iter()
+            .filter(|decision| decision.file == comment.file && &decision.name == name)
+            .collect();
+        match decisions.last() {
+            None => DecisionMatch::Undecided,
+            Some(newest) if newest.text.is_empty() => DecisionMatch::WasCut,
+            Some(_)
+                if decisions
+                    .iter()
+                    .any(|decision| decision.text == comment.text) =>
+            {
+                DecisionMatch::Approved
+            }
+            Some(_) => DecisionMatch::DiffersFromApproved,
+        }
+    }
+
+    /// Returns each word agents should not use, with what to say instead.
+    pub(crate) fn avoided_words(&self) -> &BTreeMap<String, String> {
+        &self.avoid
+    }
+
+    /// Returns each file that holds a decision, approved or cut.
+    pub(crate) fn files(&self) -> BTreeSet<&Path> {
+        self.approved
+            .iter()
+            .map(|decision| decision.file.as_path())
+            .collect()
+    }
+}
+
+/// Holds one decision. An empty text means the user cut the comment.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct Approval {
+    pub file: PathBuf,
+    pub name: String,
+    pub text: String,
+}
+
+/// Holds every decision in the approvals file, oldest first.
+pub struct Approvals {
+    approved: Vec<Approval>,
+    avoid: BTreeMap<String, String>,
+}
+
+/// Says how one comment stands against the user's decisions.
+#[derive(Debug, PartialEq)]
+pub enum DecisionMatch {
+    /// No decision has the comment's file and name.
+    Undecided,
+    /// An approved text equals the comment's text, and the newest decision
+    /// is not a cut.
+    Approved,
+    /// The newest decision for the comment's file and name is a cut.
+    WasCut,
+    /// The comment's name has approved texts, and none equals its text.
+    DiffersFromApproved,
+}
+
+/// Holds the approvals file in the same format as approvals files saved
+/// earlier, so they still load.
+#[derive(Default, Deserialize, Serialize)]
+struct SavedFile {
+    #[serde(default)]
+    approved: Vec<SavedApproval>,
+    #[serde(default)]
+    avoid: BTreeMap<String, String>,
+    /// Collects fields this program does not know, so reading can refuse
+    /// them.
+    #[serde(flatten)]
+    unknown_fields: BTreeMap<String, Value>,
+}
+
+/// Holds one stored decision and any fields this program does not know.
+#[derive(Deserialize, Serialize)]
+struct SavedApproval {
+    #[serde(flatten)]
+    approval: Approval,
+    #[serde(flatten)]
+    unknown_fields: BTreeMap<String, Value>,
+}
+
+impl SavedFile {
+    /// Keeps the decisions and avoided words, as the steps read them.
+    fn into_approvals(self) -> Approvals {
+        Approvals {
+            approved: self
+                .approved
+                .into_iter()
+                .map(|entry| entry.approval)
+                .collect(),
+            avoid: self.avoid,
+        }
+    }
+}
+
+/// Returns the folder that holds the approvals, in the Git folder every
+/// worktree of the clone shares.
+fn find_approvals_folder(dir: &Path) -> Result<PathBuf, Error> {
+    Ok(git::find_shared_git_folder(dir)?.join("pde"))
+}
+
+/// Locks a file beside the approvals, since each add replaces the
+/// approvals file and a lock on the old one guards nothing.
+fn lock_approvals(folder: &Path) -> io::Result<File> {
+    fs::create_dir_all(folder)?;
+    let lock_file = File::create(folder.join(LOCK_FILE))?;
+    lock_file.lock()?;
+    Ok(lock_file)
+}
+
+/// Reads the saved file, or an empty one when it is missing.
+fn read_saved_file(path: &Path) -> Result<SavedFile, Error> {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(SavedFile::default()),
+        Err(error) => return Err(read_error(path, error)),
+    };
+    let saved: SavedFile =
+        serde_json::from_slice(&bytes).map_err(|error| read_error(path, error))?;
+    let unknown_field = saved
+        .unknown_fields
+        .keys()
+        .chain(
+            saved
+                .approved
+                .iter()
+                .flat_map(|entry| entry.unknown_fields.keys()),
+        )
+        .next();
+    if let Some(field) = unknown_field {
+        return Err(Error {
+            code: ErrorCode::UnknownSavedField,
+            message: format!(
+                "{} holds the field `{field}`, which this version does not know. Run pde-installer to update it.",
+                path.display()
+            ),
+        });
+    }
+    Ok(saved)
+}
+
+/// Replaces the approvals file with a synced temporary file, so a crash
+/// or power cut leaves a whole file, old or new.
+fn write_saved_file(folder: &Path, saved: &SavedFile) -> io::Result<()> {
+    let mut text = serde_json::to_vec_pretty(saved)?;
+    text.push(b'\n');
+    let temp_path = folder.join(TEMP_FILE);
+    let mut temp_file = File::create(&temp_path)?;
+    temp_file.write_all(&text)?;
+    temp_file.sync_all()?;
+    fs::rename(&temp_path, folder.join(APPROVALS_FILE))
+}
+
+fn read_error(path: &Path, error: impl Display) -> Error {
+    Error {
+        code: ErrorCode::SavedFileUnreadable,
+        message: format!(
+            "Cannot read the approvals in {}. Tell the user to fix the file. {error}",
+            path.display()
+        ),
+    }
+}
+
+fn save_error(path: &Path, error: io::Error) -> Error {
+    Error {
+        code: ErrorCode::SaveFailed,
+        message: format!("Cannot save the approvals in {}. {error}", path.display()),
+    }
+}
+
+/// Says how the user restores the approvals file after a command changed it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalsBackup {
+    /// The command wrote nothing, so the file needs no restoring.
+    NothingWritten,
+    /// The command copied the file here before writing, so the user restores
+    /// it by copying this copy back.
+    SavedAt(PathBuf),
+}
+
+/// Copies the approvals file to the first free `code-comments.json.backup`
+/// name, such as `code-comments.json.backup.2`, and syncs it.
+fn back_up_approvals_file(folder: &Path) -> io::Result<PathBuf> {
+    let contents = fs::read(folder.join(APPROVALS_FILE))?;
+    let mut number = 1;
+    loop {
+        let name = match number {
+            1 => BACKUP_FILE.to_owned(),
+            _ => format!("{BACKUP_FILE}.{number}"),
+        };
+        let path = folder.join(name);
+        match File::create_new(&path) {
+            Ok(mut backup) => {
+                backup.write_all(&contents)?;
+                backup.sync_all()?;
+                return Ok(path);
+            }
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => number += 1,
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::shared::comments::CommentStyle;
+
+    /// Builds one decision the user made, with an empty text for a cut.
+    fn approval(file: &str, name: &str, text: &str) -> Approval {
+        Approval {
+            file: PathBuf::from(file),
+            name: name.to_owned(),
+            text: text.to_owned(),
+        }
+    }
+
+    /// Builds a comment as the code holds it now.
+    fn comment(file: &str, name: &str, text: &str) -> Comment {
+        Comment {
+            file: PathBuf::from(file),
+            name: Some(name.to_owned()),
+            line: 1,
+            end_line: 1,
+            style: CommentStyle::Line,
+            text: text.to_owned(),
+            byte_range: 0..text.len(),
+            can_cut: true,
+        }
+    }
+
+    /// `Approvals::compare` must pass every text the user approved for a comment and fail any other text.
+    /// Otherwise an agent could quietly rewrite what the user approved.
+    #[test]
+    fn approved_texts_pass_and_other_texts_fail() {
+        // The user approved one text, then a second one later.
+        let approvals = Approvals {
+            approved: vec![
+                approval("review_store.go", "SaveAnswer", "// Saves the answer.\n"),
+                approval(
+                    "review_store.go",
+                    "SaveAnswer",
+                    "// Saves the answer safely.\n",
+                ),
+            ],
+            avoid: BTreeMap::new(),
+        };
+
+        // Either approved text in the code passes.
+        let older = comment("review_store.go", "SaveAnswer", "// Saves the answer.\n");
+        let newer = comment(
+            "review_store.go",
+            "SaveAnswer",
+            "// Saves the answer safely.\n",
+        );
+        assert_eq!(approvals.compare(&older), DecisionMatch::Approved);
+        assert_eq!(approvals.compare(&newer), DecisionMatch::Approved);
+
+        // A text the user never approved is caught.
+        let reworded = comment("review_store.go", "SaveAnswer", "// Writes the answer.\n");
+        assert_eq!(
+            approvals.compare(&reworded),
+            DecisionMatch::DiffersFromApproved
+        );
+    }
+
+    /// `Approvals::compare` must count only the newest decision for a comment.
+    /// Otherwise a comment the user cut would still pass, or one they approved again would still count as cut.
+    #[test]
+    fn the_newest_decision_wins() {
+        let approved = approval("review_store.go", "SaveAnswer", "// Saves the answer.\n");
+        let cut = approval("review_store.go", "SaveAnswer", "");
+        let cases = [
+            (
+                "cut-after-approval",
+                vec![approved.clone(), cut.clone()],
+                DecisionMatch::WasCut,
+            ),
+            (
+                "approval-after-cut",
+                vec![cut, approved],
+                DecisionMatch::Approved,
+            ),
+        ];
+
+        for (case, decisions, expected) in cases {
+            let approvals = Approvals {
+                approved: decisions,
+                avoid: BTreeMap::new(),
+            };
+            let in_code = comment("review_store.go", "SaveAnswer", "// Saves the answer.\n");
+            assert_eq!(approvals.compare(&in_code), expected, "{case}");
+        }
+    }
+
+    /// `Approvals::compare` must count a decision only in its own file.
+    /// Otherwise approving one file's module doc would fail the module docs of every other file.
+    #[test]
+    fn a_decision_counts_only_in_its_own_file() {
+        let approvals = Approvals {
+            approved: vec![approval("review.rs", "<module>", "//! Reads the review.\n")],
+            avoid: BTreeMap::new(),
+        };
+
+        let other_file = comment("approvals.rs", "<module>", "//! Reads the approvals.\n");
+        assert_eq!(approvals.compare(&other_file), DecisionMatch::Undecided);
+    }
+}

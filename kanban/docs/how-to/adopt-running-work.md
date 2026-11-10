@@ -2,8 +2,8 @@
 
 Use this when an agent session in Herdr has been working for a while
 and has no card yet. **Adopting** makes a card that starts straight in
-`active` (a worker is on it) or `review` (the work waits for you to
-accept it), instead of walking through `draft` and `ready`. Only you
+`active` (a worker is on it) or `review` (the work waits only on
+you), instead of walking through `draft` and `ready`. Only you
 can adopt, so every command here passes `--user`.
 
 ## 1. Pick the stage
@@ -11,10 +11,10 @@ can adopt, so every command here passes `--user`.
 
 Read the session's pane or its latest report file.
 
-- The worker is still building, or waits on a question: adopt into
+- The worker can go on alone, such as while it builds: adopt into
   `active`.
-- The worker says it finished, and its pull request or branch exists
-  with passing tests: adopt into `review`.
+- The work waits only on you, such as an open pull request, a plan to
+  approve or a question: adopt into `review`.
 
 ## 2. Make the card
 ---
@@ -75,6 +75,30 @@ herdr agent rename TARGET pdev-kb-013-impl
 ```
 
 `TARGET` is the agent as `herdr agent list` shows it.
+
+## 6. Pause the work to close its session
+---
+
+Skip this step to keep the session running. To close it before its
+work is done, first have it write a handoff, as the `herdr-handoff`
+skill says, listing every file it leaves and every question waiting
+on you. Closing the session changes no file. Then move an `active`
+card back to `ready` and name the handoff:
+
+```sh
+card move PDEV-KB-013 ready --user --by user --why "paused; handoff ~/.local/state/pde/handoffs/20261106-pdev-kb-013-impl.md"
+```
+
+A card in `review` cannot move to `ready`. Leave it there, and name
+the handoff in a note:
+
+```sh
+card note PDEV-KB-013 --by user "paused; handoff ~/.local/state/pde/handoffs/20261106-pdev-kb-013-impl.md"
+```
+
+A paused `ready` card starts again like any ready card, from its
+handoff. A paused `review` card starts again once you answer: it
+moves back to `active`, and a new session starts from its handoff.
 
 ## Check
 ---

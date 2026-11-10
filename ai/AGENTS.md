@@ -44,7 +44,7 @@
 - When writing a design doc, load and follow the `design-doc` skill.
 - When you want to put code comments in front of the user for review,
   load and follow the `comment-review` skill. Prepare reviews with
-  `pde-comment-review make-feedback-request-list`, then
+  `glimmer make-feedback-request-list`, then
   `send-agent-suggestions`.
 - When cleaning up the worktree and branch of a completed plan, load and
   follow the `cleanup-plan` skill.
@@ -194,6 +194,14 @@ pattern over the whole file.
 
 - Verify the exact files in a PR diff before merging.
 - Use squash merges only.
+
+## Context Size
+
+- At each milestone, such as a merged PR, an approved plan or a
+  delegated step's report, run `pde-context` where it is installed.
+  When it says the context is above the 200k handoff level, propose
+  handing the remaining work to a new session with `herdr-handoff`
+  instead of waiting for compaction.
 
 ## Self Improvement
 
