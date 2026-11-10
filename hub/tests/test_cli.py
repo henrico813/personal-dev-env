@@ -1223,13 +1223,12 @@ class TestGather:
     def test_gather_moves_hub_workspaces_to_top(
         self, hub: Run, fake_tools: Path
     ) -> None:
-        """All hub workspaces move, once each, ahead of the first other.
+        """Every hub workspace moves once, ahead of the first other one.
 
-        The hub runs gather at every start, so a hub usually sits first
-        already, and Herdr refuses an anchor inside the block. The hub
-        runs gather from its own pane, so leaving that pane out would
-        leave its own workspace behind. Herdr also refuses a block that
-        names a workspace twice, which happens when two hubs share one.
+        The hub runs gather from its own pane at each start, so its own
+        workspace must move too. Herdr refuses a move that names a
+        workspace twice or anchors on a hub, which would leave the hubs
+        down the sidebar.
         """
         set_workspaces(fake_tools, "w1", "w2", "w3")
         set_agents(
