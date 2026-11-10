@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -26,8 +27,8 @@ from hub.herdr import (
 UNSURE_ERRORS = ("agent_prompt_stalled", "timeout")
 # Long enough for a session to start its turn, as herdr-handoff waits.
 PROMPT_TIMEOUT_MS = "30000"
-# OpenCode's input box shows a long message as "[Pasted ~1 lines]".
-PASTED_TEXT = "[Pasted "
+# OpenCode's input box shows a long message as "┃  [Pasted ~1 lines]".
+PASTED_TEXT = re.compile(r"^\s*┃\s+\[Pasted ~\d+ lines?\]\s*$", re.MULTILINE)
 
 
 def run_send(args: argparse.Namespace) -> int:
@@ -265,14 +266,19 @@ def submit_pasted_text(machine: str | None, name: str) -> bool:
 
     Returns:
         True when the session started on the text after the key press.
-        False when the screen showed no pasted text or a herdr call
-        failed, so the message may or may not have arrived.
+        False when the screen showed no pasted text, the session was no
+        longer free, or a herdr call failed, so the message may or may
+        not have arrived.
     """
     try:
         screen = call_herdr(
             machine, "agent", "read", name, "--source", "visible"
         )
-        if PASTED_TEXT not in screen:
+        if not PASTED_TEXT.search(screen):
+            return False
+        # The user may have focused the pane during the stall, and Enter
+        # would then send their typing too.
+        if not is_free(get_agent(machine, name)):
             return False
         call_herdr(machine, "agent", "send-keys", name, "Enter")
         call_herdr(

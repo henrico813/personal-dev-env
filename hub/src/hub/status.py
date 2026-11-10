@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import sqlite3
 import subprocess
 from pathlib import Path
 
@@ -177,7 +178,11 @@ def describe_context(machine: str | None, agent: dict) -> str:
     session = (agent.get("agent_session") or {}).get("value")
     if machine is not None or not session:
         return "-"
-    tokens = read_context_tokens(session)
+    try:
+        tokens = read_context_tokens(session)
+    except sqlite3.Error:
+        # A locked or changed database costs one column, not the table.
+        return "-"
     return "-" if tokens is None else f"{round(tokens / 1000)}k"
 
 

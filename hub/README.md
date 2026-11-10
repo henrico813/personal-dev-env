@@ -46,8 +46,8 @@ machine to every `herdr` call, as `herdr --machine` does.
   session that reports to this hub. When `card` fails, one `cards:`
   line gives the reason. The context size comes from OpenCode's
   database for the session Herdr names, counted as `pde-context`
-  counts it, such as `108k`. It is `-` with `--machine` or when the
-  database has no count for the session.
+  counts it, such as `108k`. It is `-` with `--machine`, when the
+  database has no count for the session, or when it cannot be read.
 - `send` sends the message at once when the session is `idle` or
   `done` and the user is not in its pane. Otherwise it keeps the
   message in `DIR/send-NAME.json`, and `hub next` sends it later. A

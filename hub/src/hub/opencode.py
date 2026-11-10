@@ -26,6 +26,10 @@ def read_context_tokens(session: str) -> int | None:
     Returns:
         Uncached input plus cache reads and writes, or None when the
         database has no trusted step for the session.
+
+    Raises:
+        sqlite3.Error: The database could not be read, such as when it
+            is locked or its tables changed.
     """
     context, after_zero = None, False
     for (text,) in query_session(
@@ -55,6 +59,10 @@ def query_session(query: str, session: str) -> list[tuple]:
 
     Returns:
         The rows, or no rows when the database is missing.
+
+    Raises:
+        sqlite3.Error: The database could not be read, such as when it
+            is locked or its tables changed.
     """
     database = Path.home() / ".local" / "share" / "opencode" / "opencode.db"
     if not database.exists():

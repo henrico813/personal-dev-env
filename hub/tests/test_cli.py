@@ -581,7 +581,7 @@ class TestSend:
         set_agents(fake_tools, [make_agent("docs-fix", "done")])
         refuse_prompts(fake_tools, "agent_prompt_stalled", "prompt stalled")
         (fake_tools / "screens" / "docs-fix").write_text(
-            "┃  [Pasted ~1 lines]\n"
+            "  ┃  [Pasted ~1 lines]\n"
         )
 
         result = hub("send", "--run", str(run_folder), "docs-fix", "Rebase.")
@@ -786,6 +786,33 @@ class TestNext:
         kept = json.loads((run_folder / left).read_text())
         assert kept["message"] == "Rebase."
         assert not (run_folder / "send-docs-fix.json").exists()
+
+    def test_next_skips_enter_for_focused_pane(
+        self, hub: Run, fake_tools: Path, run_folder: Path
+    ) -> None:
+        """A stalled paste gets no Enter once the user is in the pane.
+
+        The user may focus the pane during the stall and start typing.
+        Enter would then send their typing with the message, so the
+        message stays unsure for the hub to check instead.
+        """
+        set_agents(fake_tools, [make_agent("docs-fix", "working")])
+        hub("send", "--run", str(run_folder), "docs-fix", "Rebase.")
+        set_agents(
+            fake_tools,
+            [make_agent("docs-fix", "idle")],
+            [make_agent("docs-fix", "idle", focused=True)],
+        )
+        refuse_prompts(fake_tools, "agent_prompt_stalled", "prompt stalled")
+        (fake_tools / "screens" / "docs-fix").write_text(
+            "  ┃  [Pasted ~1 lines]\n"
+        )
+
+        result = hub("next", "--run", str(run_folder))
+
+        assert result.stdout == "unsure docs-fix: prompt stalled\n"
+        assert not [c for c in read_calls(fake_tools) if "send-keys" in c]
+        assert (run_folder / "send-docs-fix.sending").exists()
 
 
 class TestRead:
