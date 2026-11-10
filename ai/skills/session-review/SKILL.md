@@ -137,6 +137,12 @@ to prepare it for a cheaper model.
 Send one short message by the `status-updates` skill, in the format
 below. Then wait. Change nothing until the user answers.
 
+A narrow question, such as "what could a local model have done?",
+still gets the Fallback, Efficiency and Trials lines at the end. A
+trial is a rerun from step 4, not work the session already did on a
+local model. To say how to brief the local model, point to the Local
+model section of roadmap-run's prompts.
+
 ## Output format
 
     Session review of <title>, saved to <review file path>.
@@ -153,7 +159,7 @@ below. Then wait. Change nothing until the user answers.
     Fallback: <the role least ready for a local model, and its fix>.
     Efficiency: <the largest step a local model could take, and its
     saving>.
-    Trials: <the trial and its result, or "none ran">.
+    Trials: <the trial you reran and its result, or "none ran">.
 
     Reply with the numbers to apply.
 
