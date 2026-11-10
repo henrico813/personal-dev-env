@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"pde-installer/internal/testfile"
 )
 
 // An OpenCode that lists no models on its first call, as in a folder it has
@@ -42,7 +44,7 @@ func TestLauncherOpensSessionOnChosenModel(t *testing.T) {
 		".bin",
 		"opencode",
 	)
-	writeExecutable(t, binary, fakeOpenCodeWithSlowModelList)
+	testfile.WriteExecutable(t, binary, fakeOpenCodeWithSlowModelList)
 	launcher := writeMemcapLauncher(t, home)
 	command := exec.Command(
 		launcher,
