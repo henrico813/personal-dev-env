@@ -29,6 +29,18 @@ even when the user has nothing to do.
 - Say what each thing does for the user before its label. Write "the
   approvals-file pull request (P4, #383)", not "P4". Explain every
   term, such as "batch 2", in every message.
+- Say which repository or project each plan, card or pull request
+  belongs to, even when the whole update is about one project,
+  because the user works on several. For each, describe the user's
+  problem it solves, even if you explained it earlier that day.
+- Describe an approval request by its effect, such as opening or
+  merging a given pull request in a given repository, and say where
+  the user approves it. Never use its ID, which the user cannot see.
+- When you explain work, start with the concrete task and a small
+  example. Give each rule's real-world consequence in one plain
+  sentence, say where the rule lives in the source, and say what the
+  evidence does and does not prove.
+- Keep private details you read in notes out of updates.
 
 ## Order
 
@@ -37,12 +49,23 @@ even when the user has nothing to do.
 3. Detail, only as much as the user needs.
 
 Each thing the user must open comes with its link, branch, worktree
-path or command. Give each deadline as the time left, worked out from
-what you know, such as "expires in about two hours". Add a clock time
-only when you know the current time.
+path or command. A file comes with a command that opens precisely
+that file, tried before you send it; opening something nearby, like
+the task's card, does not count. Give each deadline as the
+time left, worked out from what you know, such as "expires in about
+two hours". Add a clock time only when you know the current time.
 
 A question says what it asks, the choices, what each choice leads
-to, and your recommendation, as item 2 of the recap below does.
+to, and your recommendation, as item 2 of the recap below does. Until
+the user answers, every update carries the whole question again,
+choices and recommendation included, not just its name.
+
+## Pull requests to review
+
+Order the list as the pull requests will merge, numbered. For each,
+give its repository, a line on the user's problem it fixes, how its
+checks went and anything blocking it. Put the first one to review in
+bold.
 
 ## Real results
 
@@ -51,6 +74,9 @@ to, and your recommendation, as item 2 of the recap below does.
 - A claim you did not check is not a result. Leave it out or mark
   it unchecked. Never make up a number, link or time the facts do not
   give, such as a pull request number for work not yet opened.
+- Recheck the current state of anything you would list as waiting
+  on the user, pending or open; never reuse an old status. When it
+  has since been approved, finished or merged, report that.
 - Correct a wrong earlier claim in its own line: "Correction:
   yesterday I said the tests cover Windows paths. They do not; only
   Linux paths ran."
@@ -68,6 +94,9 @@ Follow the filler list in
   lines.
 - Keep each command under about 35 characters, one per code block,
   and say where to run it. Wrap a long one in a short script first.
+- When the user must change a login, token or setting, give them a
+  script that makes the change and then prints ok or missing, so they
+  can see it worked before saying done.
 - Bold only what the user must act on.
 
 ## Restraint
@@ -90,19 +119,19 @@ waiting on you. For example:
 Fernwood, the app that waters the garden on a timer, since Monday:
 
 Done
-- Skip watering when rain is forecast (#7): merged Tuesday.
+- Skip watering when rain is forecast (fernwood #7): merged Tuesday.
 
 In progress
-- A separate schedule for each garden bed (#8): 18 of 19 tests
+- A separate schedule for each garden bed (fernwood #8): 18 of 19 tests
   pass. The failing test covers a bed with no plants; I am fixing
   it. Not tried on the real valve controller yet.
 
 Waiting on you
-1. Approve #9, which texts you when a valve sticks, in the approval
-   app. The request expires in about three hours.
+1. Approve fernwood #9, which texts you when a valve sticks, in the
+   approval app. The request expires in about three hours.
 2. Should a bed with no plants be skipped or watered at half time?
    Skipping saves water; half time keeps new seeds damp. I recommend
-   skipping. #8 finishes within a day either way.
+   skipping. fernwood #8 finishes within a day either way.
 ```
 
 For a progress update rewritten from an agent's shorthand, read
@@ -126,6 +155,8 @@ no earlier message, and fix it before you send it:
    - Every number was checked, and unchecked things are named.
    - No side item that an earlier message raised.
    - Nothing from the filler list in `plain-direct-english` is left.
+   - Each plan, card and pull request names its repository, and each
+     open question is there in full.
    - It fits a phone screen without a wall of text.
 3. Read the fixed draft once more. Send it only when every check
    passes.

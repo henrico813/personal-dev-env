@@ -153,10 +153,16 @@ model can run the loop from them.
    be unique among live agents:
 
        herdr agent start <name> --kind <kind> --pane <pane> \
-         --timeout 90000
+         --timeout 90000 > <start file>
 
-   For OpenCode, add `-- --auto` at the end, so the new session
-   approves its own tool permissions instead of stopping at each one.
+   `<start file>` sits in a `mktemp -d` folder; read the reply there.
+   Put the agent flags below, after `--`, before the `>`. A start that
+   is cut off may not have started the agent, so step 6 confirms it
+   with `agent get`.
+
+   For OpenCode, add `-- --auto` after the other flags, so the new
+   session approves its own tool permissions instead of stopping at
+   each one.
    Check that `.result.argv` in the reply includes `--auto`. If it
    does not, tell the user the session will stop at permission
    prompts. `--auto` still obeys rules that deny a command, and a
@@ -185,7 +191,9 @@ model can run the loop from them.
    Plain `--wait` waits until the agent finishes, so a long handoff
    runs past the timeout.
 6. Read the state in `herdr agent get <name>`:
-   - `working` means it started.
+   - `working` means it started. When this session is one the user
+     will use directly, bring its tab into the user's view with
+     `herdr tab focus <tab ID>`, the ID from `.result.agent.tab_id`.
    - `idle` or `done` means it already finished. Read its reply with
      `herdr agent read <name> --source recent-unwrapped --lines 80`.
    - `blocked` means it waits at an approval or a question. Those
