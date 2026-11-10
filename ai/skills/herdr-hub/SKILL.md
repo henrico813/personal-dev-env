@@ -47,8 +47,9 @@ It prints one line for every named session except the hub:
     NAME              STATE  CTX   CARD         REPORT  SEND  LABEL
     demo-kb-007-impl  idle   108k  DEMO-KB-007  unread  -     needs you
 
-CTX is the session's context size from OpenCode's database, or `-`
-for a session on another machine. REPORT is `unread`
+CTX is the session's context size from OpenCode's database. It is
+`-` with `--machine`, when the database has no count for the
+session, or when it cannot be read. REPORT is `unread`
 while `report-<name>.md` waits in the run folder. SEND is `held` while
 a message waits for the session, `failed` when Herdr refused one, and
 `unsure` when a send stopped part way. A named session missing from
