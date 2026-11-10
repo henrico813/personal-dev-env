@@ -17,12 +17,37 @@ terminal_base_image() {
 	printf 'pde-terminal-base:22.04-%s\n' "${identity%% *}"
 }
 
+# Builds a base image unless it already exists. When PDE_IMAGE_CACHE names a
+# folder, the image is loaded from or saved to it, so CI runs apt-get only
+# after a Dockerfile changes. PDE_UBUNTU_MIRROR replaces archive.ubuntu.com.
+# CI sets it to Azure's mirror, which refuses package downloads from outside
+# Azure.
+ensure_base_image() {
+	local image="$1" dockerfile="$2" version="$3" archive=""
+	if docker image inspect "$image" >/dev/null 2>&1; then
+		return
+	fi
+	if [[ -n "${PDE_IMAGE_CACHE:-}" ]]; then
+		archive="$PDE_IMAGE_CACHE/${image//:/-}.tar"
+		if [[ -f "$archive" ]]; then
+			docker load -i "$archive"
+			return
+		fi
+	fi
+	docker build -t "$image" \
+		--build-arg "UBUNTU_VERSION=$version" \
+		--build-arg "UBUNTU_MIRROR=${PDE_UBUNTU_MIRROR:-}" \
+		-f "$SCRIPT_DIR/$dockerfile" "$REPO_ROOT"
+	if [[ -n "$archive" ]]; then
+		mkdir -p "$PDE_IMAGE_CACHE"
+		docker save -o "$archive" "$image"
+	fi
+}
+
 build_image() {
 	local version="$1" base
 	base="$(base_image "$version")"
-	if ! docker image inspect "$base" >/dev/null 2>&1; then
-		docker build -t "$base" --build-arg "UBUNTU_VERSION=$version" -f "$SCRIPT_DIR/Dockerfile.base" "$REPO_ROOT"
-	fi
+	ensure_base_image "$base" Dockerfile.base "$version"
 	docker build -t "pde-smoke:$version" --build-arg "BASE_IMAGE=$base" -f "$SCRIPT_DIR/Dockerfile" "$REPO_ROOT"
 }
 
@@ -38,9 +63,7 @@ smoke() {
 terminal() {
 	local base
 	base="$(terminal_base_image)"
-	if ! docker image inspect "$base" >/dev/null 2>&1; then
-		docker build -t "$base" --build-arg UBUNTU_VERSION=22.04 -f "$SCRIPT_DIR/Dockerfile.terminal" "$REPO_ROOT"
-	fi
+	ensure_base_image "$base" Dockerfile.terminal 22.04
 	docker build -t pde-installer-terminal --build-arg "BASE_IMAGE=$base" -f "$SCRIPT_DIR/Dockerfile" "$REPO_ROOT"
 	docker run --rm pde-installer-terminal ./pde-installer/test/verify-terminal.sh
 }
