@@ -1253,7 +1253,7 @@ class TestAuto:
         [
             pytest.param("2", "go", id="go"),
             pytest.param("2", "approve run 3", id="other-phrase"),
-            pytest.param("2", "approve run 2 without 001", id="edit"),
+            pytest.param("2", "approve run 2 without DEMO-KB-001", id="edit"),
             pytest.param("3", "approve run 3", id="other-run"),
         ],
     )
@@ -1301,6 +1301,66 @@ class TestAuto:
         assert result.returncode == 0
         assert "The user's words: Approve run 2.\n" in approved
         assert approved.endswith((run_folder / "run.md").read_text())
+
+    @pytest.mark.parametrize(
+        "words",
+        [
+            pytest.param("go ahead with DEMO-KB-001", id="card-missing"),
+            pytest.param(
+                "run DEMO-KB-001, DEMO-KB-002 and DEMO-KB-003",
+                id="extra-card",
+            ),
+            pytest.param("you have my approval", id="no-card"),
+        ],
+    )
+    def test_approve_given_refuses_other_card_set(
+        self, hub: Run, fake_tools: Path, run_folder: Path, words: str
+    ) -> None:
+        """Words that do not name exactly the run's cards approve nothing.
+
+        Words the user gave before the briefing are checked only by
+        the cards they name. A card they did not name must not run,
+        and a card they named but the list leaves out means the list
+        is not what they approved.
+        """
+        for key in ("DEMO-KB-001", "DEMO-KB-002", "DEMO-KB-003"):
+            write_run_card(fake_tools, key)
+        write_run_list(
+            run_folder,
+            "- DEMO-KB-001 demo: retry\n- DEMO-KB-002 demo: resume",
+            "\n## Needs your hands\n- DEMO-KB-003 demo: plug in a disk\n",
+        )
+
+        result = hub(
+            "auto", "approve", "--run", str(run_folder), "--given", "2", words
+        )
+
+        assert result.returncode == 2
+        assert not (run_folder / "approved.md").exists()
+
+    def test_approve_given_saves_users_own_words(
+        self, hub: Run, fake_tools: Path, run_folder: Path
+    ) -> None:
+        """Own words that name exactly the run's cards approve it.
+
+        A user who approves a run before its briefing exists does so in
+        their own words, and the hub records them rather than writing
+        approved.md by hand. Keys count in lower case too.
+        """
+        write_run_card(fake_tools, "DEMO-KB-001")
+        write_run_card(fake_tools, "DEMO-KB-002")
+        write_run_list(
+            run_folder, "- DEMO-KB-001 demo: retry\n- DEMO-KB-002 demo: resume"
+        )
+        words = "Run demo-kb-001 and DEMO-KB-002 while I am away."
+
+        result = hub(
+            "auto", "approve", "--run", str(run_folder), "--given", "2", words
+        )
+
+        approved = (run_folder / "approved.md").read_text()
+        assert result.returncode == 0
+        assert f"The user's words: {words}\n" in approved
 
     def test_now_writes_line_per_run_card(
         self, hub: Run, run_folder: Path

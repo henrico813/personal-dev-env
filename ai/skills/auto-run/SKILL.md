@@ -106,6 +106,15 @@ The user's rules for every run:
    approves nothing: make the edits it asks for, check the list
    again, and send the briefing again.
 
+   When the user approved the run in their own words before the
+   briefing, such as before going away, pass those words instead:
+
+       hub auto approve --run "<run folder>" --given N "<the words>"
+
+   They pass only when they name by key every card under `## Run`
+   and no other card. Never write `approved.md` by hand; when the
+   words fail, the run waits for `approve run N`.
+
 ## Start the run (front hub)
 
 Once `approved.md` exists, start the auto hub, agent `auto-hub-<N>`,
@@ -149,12 +158,24 @@ The auto hub writes to your run folder only its end brief, as
    to it, and adds only the card and anything the card needs.
 4. Move each card under `## Run` to active with
    `card move <key> active --user --why "auto run <N>, approved
-   <time in approved.md>"`, one `card` call per shell call.
+   <time in approved.md>"`, one `card` call per shell call: each
+   writes to the vault on the network drive and can be slow, so a
+   call that times out is the only one in doubt.
 5. Start one worker per card by `herdr-handoff`, as agent
    `<key in lower case>-auto`, in its own workspace named as
    `herdr-hub`'s Sidebar names say. `hub auto now` reads its status
    file by the agent name. After a restart, check `hub status` first
    and start no second worker for a card.
+
+   Before you start them, compare the files each card will change, from
+   its card and the code. Cards that share a file run one after another:
+   start the later worker after the earlier one pushes, and have it
+   stack its branch on the earlier branch with `--base`. A card whose
+   files an unmerged branch changes, such as the branch of the skill
+   under test, stacks on that branch. Name each stack in the end brief,
+   since the lower pull request must open first. When the earlier card
+   stops without pushing, do not start the later card. It counts as
+   stopped, and the end brief lists it as waiting on the earlier one.
 6. Handle reports as `herdr-hub` says, except: never message the
    user. Answer from the user's rules first; when none applies, pick
    the simplest choice and have the worker record what it loses as a
@@ -168,8 +189,10 @@ The auto hub writes to your run folder only its end brief, as
    why something failed takes more than two commands, hand the
    search to a subagent and read only its report.
 8. When every card has stopped, tell each worker with a finished
-   branch to send its pull request create request, and add each pull
-   request to `<run folder>/reviews.md` with its approval ID. Then
+   branch to send its pull request create request, in merge order,
+   one at a time and at least a minute apart, since Moshi refuses
+   pushes that come too fast. Add each pull request to
+   `<run folder>/reviews.md` with its approval ID. Then
    write the end brief by `status-updates` to the front hub's
    `report-auto-hub-<N>.md`: per card, its project, the problem it
    solves, the result and the checks run and not run; then the output
