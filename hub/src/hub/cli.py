@@ -7,6 +7,8 @@ Usage::
     hub next --run DIR [--timeout SECONDS]   wait for news, print one line
     hub [--machine LABEL] flag NAME
     hub [--machine LABEL] unflag NAME
+    hub handoff --run DIR NAME HANDOFF       start the next hub
+    hub brief --run DIR                      what waits on the user
     hub --version
 
 Read ``main`` first, then the ``run_<command>`` function of each command.
@@ -22,8 +24,13 @@ The hub's run folder DIR holds these files:
 - ``send-NAME.failed``: a message Herdr refused before taking it, with
   the reason.
 - ``next-seen.json``: the blocked states ``hub next`` already printed.
+- ``rules.md``: the user's standing decisions. ``hub handoff`` starts
+  the next hub on the model of its last ``--model '...'``.
+- ``reviews.md`` and ``decisions.md``: the pull requests and questions
+  that wait on the user, which ``hub brief`` prints.
 
-``HUB_POLL_SECONDS`` sets how often ``hub next`` checks, 5 by default.
+``HUB_POLL_SECONDS`` sets how often ``hub next`` and ``hub handoff``
+check, 5 by default.
 """
 
 from __future__ import annotations
@@ -33,7 +40,9 @@ import sys
 from pathlib import Path
 
 from hub import __version__
+from hub.brief import run_brief
 from hub.flag import run_flag, run_unflag
+from hub.handoff import run_handoff
 from hub.herdr import HerdrError
 from hub.send import run_next, run_send
 from hub.status import run_status
@@ -99,5 +108,17 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     unflag = commands.add_parser("unflag", help="clear a session's mark")
     unflag.add_argument("name")
     unflag.set_defaults(command=run_unflag)
+
+    handoff = commands.add_parser(
+        "handoff", help="start the next hub, check its effort"
+    )
+    handoff.add_argument("--run", type=Path, required=True)
+    handoff.add_argument("name")
+    handoff.add_argument("handoff", type=Path)
+    handoff.set_defaults(command=run_handoff)
+
+    brief = commands.add_parser("brief", help="what waits on the user")
+    brief.add_argument("--run", type=Path, required=True)
+    brief.set_defaults(command=run_brief)
 
     return parser.parse_args(argv)
