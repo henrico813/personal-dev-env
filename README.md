@@ -196,6 +196,23 @@ stay aligned with the rest of the tree. `install client` installs only
 `behavior-focused-testing`, `delegate`, `skill-lessons` and
 `status-updates`; every other skill is full-only.
 
+## Privacy Checks
+
+This repository is public. `scripts/privacy-scan` runs gitleaks with the
+rules in `.gitleaks.toml`, which find secrets, personal email addresses, LAN
+and tailnet addresses, real home folders, and network-drive paths. It also
+blocks the owner's private names, which stay encrypted outside the
+repository and are never committed or printed.
+
+- The `privacy` CI check scans the files, each pull request's commits and
+  authors, and its title and description. Make it required on `main`.
+- Run `uvx pre-commit install` once in each clone to scan every commit; the hook
+  needs gitleaks from the aqua profile, and checks private names only where the
+  sops list exists. If `core.hooksPath` is set to `.git/hooks`, which pre-commit
+  refuses, first run `git config --unset core.hooksPath`.
+- Edit the private names with `scripts/private-terms edit`, then copy them
+  to CI's `PRIVATE_TERMS` secret with `scripts/private-terms push`.
+
 ## Requirements
 
 - An existing Git checkout and Go are required to build `pde-installer`.

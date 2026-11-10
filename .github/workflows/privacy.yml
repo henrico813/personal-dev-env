@@ -1,0 +1,44 @@
+name: Privacy
+on:
+  push:
+    branches: [main]
+  pull_request:
+    # edited reruns the check when the title or description changes.
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  privacy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: install gitleaks
+        run: |
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          curl -fsSL -o "$archive" \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $archive" | sha256sum -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
+          echo "$RUNNER_TEMP" >>"$GITHUB_PATH"
+      - name: test the scan
+        run: bash scripts/test/privacy-scan.sh
+      - name: scan files
+        env:
+          PRIVATE_TERMS: ${{ secrets.PRIVATE_TERMS }}
+        run: bash scripts/privacy-scan tree
+      # The text goes through env, so a title cannot run as shell code.
+      - name: scan commits and pull request text
+        if: github.event_name == 'pull_request'
+        env:
+          PRIVATE_TERMS: ${{ secrets.PRIVATE_TERMS }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          bash scripts/privacy-scan commits "$BASE" "$HEAD"
+          printf '%s\n\n%s\n' "$TITLE" "$BODY" | bash scripts/privacy-scan text /dev/stdin

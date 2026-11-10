@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# Finds secrets, personal data and the owner's private names before they
+# reach this public repository. Prints each finding's rule and place, never
+# the matched text, and withholds any path that holds a private name.
+#
+#   scripts/privacy-scan staged             # changes staged for commit
+#   scripts/privacy-scan tree               # every file in HEAD
+#   scripts/privacy-scan commits BASE HEAD  # added lines, messages, authors
+#   scripts/privacy-scan text FILE          # pull request text, or /dev/stdin
+set -euo pipefail
+
+usage='usage: privacy-scan staged | tree | commits BASE HEAD | text FILE'
+repo=$(git rev-parse --show-toplevel)
+terms_file=${PDE_PRIVATE_TERMS_FILE:-$HOME/.config/pde/private-terms.sops.yaml}
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# CI passes the list in PRIVATE_TERMS. Elsewhere it comes from the sops
+# file that scripts/private-terms edits.
+read_terms() {
+    if [[ -n ${PRIVATE_TERMS:-} ]]; then
+        printf '%s\n' "$PRIVATE_TERMS"
+    elif [[ -f $terms_file ]]; then
+        sops --decrypt --extract '["private_terms"]' --output-type json "$terms_file" | jq -r '.[]'
+    fi
+}
+
+# Joins the terms into one case-insensitive pattern. Each term matches
+# inside longer words too, and a space matches any run of spaces or line
+# breaks, so a wrapped name is still found.
+build_pattern() {
+    sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d' \
+        -e 's/[][\\.*+?(){}|^$]/\\&/g' -e 's/[[:space:]]\{1,\}/\\s+/g' |
+        paste -sd '|' -
+}
+
+pattern=$(read_terms | build_pattern) ||
+    { printf 'privacy-scan: cannot read the private terms\n' >&2; exit 2; }
+if [[ $pattern == *"'''"* ]]; then
+    printf 'privacy-scan: a private term holds three single quotes, which the rules cannot hold\n' >&2
+    exit 2
+fi
+if [[ -z $pattern ]]; then
+    if [[ -n ${CI:-} ]]; then
+        printf 'privacy-scan: the PRIVATE_TERMS secret is empty or missing\n' >&2
+        exit 2
+    fi
+    printf 'privacy-scan: no private terms at %s; checking secrets and personal data only\n' "$terms_file" >&2
+fi
+
+config=$work/gitleaks.toml
+{
+    printf '[extend]\npath = "%s/.gitleaks.toml"\n' "$repo"
+    if [[ -n $pattern ]]; then
+        printf '\n[[rules]]\nid = "private-term"\n'
+        printf "regex = '''(?i)(?:%s)'''\n" "$pattern"
+        # File and folder names go public too.
+        printf '\n[[rules]]\nid = "private-term-path"\n'
+        printf "path = '''(?i)(?:%s)'''\n" "$pattern"
+    fi
+} >"$config"
+
+findings=$work/findings
+: >"$findings"
+# Runs gitleaks with the given arguments and adds each finding to the
+# findings file. LABEL names the place when gitleaks reads stdin.
+run_gitleaks() {
+    local label=$1 report=$work/report.json
+    shift
+    # Any gitleaks error fails the scan, and its output stays hidden because
+    # it may quote the private names.
+    if ! gitleaks "$@" --config "$config" --no-banner --log-level error \
+        --redact --ignore-gitleaks-allow --exit-code 0 \
+        --report-format json --report-path "$report" 2>"$work/errors" ||
+        [[ -s $work/errors ]]; then
+        printf 'privacy-scan: gitleaks failed on %s; run it by hand to see why\n' "$label" >&2
+        exit 2
+    fi
+    jq -r --arg label "$label" --arg pattern "$pattern" '.[] |
+        (if .File == "" then $label else .File end) as $file |
+        "\(.RuleID) " + (if $pattern != "" and ($file | test($pattern; "i"))
+            then "(path withheld)" else "\($file):\(.StartLine)" end)
+        + (if .Commit == "" then "" else " in \(.Commit[0:12])" end)' "$report" \
+        >>"$findings" 2>"$work/errors" || {
+        printf 'privacy-scan: jq failed on %s\n' "$label" >&2
+        exit 2
+    }
+}
+
+case ${1:-} in
+staged)
+    run_gitleaks staged git --pre-commit --staged "$repo"
+    ;;
+tree)
+    mkdir "$work/tree"
+    git -C "$repo" archive HEAD | tar -x -C "$work/tree"
+    # Scanning from inside gives paths without the random temporary folder.
+    cd "$work/tree"
+    run_gitleaks tree dir .
+    ;;
+commits)
+    [[ $# -eq 3 ]] || { printf '%s\n' "$usage" >&2; exit 2; }
+    run_gitleaks commits git --log-opts="$2..$3" "$repo"
+    # Line N of the messages is line N of this log output.
+    git -C "$repo" log --format='%an <%ae>%n%cn <%ce>%n%B' "$2..$3" >"$work/messages"
+    run_gitleaks messages stdin <"$work/messages"
+    ;;
+text)
+    [[ $# -eq 2 ]] || { printf '%s\n' "$usage" >&2; exit 2; }
+    run_gitleaks text stdin <"$2"
+    ;;
+*)
+    printf '%s\n' "$usage" >&2
+    exit 2
+    ;;
+esac
+
+# gitleaks always reads the repository's .gitleaksignore, so a committed one
+# could hide findings.
+if git -C "$repo" ls-files --error-unmatch .gitleaksignore >/dev/null 2>&1; then
+    printf 'gitleaksignore .gitleaksignore\n' >>"$findings"
+fi
+
+if [[ -s $findings ]]; then
+    sort -u "$findings"
+    printf 'privacy-scan: found private or secret text; replace it before it goes public\n' >&2
+    exit 1
+fi

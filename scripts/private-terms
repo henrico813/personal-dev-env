@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Keeps the owner's list of private names that scripts/privacy-scan blocks.
+# The list stays encrypted with sops, and this command never prints it.
+#
+#   scripts/private-terms edit   # edit the list, one name per item
+#   scripts/private-terms push   # copy it to the PRIVATE_TERMS secret for CI
+set -euo pipefail
+
+terms_file=${PDE_PRIVATE_TERMS_FILE:-$HOME/.config/pde/private-terms.sops.yaml}
+age_keys=${SOPS_AGE_KEY_FILE:-$HOME/.config/sops/age/keys.txt}
+
+case ${1:-} in
+edit)
+    if [[ ! -e $terms_file ]]; then
+        mkdir -p "$(dirname "$terms_file")"
+        recipient=$(age-keygen -y "$age_keys")
+        # mktemp's file is private, and a failed encrypt leaves no empty list.
+        new=$(mktemp "$terms_file.XXXXXX")
+        trap 'rm -f "$new"' EXIT
+        printf 'private_terms: []\n' |
+            sops --encrypt --age "$recipient" --input-type yaml \
+                --output-type yaml /dev/stdin >"$new"
+        mv "$new" "$terms_file"
+    fi
+    # sops opens $EDITOR on the plain text and encrypts it again on save.
+    exec sops "$terms_file"
+    ;;
+push)
+    sops --decrypt --extract '["private_terms"]' --output-type json "$terms_file" |
+        jq -r '.[]' | gh secret set PRIVATE_TERMS
+    ;;
+*)
+    printf 'usage: private-terms edit | push\n' >&2
+    exit 2
+    ;;
+esac
