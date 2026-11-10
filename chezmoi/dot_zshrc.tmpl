@@ -293,16 +293,46 @@ tw() {
 }
 
 {{- if has "workstation" .pde.tiers }}
-# Open a vault plan or doc in nvim, picked with fzf, newest first.
-plan() {
-    local root file window=right:60%
+# Open a vault project note in nvim, picked with fzf, newest first.
+# A first word of c, p or r lists only cards, plans or research notes.
+notes() {
+    local root file kind window=right:60%
     root="$(nobs vault path)/500 Zettelkasten/Projects" || return 1
+    if [[ "$1" == [cpr] ]]; then
+        kind="$1"
+        shift
+    fi
     (( COLUMNS <= 100 )) && window=down:60%
     file="$(cd "$root" && rg --files -g '*.md' --sortr modified |
+        _label_notes "$kind" |
         fzf --query "$*" --select-1 --exit-0 --height=100% \
             --border=none --margin=0 --padding=0 --info=inline \
-            --preview 'bat --color=always --style=plain {}' \
+            --delimiter '\t' \
+            --preview 'bat --color=always --style=plain {2}' \
             --preview-window "$window")" || return
-    nvim "$root/$file"
+    nvim "$root/${file#*$'\t'}"
+}
+alias n=notes
+
+# Prefix each note path read from stdin with its type letter and a tab.
+# Reads only the frontmatter, since plan bodies often quote "type: card".
+_label_notes() {
+    awk -v want="$1" '
+        BEGIN { letters["card"] = "c"; letters["issue"] = "p"; letters["research"] = "r" }
+        {
+            type = ""
+            n = 0
+            while (n < 40 && (getline line < $0) > 0) {
+                n++
+                sub(/\r$/, "", line)
+                if (n == 1 && line != "---") break
+                if (n > 1 && line == "---") break
+                if (sub(/^type:[ \t]*/, "", line)) type = line
+            }
+            close($0)
+            gsub(/["\047 \t]/, "", type)
+            letter = (type in letters) ? letters[type] : "-"
+            if (want == "" || letter == want) print letter "\t" $0
+        }'
 }
 {{- end }}
