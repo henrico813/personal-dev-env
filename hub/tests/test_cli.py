@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -677,6 +678,94 @@ class TestNext:
         kept = json.loads((run_folder / left).read_text())
         assert kept["message"] == "Rebase."
         assert not (run_folder / "send-docs-fix.json").exists()
+
+
+class TestRead:
+    """``hub read``, how the hub takes in a session's report."""
+
+    def test_read_prints_archives_and_lists_unread(
+        self, hub: Run, run_folder: Path
+    ) -> None:
+        """The report is printed and archived, and other unread ones named.
+
+        The hub acts on what this prints, and a report left unarchived
+        wakes ``hub next`` again, so the hub would handle it twice. The
+        ``unread`` line lets it read the next report in the same step.
+        """
+        (run_folder / "report-docs-fix.md").write_text("PR opened.\n")
+        (run_folder / "report-notes-fix.md").write_text("Rebased.\n")
+        (run_folder / "report-old.1200.read").write_text("Handled.\n")
+
+        result = hub("read", "--run", str(run_folder), "docs-fix")
+
+        assert result.returncode == 0
+        assert result.stdout == "PR opened.\nunread: notes-fix\n"
+        archives = list(run_folder.glob("report-docs-fix.*"))
+        assert len(archives) == 1
+        assert re.fullmatch(r"report-docs-fix\.\d{4}\.read", archives[0].name)
+        assert archives[0].read_text() == "PR opened.\n"
+
+    def test_read_keeps_reports_from_same_minute(
+        self, hub: Run, run_folder: Path
+    ) -> None:
+        """A second report read soon after the first gets its own archive.
+
+        A session can write a new report within a minute of the last,
+        such as a question right after a plan. Reusing the first archive
+        name would replace it, and the first report would be lost.
+        """
+        report = run_folder / "report-docs-fix.md"
+        report.write_text("Plan ready.\n")
+        hub("read", "--run", str(run_folder), "docs-fix")
+        report.write_text("Question.\n")
+
+        hub("read", "--run", str(run_folder), "docs-fix")
+
+        archives = run_folder.glob("report-docs-fix.*.read")
+        texts = sorted(path.read_text() for path in archives)
+        assert texts == ["Plan ready.\n", "Question.\n"]
+
+    def test_read_logs_note_with_archive_time(
+        self, hub: Run, run_folder: Path
+    ) -> None:
+        """The note goes to the end of notes.md with the read time.
+
+        The user reads notes.md to learn what the hub did, and the time
+        ties each line to its archived report.
+        """
+        (run_folder / "notes.md").write_text("- 1200 earlier line\n")
+        (run_folder / "report-docs-fix.md").write_text("PR opened.\n")
+
+        hub(
+            "read",
+            "--run",
+            str(run_folder),
+            "docs-fix",
+            "--note",
+            "docs-fix opened #9.",
+        )
+
+        archive = next(run_folder.glob("report-docs-fix.*.read"))
+        stamp = archive.name.split(".")[1]
+        assert (run_folder / "notes.md").read_text() == (
+            f"- 1200 earlier line\n- {stamp} docs-fix opened #9.\n"
+        )
+
+    def test_read_missing_report_exits_without_note(
+        self, hub: Run, run_folder: Path
+    ) -> None:
+        """A name with no unread report exits 2 and logs nothing.
+
+        A mistyped name must not log a note for a report the hub never
+        read, and the exit code tells the hub the read did not happen.
+        """
+        result = hub(
+            "read", "--run", str(run_folder), "docs-fx", "--note", "Done."
+        )
+
+        assert result.returncode == 2
+        assert result.stderr == "hub: no unread report from docs-fx\n"
+        assert not (run_folder / "notes.md").exists()
 
 
 class TestFlag:

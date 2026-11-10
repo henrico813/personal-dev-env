@@ -19,6 +19,7 @@ machine needs only Python 3.10 or later.
 hub [--machine LABEL] status --run DIR   sessions, then active cards
 hub [--machine LABEL] send --run DIR NAME MESSAGE
 hub next --run DIR [--timeout SECONDS]   wait for news, print one line
+hub read --run DIR NAME [--note TEXT]    print, archive, log a report
 hub [--machine LABEL] flag NAME
 hub [--machine LABEL] unflag NAME
 hub handoff --run DIR NAME HANDOFF       start the next hub
@@ -51,6 +52,12 @@ machine to every `herdr` call, as `herdr --machine` does.
   Herdr refused a waiting message before taking it, or
   `unsure NAME: REASON` when it may have arrived. `timeout` means
   `--timeout` ran out. `HUB_POLL_SECONDS` changes how often it checks.
+- `read` renames `DIR/report-NAME.md` to `DIR/report-NAME.HHMM.read`,
+  with the time, and prints it. A second report from NAME read in the
+  same minute becomes `report-NAME.HHMM-2.read`, so no archive is
+  replaced. The last line is `unread:` and the names of the other
+  unread reports, or `-`. `--note TEXT` adds `- HHMM TEXT` to
+  `DIR/notes.md`. With no unread report from NAME it exits 2.
 - `flag` makes the pane show "needs you" in place of its state:
   while `blocked` when it is blocked now, else while `idle` or `done`.
   `unflag` removes it.
@@ -79,7 +86,8 @@ failed, with Herdr's message on standard error, and 2 when refused.
 
 | File | Meaning |
 | --- | --- |
-| `report-NAME.md` | News from NAME the hub has not read. The hub renames it to `.read`. |
+| `report-NAME.md` | News from NAME the hub has not read. `hub read` renames it to `.HHMM.read`. |
+| `notes.md` | The hub's log for the user. `hub read --note` adds a line to it. |
 | `send-NAME.json` | A message that waits until NAME is free. |
 | `send-NAME.sending` | A message being sent. One left behind means a send stopped part way, and the message may have arrived. |
 | `send-NAME.failed` | A message Herdr refused before taking it, with its reason. |
