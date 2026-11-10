@@ -23,7 +23,7 @@ hub read --run DIR NAME [--note TEXT]    print, archive, log a report
 hub [--machine LABEL] flag NAME
 hub [--machine LABEL] unflag NAME
 hub handoff --run DIR NAME HANDOFF       start the next hub
-hub morning --run DIR                    what waits on the user
+hub waiting --run DIR                    what waits on the user
 hub --version
 ```
 
@@ -74,7 +74,7 @@ machine to every `herdr` call, as `herdr --machine` does.
   another. It also exits 2, before starting anything, when it finds no
   model, no HANDOFF file, no Herdr pane, or no OpenCode session for the
   old hub.
-- `morning` prints `DIR/reviews.md`, then every entry of
+- `waiting` prints `DIR/reviews.md`, then every entry of
   `DIR/decisions.md` in full. It exits 2, printing nothing, when an
   entry lacks its question, two choices, `Recommended:` or
   `If no reply:`.
@@ -94,7 +94,7 @@ failed, with Herdr's message on standard error, and 2 when refused.
 | `next-seen.json` | The blocked states `hub next` already printed. |
 | `rules.md` | The user's standing decisions, written by the hub. |
 | `reviews.md` | Pull requests that wait for the user's review. |
-| `decisions.md` | One `## <title>` entry per question for the user. `src/hub/morning.py` shows the form. |
+| `decisions.md` | One `## <title>` entry per question for the user. `src/hub/waiting.py` shows the form. |
 
 ## Tests
 
