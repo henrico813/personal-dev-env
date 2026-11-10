@@ -3,6 +3,16 @@ FROM ubuntu:${UBUNTU_VERSION}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Setting these in apt's config also covers the installer's apt-get calls.
+# CI sets UBUNTU_MIRROR to the Azure mirror its runners sit next to.
+ARG UBUNTU_MIRROR=
+RUN printf 'Acquire::Retries "5";\n' >/etc/apt/apt.conf.d/80-retries \
+	&& if [ -n "$UBUNTU_MIRROR" ]; then \
+		for list in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do \
+			if [ -f "$list" ]; then sed -i "s|http://archive.ubuntu.com/ubuntu|$UBUNTU_MIRROR|" "$list"; fi; \
+		done; \
+	fi
+
 RUN apt-get update && apt-get install -y \
 	bison build-essential bzip2 ca-certificates curl file fontconfig gawk git gzip libevent-dev \
 	libncurses-dev make patch pkg-config python3 sudo tar unzip xclip xz-utils zsh \
