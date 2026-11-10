@@ -42,10 +42,11 @@ repeated commands 2
 
 ## Proposals
 
-1. Have the planner subagent print only the failing tests' names. It
-   lives in a roadmap-run pull request. Saves about 1.1M tokens
-   (estimate): each of the 4 pytest runs printed about 3,500 tokens,
-   and about 80 later steps read each one again.
+1. Have `goog/qwen3.8` run the planner's tests by a script that
+   writes only the failing tests' names. It lives in a roadmap-run
+   pull request. Saves about 1.1M tokens (estimate): each of the 4
+   pytest runs printed about 3,500 tokens, and about 80 later steps
+   read each one again.
 2. Read the plan with narrow `rg` instead of whole. It lives in a
    create-plan lesson. Saves about 0.9M tokens (estimate): the plan
    is about 12,000 tokens, it was read in full early on, and about 75
@@ -58,11 +59,35 @@ repeated commands 2
 1. "Keep the key out of the PR title." -> pull-request. Passes: it
    applies in any repository.
 
-## Local models
+## Fallback map
 
-The test run already went to `goog/qwen3.8`. The worktree cleanup
-could go to it too, briefed as roadmap-run's Local model section
-says. `openai/gpt-6-luna` is a cheap cloud model, not a local one.
+- Planner, `ses_0a1b3d`: `goog/qwen3.8` would run it. Breaks: the
+  plan and code it read pass the model's 128K window. Makes it work:
+  a brief for one plan step at a time. Evidence: none; no trial has
+  run.
+- Plan reviewer, `ses_0a1b4e`: `goog/qwen3.8`. Breaks: judging the
+  plan. Makes it work: a checklist whose answers cite the lines they
+  checked. Evidence: none.
+- PR text cold read, `ses_0a1b5f`: runs on `openai/gpt-6-luna`, a
+  cheap cloud model, so it stops when the cloud does. `goog/qwen3.8`
+  can run the same brief. Evidence: the trial below.
+- Test runner, `ses_0a1b60`: already on `goog/qwen3.8`, and it works.
+
+## Efficiency map
+
+1. Test runs: 4 pytest runs printed about 14,000 tokens (estimate).
+   A local model runs them by a script; the check is that the
+   script writes pytest's exit code and the failing names. Saves
+   about 1.1M tokens (estimate, proposal 1).
+2. Worktree cleanup: about 2,000 tokens (estimate). Its script
+   prints `done`, so `goog/qwen3.8` can run it, briefed as
+   roadmap-run's Local model section says. The saving is small.
+
+## Trials
+
+Reran the PR text cold read trial from the Lantern P2 review on
+`goog/qwen3.8`. It found the same two unclear sentences as
+`openai/gpt-6-luna`, in 9 seconds.
 
 ## Fresh check
 
@@ -79,8 +104,8 @@ Session review of Lantern P3 plan and review, saved to
 9.4M tokens read, peak context about 162k, 96 model steps.
 
 Proposals
-1. Print only failing test names (roadmap-run PR). Saves about 1.1M
-   tokens (estimate).
+1. Tests on qwen3.8, failing names only (roadmap-run PR). Saves
+   about 1.1M tokens (estimate).
 2. Read plans with narrow rg (create-plan lesson). Saves about 0.9M
    tokens (estimate).
 3. One planner check after the last patch (memory). Saves about 0.3M
@@ -89,7 +114,10 @@ Proposals
 Lessons to save, pick by number
 1. Keep the key out of the PR title -> pull-request
 
-Local models: worktree cleanup could join the test run on qwen3.8.
+Fallback: the planner is least ready; a brief per plan step would
+fit qwen3.8's window.
+Efficiency: test runs on qwen3.8, about 1.1M tokens (estimate).
+Trials: PR text cold read on qwen3.8 matched luna, 9 s.
 
 Reply with the numbers to apply.
 ```
