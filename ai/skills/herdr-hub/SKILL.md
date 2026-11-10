@@ -6,7 +6,8 @@ description: Runs the hub, the one Herdr session that other sessions
   decisions, and keeps the sidebar named and tidy. Use when the user
   or a handoff makes this session the hub of several Herdr sessions.
   To start one new session, use herdr-handoff; to build a roadmap's
-  pull requests, use roadmap-run.
+  pull requests, use roadmap-run; to work an approved list of cards
+  without the user, use auto-run.
 metadata:
   pde-workflow: "true"
 ---
@@ -358,6 +359,9 @@ switch its effort in that session, and never run `hub handoff` again.
   follow the user and record the new rule in `rules.md`. You still
   never answer an approval or question shown in another session's
   pane.
+- During an auto run, answer "status update" with the output of
+  `hub auto now --run "<auto run folder>"`, word for word, then your
+  own news. The `auto-run` skill covers the rest of the run.
 - When your context grows past about 150k tokens, or after it is
   summarized, use the `herdr-handoff` skill to offer the user a new
   session. Offer once.

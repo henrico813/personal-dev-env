@@ -217,6 +217,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".config/opencode/commands/document_codebase.md",
 	}
 	fullOnlyFiles := []string{
+		".agents/skills/auto-run",
 		".agents/skills/cleanup-plan",
 		".agents/skills/code-documentation",
 		".agents/skills/comment-review",

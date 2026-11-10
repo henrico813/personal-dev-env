@@ -70,9 +70,10 @@ else:
 """
 
 # Stands in for the card command, so no test reads the real vault. It
-# prints the notes in $FAKE/cards, or fails when $FAKE/card-fails exists.
+# prints the notes in $FAKE/cards, listing those whose stage line
+# matches, or fails when $FAKE/card-fails exists.
 FAKE_CARD = """\
-import os, sys
+import os, re, sys
 from pathlib import Path
 
 fake = Path(os.environ["FAKE"])
@@ -80,9 +81,11 @@ if (fake / "card-fails").exists():
     print("card: no default vault", file=sys.stderr)
     sys.exit(1)
 cards = sorted((fake / "cards").glob("*.md"))
-if sys.argv[1:] == ["list", "--stage", "active"]:
+if sys.argv[1:3] == ["list", "--stage"]:
     for card in cards:
-        print(f"{card.stem} active   build    A card")
+        stage = re.search(r"^stage: (\\S+)", card.read_text(), re.M)[1]
+        if stage == sys.argv[3]:
+            print(f"{card.stem} {stage:8} build    A card")
     print(f"{len(cards)} cards")
 elif sys.argv[1] == "show":
     print((fake / "cards" / f"{sys.argv[2]}.md").read_text(), end="")
@@ -1114,3 +1117,241 @@ class TestBrief:
             "hub: decisions.md entry 'Pause cards' lacks the Recommended:"
             " line, the If no reply: line\n"
         )
+
+
+def write_run_card(fake_tools: Path, key: str, stage: str = "ready") -> None:
+    """Add a card with a project, Context and Acceptance Criteria.
+
+    Args:
+        fake_tools: The fakes' folder.
+        key: The card's key, such as ``DEMO-KB-001``.
+        stage: The card's stage.
+    """
+    note = (
+        f"---\nstage: {stage}\nproject: Demo\ntopics: []\n---\n\n"
+        f"# {key} Retry failed uploads\n---\n\n"
+        "## Context\n---\n\n- Uploads fail on a slow link.\n\n"
+        "## Acceptance Criteria\n---\n\n- [ ] A failed upload retries.\n\n"
+        "## Log\n---\n\n- 2026-11-10 ready: by the user\n"
+    )
+    (fake_tools / "cards" / f"{key}.md").write_text(note)
+
+
+def write_run_list(run_folder: Path, run: str, rest: str = "") -> None:
+    """Write run.md for auto run 2 with these lines under its headings.
+
+    Args:
+        run_folder: The auto run's folder.
+        run: The lines under ``## Run``.
+        rest: Any further headings and their lines.
+    """
+    (run_folder / "run.md").write_text(
+        f"# Auto run 2\n\n## Run\n{run}\n{rest}"
+    )
+
+
+class TestAuto:
+    """``hub auto``, the scripted steps of a run the user approved."""
+
+    def test_ready_writes_each_ready_card_text(
+        self, hub: Run, fake_tools: Path, run_folder: Path
+    ) -> None:
+        """Only ready cards are described, with project and criteria.
+
+        The local model sorts the cards from this file alone, so a
+        card left out or cut short is sorted on a guess.
+        """
+        write_run_card(fake_tools, "DEMO-KB-001")
+        write_run_card(fake_tools, "DEMO-KB-002", stage="draft")
+
+        result = hub("auto", "ready", "--run", str(run_folder))
+
+        assert result.returncode == 0
+        assert result.stdout == (
+            "## DEMO-KB-001 Retry failed uploads\n"
+            "Project: Demo\n"
+            "- Uploads fail on a slow link.\n"
+            "- [ ] A failed upload retries.\n"
+        )
+        assert (run_folder / "ready.md").read_text() == result.stdout
+
+    @pytest.mark.parametrize(
+        ("run", "rest", "problem"),
+        [
+            pytest.param(
+                "- DEMO-KB-001 demo: retry\n- DEMO-KB-002 demo: draft",
+                "",
+                "DEMO-KB-002 is not a ready card; only the user moves a"
+                " card to ready",
+                id="draft-card",
+            ),
+            pytest.param(
+                "- DEMO-KB-001 demo: retry",
+                "\n## Left out\n- DEMO-KB-001 demo: retry\n",
+                "DEMO-KB-001 is listed more than once",
+                id="listed-twice",
+            ),
+            pytest.param(
+                "",
+                "\n## Left out\n- DEMO-KB-001 demo: retry\n",
+                "run.md lists no card under '## Run'",
+                id="no-run-cards",
+            ),
+        ],
+    )
+    def test_check_names_list_problem(
+        self,
+        hub: Run,
+        fake_tools: Path,
+        run_folder: Path,
+        run: str,
+        rest: str,
+        problem: str,
+    ) -> None:
+        """A list the user could not run as approved exits 2.
+
+        Draft cards wait for the user's refinement, a card listed
+        twice would get two workers, and a list with nothing under Run
+        would start an empty run, so none may reach the briefing.
+        """
+        write_run_card(fake_tools, "DEMO-KB-001")
+        write_run_card(fake_tools, "DEMO-KB-002", stage="draft")
+        write_run_list(run_folder, run, rest)
+
+        result = hub("auto", "check", "--run", str(run_folder))
+
+        assert result.returncode == 2
+        assert f"hub: {problem}\n" in result.stderr
+
+    def test_check_names_missing_ready_card(
+        self, hub: Run, fake_tools: Path, run_folder: Path
+    ) -> None:
+        """A ready card the list leaves out exits 2.
+
+        The briefing must account for every ready card, so the user
+        sees what the hub chose not to run. A card under another
+        heading counts as listed.
+        """
+        write_run_card(fake_tools, "DEMO-KB-001")
+        write_run_card(fake_tools, "DEMO-KB-002")
+        write_run_card(fake_tools, "DEMO-KB-003")
+        write_run_list(
+            run_folder,
+            "- DEMO-KB-001 demo: retry",
+            "\n## Needs your hands\n- DEMO-KB-002 demo: plug in a disk\n",
+        )
+
+        result = hub("auto", "check", "--run", str(run_folder))
+
+        assert result.returncode == 2
+        assert result.stderr == (
+            "hub: ready card DEMO-KB-003 is missing from run.md\n"
+        )
+
+    @pytest.mark.parametrize(
+        ("number", "reply"),
+        [
+            pytest.param("2", "go", id="go"),
+            pytest.param("2", "approve run 3", id="other-phrase"),
+            pytest.param("2", "approve run 2 without 001", id="edit"),
+            pytest.param("3", "approve run 3", id="other-run"),
+        ],
+    )
+    def test_approve_refuses_reply_other_than_phrase(
+        self,
+        hub: Run,
+        fake_tools: Path,
+        run_folder: Path,
+        number: str,
+        reply: str,
+    ) -> None:
+        """Any reply but the phrase for this list approves nothing.
+
+        Auto run 1 started on a "go" the user meant for another
+        question, so only "approve run N", with N the number of the
+        list in run.md, may start a run.
+        """
+        write_run_card(fake_tools, "DEMO-KB-001")
+        write_run_list(run_folder, "- DEMO-KB-001 demo: retry")
+
+        result = hub(
+            "auto", "approve", "--run", str(run_folder), number, reply
+        )
+
+        assert result.returncode == 2
+        assert not (run_folder / "approved.md").exists()
+
+    def test_approve_saves_list_with_users_words(
+        self, hub: Run, fake_tools: Path, run_folder: Path
+    ) -> None:
+        """The approval keeps the user's reply beside the list.
+
+        Later sessions check what the user approved against this
+        file, in the user's own words. Case and a final period in the
+        reply do not matter.
+        """
+        write_run_card(fake_tools, "DEMO-KB-001")
+        write_run_list(run_folder, "- DEMO-KB-001 demo: retry")
+
+        result = hub(
+            "auto", "approve", "--run", str(run_folder), "2", "Approve run 2."
+        )
+
+        approved = (run_folder / "approved.md").read_text()
+        assert result.returncode == 0
+        assert "The user's words: Approve run 2.\n" in approved
+        assert approved.endswith((run_folder / "run.md").read_text())
+
+    def test_now_writes_line_per_run_card(
+        self, hub: Run, run_folder: Path
+    ) -> None:
+        """Each run card gets its status, or that it waits on the user.
+
+        A front hub once answered "status update" with "nothing new"
+        while four cards were done and a question waited, so the
+        lines come from the files, not from the hub's memory.
+        """
+        (run_folder / "approved.md").write_text(
+            "# Auto run 2 approved\n\nThe user's words: approve run 2\n\n"
+            "# Auto run 2\n\n## Run\n"
+            "- DEMO-KB-001 demo: retry\n"
+            "- DEMO-KB-002 demo: resize\n"
+            "- DEMO-KB-003 demo: export\n\n"
+            "## Needs your hands\n- DEMO-KB-004 demo: plug in a disk\n"
+        )
+        (run_folder / "status-demo-kb-001-auto.md").write_text(
+            "\nPR #12 opened; waiting for the user's review.\nMore.\n"
+        )
+        (run_folder / "decisions.md").write_text(
+            "## DEMO-KB-002 command name\n\nWhich name?\n\n"
+            "- A. resize\n- B. scale\n\n"
+            "Recommended: A.\nIf no reply: A.\n"
+        )
+
+        result = hub("auto", "now", "--run", str(run_folder))
+
+        assert result.returncode == 0
+        assert result.stdout == (
+            "Auto run 2\n"
+            "DEMO-KB-001: PR #12 opened; waiting for the user's review.\n"
+            "DEMO-KB-002 (needs you): not started\n"
+            "DEMO-KB-003: not started\n"
+            "Questions for you: 1\n"
+            "- DEMO-KB-002 command name\n"
+        )
+        assert (run_folder / "brief-now.md").read_text() == result.stdout
+
+    def test_now_refuses_unapproved_run(
+        self, hub: Run, run_folder: Path
+    ) -> None:
+        """Without approved.md the run has no status and exits 2.
+
+        The auto hub runs this first, so a run the user never
+        approved stops before any worker starts.
+        """
+        write_run_list(run_folder, "- DEMO-KB-001 demo: retry")
+
+        result = hub("auto", "now", "--run", str(run_folder))
+
+        assert result.returncode == 2
+        assert not (run_folder / "brief-now.md").exists()
