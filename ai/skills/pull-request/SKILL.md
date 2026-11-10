@@ -85,33 +85,36 @@ steps' defaults.
 
 ## Merge
 
-1. Fetch. Build FILE from the PR's current title and description, not a local
-   copy: `gh pr view NUMBER --json title,body --jq '.title + "\n\n" + .body' > FILE`.
-2. Run the repository tests on the PR merged into the default branch,
-   from the repository, with each test command as one argument:
+1. Run the merge checks from the repository, with each test command
+   as one argument:
 
    ```sh
-   O=$(mktemp -d)
-   git fetch -q <remote> pull/NUMBER/head
-   bash ~/.agents/skills/pull-request/scripts/merge-check.sh \
-     <remote>/<default> FETCH_HEAD "$O" '<test command>'
+   python3 ~/.agents/skills/pull-request/scripts/merge_prep.py \
+     NUMBER '<test command>'
    ```
 
-   It tests in a scratch clone, so no checkout changes, and prints
-   `$O/summary.txt`, with one `exit` line per command; full output is
-   in `$O/test<N>.log`. Stop if any line shows a nonzero exit or no
-   clean merge. Confirm required checks pass, and list exact files
-   with `gh pr diff NUMBER --name-only`.
-3. Run `python3 ~/.agents/skills/git-messages/scripts/msg squash FILE > SQUASH`,
-   then `python3 ~/.agents/skills/git-messages/scripts/msg lint SQUASH`. If lint
-   fails, stop and fix the PR Overview by updating the PR; do not edit SQUASH.
-4. Show the exact SQUASH message, file list, check and test results,
-   and the result from Guardrail 4.
+   It fetches and works from the PR's current title and description,
+   not a local copy. In a repository with several remotes, add
+   `--remote <remote>`. It prints at most 20 lines. In later
+   commands, use the folder on its `out:` line as `$O`.
+2. It runs the tests on the PR merged into its base, in a scratch
+   clone, so no checkout changes. It also lists the changed files and
+   counts GitHub's checks. When its last line starts with
+   `result: not ready`, that line names each problem. On an `error:`
+   line, stop and report it. Stop on any problem but `squash
+   message`, which step 3 fixes. Full test output is in
+   `$O/tests/test<N>.log`.
+3. It also builds the squash message in `$O/squash.txt` and lints it.
+   If that fails, fix the PR title or Overview by updating the PR, and
+   run step 1 again; do not edit `$O/squash.txt`.
+4. Show the exact message in `$O/squash.txt`, the files in
+   `$O/files.txt`, the check and test results, and the result from
+   Guardrail 4.
    The popup or phone approval in step 5 is the user's approval for the
    merge.
-5. Run `tail -n +3 SQUASH > BODY`, then run
-   `pde-gh-write pr merge NUMBER --squash --subject "$(head -n 1 SQUASH) (#NUMBER)"
-   --body-file BODY`. Handle its result as in Open step 4.
+5. Run `pde-gh-write pr merge NUMBER --squash --subject
+   "$(head -n 1 "$O/squash.txt") (#NUMBER)" --body-file "$O/body.txt"`.
+   Handle its result as in Open step 4.
 6. Confirm the commit on the default branch has that message.
 
 ## Remembering corrections

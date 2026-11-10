@@ -3,9 +3,39 @@ FROM ubuntu:${UBUNTU_VERSION}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y \
-	bison build-essential bzip2 ca-certificates curl file fontconfig gawk git gzip libevent-dev \
-	libncurses-dev make patch pkg-config python3 sudo tar unzip xclip xz-utils zsh \
+# Setting this in apt's config also covers the installer's apt-get calls.
+RUN printf 'Acquire::Retries "5";\n' >/etc/apt/apt.conf.d/80-retries
+
+# A mirror mid-sync can list packages it does not have yet, which apt
+# reports as 404 and does not retry. A later apt-get update clears it.
+RUN for attempt in 1 2 3; do \
+		apt-get update && apt-get install -y \
+			bison \
+			build-essential \
+			bzip2 \
+			ca-certificates \
+			curl \
+			file \
+			fontconfig \
+			gawk \
+			git \
+			gzip \
+			libevent-dev \
+			libncurses-dev \
+			make \
+			patch \
+			pkg-config \
+			python3 \
+			sudo \
+			tar \
+			unzip \
+			xclip \
+			xz-utils \
+			zsh \
+			&& break; \
+		if [ "$attempt" = 3 ]; then exit 1; fi; \
+		sleep 60; \
+	done \
 	&& rm -rf /var/lib/apt/lists/*
 
 RUN useradd -m -s /bin/bash testuser

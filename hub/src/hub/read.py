@@ -26,16 +26,16 @@ def run_read(args: argparse.Namespace) -> int:
         0 after printing the report, or 2 when the session has no
         unread report.
     """
-    stamp = time.strftime("%H%M")
+    timestamp = time.strftime("%H%M")
     report = args.run / f"report-{args.name}.md"
     try:
-        archive = archive_report(report, stamp)
+        archive = archive_report(report, timestamp)
     except FileNotFoundError:
         print(f"hub: no unread report from {args.name}", file=sys.stderr)
         return 2
     if args.note is not None:
         with (args.run / "notes.md").open("a") as notes:
-            notes.write(f"- {stamp} {args.note}\n")
+            notes.write(f"- {timestamp} {args.note}\n")
     text = archive.read_text()
     print(text, end="" if text.endswith("\n") else "\n")
     others = sorted(
@@ -46,12 +46,12 @@ def run_read(args: argparse.Namespace) -> int:
     return 0
 
 
-def archive_report(report: Path, stamp: str) -> Path:
+def archive_report(report: Path, timestamp: str) -> Path:
     """Rename the report to an archive name no earlier read used.
 
     Args:
         report: The unread ``report-NAME.md``.
-        stamp: The time as HHMM, such as ``2250``.
+        timestamp: The time as HHMM, such as ``2250``.
 
     Returns:
         The archive, ``report-NAME.HHMM.read``. When a report from the
@@ -61,10 +61,10 @@ def archive_report(report: Path, stamp: str) -> Path:
     Raises:
         FileNotFoundError: The report does not exist.
     """
-    archive = report.with_name(f"{report.stem}.{stamp}.read")
+    archive = report.with_name(f"{report.stem}.{timestamp}.read")
     count = 2
     while archive.exists():
-        archive = report.with_name(f"{report.stem}.{stamp}-{count}.read")
+        archive = report.with_name(f"{report.stem}.{timestamp}-{count}.read")
         count += 1
     report.rename(archive)
     return archive
