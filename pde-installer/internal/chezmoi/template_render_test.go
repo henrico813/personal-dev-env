@@ -17,6 +17,7 @@ import (
 
 	"pde-installer/internal/colorprofile"
 	"pde-installer/internal/profile"
+	"pde-installer/internal/testfile"
 )
 
 // Each profile's whole ignore list. A path missing here installs on a machine
@@ -544,8 +545,8 @@ printf '%s\n' "$@" >"$HOME/vibe-arguments"
 func TestPRDForwardsDiffArguments(t *testing.T) {
 	home := t.TempDir()
 	writeOpenCodeZshRuntime(t, home)
-	writeExecutable(t, filepath.Join(home, ".local", "bin", "gh"), fakeGHScript)
-	writeExecutable(t, filepath.Join(home, ".local", "bin", "delta"), fakeDeltaScript)
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "gh"), fakeGHScript)
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "delta"), fakeDeltaScript)
 
 	command := openCodeZshCommand(home, `prd 123 --exclude 'generated/*'`)
 	if output, err := command.CombinedOutput(); err != nil {
@@ -570,7 +571,7 @@ func TestPRDForwardsDiffArguments(t *testing.T) {
 func TestZshenvLoadsGoogEnvironment(t *testing.T) {
 	home := t.TempDir()
 	writeOpenCodeZshRuntime(t, home)
-	writeExecutable(t, filepath.Join(home, ".local", "bin", "vibe"), fakeVibeScript)
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "vibe"), fakeVibeScript)
 	writeSecretFileAt(t, filepath.Join(home, ".config", "vibe", "goog.env"), `export GOOG_BASE_URL=https://goog.example.test
 export GOOG_API_KEY=demo-key
 export GOOG_MODEL=qwen3.8
@@ -600,8 +601,8 @@ print -r -- "${GOOG_BASE_URL-}:${GOOG_API_KEY-}:${GOOG_MODEL-}" >"$HOME/vibe-cal
 func TestPRDPropagatesGitHubFailure(t *testing.T) {
 	home := t.TempDir()
 	writeOpenCodeZshRuntime(t, home)
-	writeExecutable(t, filepath.Join(home, ".local", "bin", "gh"), "#!/bin/sh\nexit 9\n")
-	writeExecutable(t, filepath.Join(home, ".local", "bin", "delta"), "#!/bin/sh\ncat >/dev/null\n")
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "gh"), "#!/bin/sh\nexit 9\n")
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "delta"), "#!/bin/sh\ncat >/dev/null\n")
 
 	command := openCodeZshCommand(home, `prd 123`)
 	if output, err := command.CombinedOutput(); err == nil {
@@ -770,7 +771,7 @@ func writeNotesTools(t *testing.T, home string) {
 		".local",
 		"bin",
 	)
-	writeExecutable(
+	testfile.WriteExecutable(
 		t,
 		filepath.Join(
 			bin,
@@ -778,7 +779,7 @@ func writeNotesTools(t *testing.T, home string) {
 		),
 		"#!/bin/sh\nprintf '%s\\n' \"$HOME/vault\"\n",
 	)
-	writeExecutable(
+	testfile.WriteExecutable(
 		t,
 		filepath.Join(
 			bin,
@@ -790,7 +791,7 @@ printf '%s\n' "$@" >"$HOME/fzf-arguments"
 head -n 1 "$HOME/fzf-input"
 `,
 	)
-	writeExecutable(
+	testfile.WriteExecutable(
 		t,
 		filepath.Join(
 			bin,

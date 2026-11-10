@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"pde-installer/internal/testfile"
 )
 
 func TestOpenCodeMemcapLauncher(t *testing.T) {
@@ -65,13 +67,13 @@ func writeMemcapLauncher(t *testing.T, home string) string {
 		t.Fatal(err)
 	}
 	path := filepath.Join(home, "launcher")
-	writeExecutable(t, path, string(data))
+	testfile.WriteExecutable(t, path, string(data))
 	return path
 }
 
 func writeOpenCodeBinary(t *testing.T, home string) {
 	t.Helper()
-	writeExecutable(t, filepath.Join(home, ".local", "share", "pde", "npm", "node_modules", ".bin", "opencode"), "#!/bin/sh\nprintf '%s\\n' \"$@\" >\"$HOME/opencode\"\n")
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "share", "pde", "npm", "node_modules", ".bin", "opencode"), "#!/bin/sh\nprintf '%s\\n' \"$@\" >\"$HOME/opencode\"\n")
 }
 
 func writeMemcapSystemdStubs(t *testing.T, home string, userBus bool) {
@@ -80,8 +82,8 @@ func writeMemcapSystemdStubs(t *testing.T, home string, userBus bool) {
 	if userBus {
 		status = "exit 0"
 	}
-	writeExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), "#!/bin/sh\n"+status+"\n")
-	writeExecutable(t, filepath.Join(home, ".local", "bin", "systemd-run"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >\"$HOME/systemd-run\"\nwhile [ \"$1\" != env ]; do shift; done\nexec \"$@\"\n")
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), "#!/bin/sh\n"+status+"\n")
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "systemd-run"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >\"$HOME/systemd-run\"\nwhile [ \"$1\" != env ]; do shift; done\nexec \"$@\"\n")
 }
 
 func readMemcapCalls(t *testing.T, path string) string {
