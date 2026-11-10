@@ -9,7 +9,9 @@ RUN printf 'Acquire::Retries "5";\n' >/etc/apt/apt.conf.d/80-retries
 # A mirror mid-sync can list packages it does not have yet, which apt
 # reports as 404 and does not retry. A later apt-get update clears it.
 RUN for attempt in 1 2 3; do \
-		apt-get update && apt-get install -y --no-install-recommends sudo && break; \
+		apt-get update && apt-get install -y --no-install-recommends \
+			sudo \
+			&& break; \
 		if [ "$attempt" = 3 ]; then exit 1; fi; \
 		sleep 60; \
 	done \
