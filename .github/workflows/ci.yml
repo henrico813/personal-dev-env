@@ -124,20 +124,34 @@ jobs:
           test/nvim-clipboard.sh
           test/nvim-phone-view.sh
 
+  # This job and the next cache their base images. Building one runs apt-get
+  # against Ubuntu's mirrors, which fail often enough to block merges.
   pde-installer-smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/pde-images
+          key: pde-base-${{ hashFiles('pde-installer/test/Dockerfile.base') }}
       - name: rootless command smoke
         run: ./pde-installer/test/run-tests.sh smoke
+        env:
+          PDE_IMAGE_CACHE: ${{ runner.temp }}/pde-images
 
   pde-installer-terminal:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/pde-images
+          key: pde-terminal-base-${{ hashFiles('pde-installer/test/Dockerfile.terminal') }}
       - name: terminal installation
         run: ./pde-installer/test/run-tests.sh terminal
+        env:
+          PDE_IMAGE_CACHE: ${{ runner.temp }}/pde-images
 
   # The desktop files are checked with the i3 and shellcheck that Ubuntu
   # 24.04, the desktops' oldest release, ships.
