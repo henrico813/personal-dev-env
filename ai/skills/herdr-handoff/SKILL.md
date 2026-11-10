@@ -134,17 +134,19 @@ model can run the loop from them.
    start.
 3. Create the new session's place, and read its pane from
    `.result.root_pane.pane_id`. When a hub runs, make a tab in the
-   hub's workspace. The hub reads it from `$HERDR_WORKSPACE_ID`, and
-   another session from `.result.agent.workspace_id` of
-   `herdr agent get <hub>`.
+   hub's workspace, unless the hub's skill gives the session its own
+   workspace, as `herdr-hub` does for a card's worker. The hub reads
+   its workspace from `$HERDR_WORKSPACE_ID`, and another session
+   from `.result.agent.workspace_id` of `herdr agent get <hub>`.
    Give the tab and the agent the same short name, `<run>-<role>`,
    such as `docs-p2`. The hub keeps tab 1.
 
        herdr tab create --no-focus --workspace <hub workspace> \
          --label <name> --cwd <the folder the new session works in>
 
-   Without a hub, make a new workspace. `--no-focus` keeps the user's
-   screen where it was, so the new pane is not focused:
+   Without a hub, or for a session with its own workspace, make a new
+   workspace. `--no-focus` keeps the user's screen where it was, so
+   the new pane is not focused:
 
        herdr workspace create --no-focus --label <label> \
          --cwd <the folder the new session works in>

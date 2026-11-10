@@ -1,8 +1,8 @@
 # Limits for auto run workers
 
-The auto hub copies this file to `<run folder>/common.md` and fills
-in `<auto hub>`, `<run folder>` and `<models>`. Each worker's handoff
-points to it.
+The auto hub copies this file to the run folder as `common.md`, with
+the auto hub's name, the run folder and the models that answered
+filled in. Each worker's handoff points to it.
 
 ## What an auto run is
 
@@ -39,6 +39,10 @@ through your report file.
 - New names: if your plan adds a command, flag or label the user
   types or reads, stop before build. Report the name question with 2
   or 3 choices and your recommendation, then end your turn.
+- Wording or a format the user's rules already fix, such as the
+  lines of a review list, is not a new choice and stops no worker,
+  even in what the user sees daily. Follow the rule and cite it in
+  the plan's notes.
 - Code review after the build, each by a fresh agent: one for
   `review-plan` and the language skills, one for
   `behavior-focused-testing` and one for `code-documentation`. A
@@ -65,9 +69,10 @@ through your report file.
   it. Then report and stop. Send the create request only when the
   hub tells you to, through `pde-gh-write` by `pull-request`, and
   report its approval ID.
-- After you send the create request, every change is a new commit;
-  never amend or squash. Never deploy or hand on a commit you have
-  not pushed.
+- Once another branch is stacked on yours, or after you send the
+  create request, every change is a new commit; never amend, squash
+  or force-push. Before either, `pull-request` may squash your branch.
+  Never deploy or hand on a commit you have not pushed.
 - Send a merge or pull request edit request only after the hub tells
   you the user reviewed that pull request. Never run
   `pde-pr-approve` or set `PDE_GH_WRITE`. Never answer an approval
@@ -139,13 +144,16 @@ step again.
   line is one sentence on where the card stands, such as "Plan
   reviewed ready; building step 2 of 3." The user reads that line
   on "status update". Add a `card note` at each milestone, one
-  `card` call per shell call.
+  `card` call per shell call, since each writes to the vault on the
+  network drive and can be slow.
 - Write a question, a blocker or finished work to
   `<run folder>/report-<your agent name>.md`, replacing its old
-  text, then end your turn. Never prompt the hub, and never use an
-  interactive question tool. A question gives 2 or 3 choices, what
-  each leads to, and your recommendation. Finished work gives the
-  checks run, with results, and the checks not run.
+  text, then end your turn at once. Update your status file and card
+  before the report, never after: a message the hub sends while you
+  still work waits, and blocks its next one. Never prompt the hub,
+  and never use an interactive question tool. A question gives 2 or
+  3 choices, what each leads to, and your recommendation. Finished
+  work gives the checks run, with results, and the checks not run.
 - Edit only your card through `card`, your plan note, your worktree
   and branch, and your own files in the run folder.
 - Near 150K context, write a handoff by `herdr-handoff` and report it

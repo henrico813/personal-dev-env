@@ -13,6 +13,7 @@ Usage::
     hub auto ready --run DIR                 ready cards, for sorting
     hub auto check --run DIR                 check the run's card list
     hub auto approve --run DIR N REPLY       save the user's approval
+    hub auto approve --run DIR --given N WORDS
     hub auto now --run DIR                   one line per run card
     hub --version
 
@@ -150,6 +151,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         step.add_argument("--run", type=Path, required=True)
         step.set_defaults(command=command)
         if name == "approve":
+            step.add_argument(
+                "--given",
+                action="store_true",
+                help="the reply is the user's own words, naming the cards",
+            )
             step.add_argument("number", type=int)
             step.add_argument("reply", help="the user's reply, word for word")
 

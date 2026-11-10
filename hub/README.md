@@ -27,6 +27,7 @@ hub brief --run DIR                      what waits on the user
 hub auto ready --run DIR                 ready cards, for sorting
 hub auto check --run DIR                 check the run's card list
 hub auto approve --run DIR N REPLY       save the user's approval
+hub auto approve --run DIR --given N WORDS
 hub auto now --run DIR                   one line per run card
 hub --version
 ```
@@ -91,6 +92,9 @@ machine to every `herdr` call, as `herdr --machine` does.
   leaves out a ready card. `approve` writes `DIR/approved.md`, with
   the time, REPLY and `run.md`, only when REPLY is `approve run N`,
   ignoring case, spaces, quotes and end punctuation, the list passes `check` and N is its number; otherwise it exits 2.
+  With `--given`, WORDS are the user's own words of approval, given
+  before the briefing: they pass when they name by key every card
+  under `## Run` and no other card, in upper or lower case.
   `now` writes `DIR/brief-now.md` and prints it: one line per card
   under `## Run`, from the first line of `DIR/status-<key>-auto.md`,
   marked `(needs you)` while a `decisions.md` entry's title starts
