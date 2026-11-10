@@ -42,8 +42,8 @@ Choose the narrowest one:
    `ai/README.md`.
 5. Run `(cd pde-installer && go test ./... && go vet ./...)` and
    `git diff --check`.
-6. Before committing, verify the Git author email is exactly
-   `henryco4388@gmail.com`. Stop and report a mismatch.
+6. Before committing, verify that `git config user.email` ends
+   in `@users.noreply.github.com`. Stop and report a mismatch.
 7. Load and follow `git-messages`, commit, push to `github`, and open a PR.
 
 ## Example
