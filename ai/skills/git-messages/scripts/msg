@@ -14,6 +14,16 @@ MAX_TITLE = 50
 MAX_BODY = 72
 TYPES = "feat|fix|docs|test|refactor|perf|build|ci|chore|style|revert"
 TITLE_RE = re.compile(rf"^(?:{TYPES})(?:\([^)]+\))?!?: .+")
+# Finds the type, skipping a key that msg.titlePrefix allows before it.
+TYPE_RE = re.compile(rf"(?:^|.*? )({TYPES})(?:\([^)]+\))?!?: ")
+AGENT_FILE_NAMES = {
+    "AGENTS.md",
+    "CLAUDE.md",
+    "GEMINI.md",
+    "SKILL.md",
+    "SOUL.md",
+}
+AGENT_FOLDERS = {"agents", "prompts", "skills"}
 SUFFIX_RE = re.compile(r" \(#\d+\)$")
 SECTIONS = ("## Overview", "## Changes", "## Testing")
 PREFIXED_FORMAT_ERROR = (
@@ -51,11 +61,89 @@ def git_output(*args: str) -> str | None:
     return result.stdout.removesuffix("\n")
 
 
+def read_changed_paths(hook: bool, base: str | None = None) -> list[str]:
+    """Return the files the message describes, or [] outside a checkout.
+
+    A commit records its staged files. With nothing staged, as when
+    checking PR or squash text, use the branch's files since it left
+    ``base``, or the default branch that a remote's HEAD names. The
+    remote need not be called origin. The hook runs before a commit, so
+    it reads only staged files.
+
+    Args:
+        hook: Read only staged files.
+        base: Branch a stacked PR targets, such as ``feat/parent``. Without
+            it, a stacked PR would also count its parent's files.
+
+    Returns:
+        Repository-relative paths, such as ``ai/skills/x/SKILL.md``.
+    """
+    staged = git_output("diff", "--cached", "--name-only")
+    if staged or hook:
+        return staged.splitlines() if staged else []
+    if base:
+        remotes = (git_output("remote") or "").split()
+        bases = [f"{remote}/{base}" for remote in remotes] + [base]
+    else:
+        heads = git_output(
+            "for-each-ref", "--format=%(refname)", "refs/remotes/*/HEAD"
+        )
+        bases = (heads or "").split() + ["origin/main", "origin/master"]
+    for ref in bases:
+        branch = git_output("diff", "--name-only", f"{ref}...HEAD")
+        if branch is not None:
+            return branch.splitlines()
+    return []
+
+
+def is_agent_instruction(path: str) -> bool:
+    """Return whether a file tells an agent what to do.
+
+    Args:
+        path: Repository-relative path with ``/`` separators.
+
+    Returns:
+        True for files such as AGENTS.md and SKILL.md, and for any file
+        under an ``agents``, ``prompts`` or ``skills`` folder.
+    """
+    parts = path.split("/")
+    in_agent_folder = not AGENT_FOLDERS.isdisjoint(parts[:-1])
+    return parts[-1] in AGENT_FILE_NAMES or in_agent_folder
+
+
+def find_docs_type_error(title: str, changed_paths: list[str]) -> str | None:
+    """Return an error when a docs title covers agent instruction changes.
+
+    Skill, prompt and AGENTS.md text controls what an agent does, so
+    changing it is a feat or fix even when only Markdown changed.
+
+    Args:
+        title: Title without the ``(#N)`` suffix.
+        changed_paths: Files the message describes.
+
+    Returns:
+        The error line, or None when the title is not docs or no agent
+        instruction file changed.
+    """
+    match = TYPE_RE.match(title)
+    if not match or match.group(1) != "docs":
+        return None
+    agent_paths = [path for path in changed_paths if is_agent_instruction(path)]
+    if not agent_paths:
+        return None
+    more = f" and {len(agent_paths) - 1} more" if len(agent_paths) > 1 else ""
+    return (
+        f"line 1: docs type, but agent instructions changed "
+        f"({agent_paths[0]}{more}); use feat or fix"
+    )
+
+
 def lint(
     lines: list[str],
     pull_request: bool,
     hook: bool = False,
     prefixed_title: re.Pattern[str] | None = None,
+    changed_paths: list[str] | None = None,
 ) -> list[str]:
     """Return all rule violations in a message.
 
@@ -67,6 +155,8 @@ def lint(
         prefixed_title: Pattern built from msg.titlePrefix. It replaces
             ``TITLE_RE``, and hook mode checks it too, except for
             generated subjects such as ``fixup!``.
+        changed_paths: Files the message describes. A docs title fails
+            when one of them is an agent instruction file.
 
     Returns:
         One line per violation; empty when the message passes.
@@ -83,6 +173,9 @@ def lint(
     title = lines[0]
     title_body = title_without_suffix(title)
     generated_subject = title.startswith(("fixup! ", "squash! ", "amend! ", "Merge ", 'Revert "'))
+    docs_error = None
+    if not generated_subject:
+        docs_error = find_docs_type_error(title_body, changed_paths or [])
     if hook:
         if not generated_subject and len(title_body) > MAX_TITLE:
             errors.append(
@@ -90,6 +183,8 @@ def lint(
             )
         if prefixed_title and not generated_subject and not prefixed_title.fullmatch(title_body):
             errors.append(PREFIXED_FORMAT_ERROR)
+        if docs_error:
+            errors.append(docs_error)
         fenced = False
         for number, line in enumerate(lines[1:], 2):
             if line.startswith("```"):
@@ -113,6 +208,8 @@ def lint(
             errors.append("line 1: title must match <type>[(scope)][!]: <summary>")
         if title_body.endswith("."):
             errors.append("line 1: title must not end with a period")
+        if docs_error:
+            errors.append(docs_error)
     if len(lines) > 1 and lines[1] != "":
         errors.append("line 2: must be blank")
     fenced = False
@@ -227,9 +324,17 @@ def main() -> int:
         subparser = subparsers.add_parser(name)
         subparser.add_argument("--pr", action="store_true")
         subparser.add_argument("--hook", action="store_true")
+        subparser.add_argument("--base")
         subparser.add_argument("message", type=Path)
     squash_parser = subparsers.add_parser("squash")
     squash_parser.add_argument("message", type=Path)
+    # pde-gh-write runs check-type on PR titles, passing the PR's files.
+    type_parser = subparsers.add_parser("check-type")
+    type_parser.add_argument(
+        "--path", action="append", dest="paths", default=[]
+    )
+    type_parser.add_argument("--base")
+    type_parser.add_argument("message", type=Path)
     args = parser.parse_args()
     if args.command == "fmt":
         format_message(args.message)
@@ -239,6 +344,15 @@ def main() -> int:
             print(squash_message(read_message(args.message)))
         except ValueError as error:
             print(f"error: {error}", file=sys.stderr)
+            return 1
+        return 0
+    if args.command == "check-type":
+        lines = read_message(args.message)
+        title = title_without_suffix(lines[0]) if lines else ""
+        paths = args.paths or read_changed_paths(False, args.base)
+        error = find_docs_type_error(title, paths)
+        if error:
+            print(error)
             return 1
         return 0
     prefixed_title = None
@@ -255,7 +369,13 @@ def main() -> int:
             repository = git_output("rev-parse", "--show-toplevel") or Path.cwd()
             print(f"msg.titlePrefix in {repository}: invalid regex: {error}")
             return 1
-    errors = lint(read_message(args.message), args.pr, args.hook, prefixed_title)
+    errors = lint(
+        read_message(args.message),
+        args.pr,
+        args.hook,
+        prefixed_title,
+        read_changed_paths(args.hook, args.base),
+    )
     for error in errors:
         print(error)
     return 1 if errors else 0

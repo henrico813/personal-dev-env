@@ -348,6 +348,208 @@ class TestTitlePrefix:
         )
 
 
+def run_git(tmp_path: Path, *args: str) -> None:
+    """Run git in tmp_path with an isolated config and a test author.
+
+    Args:
+        tmp_path: Checkout to run git in.
+        args: Arguments after ``git``.
+    """
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            *args,
+        ],
+        cwd=tmp_path,
+        env=isolated_git(tmp_path),
+        check=True,
+    )
+
+
+class TestDocsType:
+    """Refuse the docs type when agent instructions changed.
+
+    Skills, prompts and AGENTS.md files steer what an agent does, so
+    changing them changes behavior even when only Markdown changed.
+    Agents kept titling such changes docs, which hid behavior changes
+    from readers of the history.
+    """
+
+    @pytest.mark.parametrize(
+        ("title", "path", "output"),
+        [
+            pytest.param(
+                "docs: add a rule",
+                "bot/skills/chat.md",
+                [
+                    (
+                        "line 1: docs type, but agent instructions changed "
+                        "(bot/skills/chat.md); use feat or fix"
+                    )
+                ],
+                id="file-in-skills-folder",
+            ),
+            pytest.param(
+                "docs: add a rule",
+                "ai/opencode/agents/reviewer.md",
+                [
+                    (
+                        "line 1: docs type, but agent instructions changed "
+                        "(ai/opencode/agents/reviewer.md); use feat or fix"
+                    )
+                ],
+                id="subagent-prompt",
+            ),
+            pytest.param(
+                "KEY-12 docs: add a rule",
+                "ai/skills/chat/SKILL.md",
+                [
+                    (
+                        "line 1: docs type, but agent instructions changed "
+                        "(ai/skills/chat/SKILL.md); use feat or fix"
+                    )
+                ],
+                id="key-before-type",
+            ),
+            pytest.param(
+                "docs: fix a typo",
+                "README.md",
+                [],
+                id="readme",
+            ),
+            pytest.param(
+                "fix: add a rule",
+                "ai/skills/chat/SKILL.md",
+                [],
+                id="fix-type",
+            ),
+        ],
+    )
+    def test_hook_matches_type_to_staged_files(
+        self, tmp_path: Path, title: str, path: str, output: list[str]
+    ) -> None:
+        """Refuse a docs commit only when it stages agent instructions.
+
+        The commit hook is the last check before a commit lands. A README
+        or comment fix must still commit as docs, or the check would push
+        people to skip the hook.
+        """
+        init_repo(tmp_path)
+        staged = tmp_path / path
+        staged.parent.mkdir(parents=True, exist_ok=True)
+        staged.write_text("Ask before deleting files.\n")
+        run_git(tmp_path, "add", path)
+        (tmp_path / "message").write_text(title + "\n")
+
+        result = run_msg(tmp_path, "lint", "--hook")
+
+        assert result.stdout.splitlines() == output
+        assert result.returncode == (1 if output else 0)
+
+    @pytest.mark.parametrize(
+        "remote_head",
+        [
+            pytest.param(None, id="origin-main"),
+            pytest.param("github", id="remote-not-named-origin"),
+        ],
+    )
+    def test_pr_text_checks_branch_files(
+        self, tmp_path: Path, remote_head: str | None
+    ) -> None:
+        """Check PR text against the branch's commits when nothing is staged.
+
+        PR titles become squash commit titles, and by the time PR text is
+        written every change is committed, so the check must read the
+        branch. A PR title was where agents most often chose docs. Some
+        checkouts name their only remote something other than origin,
+        and the check must still find the default branch there.
+        """
+        init_repo(tmp_path)
+        run_git(tmp_path, "commit", "-q", "--allow-empty", "-m", "start")
+        if remote_head:
+            main = f"refs/remotes/{remote_head}/main"
+            run_git(tmp_path, "update-ref", main, "HEAD")
+            run_git(
+                tmp_path,
+                "symbolic-ref",
+                f"refs/remotes/{remote_head}/HEAD",
+                main,
+            )
+        else:
+            run_git(tmp_path, "update-ref", "refs/remotes/origin/main", "HEAD")
+        (tmp_path / "AGENTS.md").write_text("Ask before deleting files.\n")
+        run_git(tmp_path, "add", "AGENTS.md")
+        run_git(tmp_path, "commit", "-q", "-m", "add a rule")
+        (tmp_path / "message").write_text(
+            "docs: add a rule\n\n## Overview\n\nAsk first.\n\n"
+            "## Changes\n\n- Add a rule.\n\n## Testing\n\nNone.\n"
+        )
+
+        result = run_msg(tmp_path, "lint", "--pr")
+
+        assert result.returncode == 1
+        assert result.stdout == (
+            "line 1: docs type, but agent instructions changed "
+            "(AGENTS.md); use feat or fix\n"
+        )
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            pytest.param(("lint", "--pr", "--base", "parent"), id="lint"),
+            pytest.param(("check-type", "--base", "parent"), id="check-type"),
+        ],
+    )
+    def test_pr_text_uses_given_base(
+        self, tmp_path: Path, args: tuple[str, ...]
+    ) -> None:
+        """Count only a stacked PR's own commits when given its base.
+
+        A PR stacked on a skill change would otherwise count the parent's
+        files and refuse a docs title for a README fix. pde-gh-write
+        passes the PR's base, and authors pass it for stacked PR text.
+        """
+        init_repo(tmp_path)
+        run_git(tmp_path, "commit", "-q", "--allow-empty", "-m", "start")
+        run_git(tmp_path, "update-ref", "refs/remotes/origin/main", "HEAD")
+        (tmp_path / "AGENTS.md").write_text("Ask before deleting files.\n")
+        run_git(tmp_path, "add", "AGENTS.md")
+        run_git(tmp_path, "commit", "-q", "-m", "add a rule")
+        run_git(tmp_path, "branch", "parent")
+        (tmp_path / "README.md").write_text("Fixed a typo.\n")
+        run_git(tmp_path, "add", "README.md")
+        run_git(tmp_path, "commit", "-q", "-m", "fix a typo")
+        (tmp_path / "message").write_text(
+            "docs: fix a typo\n\n## Overview\n\nFix a typo.\n\n"
+            "## Changes\n\n- Fix a typo.\n\n## Testing\n\nNone.\n"
+        )
+
+        result = run_msg(tmp_path, *args)
+
+        assert (result.returncode, result.stdout) == (0, "")
+
+    def test_check_type_uses_given_paths(self, tmp_path: Path) -> None:
+        """Check a title against the files pde-gh-write passes in.
+
+        pde-gh-write may edit a PR from a checkout on another branch, so
+        it passes the PR's files from GitHub. Reading the checkout instead
+        would let a docs title through.
+        """
+        (tmp_path / "message").write_text("docs: add a rule\n")
+
+        result = run_msg(tmp_path, "check-type", "--path", "bot/SOUL.md")
+
+        assert result.returncode == 1
+        assert result.stdout == (
+            "line 1: docs type, but agent instructions changed "
+            "(bot/SOUL.md); use feat or fix\n"
+        )
+
+
 @pytest.mark.local_ai
 def test_local_model_writes_lintable_message(tmp_path: Path) -> None:
     """Check a model writing through the same skill a worker receives.
