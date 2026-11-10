@@ -497,21 +497,12 @@ class TestDocsType:
             "(AGENTS.md); use feat or fix\n"
         )
 
-    @pytest.mark.parametrize(
-        "args",
-        [
-            pytest.param(("lint", "--pr", "--base", "parent"), id="lint"),
-            pytest.param(("check-type", "--base", "parent"), id="check-type"),
-        ],
-    )
-    def test_pr_text_uses_given_base(
-        self, tmp_path: Path, args: tuple[str, ...]
-    ) -> None:
+    def test_pr_text_uses_given_base(self, tmp_path: Path) -> None:
         """Count only a stacked PR's own commits when given its base.
 
         A PR stacked on a skill change would otherwise count the parent's
-        files and refuse a docs title for a README fix. pde-gh-write
-        passes the PR's base, and authors pass it for stacked PR text.
+        files and refuse a docs title for a README fix. Authors pass the
+        base for stacked PR text.
         """
         init_repo(tmp_path)
         run_git(tmp_path, "commit", "-q", "--allow-empty", "-m", "start")
@@ -528,26 +519,9 @@ class TestDocsType:
             "## Changes\n\n- Fix a typo.\n\n## Testing\n\nNone.\n"
         )
 
-        result = run_msg(tmp_path, *args)
+        result = run_msg(tmp_path, "lint", "--pr", "--base", "parent")
 
         assert (result.returncode, result.stdout) == (0, "")
-
-    def test_check_type_uses_given_paths(self, tmp_path: Path) -> None:
-        """Check a title against the files pde-gh-write passes in.
-
-        pde-gh-write may edit a PR from a checkout on another branch, so
-        it passes the PR's files from GitHub. Reading the checkout instead
-        would let a docs title through.
-        """
-        (tmp_path / "message").write_text("docs: add a rule\n")
-
-        result = run_msg(tmp_path, "check-type", "--path", "bot/SOUL.md")
-
-        assert result.returncode == 1
-        assert result.stdout == (
-            "line 1: docs type, but agent instructions changed "
-            "(bot/SOUL.md); use feat or fix\n"
-        )
 
 
 @pytest.mark.local_ai

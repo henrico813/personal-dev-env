@@ -42,7 +42,6 @@ calls to those programs.
 | The popup that shows other machines | `internal/terminal/others.go` |
 | How `gh` is found and run | `internal/cmd/gh.go` |
 | The wait, rerun results, and exit codes | `internal/cmd/writecmd.go` and `internal/cmd/cmd.go` |
-| The PR title check run before approval | `internal/cmd/titletype.go` |
 | An option that a new `gh` adds to a `gh pr` command | `targetFlags` in `internal/approval/request.go`, with whether it takes a value; title, body, body file, and repository options are in `valueFlags` |
 
 ## Changes That Lose Waiting Requests
@@ -78,5 +77,4 @@ Each approval promise, and the tests that fail when it breaks:
 | Restarting the runner or phone question keeps the request's age | `TestRunnerRestartKeepsRequestAge`, `TestMoshiRerunRestartsDeadAsk` |
 | An approval given after the agent stops waiting still runs | `TestRunnerSavesApprovedOutputForRerun`, `TestApprovalRestartsDeadRunner` |
 | Only the real gh runs, never one in the checkout | `TestRealGHIgnoresEmptyPATHEntry` |
-| A refused PR title is never sent for approval, and a missing msg does not block writes | `TestDocsTitleRefusedBeforeApproval`, `TestMsgGetsTitleAndPRScope`, `TestMissingMsgStillAsksForApproval` |
 | Ctrl+b a opens the popup or logs why it cannot | `TestInboxFindsHerdrBesideItself`, `TestMainPicksEntryMode` |
