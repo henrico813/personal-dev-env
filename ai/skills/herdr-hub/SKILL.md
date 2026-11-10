@@ -29,8 +29,9 @@ its step comes, such as `herdr-handoff` when you start a session.
 The hub's run folder is the one its handoff names. Without one, make
 it at the start with `mktemp -d ~/.local/state/herdr-hub.XXXXXX`.
 Record the user's standing decisions in its `rules.md`, the pull
-requests that wait for the user's review in `reviews.md`, and detail
-the user need not read in `notes.md`.
+requests that wait for the user's review in `reviews.md`, each
+question that waits on the user in `decisions.md`, as Questions for
+the user says, and detail the user need not read in `notes.md`.
 
 Keep no list of sessions of your own. Herdr's session names and the
 kanban cards are the record: a card's worker is named after the card,
@@ -250,6 +251,35 @@ you make any card.
 - A cleanup worker sweeps the tabs left open with the session sweep
   script, once that script exists.
 
+## Questions for the user
+
+Keep each question that waits on the user as one entry in
+`<run folder>/decisions.md`, in full, so no message names it by
+number alone:
+
+    ## New model overnight
+
+    Deploy the new model tonight so you can test it in the morning?
+
+    - A. Deploy from the branch, with the undo path ready.
+    - B. Wait until you return.
+
+    Recommended: A, since you want to test it in the morning.
+    If no reply: A.
+    Depends on: your rule of 2026-11-09 to test it in the morning.
+
+Add `Depends on:` when the question rests on an earlier decision, and
+name who made it. Whenever a message to the user mentions an entry,
+show the entry in full. Delete the entry once the user answers, and
+record the answer in `rules.md` when it stands for later. Bring the
+user everything that waits on them with:
+
+    hub brief --run "<run folder>"
+
+It prints `reviews.md`, then every entry. It exits 2, naming the
+entry, when one lacks its question, two choices, `Recommended:` or
+`If no reply:`. Fix the entry and run it again.
+
 ## Merges
 
 Each card's worker opens its own pull request by `pull-request`. Keep
@@ -264,6 +294,23 @@ merged.
 Hand any other merge to a new Herdr session started with
 `herdr-handoff`, never to a subagent of the hub. A subagent ends when
 the hub's turn is interrupted, and the user cannot see it.
+
+## Hand off the hub
+
+When you hand the hub to a new session, write its handoff with
+`herdr-handoff`, holding only the run's state, then start it with:
+
+    hub handoff --run "<run folder>" <name> <handoff file>
+
+It starts `<name>` in a tab of your workspace on the model of the last
+`--model '...'` line in `rules.md`, so keep the hub start command there
+in that form. It checks its inputs before it starts anything. Before it
+sends the handoff, it writes your session review's handoff and adds to
+the new hub's handoff how to close your tab and start that review. It
+then reads back the reasoning effort of the new hub's first reply. Tell
+the user the effort it printed, never one you assume. When it exits 2
+with `started <name>, but`, the new hub runs: tell the user, who can
+switch its effort in that session, and never run `hub handoff` again.
 
 ## Rules
 
