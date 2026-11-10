@@ -2,6 +2,7 @@
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 from collections.abc import Callable
@@ -41,6 +42,8 @@ if args[:2] == ["agent", "list"]:
     count_file.write_text(str(count + 1))
 agents = lists[min(count, len(lists) - 1)]
 by_name = {agent["name"]: agent for agent in agents if agent.get("name")}
+# agent get takes a pane ID too, as the hub's own pane is looked up.
+by_name |= {agent["pane_id"]: agent for agent in agents}
 
 if args[:2] == ["agent", "list"]:
     print(json.dumps({"result": {"agents": agents}}))
@@ -56,8 +59,10 @@ elif args[:2] == ["agent", "prompt"]:
     if refusal.exists():
         refuse(**json.loads(refusal.read_text()))
     print(json.dumps({"result": {}}))
-elif args[:2] == ["pane", "report-metadata"]:
+elif args[:2] in (["pane", "report-metadata"], ["agent", "start"]):
     print(json.dumps({"result": {}}))
+elif args[:2] == ["tab", "create"]:
+    print(json.dumps({"result": {"root_pane": {"pane_id": "w1:new"}}}))
 else:
     print(f"unknown command {args}", file=sys.stderr)
     sys.exit(2)
@@ -167,7 +172,8 @@ def hub(packed: Path, fake_tools: Path) -> Run:
     """Return a function that runs hub with the fake herdr.
 
     The hub's own pane is ``w1:kanban-hub``, and checks run every
-    hundredth of a second so ``hub next`` tests end quickly.
+    hundredth of a second so ``hub next`` tests end quickly. HOME is
+    the fakes' folder, so no test reads the real OpenCode database.
 
     Args:
         packed: The packed hub.
@@ -190,6 +196,7 @@ def hub(packed: Path, fake_tools: Path) -> Run:
             "FAKE": str(fake_tools),
             "PATH": f"{fake_tools / 'bin'}{os.pathsep}{os.environ['PATH']}",
             "HERDR_PANE_ID": "w1:kanban-hub",
+            "HOME": str(fake_tools),
             "HUB_POLL_SECONDS": "0.01",
         }
         return subprocess.run(
@@ -724,3 +731,297 @@ class TestFlag:
             [*pane, *labels],
             [*pane, "--clear-state-labels"],
         ]
+
+
+def write_first_reply(fake_tools: Path, session: str, effort: str) -> None:
+    """Log a session's first reply, then a later one at xhigh.
+
+    Args:
+        fake_tools: The fakes' folder, which is HOME in tests.
+        session: The OpenCode session ID.
+        effort: The first reply's reasoning effort, such as ``medium``.
+    """
+    folder = fake_tools / ".local" / "share" / "opencode"
+    folder.mkdir(parents=True)
+    reply = {"model": {"id": "claude-opus-5-5[1m]", "variant": effort}}
+    with sqlite3.connect(folder / "opencode.db") as database:
+        database.execute(
+            "create table session_message"
+            " (session_id text, type text, seq integer, data text)"
+        )
+        database.execute(
+            "insert into session_message values (?, 'assistant', 6, ?)",
+            (session, json.dumps(reply)),
+        )
+        # The user may switch the effort later, which proves nothing.
+        later = {"model": {"id": "claude-opus-5-5[1m]", "variant": "xhigh"}}
+        database.execute(
+            "insert into session_message values (?, 'assistant', 9, ?)",
+            (session, json.dumps(later)),
+        )
+    database.close()
+
+
+class TestHandoff:
+    """``hub handoff``, which replaces the hub with a fresh session."""
+
+    MODEL = "claude-code/claude-opus-5-5[1m]#medium"
+
+    @pytest.fixture
+    def next_handoff(self, fake_tools: Path, run_folder: Path) -> Path:
+        """The next hub's handoff file, with both hubs and the rules' model.
+
+        Args:
+            fake_tools: The fakes' folder.
+            run_folder: The hub's run folder, which gets rules.md.
+
+        Returns:
+            The next hub's handoff file, holding the run's state.
+        """
+        set_agents(
+            fake_tools,
+            [
+                make_agent(
+                    "kanban-hub",
+                    "working",
+                    pane_id="w1:kanban-hub",
+                    tab_id="w1:t1",
+                    workspace_id="w1",
+                    agent_session={"value": "ses_old"},
+                ),
+                make_agent(
+                    "kanban-hub-2",
+                    "working",
+                    pane_id="w1:new",
+                    agent_session={"value": "ses_new"},
+                ),
+            ],
+        )
+        (run_folder / "rules.md").write_text(
+            "- old: start hubs with --model 'claude-code/old'.\n"
+            f"- new: start hubs with `--model '{self.MODEL}'`.\n"
+        )
+        handoff = fake_tools / "hub-2.md"
+        handoff.write_text("# Handoff: run the hub\n")
+        return handoff
+
+    def test_handoff_starts_rules_model_reporting_effort(
+        self, hub: Run, fake_tools: Path, run_folder: Path, next_handoff: Path
+    ) -> None:
+        """The next hub starts on the newest rules model and reports effort.
+
+        A hub once told the user its successor ran at medium effort
+        when it ran at the default, because nothing passed or checked
+        the effort. The printed effort is read from the reply OpenCode
+        logged, so the hub can repeat it to the user.
+        """
+        write_first_reply(fake_tools, "ses_new", "medium")
+
+        result = hub(
+            "handoff",
+            "--run",
+            str(run_folder),
+            "kanban-hub-2",
+            str(next_handoff),
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.startswith(
+            f"started kanban-hub-2 on {self.MODEL}; its first reply ran at"
+            " medium\n"
+        )
+        start = next(
+            call
+            for call in read_calls(fake_tools)
+            if call[:2] == ["agent", "start"]
+        )
+        assert start[-4:] == ["--", "--model", self.MODEL, "--auto"]
+
+    def test_handoff_tells_next_hub_review_steps(
+        self, hub: Run, fake_tools: Path, run_folder: Path, next_handoff: Path
+    ) -> None:
+        """The old hub's review is written and the next hub told of it.
+
+        Every hub that hands off gets a session review. The reviewer
+        finds the old hub by its session ID, and the next hub learns
+        from its own handoff, the one its only prompt names, which tab
+        to close and which brief starts the review.
+        """
+        write_first_reply(fake_tools, "ses_new", "medium")
+
+        result = hub(
+            "handoff",
+            "--run",
+            str(run_folder),
+            "kanban-hub-2",
+            str(next_handoff),
+        )
+
+        assert result.returncode == 0, result.stderr
+        briefs = list((fake_tools / ".local/state/pde/handoffs").iterdir())
+        assert len(briefs) == 1
+        assert briefs[0].name.endswith("-kanban-hub-review.md")
+        assert "--session ses_old" in briefs[0].read_text()
+        handoff = next_handoff.read_text()
+        assert handoff.startswith("# Handoff: run the hub\n")
+        assert "herdr tab close w1:t1" in handoff
+        assert str(briefs[0]) in handoff
+        prompts = read_prompts(fake_tools)
+        assert len(prompts) == 1
+        assert str(next_handoff) in prompts[0][3]
+
+    @pytest.mark.parametrize(
+        ("missing", "reason"),
+        [
+            pytest.param("hub-2.md", "does not exist", id="handoff"),
+            pytest.param(
+                "run/rules.md", "has no --model '...' line", id="model"
+            ),
+        ],
+    )
+    def test_handoff_refuses_missing_input_before_starting(
+        self,
+        hub: Run,
+        fake_tools: Path,
+        run_folder: Path,
+        next_handoff: Path,
+        missing: str,
+        reason: str,
+    ) -> None:
+        """A missing handoff file or rules model exits 2 with no tab started.
+
+        Appending to a missing file would create it, and the next hub
+        would start with a handoff that holds none of the run's state.
+        A run folder without rules.md is likely, and starting
+        anyway would leave a tab behind. Stopping before any herdr
+        change leaves nothing to clean up.
+        """
+        broken = fake_tools / missing
+        broken.unlink()
+
+        result = hub(
+            "handoff",
+            "--run",
+            str(run_folder),
+            "kanban-hub-2",
+            str(next_handoff),
+        )
+
+        assert result.returncode == 2
+        assert result.stderr == f"hub: {broken} {reason}\n"
+        assert ["tab", "create"] not in [
+            call[:2] for call in read_calls(fake_tools)
+        ]
+
+    def test_handoff_says_started_when_prompt_fails(
+        self, hub: Run, fake_tools: Path, run_folder: Path, next_handoff: Path
+    ) -> None:
+        """A Herdr failure after the start says the next hub runs.
+
+        Without the word started the hub would read a plain Herdr error
+        and run the command again, which opens a second hub and adds
+        the old hub's steps to the handoff twice.
+        """
+        refuse_prompts(fake_tools, "agent_blocked", "Herdr said no")
+
+        result = hub(
+            "handoff",
+            "--run",
+            str(run_folder),
+            "kanban-hub-2",
+            str(next_handoff),
+        )
+
+        assert result.returncode == 2
+        assert result.stderr == (
+            "hub: started kanban-hub-2, but Herdr said no\n"
+        )
+
+    def test_handoff_fails_when_reply_effort_differs(
+        self, hub: Run, fake_tools: Path, run_folder: Path, next_handoff: Path
+    ) -> None:
+        """A first reply at another effort exits 2 and names both efforts.
+
+        This is the check that would have caught the wrong claim: the
+        hub must not report a successful handoff it did not verify.
+        """
+        write_first_reply(fake_tools, "ses_new", "default")
+
+        result = hub(
+            "handoff",
+            "--run",
+            str(run_folder),
+            "kanban-hub-2",
+            str(next_handoff),
+        )
+
+        assert result.returncode == 2
+        assert result.stdout == ""
+        assert result.stderr == (
+            "hub: started kanban-hub-2, but it runs at default effort,"
+            " not medium\n"
+        )
+
+
+class TestBrief:
+    """``hub brief``, the one message of what waits on the user."""
+
+    DECISION = (
+        "## New model overnight\n"
+        "\n"
+        "Deploy the new model tonight so you can test it in the morning?\n"
+        "\n"
+        "- A. Deploy from the branch, with the undo path ready.\n"
+        "- B. Wait until you return.\n"
+        "\n"
+        "Recommended: A, since you want to test it in the morning.\n"
+        "If no reply: A.\n"
+    )
+
+    def test_brief_prints_reviews_then_decisions_whole(
+        self, hub: Run, run_folder: Path
+    ) -> None:
+        """Pull requests come first, then each question in full.
+
+        Hubs named open questions by number alone, and the user had to
+        ask what they were. Printing every line of each entry means
+        the message never refers to text the user cannot see.
+        """
+        (run_folder / "reviews.md").write_text("# PRs\n\n| #1 | Fix |\n")
+        (run_folder / "decisions.md").write_text(self.DECISION)
+
+        result = hub("brief", "--run", str(run_folder))
+
+        assert result.returncode == 0
+        assert result.stdout == (
+            "# PRs\n\n| #1 | Fix |\n"
+            "\n"
+            "Decision: New model overnight\n"
+            "Deploy the new model tonight so you can test it in the morning?\n"
+            "- A. Deploy from the branch, with the undo path ready.\n"
+            "- B. Wait until you return.\n"
+            "Recommended: A, since you want to test it in the morning.\n"
+            "If no reply: A.\n"
+        )
+
+    def test_brief_refuses_entry_missing_parts(
+        self, hub: Run, run_folder: Path
+    ) -> None:
+        """An entry missing Recommended and If no reply lines exits 2.
+
+        The user decides from this message alone, often away
+        from the desk, so an entry that leaves out what happens with
+        no reply cannot go out.
+        """
+        (run_folder / "decisions.md").write_text(
+            "## Pause cards\n\nPause stale cards?\n\n- A. Yes\n- B. No\n"
+        )
+
+        result = hub("brief", "--run", str(run_folder))
+
+        assert result.returncode == 2
+        assert result.stdout == ""
+        assert result.stderr == (
+            "hub: decisions.md entry 'Pause cards' lacks the Recommended:"
+            " line, the If no reply: line\n"
+        )
