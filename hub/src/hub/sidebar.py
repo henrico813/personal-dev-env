@@ -20,7 +20,7 @@ HUB_NAME = re.compile(r"-hub-\d+$")
 def run_go(args: argparse.Namespace) -> int:
     """Show the hub after the one the user looks at, in sidebar order.
 
-    Pressing it again cycles through every hub. When the user looks at
+    Running it again cycles through every hub. When the user looks at
     no hub, it shows the first one.
 
     Args:
@@ -116,9 +116,9 @@ def list_workspace_ids() -> list[str]:
 
 
 def refuse_other_machine(machine: str | None, command: str) -> bool:
-    """Tell the user when ``--machine`` names another machine's server.
+    """Tell the user this command does not take ``--machine``.
 
-    Herdr orders and shows workspaces per server, and focusing a hub on
+    Each Herdr server keeps its own sidebar, and showing a hub on
     another machine from here is untested.
 
     Args:
