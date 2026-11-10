@@ -3,17 +3,8 @@ FROM ubuntu:${UBUNTU_VERSION}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Setting these in apt's config also covers the installer's apt-get calls.
-# CI sets UBUNTU_MIRROR to the Azure mirror its runners sit next to.
-ARG UBUNTU_MIRROR=
-RUN printf 'Acquire::Retries "5";\n' >/etc/apt/apt.conf.d/80-retries \
-	&& if [ -n "$UBUNTU_MIRROR" ]; then \
-		for list in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do \
-			if [ -f "$list" ]; then sed -i \
-				-e "s|http://archive.ubuntu.com/ubuntu|$UBUNTU_MIRROR|" \
-				-e "s|http://security.ubuntu.com/ubuntu|$UBUNTU_MIRROR|" "$list"; fi; \
-		done; \
-	fi
+# Setting this in apt's config also covers the installer's apt-get calls.
+RUN printf 'Acquire::Retries "5";\n' >/etc/apt/apt.conf.d/80-retries
 
 # A mirror mid-sync can list packages it does not have yet, which apt
 # reports as 404 and does not retry. A later apt-get update clears it.

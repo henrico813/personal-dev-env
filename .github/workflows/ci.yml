@@ -131,7 +131,6 @@ jobs:
         run: ./pde-installer/test/run-tests.sh smoke
         env:
           PDE_IMAGE_CACHE: ${{ runner.temp }}/pde-images
-          PDE_UBUNTU_MIRROR: http://azure.archive.ubuntu.com/ubuntu
 
   pde-installer-terminal:
     runs-on: ubuntu-latest
@@ -146,7 +145,6 @@ jobs:
         run: ./pde-installer/test/run-tests.sh terminal
         env:
           PDE_IMAGE_CACHE: ${{ runner.temp }}/pde-images
-          PDE_UBUNTU_MIRROR: http://azure.archive.ubuntu.com/ubuntu
 
   # The desktop files are checked with the i3 and shellcheck that Ubuntu
   # 24.04, the desktops' oldest release, ships.

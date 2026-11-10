@@ -19,9 +19,7 @@ terminal_base_image() {
 
 # Builds a base image unless it already exists. When PDE_IMAGE_CACHE names a
 # folder, the image is loaded from or saved to it, so CI runs apt-get only
-# after a Dockerfile changes. PDE_UBUNTU_MIRROR replaces archive.ubuntu.com.
-# CI sets it to Azure's mirror, which refuses package downloads from outside
-# Azure.
+# after a Dockerfile changes.
 ensure_base_image() {
 	local image="$1" dockerfile="$2" version="$3" archive=""
 	if docker image inspect "$image" >/dev/null 2>&1; then
@@ -36,7 +34,6 @@ ensure_base_image() {
 	fi
 	docker build -t "$image" \
 		--build-arg "UBUNTU_VERSION=$version" \
-		--build-arg "UBUNTU_MIRROR=${PDE_UBUNTU_MIRROR:-}" \
 		-f "$SCRIPT_DIR/$dockerfile" "$REPO_ROOT"
 	if [[ -n "$archive" ]]; then
 		mkdir -p "$PDE_IMAGE_CACHE"
