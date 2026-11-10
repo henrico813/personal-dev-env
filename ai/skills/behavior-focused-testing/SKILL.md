@@ -34,6 +34,11 @@ Invoke the API actual consumers use, not private helpers. A component's supporte
 
 Choose the narrowest scope that credibly establishes the rule. Use integration tests where the risk concerns real adapters or cross-layer behavior. Identify which dependencies are real or replaced and what remains unverified. A fake does not establish real interoperability.
 
+Make a fake of an outside server able to return everything the real
+one can: a refusal and its reason, a gateway or server error, a
+timeout. One that can only succeed or hang up cannot exercise failure
+handling.
+
 Avoid incidental formatting, internal object structure, test-order dependencies, shared mutable state, arbitrary sleeps, and uncontrolled time or randomness. Check interactions, ordering, and exact representations only when they are part of the externally visible behavior. Harmless internal refactors should not invalidate behavioral assertions. Google
 
 3. Use meaningful names of seven words or fewer
@@ -78,9 +83,17 @@ Before writing a test, name the bug it would catch and why that bug is likely or
 
 When reviewing tests or a test plan, flag each low-value test as a required correction. Do not ask for extra cases unless each one catches a likely or costly bug.
 
+A test whose name leaves out a behavior it checks is also a required
+correction: split it or rename it.
+
 Prefer one clear test with 80% coverage over six tests with 90% when the extra cases add little protection. This is a maintenance preference, not an 80% target. Add cases for distinct, important risks. Never drop critical checks or merge unrelated behaviors merely to reduce the count.
 
 Check one coherent behavior per test, potentially with several assertions. Do not require one test per production function. Google
+
+Organize tests the way neighboring test files do, per component or
+feature, for example a `Test<Subject>` class in pytest, a `describe`
+block in JavaScript or a submodule in Rust. Where the neighbors keep
+tests flat, do the same.
 
 Separate Arrange → Act → Assert with whitespace. Keep decisive inputs and expected results visible; do not calculate expectations by duplicating production logic. Microsoft
 

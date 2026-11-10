@@ -11,8 +11,8 @@ metadata:
 # Delegate
 
 Have a subagent do the task. Review its work at every stop, send fixes
-back to the same agent, and repeat until it passes your review. Then
-bring it to the user.
+back to the same agent, or to a fresh planner for a plan, and repeat
+until it passes your review. Then bring it to the user.
 
 ## Steps
 
@@ -25,7 +25,18 @@ bring it to the user.
    and check its claims against the real files, tests and systems
    before trusting them.
 3. Review the work. Send required fixes back to the same agent, and
-   review again. Repeat until it passes.
+   review again. Repeat until it passes. Plan fixes are the
+   exception: give a new planner the plan's path and what the
+   reviewers found, and never resume the old one, whose context grows
+   every round.
+
+   For implementation, any review another skill requires from a fresh
+   subagent, for example the test review in `behavior-focused-testing`
+   and the code-only check in `code-documentation`, gets a new agent
+   that sees only the inputs that skill lists. An agent that read the
+   plan cannot do it. Comparing the commit with the plan diff that
+   was reviewed is no code review either, so review the commit as
+   deeply as `review-plan` asks.
 4. Give the user a short summary: what was done, the evidence, and any
    decisions they need to make, with your recommendation.
 

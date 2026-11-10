@@ -106,6 +106,13 @@ the line, then start it again:
 It prints each blocked state once, so a session that stays blocked
 does not wake you again.
 
+To end a background job such as `hub next`, use your harness's stop
+for a job the harness runs. When you start one yourself with `&`,
+write `$!` to a file in the run folder, such as `hub-next.pid`, and
+later kill that PID. Never match on the full command line
+(`pgrep -f`, `pkill -f`) with a pattern your own shell's command also
+contains, since that ends the hub's own shell.
+
 A session started with `herdr --machine <label>` runs on that
 machine's Herdr server, and you cannot read its files, so `hub next`
 does not see it. Write in its handoff that it ends each turn with its
@@ -131,6 +138,9 @@ machine's sessions.
   Merges says.
 - Finished work: start the next step. For an open pull request, add
   it to the review list, as Merges says.
+- A review: when you report to the user that a pull request or plan
+  was reviewed, list which kinds of review ran, such as tests or code
+  quality, and any the user normally expects that were skipped.
 - A merged pull request: check the merge, and its install where there
   is one, then accept the work yourself, such as by moving its card to
   accepted. Do not ask the user, who already approved the merge.
@@ -206,6 +216,10 @@ vault. A hub never reports to a hub on another machine.
   described in a sentence: it stays in `draft` until the user has
   refined it. Refining can take time and happen in any session; the
   card keeps where it stands.
+- A research card is accepted once the user confirms they have read
+  its findings and understood them, never before. Its findings go out
+  as the only message of their turn, even with other news waiting;
+  findings mixed with other news were not shown.
 - A card's key starts with its project's code, from the
   `Project code:` line in the project folder's `AGENTS.md`. For a
   project with none, propose the prefix its plans already use, or a
@@ -297,11 +311,15 @@ that pull request, so tell it once the user has, and take the pull
 request off the list. The worker then merges and reports once it has
 merged.
 
+A user's yes to the text of a pull request not yet opened lets the
+worker open it and nothing more; that is not a review. Add the opened
+pull request to the review list, and let the worker ask to merge only
+once the user has reviewed it.
+
 Hand any other merge first to a merge worker: a new Herdr session on
 the local model, started by `herdr-handoff` with
-`--model goog/qwen3.8 --auto`, never a subagent of the hub. A
-subagent ends when the hub's turn is interrupted, and the user cannot
-see it. Make a folder with `mktemp -d`. The worker's handoff file
+`--model goog/qwen3.8 --auto`, not a hub subagent, as Rules says.
+Make a folder with `mktemp -d`. The worker's handoff file
 holds only this brief, filled in, and none of the handoff template's
 sections. In a repository with several remotes, add
 `--remote <remote>` after the test command.
@@ -324,13 +342,16 @@ have read its summary.
 ## Hand off the hub
 
 When you hand the hub to a new session, write its handoff with
-`herdr-handoff`, holding only the run's state, then start it with:
+`herdr-handoff`, holding only the run's state and the last message you
+sent the user, then start it with:
 
     hub handoff --run "<run folder>" <name> <handoff file>
 
 It starts `<name>` in a tab of your workspace on the model of the last
 `--model '...'` line in `rules.md`, so keep the hub start command there
-in that form. It checks its inputs before it starts anything. Before it
+in that form. Hubs run at medium reasoning, so that line's model ends
+in `#medium`. `hub handoff` checks its inputs before it starts
+anything. Before it
 sends the handoff, it writes your session review's handoff and adds to
 the new hub's handoff how to close your tab and start that review. It
 then reads back the reasoning effort of the new hub's first reply. Tell
@@ -338,10 +359,20 @@ the user the effort it printed, never one you assume. When it exits 2
 with `started <name>, but`, the new hub runs: tell the user, who can
 switch its effort in that session, and never run `hub handoff` again.
 
+In the new hub's handoff, tell it to start its first reply with the
+last message you sent the user, so the user sees it before your tab
+closes.
+
 ## Rules
 
 - Never answer an approval or question shown in another session's
   pane, run `pde-pr-approve`, or set `PDE_GH_WRITE`.
+- Give each task, merges included, its own new Herdr session through
+  `herdr-handoff`. A hub subagent dies when your turn gets cut off,
+  and the user never sees it. One exception: when the user explicitly
+  says to delegate, run `delegate` and show its result in your pane.
+  A request to hand off always means `herdr-handoff`; never trade one
+  for the other.
 - Never do a worker's task yourself, even when the user asks you to
   manage it. Send it to the worker that owns it. When you need a
   tool, have a worker build it.
