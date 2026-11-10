@@ -136,5 +136,8 @@ Checks:
 2. Does not call gpt-6-luna local.
 3. Points to roadmap-run's Local model section instead of writing
    out a brief.
-4. Keeps the plan review on a cloud model.
-5. Fits a phone: about 20 lines or fewer.
+4. Says what would break if the plan review ran on the local model,
+   and does not move it there while cloud models work.
+5. Has a Fallback, an Efficiency and a Trials line, and the Trials
+   line says none ran.
+6. Fits a phone: about 20 lines or fewer.

@@ -297,9 +297,29 @@ that pull request, so tell it once the user has, and take the pull
 request off the list. The worker then merges and reports once it has
 merged.
 
-Hand any other merge to a new Herdr session started with
-`herdr-handoff`, never to a subagent of the hub. A subagent ends when
-the hub's turn is interrupted, and the user cannot see it.
+Hand any other merge first to a merge worker: a new Herdr session on
+the local model, started by `herdr-handoff` with
+`--model goog/qwen3.8 --auto`, never a subagent of the hub. A
+subagent ends when the hub's turn is interrupted, and the user cannot
+see it. Make a folder with `mktemp -d`. The worker's handoff file
+holds only this brief, filled in, and none of the handoff template's
+sections. In a repository with several remotes, add
+`--remote <remote>` after the test command.
+
+    From <repository>, run this one command once:
+    bash ~/.agents/skills/herdr-hub/scripts/merge-worker.sh \
+      <number> <folder> '<test command>'
+    Then print <folder>/summary.txt exactly and stop. Never run it
+    again, even when a check fails. Touch no other file and run
+    nothing else. Never answer an approval request.
+
+Read `<folder>/summary.txt` yourself. It counts only when its last
+line is `done`; never trust the worker's words about it. When it
+says `result: ready`, start a cloud session by `herdr-handoff` that
+follows `pull-request`'s Merge from step 4, with `<folder>/prep` as
+`$O`. Otherwise bring the problems it names to the user with the
+pull request's review entry. Close the merge worker's tab once you
+have read its summary.
 
 ## Hand off the hub
 
