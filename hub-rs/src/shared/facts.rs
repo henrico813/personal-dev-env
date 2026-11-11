@@ -42,9 +42,11 @@ pub(crate) struct HubLine {
 }
 
 /// Gathers the facts of every live session but the hub's own, and of
-/// every parked session that is not live again. A card, database or
-/// request file failure becomes a problem line, not an error. A
-/// request file that does not parse also keeps every live session.
+/// every parked session that is not live again. A card, database,
+/// report or request file failure becomes a problem line, not an
+/// error. A request file that does not parse also keeps every live
+/// session. A worker whose own card is done, but whose newest report
+/// names a draft, ready or active card, gets that card as its card.
 pub(crate) fn collect_session_facts(
     tools: &Tools<'_>,
     run: &RunFolder,
@@ -70,10 +72,21 @@ pub(crate) fn collect_session_facts(
             (BTreeMap::new(), true)
         }
     };
+    let reported = run.list_reported_names()?;
+    // A worker may move on to another card, as when it merges several
+    // pull requests, so the cards its newest report names are its too.
+    let mut report_keys = BTreeMap::new();
+    for agent in &agents {
+        if reported.any.contains(&agent.name) {
+            let keys = read_reported_keys(run, &agent.name, &mut problems);
+            report_keys.insert(agent.name.clone(), keys);
+        }
+    }
     let named_keys = agents
         .iter()
         .filter_map(|agent| CardKey::find_in_name(&agent.name))
-        .chain(parked.iter().map(|record| record.card.clone()));
+        .chain(parked.iter().map(|record| record.card.clone()))
+        .chain(report_keys.values().flatten().flatten().cloned());
     let mut notes = BTreeMap::new();
     let mut failed_keys = BTreeSet::new();
     for key in named_keys {
@@ -110,7 +123,6 @@ pub(crate) fn collect_session_facts(
             open_requests.bad_files
         ));
     }
-    let reported = run.list_reported_names()?;
     let counts = messages::count_messages(run)?;
     let live_ids: BTreeSet<String> = agents
         .iter()
@@ -120,19 +132,48 @@ pub(crate) fn collect_session_facts(
     let mut sessions = Vec::new();
     for agent in agents {
         let session_id = agent.session_id.as_deref();
-        let key = find_session_card(&agent.name, session_id, &notes);
-        let card = key.as_ref().and_then(|key| {
+        let read_card_facts = |key: &CardKey| {
             let note = notes.get(key);
-            let stage = *stages.get(key)?;
             Some(CardFacts {
                 key: key.clone(),
-                stage,
+                stage: *stages.get(key)?,
                 needs_you_open: note.is_some_and(|note| note.needs_you_open),
                 newer_session_live: note
                     .is_some_and(|note| has_newer_live_session(note, session_id, &live_ids)),
+                from_report: false,
             })
-        });
+        };
+        let key = find_session_card(&agent.name, session_id, &notes);
+        let own_card = key.as_ref().and_then(&read_card_facts);
+        let reported_keys = report_keys.get(&agent.name);
+        let reported_card = reported_keys
+            .and_then(Option::as_ref)
+            .into_iter()
+            .flatten()
+            .filter(|reported| Some(*reported) != key.as_ref())
+            .filter_map(&read_card_facts)
+            // A worker that reported a card in review may still have
+            // merges to run for it.
+            .find(|card| is_work_open(card.stage) || card.stage == Stage::Review)
+            .map(|card| CardFacts {
+                from_report: true,
+                ..card
+            });
+        // When a newer live session took over the session's own card, a
+        // card the report names decides instead.
+        let card = match own_card {
+            Some(own) if is_work_open(own.stage) && !own.newer_session_live => Some(own),
+            own => reported_card.or(own),
+        };
+        // A report that cannot be read, or a card it names that `card
+        // show` failed on, may hide work the worker still has.
+        let report_unknown = match reported_keys {
+            Some(Some(keys)) => keys.iter().any(|key| failed_keys.contains(key)),
+            Some(None) => true,
+            None => false,
+        };
         let card_unknown = stages_failed
+            || report_unknown
             || CardKey::find_in_name(&agent.name)
                 .is_some_and(|key| !stages.contains_key(&key) || failed_keys.contains(&key));
         let reports = read_report_facts(&agent.name, &reported, memory);
@@ -158,6 +199,7 @@ pub(crate) fn collect_session_facts(
             name: agent.name.clone(),
             approval_pending: has_bad_request
                 || match_open_request(&agent, &open_requests.requests),
+            filed_request_recently: match_open_request(&agent, &open_requests.recent),
             is_predecessor: memory.predecessor.as_deref() == Some(agent.name.as_str()),
             messages: counts.get(&agent.name).copied().unwrap_or_default(),
             agent: Some(agent),
@@ -177,6 +219,7 @@ pub(crate) fn collect_session_facts(
                 .get(&record.card)
                 .is_some_and(|note| note.needs_you_open),
             newer_session_live: false,
+            from_report: false,
         });
         sessions.push(SessionFacts {
             name: record.name.clone(),
@@ -187,6 +230,7 @@ pub(crate) fn collect_session_facts(
             messages: counts.get(&record.name).copied().unwrap_or_default(),
             unsaved: Unsaved::NotChecked,
             approval_pending: false,
+            filed_request_recently: false,
             is_predecessor: false,
             context_tokens: None,
             parked: Some(record),
@@ -248,6 +292,27 @@ fn find_session_card(
         .iter()
         .find(|(_, note)| note.sessions.iter().any(|session| session == session_id))
         .map(|(key, _)| key.clone())
+}
+
+/// Returns the card keys the session's newest report names, or `None`
+/// when that report cannot be read.
+fn read_reported_keys(
+    run: &RunFolder,
+    name: &str,
+    problems: &mut Vec<String>,
+) -> Option<Vec<CardKey>> {
+    match run.read_newest_report(name) {
+        Ok(text) => Some(text.map_or_else(Vec::new, |text| CardKey::find_all_in_text(&text))),
+        Err(error) => {
+            add_problem_once(problems, format!("reports: {error}"));
+            None
+        }
+    }
+}
+
+/// Tells whether a card in this stage still has work to do.
+fn is_work_open(stage: Stage) -> bool {
+    matches!(stage, Stage::Draft | Stage::Ready | Stage::Active)
 }
 
 /// Reads the session's reports from the run folder and the hub's
@@ -321,7 +386,7 @@ fn has_newer_live_session(
         .any(|session| live_ids.contains(session))
 }
 
-/// Tells whether an open request came from the agent's pane or
+/// Tells whether one of the requests came from the agent's pane or
 /// session.
 pub(crate) fn match_open_request(agent: &Agent, requests: &[PrRequest]) -> bool {
     requests.iter().any(|request| {

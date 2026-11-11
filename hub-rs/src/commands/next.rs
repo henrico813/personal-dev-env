@@ -6,6 +6,7 @@
 //! off. It never closes or parks a session, which only `hub clean`
 //! does.
 
+use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -77,6 +78,10 @@ enum News {
         names: Vec<String>,
         why: String,
     },
+    /// The old hub's message file, which this hub never sends.
+    OldSendFile {
+        path: PathBuf,
+    },
     Replaced,
     Timeout,
 }
@@ -93,6 +98,7 @@ struct NewsFacts<'a> {
     board: Option<&'a BoardCounts>,
     /// From the last minute pass, kept until each is listed.
     finished: &'a [FinishedSession],
+    old_send_files: &'a [PathBuf],
 }
 
 /// Claims the watcher, takes the watcher lock, then checks every
@@ -159,6 +165,7 @@ fn check_for_news(
     // Delivery comes last, since an error after it would lose its
     // not-sent or unsure line.
     let reports = run.list_reports(now)?;
+    let old_send_files = run.find_old_send_files()?;
     let mut mark = run.read_minute_mark()?;
     let mut board = None;
     if is_minute_pass_due(&agents, &memory, mark.as_ref(), now) {
@@ -174,6 +181,7 @@ fn check_for_news(
         hub,
         board: board.as_ref(),
         finished: mark.as_ref().map_or(&[], |mark| &mark.finished),
+        old_send_files: &old_send_files,
     }))
 }
 
@@ -199,10 +207,11 @@ fn is_minute_pass_due(
 }
 
 /// Reads the board, finds the finished sessions and holds the handoff
-/// asks on one collection of facts, records `board_under` when the
-/// board fell back within its limit, and saves the minute mark with the
-/// finished sessions. Returns the board counts when `card board`
-/// answered.
+/// asks on one collection of facts. Records the board's state on the
+/// run's first pass, and `board_under` when the board fell back within
+/// its limit. Saves the minute mark with the finished sessions. Returns
+/// the board counts when `card board` answered and the run's memory
+/// already held the board's state.
 fn run_minute_pass(
     tools: &Tools<'_>,
     run: &RunFolder,
@@ -211,19 +220,17 @@ fn run_minute_pass(
     now: &Zoned,
 ) -> Result<Option<BoardCounts>, HubError> {
     // A `card` failure skips the board, as `hub status` shows it.
-    let board = tools.cards.read_board().ok();
-    if let Some(board) = &board
-        && board.busy <= board.limit
-        && memory.board_over
-    {
-        let under = Event {
-            at: now.timestamp(),
-            kind: EventKind::BoardUnder {
-                busy: board.busy,
-                limit: board.limit,
-            },
-        };
-        events::append_event(run, &under)?;
+    let mut board = tools.cards.read_board().ok();
+    if let Some(counts) = &board {
+        let is_over = counts.busy > counts.limit;
+        if !memory.board_known || (memory.board_over && !is_over) {
+            record_board_state(run, counts, is_over, now)?;
+        }
+        // A board already over its limit when the run started is not a
+        // crossing, so the first pass prints no board line.
+        if !memory.board_known {
+            board = None;
+        }
     }
     let collected = facts::collect_session_facts(tools, run, memory)?;
     let finished = find_finished_sessions(&collected);
@@ -239,6 +246,26 @@ fn run_minute_pass(
         finished,
     })?;
     Ok(board)
+}
+
+/// Records `board_over` or `board_under` with the board's counts.
+fn record_board_state(
+    run: &RunFolder,
+    counts: &BoardCounts,
+    is_over: bool,
+    now: &Zoned,
+) -> Result<(), HubError> {
+    let (busy, limit) = (counts.busy, counts.limit);
+    let kind = if is_over {
+        EventKind::BoardOver { busy, limit }
+    } else {
+        EventKind::BoardUnder { busy, limit }
+    };
+    let event = Event {
+        at: now.timestamp(),
+        kind,
+    };
+    events::append_event(run, &event)
 }
 
 /// Returns each `to-close` and `to-park` session with why, as
@@ -348,8 +375,8 @@ fn ask_for_worker_handoffs(
 /// Picks the most urgent news in a fixed order, or `None` when nothing
 /// is new. A message that was not sent or is unsure comes first, since
 /// nothing prints it again. Then come reports, blocked states, the
-/// hub's own handoff, the board crossing its limit and finished
-/// sessions not listed yet.
+/// hub's own handoff, the board crossing its limit, finished sessions
+/// not listed yet and old hub message files not printed yet.
 fn choose_news(facts: &NewsFacts<'_>) -> Option<News> {
     match facts.outcome {
         Some(SendOutcome::NotSent { name, reason }) => {
@@ -396,7 +423,14 @@ fn choose_news(facts: &NewsFacts<'_>) -> Option<News> {
             limit: board.limit,
         });
     }
-    find_unlisted_finished(facts.finished, facts.memory)
+    if let Some(news) = find_unlisted_finished(facts.finished, facts.memory) {
+        return Some(news);
+    }
+    facts
+        .old_send_files
+        .iter()
+        .find(|path| !facts.memory.old_send_seen.contains(*path))
+        .map(|path| News::OldSendFile { path: path.clone() })
 }
 
 /// Returns the first finished session not yet listed in its state,
@@ -463,6 +497,7 @@ fn record_news(news: &News) -> Option<EventKind> {
             state: state.clone(),
             names: names.clone(),
         }),
+        News::OldSendFile { path } => Some(EventKind::OldSendSeen { path: path.clone() }),
         News::NotSent { .. } | News::Unsure { .. } | News::Replaced | News::Timeout => None,
     }
 }
@@ -494,6 +529,7 @@ fn format_news_line(news: &News, hub_tokens: Option<u64>) -> String {
         News::Finished { state, names, why } => {
             format!("{state} {}: {why}; run hub clean", names.join(", "))
         }
+        News::OldSendFile { path } => format!("old send file: {} {hub}", path.display()),
         News::Replaced => "replaced by a newer hub next".to_owned(),
         News::Timeout => format!("timeout {hub}"),
     }
@@ -512,6 +548,7 @@ fn format_news_json(news: &News, hub_tokens: Option<u64>) -> String {
         News::Finished { state, names, why } => {
             (state.as_str(), Some(names.join(", ")), Some(why.clone()))
         }
+        News::OldSendFile { path } => ("old_send_file", None, Some(path.display().to_string())),
         News::Replaced => ("replaced", None, None),
         News::Timeout => ("timeout", None, None),
     };
@@ -655,6 +692,7 @@ mod tests {
             hub: &hub,
             board: None,
             finished: &[],
+            old_send_files: &[],
         };
 
         let news = choose_news(&facts);

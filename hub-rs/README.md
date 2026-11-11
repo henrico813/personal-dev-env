@@ -83,10 +83,14 @@ code.
   an older one print `replaced by a newer hub next` and exit. `--json`
   prints the same facts as JSON. It keeps its memory in
   `events.jsonl`, not in `next-seen.json`.
+- `next` prints `old send file: PATH (hub 131k)` once for each old
+  `send-NAME.*` file in the run folder, which it never sends, after
+  every other line.
 - `next` runs a minute pass at most once a minute, and only after a
   session's state changed or a report was read. It reads `card board`.
   Each time the board crosses into its limit, it wakes the hub once
-  with `board over its limit: 25/8 (hub 131k)`. It never closes or
+  with `board over its limit: 25/8 (hub 131k)`. A board already over
+  its limit at the run's first pass prints nothing. It never closes or
   parks a session. It lists each session that becomes `to-close` or
   `to-park` once, in one line per state and why, such as
   `to-close demo-kb-001-impl: DEMO-KB-001 accepted; run hub clean`.
