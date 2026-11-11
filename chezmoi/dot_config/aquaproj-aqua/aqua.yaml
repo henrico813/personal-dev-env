@@ -21,5 +21,6 @@ packages:
   - name: ClementTsang/bottom@0.11.4
   - name: mikefarah/yq@v4.53.3
   - name: sxyazi/yazi@v25.5.31
+  - name: gitleaks/gitleaks@v8.30.1
   - name: golang.org/x/tools/gopls@v0.23.0
   - name: LuaLS/lua-language-server@3.19.1

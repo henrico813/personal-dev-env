@@ -36,17 +36,32 @@ const REOPEN_POLL: Duration = Duration::from_secs(1);
 /// error, and returns its exit code.
 fn main() -> ExitCode {
     match cli::parse_command().and_then(|cli| run_command(&cli)) {
-        Ok(outcome) => {
-            for line in outcome.lines {
-                println!("{line}");
-            }
-            ExitCode::SUCCESS
-        }
+        Ok(outcome) => print_lines(&outcome.lines),
         Err(error) => {
             eprintln!("hub: {error}");
             ExitCode::from(error.exit_code())
         }
     }
+}
+
+/// Prints each line on standard output and returns success. A reader
+/// that closes early, as `head` does, ends the printing with no error.
+/// Any other write failure prints its reason and returns 1.
+fn print_lines(lines: &[String]) -> ExitCode {
+    use std::io::{ErrorKind, Write};
+
+    let mut stdout = std::io::stdout().lock();
+    for line in lines {
+        match writeln!(stdout, "{line}") {
+            Ok(()) => {}
+            Err(error) if error.kind() == ErrorKind::BrokenPipe => break,
+            Err(error) => {
+                eprintln!("hub: cannot write output: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 /// Checks `--machine`, builds the external systems and runs the
