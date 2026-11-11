@@ -76,11 +76,14 @@
 ## Subagent Models
 
 - A subagent that only searches the web and quotes pages, with no
-  judgment, runs on `openai/gpt-6-luna`. In OpenCode, start the
-  `web-search-researcher` agent, which uses that model. Or set the
-  subagent tool's `model` to `openai/gpt-6-luna`, since the user
-  asks for that model in this rule. If the tool cannot take that
-  model, or the model fails, run the lookup without setting a model.
+  judgment, runs on a small, cheap model, such as a mini, flash,
+  haiku or luna model. Pick one from the provider of the session's
+  own model, since that provider is known to work, and look up its
+  exact name instead of guessing it. Set the subagent tool's `model`
+  to it. This rule is the user's explicit request for that model. In
+  OpenCode, also pick the `web-search-researcher` agent. If the tool
+  cannot take that model, or the call fails, run the lookup without
+  setting a model.
 - Subagents that review, plan, decide or write code keep the
   session's model.
 
