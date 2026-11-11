@@ -73,6 +73,20 @@
   unavailable. Workflow skills are routed by the rules above; never name one
   on a Vibe worker's line.
 
+## Subagent Models
+
+- A subagent that only searches the web and quotes pages, with no
+  judgment, runs on a small, cheap model, such as a mini, flash,
+  haiku or luna model. Pick one from the provider of the session's
+  own model, since that provider is known to work, and look up its
+  exact name instead of guessing it. Set the subagent tool's `model`
+  to it. This rule is the user's explicit request for that model. In
+  OpenCode, also pick the `web-search-researcher` agent. If the tool
+  cannot take that model, or the call fails, run the lookup without
+  setting a model.
+- Subagents that review, plan, decide or write code keep the
+  session's model.
+
 ## Code Search
 
 Search with `rg`; for work tied to a commit, use `git grep <pattern> <commit>`. Before deleting or renaming a file, search for its path and file name.
