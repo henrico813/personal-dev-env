@@ -31,7 +31,8 @@ handing a task to an agent and reviewing it, `herdr-handoff` for
 handing work to a new session in a new Herdr workspace, `herdr-hub`
 for the session that coordinates other Herdr sessions,
 `roadmap-run` for building a roadmap's pull requests while the user
-is away, and `conclude-session` for closing out a session after one
+is away, `auto-run` for working an approved list of cards without the
+user, and `conclude-session` for closing out a session after one
 pick from the user; they
 install only to
 `~/.agents/skills/`, and the OpenCode commands load them. Shared instructions

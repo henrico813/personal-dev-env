@@ -10,6 +10,11 @@ Usage::
     hub [--machine LABEL] unflag NAME
     hub handoff --run DIR NAME HANDOFF       start the next hub
     hub brief --run DIR                      what waits on the user
+    hub auto ready --run DIR                 ready cards, for sorting
+    hub auto check --run DIR                 check the run's card list
+    hub auto approve --run DIR N REPLY       save the user's approval
+    hub auto approve --run DIR --given N WORDS
+    hub auto now --run DIR                   one line per run card
     hub go                                   show the next hub
     hub gather                               put hubs at the top
     hub --version
@@ -33,6 +38,8 @@ The hub's run folder DIR holds these files:
   the next hub on the model of its last ``--model '...'``.
 - ``reviews.md`` and ``decisions.md``: the pull requests and questions
   that wait on the user, which ``hub brief`` prints.
+- ``ready.md``, ``run.md``, ``approved.md`` and ``brief-now.md``: an
+  auto run's cards, as ``hub auto`` writes and reads them.
 
 ``HUB_POLL_SECONDS`` sets how often ``hub next`` and ``hub handoff``
 check, 5 by default.
@@ -45,6 +52,7 @@ import sys
 from pathlib import Path
 
 from hub import __version__
+from hub.auto import run_approve, run_check, run_now, run_ready
 from hub.brief import run_brief
 from hub.flag import run_flag, run_unflag
 from hub.handoff import run_handoff
@@ -52,7 +60,7 @@ from hub.herdr import HerdrError
 from hub.read import run_read
 from hub.send import run_next, run_send
 from hub.sidebar import run_gather, run_go
-from hub.status import run_status
+from hub.status import CardError, run_status
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -62,13 +70,13 @@ def main(argv: list[str] | None = None) -> int:
         argv: The arguments after ``hub``, or None for ``sys.argv``.
 
     Returns:
-        0 when the command did its work, 1 when a herdr call failed, and
-        2 when the command was refused.
+        0 when the command did its work, 1 when a herdr or card call
+        failed, and 2 when the command was refused.
     """
     args = parse_args(argv)
     try:
         return args.command(args)
-    except HerdrError as error:
+    except (HerdrError, CardError) as error:
         print(f"hub: {error}", file=sys.stderr)
         return 1
 
@@ -134,6 +142,25 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     brief.add_argument("--run", type=Path, required=True)
     brief.set_defaults(command=run_brief)
 
+    auto = commands.add_parser("auto", help="the steps of an auto run")
+    steps = auto.add_subparsers(required=True)
+    for name, command, summary in (
+        ("ready", run_ready, "write the ready cards to ready.md"),
+        ("check", run_check, "check run.md against the ready cards"),
+        ("approve", run_approve, "save run.md with the user's reply"),
+        ("now", run_now, "write and print brief-now.md"),
+    ):
+        step = steps.add_parser(name, help=summary)
+        step.add_argument("--run", type=Path, required=True)
+        step.set_defaults(command=command)
+        if name == "approve":
+            step.add_argument(
+                "--given",
+                action="store_true",
+                help="the reply is the user's own words, naming the cards",
+            )
+            step.add_argument("number", type=int)
+            step.add_argument("reply", help="the user's reply, word for word")
     go = commands.add_parser("go", help="show the next hub")
     go.set_defaults(command=run_go)
 
