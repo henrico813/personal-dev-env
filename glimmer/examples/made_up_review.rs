@@ -1,8 +1,7 @@
-//! Builds two made-up repositories, each with a Review Session about the files
-//! in `tests/samples/screen/`, and a waiting list that names both, all inside
-//! the folder given as its one argument. `make try-screen` then opens them
-//! with the real `open` command, so the screen can be tried on a phone without
-//! touching real reviews or the real waiting list.
+//! This module builds two made-up Review Sessions and a waiting list in the
+//! folder given as its one argument, so `make try-screen` can open them on a
+//! phone without touching real reviews or the real waiting list. Read the
+//! `main()` function to understand the module.
 
 use std::env;
 use std::fs;

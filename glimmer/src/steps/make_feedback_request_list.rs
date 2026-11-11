@@ -1,6 +1,6 @@
-//! This module runs step 3, which builds the Feedback Request List. It saves
-//! nothing, so a later step that sends the Agent Suggestions can build the
-//! list again to see whether the code changed. Read the
+//! This module runs step 3, which builds the Feedback Request List and saves
+//! nothing, so step 5 can build the list again to see whether the code changed.
+//! Read the
 //! `make_feedback_request_list(dir, base, change_requests)`,
 //! `find_requests(dir, root, base, change_requests)`, and
 //! `resend_noted_requests(root, review, found)` functions to understand the
@@ -27,7 +27,7 @@ use crate::shared::{Error, ErrorCode};
 /// requests, and resends noted ones with their IDs while User Notes wait.
 /// Refuses while a list waits, a write is unfinished, step 2 fails, or a
 /// committed or staged comment goes unasked. An empty list goes to the user
-/// only while User Notes wait, so the review can move on to its write.
+/// only while User Notes wait.
 pub fn make_feedback_request_list(
     dir: &Path,
     base: Option<CommitId>,

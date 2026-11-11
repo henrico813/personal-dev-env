@@ -1,9 +1,8 @@
 //! This module holds what the Review Screen shows and answers each key, with
-//! the Stray Tap Guards that stop a stray tap from giving User Feedback. Read
-//! the `ReviewScreen::new(root, review_session, (cols, rows))` and
+//! the Stray Tap Guards, and changes the Review Session only in memory, which
+//! `saving.rs` then saves. Read the
+//! `ReviewScreen::new(root, review_session, (cols, rows))` and
 //! `ReviewScreen::press_key(key, now)` functions to understand the module.
-//! A key that gives User Feedback changes the Review Session in memory, and
-//! `ReviewScreen::save_given_feedback` in `saving.rs` then saves it.
 
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -19,9 +18,7 @@ use crate::shared::user_feedback::{UserAnswer, UserFeedback, UserNote, choose_ne
 /// cannot answer two requests.
 const SETTLE: Duration = Duration::from_millis(600);
 
-/// How many rows the Review Screen Header takes at the top.
 pub(super) const HEADER_ROWS: usize = 2;
-/// How many rows Key Help takes at the bottom.
 pub(super) const KEY_HELP_ROWS: usize = 2;
 
 /// Shows for a refused answer. The reasons rewrite gives are written for
@@ -45,7 +42,6 @@ pub(super) enum AfterKey {
     View,
     /// Searches the repository for the typed text with `rg`.
     Search(String),
-    /// Shows the Review Result Screen.
     ShowResult(ReviewResult),
     /// Shows the changes in the review's files, from the Review Result Screen.
     Diff,
@@ -117,7 +113,6 @@ impl<'a> ReviewScreen<'a> {
         self.review_session.newest_requests()
     }
 
-    /// Returns the request on screen.
     pub(super) fn shown_request(&self) -> &FeedbackRequest {
         self.requests()[self.index]
     }
@@ -159,8 +154,8 @@ impl<'a> ReviewScreen<'a> {
         self.drawn_at = None;
     }
 
-    /// Shows request `index` scrolled to the agent's notes, past the code
-    /// above. The answer keys wait until it is drawn.
+    /// Shows request `index` scrolled to its Feedback Request Details, past the
+    /// code above. The answer keys wait until it is drawn.
     pub(super) fn show(&mut self, index: usize) {
         self.index = index;
         self.prompt = None;

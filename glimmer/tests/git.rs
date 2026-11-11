@@ -13,6 +13,7 @@ use glimmer::shared::git::{
     list_changed_lines, read_current_branch, read_file_at_commit, resolve_commit,
 };
 
+/// Runs Git without the test machine's own settings and returns its trimmed output.
 fn run_git(dir: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
         .arg("-C")
@@ -30,6 +31,7 @@ fn run_git(dir: &Path, args: &[&str]) -> String {
     String::from_utf8(output.stdout).unwrap().trim().to_owned()
 }
 
+/// Makes a new Git repository on `main` with one empty commit.
 fn make_repo() -> TempFolder {
     let folder = TempFolder::new();
     run_git(folder.path(), &["init", "-b", "main"]);
@@ -40,12 +42,14 @@ fn make_repo() -> TempFolder {
     folder
 }
 
+/// Commits every change in the checkout.
 fn commit_files(dir: &Path) {
     run_git(dir, &["add", "--all"]);
     run_git(dir, &["commit", "-m", "Change review comments"]);
 }
 
-/// Keeps new main commits from asking the user about comments the agent never touched.
+/// `find_branch_start` must return the commit where the branch split from main, even after main moves on or exists only as `origin/main`.
+/// Otherwise new main commits would ask the user about comments the agent never touched.
 #[test]
 fn branch_start_uses_the_shared_ancestor() {
     let repo = make_repo();
@@ -65,7 +69,8 @@ fn branch_start_uses_the_shared_ancestor() {
     assert_eq!(find_branch_start(dir).unwrap(), split);
 }
 
-/// Keeps staged, unstaged, deleted or oddly named files from hiding edits to approved comments.
+/// `list_changed_files` must list committed, staged, unstaged, deleted, renamed and oddly named files, but not ignored ones.
+/// Otherwise such a file could hide an edit to an approved comment.
 #[test]
 fn changed_files_include_every_working_change() {
     let repo = make_repo();
@@ -111,7 +116,8 @@ fn changed_files_include_every_working_change() {
     assert_eq!(files.into_iter().collect::<BTreeSet<_>>(), expected);
 }
 
-/// Keeps a review started in a subfolder from missing new files elsewhere.
+/// `list_changed_files` must list changed files across the whole checkout when run from a subfolder.
+/// Otherwise a review started in a subfolder would miss new files elsewhere.
 #[test]
 fn changed_files_work_from_a_subfolder() {
     let repo = make_repo();
@@ -125,7 +131,8 @@ fn changed_files_work_from_a_subfolder() {
     assert_eq!(files, vec![PathBuf::from("review.rs")]);
 }
 
-/// Guards against Git rewriting the index during review, which we found could make a simultaneous commit fail.
+/// `list_changed_files` and `list_changed_lines` must leave the bytes of Git's index as they were.
+/// Otherwise Git could rewrite the index during a review and make a commit at the same time fail.
 #[test]
 fn git_reads_preserve_index_bytes() {
     let repo = make_repo();
@@ -151,7 +158,8 @@ fn git_reads_preserve_index_bytes() {
     assert_eq!(fs::read(&index).unwrap(), before);
 }
 
-/// Keeps wrong line numbers from flagging old sentences or skipping new ones in style checks.
+/// `list_changed_lines` must return the added and replaced lines by their numbers in the current file.
+/// Otherwise style checks would flag old sentences or skip new ones.
 #[test]
 fn changed_lines_follow_current_line_numbers() {
     struct Case {
@@ -214,7 +222,8 @@ fn changed_lines_follow_current_line_numbers() {
     }
 }
 
-/// Keeps edits made after staging from leaving half the changes outside the style checks.
+/// `list_changed_lines` must include both staged edits and edits made after staging.
+/// Otherwise half the changes would skip the style checks.
 #[test]
 fn changed_lines_include_unstaged_and_staged_edits() {
     let repo = make_repo();
@@ -232,7 +241,8 @@ fn changed_lines_include_unstaged_and_staged_edits() {
     assert_eq!(&lines, &BTreeSet::from([1, 3]));
 }
 
-/// Keeps altered old text from making every comment look changed while treating files missing at the base as absent.
+/// `read_file_at_commit` must return a file's text at the base byte for byte, and `None` for a file missing there.
+/// Otherwise every comment in the file could look changed.
 #[test]
 fn historical_reads_preserve_text_and_absence() {
     let repo = make_repo();
@@ -254,7 +264,8 @@ fn historical_reads_preserve_text_and_absence() {
     );
 }
 
-/// Keeps a mistyped base from making every comment look new instead of reporting an error.
+/// `resolve_commit`, `read_file_at_commit` and `find_worktree_git_folder` must refuse a missing base, a path outside the checkout and a folder outside Git.
+/// Otherwise a mistyped base would make every comment look new instead of reporting an error.
 #[test]
 fn bad_bases_paths_and_checkouts_return_codes() {
     let repo = make_repo();
@@ -278,7 +289,8 @@ fn bad_bases_paths_and_checkouts_return_codes() {
     );
 }
 
-/// Keeps worktrees from overwriting each other's reviews or missing approvals made in another worktree.
+/// `find_worktree_git_folder` must give a linked worktree its own Git folder, and `find_shared_git_folder` one folder for the whole clone.
+/// Otherwise worktrees would overwrite each other's reviews or miss approvals made in another worktree.
 #[test]
 fn worktree_identity_separates_branches_and_git_folders() {
     let repo = make_repo();

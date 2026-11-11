@@ -93,7 +93,6 @@ pub(super) fn find_waiting_reviews(worktrees: Vec<PathBuf>) -> Vec<WaitingReview
 pub(super) enum AfterPick {
     Stay,
     Quit,
-    /// Opens the chosen review.
     Open,
     Dismiss,
 }
@@ -151,7 +150,6 @@ impl ReviewSessionPicker {
         self.groups.iter().flat_map(|(_, reviews)| reviews)
     }
 
-    /// Returns the chosen review, taking it out of the picker.
     pub(super) fn into_chosen(self) -> WaitingReview {
         self.groups
             .into_iter()

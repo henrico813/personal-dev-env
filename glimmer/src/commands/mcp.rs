@@ -1,8 +1,7 @@
-//! This module serves the four MCP tools to agents, running one step per call.
-//! The server keeps running, but each call reads the review files fresh, so it
-//! holds no state between calls. It speaks JSON-RPC, one message per line, on
-//! stdin and stdout. Read the `serve_mcp()` and `call_tool(name, arguments)`
-//! functions to understand the module.
+//! This module serves the four MCP tools over stdin and stdout, one JSON-RPC
+//! message per line, and reads the review files fresh on each call. Read the
+//! `serve_mcp()` and `call_tool(name, arguments)` functions to understand the
+//! module.
 
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -22,13 +21,10 @@ use crate::steps::show_status::show_status;
 /// Lists the MCP versions this server speaks, newest first. Their tool calls
 /// all have the same shape.
 const PROTOCOL_VERSIONS: [&str; 4] = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
-/// Is JSON-RPC's code for a message that is not JSON.
 const PARSE_ERROR: i64 = -32700;
 /// Marks JSON that is not a request, such as a list of requests.
 const INVALID_REQUEST: i64 = -32600;
-/// Marks a method the server does not offer.
 const METHOD_NOT_FOUND: i64 = -32601;
-/// Marks a request whose `params` the method cannot use.
 const INVALID_PARAMS: i64 = -32602;
 
 /// Serves the four MCP tools over stdin and stdout, one call at a time, until
@@ -88,7 +84,6 @@ pub fn call_tool(name: &str, arguments: Value) -> Reply {
     }
 }
 
-/// Holds the arguments of `check_comments`.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CheckInput {
@@ -96,7 +91,6 @@ struct CheckInput {
     base: Option<String>,
 }
 
-/// Holds the arguments of `make_feedback_request_list`.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ListInput {
@@ -106,7 +100,6 @@ struct ListInput {
     change_requests: Vec<ChangeRequest>,
 }
 
-/// Holds the arguments of `send_agent_suggestions`.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SendInput {
@@ -114,7 +107,6 @@ struct SendInput {
     list: FeedbackRequestList,
 }
 
-/// Holds the arguments of `show_status`.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct DirInput {
@@ -179,7 +171,6 @@ fn list_tools() -> Value {
     json!({"tools": tools})
 }
 
-/// Returns the JSON Schema of a tool's arguments.
 fn describe_tool_inputs(name: &str) -> Value {
     let mut properties = json!({
         "dir": {"type": "string", "description": "The worktree folder, as a full path."},
@@ -245,7 +236,6 @@ fn refuse_unreadable_message(error: &serde_json::Error) -> Value {
     )
 }
 
-/// Returns a JSON-RPC error response that says what was wrong.
 fn refuse_message(id: Value, code: i64, message: String) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}})
 }

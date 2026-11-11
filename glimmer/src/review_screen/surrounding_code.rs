@@ -107,8 +107,8 @@ mod tests {
 
     use super::*;
 
-    /// Returns an unnamed request about `text` near `line` of `save.go`, or
-    /// a named one when `name` is a string.
+    /// Returns an unnamed request about `text` near `line` of a Go file, or a
+    /// named one when `name` is a string.
     fn make_request(name: Value, text: &str, line: usize) -> FeedbackRequest {
         serde_json::from_value(json!({
             "id": 1,

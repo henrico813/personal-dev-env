@@ -48,7 +48,6 @@ impl Style {
 pub(super) struct Row(pub(super) Vec<(Style, String)>);
 
 impl Row {
-    /// Returns a row of one piece of text in one style.
     pub(super) fn new(style: Style, text: String) -> Self {
         Row(vec![(style, text)])
     }
@@ -75,7 +74,7 @@ impl ReviewScreen<'_> {
         let room = self.body_room();
         let mut body = self.build_body();
         // The faded code row just above the details shows when the scroll stops
-        // early, and then the def line would show twice.
+        // early, and then the Function Definition Line would show twice.
         let shows_code_above =
             self.scroll < body.details_start && body.details_start <= self.scroll + room;
         if let Some(repeated) = body.repeated_definition_rows.clone()
@@ -162,7 +161,7 @@ impl ReviewScreen<'_> {
         ]
     }
 
-    /// Returns the key help, or the note prompt while the user types a note.
+    /// Returns Key Help, or the Note and Search Prompt while the user types.
     fn build_key_help(&self) -> [Row; KEY_HELP_ROWS] {
         let hint = |keys: &str| Row::new(Style::Faded, clip(keys, self.cols).to_owned());
         let Some(prompt) = &self.prompt else {
@@ -301,8 +300,8 @@ pub(super) struct Body {
     /// Holds the index of the first row after the code above, which the
     /// screen opens at.
     pub(super) details_start: usize,
-    /// Holds the def line's rows when the code just above the comment is the
-    /// same line.
+    /// Holds the Function Definition Line's rows when the code just above the
+    /// comment is the same line.
     repeated_definition_rows: Option<Range<usize>>,
 }
 
@@ -348,7 +347,7 @@ mod tests {
     /// A screen wide enough that no row in a body test folds.
     const WIDE: (usize, usize) = (80, 24);
 
-    /// The long Go comment in `store.go`, with a URL that cannot fold.
+    /// A long Go comment with a URL that cannot fold.
     const SAVE_ANSWER_DOC: &str = "\
 // Saves the owner's answer for one comment under the review's lock, and reads
 // the file again after taking the lock, so an answer another screen saved a

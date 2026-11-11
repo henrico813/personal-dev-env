@@ -36,7 +36,6 @@ const KILLED_TOOL_GRACE: Duration = Duration::from_secs(1);
 
 /// Tells which syntax tree nodes are comments in one language.
 pub trait LanguageRules {
-    /// Returns the tree-sitter grammar.
     fn grammar(&self) -> Language;
     /// Returns the language's name, such as "go", so old text is matched by language.
     fn name(&self) -> &'static str;
@@ -107,7 +106,6 @@ pub trait LanguageRules {
     }
 }
 
-/// Returns the rules for the file's language, if supported.
 pub fn find_rules_for(file: &Path) -> Option<&'static dyn LanguageRules> {
     match file.extension()?.to_str()? {
         "go" => Some(&go::GoRules),
@@ -141,7 +139,6 @@ fn run_with_input(command: &[&str], folder: &Path, input: &str) -> Result<String
     run_for_at_most(command, folder, input, TOOL_TIME_LIMIT)
 }
 
-/// Returns true when `node` sits inside a node of one of `kinds`.
 fn is_inside(node: Node, kinds: &[&str]) -> bool {
     successors(node.parent(), Node::parent).any(|outer| kinds.contains(&outer.kind()))
 }

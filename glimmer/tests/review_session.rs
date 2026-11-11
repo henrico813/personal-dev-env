@@ -138,7 +138,7 @@ fn load_moves_damaged_file_to_new_backup() {
     assert!(!review_file.exists());
 }
 
-/// Two screens that save User Feedback at the same time must keep every piece of it.
+/// `save_user_feedback` must keep every piece of User Feedback when two screens save at once.
 /// Otherwise one screen would write over the other's User Feedback, and the user would have to give it again.
 #[test]
 fn two_screens_lose_no_user_feedback() {
@@ -169,7 +169,7 @@ fn two_screens_lose_no_user_feedback() {
     assert_eq!(review_session.feedback.len(), 40);
 }
 
-/// The Review Session must go to the agent only after the last User Feedback, and only when a User Note waits.
+/// `save_user_feedback` must hand the Review Session to the agent only after the last User Feedback, and only when a User Note waits.
 /// Otherwise the agent could start before the user is done, or get a Review Session with no User Note to act on.
 #[test]
 fn agent_gets_user_notes_after_last_user_feedback() {
@@ -238,7 +238,7 @@ fn late_user_feedback_is_refused_and_unsaved() {
     }
 }
 
-/// A screen left open must not save User Feedback on a Feedback Request the agent changed since.
+/// `save_user_feedback` must refuse User Feedback on a Feedback Request the agent changed since the screen showed it.
 /// Otherwise the user could approve a comment or Agent Suggestion they never saw.
 #[test]
 fn outdated_screen_cannot_answer_a_changed_request() {

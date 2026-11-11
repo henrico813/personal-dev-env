@@ -179,7 +179,6 @@ fn explain(root: &Path, error: &crate::shared::Error) -> StartFailure {
     StartFailure(ReviewResult::from_error(root, error).message)
 }
 
-/// Returns a failure that says the terminal failed.
 fn terminal_failure(error: io::Error) -> StartFailure {
     StartFailure(format!("The terminal failed. {error}"))
 }

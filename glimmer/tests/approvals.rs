@@ -12,8 +12,7 @@ use glimmer::shared::approvals::{self, Approval, DecisionMatch};
 use glimmer::shared::comments::{Comment, CommentStyle};
 use serde_json::{Value, json};
 
-/// An approvals file saved before glimmer existed, with a cut comment and a
-/// word the user asked agents to avoid.
+/// Holds an approvals file saved before glimmer existed, with a cut comment and an avoided word.
 const FILE_SAVED_BEFORE_GLIMMER: &str = r#"{
  "approved": [
   {
@@ -91,7 +90,7 @@ fn approval(file: &str, name: &str, text: &str) -> Approval {
     }
 }
 
-/// Adding new decisions must keep every decision and avoided word already in the file.
+/// `approvals::add` must keep every decision and avoided word already in the file.
 /// Otherwise the user would be asked again about decided comments, and agents could use words the user banned.
 #[test]
 fn add_keeps_earlier_decisions_and_avoided_words() {
@@ -119,8 +118,8 @@ fn add_keeps_earlier_decisions_and_avoided_words() {
     assert_eq!(read_approvals_file(repo.path()), expected);
 }
 
-/// Adding must stop and leave the file alone when it is damaged or came from a newer version.
-/// Writing over it would throw away the user's decisions or the newer version's data.
+/// `approvals::add` must leave a damaged file, or one from a newer version, as it is.
+/// Otherwise it would throw away the user's decisions or the newer version's data.
 #[test]
 fn add_leaves_a_damaged_or_newer_file_untouched() {
     let repo = make_repo();
@@ -165,8 +164,8 @@ fn add_leaves_a_damaged_or_newer_file_untouched() {
     }
 }
 
-/// Two reviews can add decisions at the same moment, such as one in each worktree.
-/// No add may overwrite another, or the user would lose decisions and be asked again.
+/// `approvals::add` must keep every decision when several reviews add at once, such as one in each worktree.
+/// Otherwise the user would lose decisions and be asked again.
 #[test]
 fn simultaneous_adds_lose_no_decisions() {
     let repo = make_repo();
@@ -198,7 +197,7 @@ fn simultaneous_adds_lose_no_decisions() {
     );
 }
 
-/// All worktrees of a clone must share one set of decisions, with the newest decision winning.
+/// `approvals::load` must give every worktree of a clone one set of decisions, with the newest decision winning.
 /// Otherwise approving a comment in one worktree would not undo a cut made in another.
 #[test]
 fn every_worktree_sees_the_newest_decision() {

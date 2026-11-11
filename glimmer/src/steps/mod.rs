@@ -1,4 +1,4 @@
-//! Holds the steps of a review, one per file.
+//! This module holds the review steps, one per file.
 
 use serde::Serialize;
 

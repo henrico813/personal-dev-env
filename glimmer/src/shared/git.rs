@@ -1,4 +1,6 @@
-//! Runs every Git command used by the review program.
+//! This module runs every Git command the review tool uses. Read the
+//! `list_changed_files(dir, base)` and `list_changed_lines(dir, base, file)`
+//! functions to understand the module.
 
 use std::collections::BTreeSet;
 use std::ffi::{OsStr, OsString};
@@ -17,13 +19,12 @@ use super::{Error, ErrorCode};
 pub struct CommitId(String);
 
 impl CommitId {
-    /// Borrows the full hash for reports and later saved lists.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
-/// Resolves an explicit task start to a commit before reading files.
+/// Resolves a task start the agent gave, such as a branch name, to its commit.
 pub fn resolve_commit(dir: &Path, revision: &str) -> Result<CommitId, Error> {
     let revision = format!("{revision}^{{commit}}");
     let output = run_git(
@@ -33,7 +34,8 @@ pub fn resolve_commit(dir: &Path, revision: &str) -> Result<CommitId, Error> {
     Ok(CommitId(read_text(output)?.trim().to_owned()))
 }
 
-/// Finds the split from local main, or remote main when local main is absent.
+/// Returns the branch start, where HEAD split from local main, or from
+/// `origin/main` when there is no local main.
 pub fn find_branch_start(dir: &Path) -> Result<CommitId, Error> {
     let local_main = git_command(dir)
         .args(["show-ref", "--verify", "--quiet", "refs/heads/main"])
@@ -113,8 +115,8 @@ pub fn list_changed_files(dir: &Path, base: &CommitId) -> Result<Vec<PathBuf>, E
     Ok(files.into_iter().collect())
 }
 
-/// Marks additions and replacements in a root-relative current file.
-/// Deletions have no current lines and every new file line counts.
+/// Returns the lines of a root-relative file that were added or replaced since
+/// `base`. Every line of a new file counts, and a missing file has none.
 pub fn list_changed_lines(
     dir: &Path,
     base: &CommitId,
@@ -165,7 +167,7 @@ pub fn list_changed_lines(
     Ok(lines)
 }
 
-/// Reads historical UTF-8 text at a root-relative path, or None when absent.
+/// Reads a root-relative file at `commit` as UTF-8 text, or `None` when it is not there.
 pub fn read_file_at_commit(
     dir: &Path,
     commit: &CommitId,
@@ -200,7 +202,6 @@ pub(crate) fn read_file_at_commit_from_root(
     read_text(output).map(Some)
 }
 
-/// Names the version of a file on disk.
 pub(crate) const ON_DISK: &str = "on disk";
 
 /// Holds one version of a root-relative file.
