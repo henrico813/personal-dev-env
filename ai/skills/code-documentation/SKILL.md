@@ -103,6 +103,10 @@ codes, test names, comments and PR text you write. Do not give a
 dictionary word another meaning, and do not coin a new word for an
 idea it already names.
 
+Treat code, tests and docs as public. Leave out secrets and anything
+that identifies the user, their machines, their work or their private
+places.
+
 When writing or reviewing comments, check each one against
 [references/comments-readers-reject.md](
 references/comments-readers-reject.md),
@@ -206,6 +210,10 @@ Name what the function does or returns, not merely its input or type.
 Avoid vague names such as `check` and `save`. Use module or class
 context to avoid repetition while keeping call sites understandable.
 Put additional detail in the body.
+
+Avoid function names that differ by one letter, like `check_comment`
+beside `check_comments`; readers confuse them. The exception is a
+plural that only runs the singular on each item.
 
 ## Tests
 
