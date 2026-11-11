@@ -4,21 +4,14 @@ from __future__ import annotations
 
 import argparse
 import re
+import sqlite3
 import subprocess
 from pathlib import Path
 
-from hub.herdr import (
-    FREE_STATES,
-    NEEDS_YOU,
-    HerdrError,
-    call_herdr,
-    list_agents,
-    read_label,
-)
+from hub.herdr import FREE_STATES, NEEDS_YOU, list_agents, read_label
+from hub.opencode import read_context_tokens
 from hub.send import describe_send
 
-# OpenCode's footer shows the context size as "98.3K (10%)".
-CONTEXT_SIZE = re.compile(r"(\d+(?:\.\d+)?[KM]) \(\d+%\)")
 # The card command allows digits in a project code, such as DEMO2-KB-001.
 CARD_KEY = re.compile(r"[a-z][a-z0-9]*-kb-\d{3,}")
 # card list prints one card per line, starting with its key.
@@ -54,7 +47,7 @@ def run_status(args: argparse.Namespace) -> int:
             (
                 name,
                 agent["agent_status"],
-                read_context_size(args.machine, name),
+                describe_context(args.machine, agent),
                 card.group().upper() if card else "-",
                 "unread" if report.exists() else "-",
                 describe_send(args.run, name),
@@ -168,25 +161,29 @@ def read_card(key: str) -> tuple[list[str], bool]:
     return sessions, note_open
 
 
-def read_context_size(machine: str | None, name: str) -> str:
-    """Read the context size from the session's footer.
+def describe_context(machine: str | None, agent: dict) -> str:
+    """Describe the agent's context size from OpenCode's database.
+
+    The pane's footer counts some steps twice, so it is not read.
 
     Args:
-        machine: A saved Herdr machine, or None for this one.
-        name: The agent's name.
+        machine: A saved Herdr machine, or None for this one. Only this
+            machine's database can be read.
+        agent: The agent as Herdr prints it.
 
     Returns:
-        The size, such as ``98.3K``, or ``-`` when the screen shows
-        none or cannot be read.
+        The size in thousands of tokens, such as ``108k``, or ``-``
+        when it is unknown.
     """
-    try:
-        screen = call_herdr(
-            machine, "agent", "read", name, "--source", "visible"
-        )
-    except HerdrError:
+    session = (agent.get("agent_session") or {}).get("value")
+    if machine is not None or not session:
         return "-"
-    sizes = CONTEXT_SIZE.findall(screen)
-    return sizes[-1] if sizes else "-"
+    try:
+        tokens = read_context_tokens(session)
+    except sqlite3.Error:
+        # A locked or changed database costs one column, not the table.
+        return "-"
+    return "-" if tokens is None else f"{round(tokens / 1000)}k"
 
 
 def print_table(rows: list[tuple]) -> None:
