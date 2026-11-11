@@ -90,6 +90,32 @@ func recordInstall(config config, runner run.Runner, now time.Time) {
 	}
 }
 
+// Warns on stderr when an install from main will replace an install from
+// another branch, so a branch under test is not lost unnoticed. A missing or
+// unreadable record prints nothing, because this install rewrites it.
+func warnReplacingBranch(config config, runner run.Runner) {
+	record, err := readInstallRecord(config.Home)
+	if err != nil || record.Branch == "main" {
+		return
+	}
+	branch := readCheckoutRevision(
+		config.RepoRoot,
+		runner,
+		"--abbrev-ref",
+		"HEAD",
+	)
+	if branch != "main" {
+		return
+	}
+	fmt.Fprintf(
+		runner.Err(),
+		"warning: replacing the install from branch %s (commit %s, installed %s) with main\n",
+		record.Branch,
+		record.Commit,
+		record.InstalledAt,
+	)
+}
+
 // Returns what git rev-parse prints for the checkout, or "unknown" when git
 // fails. A detached checkout gives HEAD for its branch.
 func readCheckoutRevision(repoRoot string, runner run.Runner, args ...string) string {

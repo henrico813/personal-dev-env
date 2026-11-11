@@ -18,32 +18,9 @@ func TestVersionPrintsRecordedInstall(t *testing.T) {
 		"HOME",
 		home,
 	)
-	t.Setenv(
-		"GIT_CONFIG_GLOBAL",
-		"/dev/null",
-	)
-	repo := t.TempDir()
-	runTestGit(
+	repo := initTestCheckout(
 		t,
-		repo,
-		"init",
-		"--quiet",
-		"--initial-branch",
 		"feature/demo",
-	)
-	runTestGit(
-		t,
-		repo,
-		"-c",
-		"user.name=Test",
-		"-c",
-		"user.email=test@example.invalid",
-		"commit",
-		"--quiet",
-		"--no-verify",
-		"--allow-empty",
-		"-m",
-		"seed",
 	)
 	commit := runTestGit(
 		t,
@@ -117,6 +94,120 @@ func TestVersionFailsWithoutRecordedInstall(t *testing.T) {
 			stdout.String(),
 		)
 	}
+}
+
+// An install from main once replaced branch installs under test without a
+// word, and the tests then ran the wrong code. The owner must see which branch
+// install is replaced, and must not learn to ignore a warning on every install.
+func TestWarnReplacingBranchOnlyFromMain(t *testing.T) {
+	branchRecord := installRecord{
+		Commit:      "3f9c2e1a7b",
+		Branch:      "feat/x",
+		InstalledAt: "2026-11-06T10:00:00Z",
+	}
+	mainRecord := installRecord{
+		Commit:      "3f9c2e1a7b",
+		Branch:      "main",
+		InstalledAt: "2026-11-06T10:00:00Z",
+	}
+	tests := []struct {
+		name           string
+		checkoutBranch string
+		record         *installRecord
+		want           string
+	}{
+		{
+			name:           "branch record",
+			checkoutBranch: "main",
+			record:         &branchRecord,
+			want:           "warning: replacing the install from branch feat/x (commit 3f9c2e1a7b, installed 2026-11-06T10:00:00Z) with main\n",
+		},
+		{
+			name:           "main record",
+			checkoutBranch: "main",
+			record:         &mainRecord,
+			want:           "",
+		},
+		{
+			name:           "no record",
+			checkoutBranch: "main",
+			record:         nil,
+			want:           "",
+		},
+		{
+			name:           "branch checkout",
+			checkoutBranch: "feat/y",
+			record:         &branchRecord,
+			want:           "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			if tt.record != nil {
+				if err := writeInstallRecord(
+					home,
+					*tt.record,
+				); err != nil {
+					t.Fatal(err)
+				}
+			}
+			repo := initTestCheckout(
+				t,
+				tt.checkoutBranch,
+			)
+			var stderr bytes.Buffer
+
+			warnReplacingBranch(
+				config{
+					Home:     home,
+					RepoRoot: repo,
+				},
+				run.Runner{Stderr: &stderr},
+			)
+
+			if stderr.String() != tt.want {
+				t.Fatalf(
+					"warning = %q, want %q",
+					stderr.String(),
+					tt.want,
+				)
+			}
+		})
+	}
+}
+
+// A git checkout on branch with one empty commit, so rev-parse can name it.
+func initTestCheckout(t *testing.T, branch string) string {
+	t.Helper()
+	t.Setenv(
+		"GIT_CONFIG_GLOBAL",
+		"/dev/null",
+	)
+	repo := t.TempDir()
+	runTestGit(
+		t,
+		repo,
+		"init",
+		"--quiet",
+		"--initial-branch",
+		branch,
+	)
+	runTestGit(
+		t,
+		repo,
+		"-c",
+		"user.name=Test",
+		"-c",
+		"user.email=test@example.invalid",
+		"commit",
+		"--quiet",
+		"--no-verify",
+		"--allow-empty",
+		"-m",
+		"seed",
+	)
+	return repo
 }
 
 // Runs git in dir and returns its trimmed output.
