@@ -15,6 +15,8 @@ Usage::
     hub auto approve --run DIR N REPLY       save the user's approval
     hub auto approve --run DIR --given N WORDS
     hub auto now --run DIR                   one line per run card
+    hub go                                   show the next hub
+    hub gather                               put hubs at the top
     hub --version
 
 Read ``main`` first, then the ``run_<command>`` function of each command.
@@ -57,6 +59,7 @@ from hub.handoff import run_handoff
 from hub.herdr import HerdrError
 from hub.read import run_read
 from hub.send import run_next, run_send
+from hub.sidebar import run_gather, run_go
 from hub.status import CardError, run_status
 
 
@@ -158,5 +161,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
             )
             step.add_argument("number", type=int)
             step.add_argument("reply", help="the user's reply, word for word")
+    go = commands.add_parser("go", help="show the next hub")
+    go.set_defaults(command=run_go)
+
+    gather = commands.add_parser("gather", help="put hubs at the top")
+    gather.set_defaults(command=run_gather)
 
     return parser.parse_args(argv)

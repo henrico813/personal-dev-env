@@ -130,8 +130,8 @@ func TestInboxMovesToOpenPopup(t *testing.T) {
 		popup    string
 		wantBody string
 	}{
-		{"approval popup", `{"pid":%d,"workspace_id":"w1G"}`, "Approval waiting: answer the popup in hermes"},
-		{"other tool's popup", `{"pid":%d,"workspace_id":"w1G","name":"Comment review"}`, "Comment review is open in hermes. Close it, then press Ctrl+b a"},
+		{"approval popup", `{"pid":%d,"workspace_id":"w1G"}`, "Approval waiting: answer the popup in docs"},
+		{"other tool's popup", `{"pid":%d,"workspace_id":"w1G","name":"Comment review"}`, "Comment review is open in docs. Close it, then press Ctrl+b a"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -172,7 +172,7 @@ func TestKilledPopupFileIsIgnored(t *testing.T) {
 
 // Runs the inbox with one request waiting while Herdr refuses its popup as
 // busy, and returns the exit code and every herdr call. Herdr labels
-// workspace w1G "hermes".
+// workspace w1G "docs".
 func openInboxWhileHerdrRefuses(t *testing.T, popup string) (code int, calls string) {
 	t.Helper()
 	state := t.TempDir()
@@ -208,7 +208,7 @@ func openInboxWhileHerdrRefuses(t *testing.T, popup string) (code int, calls str
 	log := approvaltest.FakeHerdr(t, `echo "$*" >> "$log"
 case "$1 $2" in
 "status server") echo socket: $HERDR_TEST_SOCKET ;;
-"workspace list") echo '{"result":{"workspaces":[{"workspace_id":"w1G","label":"hermes"}]}}' ;;
+"workspace list") echo '{"result":{"workspaces":[{"workspace_id":"w1G","label":"docs"}]}}' ;;
 esac`)
 	t.Setenv("HERDR_TEST_SOCKET", socket)
 

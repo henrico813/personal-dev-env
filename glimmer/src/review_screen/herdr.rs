@@ -61,7 +61,6 @@ impl Herdr {
         Some(Self::new(PathBuf::from(socket)))
     }
 
-    /// Returns a Herdr reached through `socket`.
     pub(super) fn new(socket: PathBuf) -> Self {
         Self { socket }
     }
@@ -93,7 +92,6 @@ impl Herdr {
         Ok(answer["result"].take())
     }
 
-    /// Shows a Herdr Notification with `title`.
     pub(super) fn show_notification(&self, title: &str) -> Result<(), HerdrError> {
         self.send("notification.show", json!({"title": title}))
             .map(|_| ())
@@ -366,9 +364,8 @@ mod tests {
         assert_eq!(requests[1]["params"]["tab_id"], "t7");
     }
 
-    /// `choose_screen_pane` and `parse_command` must agree with the Herdr plugin file on the plugin
-    /// id, each pane's id and placement, and the screen each key opens. Otherwise Ctrl+b e or
-    /// Ctrl+b E runs a pane or a command this program does not have, and no review opens.
+    /// `choose_screen_pane` and `parse_command` must match the Herdr plugin file's plugin id,
+    /// panes and keys. Otherwise Ctrl+b e or Ctrl+b E opens no review.
     #[test]
     fn plugin_manifest_matches_screen_panes_and_keys() {
         let manifest_path = concat!(

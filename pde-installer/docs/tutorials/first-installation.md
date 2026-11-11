@@ -42,7 +42,7 @@ pde-installer install client
 pde-installer install full
 ```
 
-Use terminal for a headless homelab VM, client for a laptop that edits files and
+Use terminal for a headless server VM, client for a laptop that edits files and
 shows herdr sessions from other machines, with nothing compiled by the
 installer, and full for a development machine. Client and full need a global Git
 `user.email` first, because OpenCode memory reads it. Client installs no Go

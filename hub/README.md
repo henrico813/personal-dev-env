@@ -29,6 +29,8 @@ hub auto check --run DIR                 check the run's card list
 hub auto approve --run DIR N REPLY       save the user's approval
 hub auto approve --run DIR --given N WORDS
 hub auto now --run DIR                   one line per run card
+hub go                                   show the next hub
+hub gather                               put hubs at the top
 hub --version
 ```
 
@@ -100,6 +102,17 @@ machine to every `herdr` call, as `herdr --machine` does.
   marked `(needs you)` while a `decisions.md` entry's title starts
   with the key, then the number of questions and each one's title. It
   exits 2 before the run is approved.
+- `go` shows the hub after the one the user looks at, in sidebar
+  order, and wraps to the first. A hub is a session whose name ends in
+  `-hub-<n>`, such as `kanban-hub-13`. The managed Herdr config runs
+  it from `ctrl+b shift+h`, in the background, so a press with no hub
+  running does nothing visible. While a hub hands off, the old and new
+  hub share a workspace, and `go` stops at both until the old hub's
+  tab closes.
+- `gather` moves every hub's workspace into one block at the top of
+  the sidebar, through Herdr's socket, since the `herdr` command
+  cannot reorder workspaces. Herdr keeps the order.
+- `go` and `gather` work on this machine only and refuse `--machine`.
 
 Exit codes are 0 when the command did its work, 1 when a `herdr` or
 `card` call failed, with its message on standard error, and 2 when

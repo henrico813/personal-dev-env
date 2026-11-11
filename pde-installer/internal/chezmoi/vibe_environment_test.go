@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"pde-installer/internal/testfile"
 )
 
 const vibeEnvironmentTemplate = `# Fill in the Goog endpoint and key before sourcing this file.
@@ -102,7 +104,7 @@ func TestVibeEnvironmentRejectsRacedSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	fakeBin := t.TempDir()
-	writeExecutable(t, filepath.Join(fakeBin, "ln"), `#!/bin/sh
+	testfile.WriteExecutable(t, filepath.Join(fakeBin, "ln"), `#!/bin/sh
 "$PDE_TEST_REAL_LN" -s "$PDE_TEST_SYMLINK_TARGET" "$2"
 exit 1
 `)
@@ -135,8 +137,8 @@ func TestVibeEnvironmentCleansFailedTemporaryWrite(t *testing.T) {
 	fakeMktemp := filepath.Join(fakeBin, "mktemp")
 	leftover := filepath.Join(envDir, ".goog.env.failed")
 	fakeCat := filepath.Join(fakeBin, "cat")
-	writeExecutable(t, fakeMktemp, "#!/bin/sh\nprintf '%s\\n' \""+leftover+"\"\n")
-	writeExecutable(t, fakeCat, "#!/bin/sh\nexit 1\n")
+	testfile.WriteExecutable(t, fakeMktemp, "#!/bin/sh\nprintf '%s\\n' \""+leftover+"\"\n")
+	testfile.WriteExecutable(t, fakeCat, "#!/bin/sh\nexit 1\n")
 
 	if _, err := runVibeEnvironment(t, home, "full", []string{"PATH=" + fakeBin + ":" + os.Getenv("PATH")}); err == nil {
 		t.Fatal("failed temporary write unexpectedly succeeded")
