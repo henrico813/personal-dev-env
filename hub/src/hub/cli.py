@@ -11,6 +11,7 @@ Usage::
     hub [--machine LABEL] unflag NAME
     hub handoff --run DIR NAME HANDOFF       start the next hub
     hub brief --run DIR                      what waits on the user
+    hub clean                                close finished tabs
     hub auto ready --run DIR                 ready cards, for sorting
     hub auto check --run DIR                 check the run's card list
     hub auto approve --run DIR N REPLY       save the user's approval
@@ -56,6 +57,7 @@ from hub import __version__
 from hub.alive import run_alive
 from hub.auto import run_approve, run_check, run_now, run_ready
 from hub.brief import run_brief
+from hub.clean import run_clean
 from hub.flag import run_flag, run_unflag
 from hub.handoff import run_handoff
 from hub.herdr import HerdrError
@@ -147,6 +149,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     brief = commands.add_parser("brief", help="what waits on the user")
     brief.add_argument("--run", type=Path, required=True)
     brief.set_defaults(command=run_brief)
+
+    clean = commands.add_parser("clean", help="close finished tabs")
+    clean.set_defaults(command=run_clean)
 
     auto = commands.add_parser("auto", help="the steps of an auto run")
     steps = auto.add_subparsers(required=True)

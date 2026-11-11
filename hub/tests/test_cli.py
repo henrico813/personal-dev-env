@@ -9,7 +9,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -48,6 +48,9 @@ agents = lists[min(count, len(lists) - 1)]
 by_name = {agent["name"]: agent for agent in agents if agent.get("name")}
 # agent get takes a pane ID too, as the hub's own pane is looked up.
 by_name |= {agent["pane_id"]: agent for agent in agents}
+# shells.json holds the panes that run no agent, with their process info.
+shells_file = fake / "shells.json"
+shells = json.loads(shells_file.read_text()) if shells_file.exists() else []
 
 if args[:2] == ["agent", "list"]:
     print(json.dumps({"result": {"agents": agents}}))
@@ -78,6 +81,19 @@ elif args[:2] == ["workspace", "list"]:
     ids = json.loads((fake / "workspaces.json").read_text())
     workspaces = [{"workspace_id": id_} for id_ in ids]
     print(json.dumps({"result": {"workspaces": workspaces}}))
+elif args[:2] == ["pane", "list"]:
+    # Herdr's pane list holds no agent names, so leave them out here too.
+    hidden = ("name", "process_info")
+    panes = [
+        {key: value for key, value in pane.items() if key not in hidden}
+        for pane in [*agents, *shells]
+    ]
+    print(json.dumps({"result": {"panes": panes}}))
+elif args[:2] == ["pane", "process-info"]:
+    shell = next(shell for shell in shells if shell["pane_id"] == args[3])
+    print(json.dumps({"result": {"process_info": shell["process_info"]}}))
+elif args[:2] == ["tab", "close"]:
+    print(json.dumps({"result": {}}))
 else:
     print(f"unknown command {args}", file=sys.stderr)
     sys.exit(2)
@@ -232,19 +248,24 @@ def hub(packed: Path, fake_tools: Path) -> Run:
 
 
 def write_card(
-    fake_tools: Path, key: str, sessions: list[str], log: str
+    fake_tools: Path,
+    key: str,
+    sessions: list[str],
+    log: str,
+    stage: str = "active",
 ) -> None:
-    """Add an active card for the fake card command to show.
+    """Add a card for the fake card command to show.
 
     Args:
         fake_tools: The fakes' folder.
         key: The card's key, such as ``DEMO-KB-001``.
         sessions: Its session IDs, oldest first.
         log: The lines of its Log section.
+        stage: Its stage, such as ``accepted``.
     """
     items = "".join(f'  - "opencode {session}"\n' for session in sessions)
     note = (
-        f"---\nstage: active\nsessions:\n{items}topics: []\n---\n\n"
+        f"---\nstage: {stage}\nsessions:\n{items}topics: []\n---\n\n"
         f"# {key} A card\n---\n\n## Log\n---\n\n{log}"
     )
     (fake_tools / "cards" / f"{key}.md").write_text(note)
@@ -1831,3 +1852,378 @@ class TestAlive:
         assert result.stderr == (
             "hub: no OpenCode session ses_b on this machine\n"
         )
+
+
+def make_worker(
+    name: str, status: str, tab: str, folder: Path, **fields: object
+) -> dict:
+    """Build an agent alone in its tab, working from one folder.
+
+    Args:
+        name: The agent's name.
+        status: Herdr's state, such as ``idle``.
+        tab: The tab's ID, such as ``w1:t1``.
+        folder: The agent's working folder.
+        **fields: Fields to add or replace, such as ``focused``.
+
+    Returns:
+        The agent, with the fields ``herdr pane list`` also prints.
+    """
+    return make_agent(
+        name,
+        status,
+        tab_id=tab,
+        agent="opencode",
+        cwd=str(folder),
+        foreground_cwd=str(folder),
+        **fields,
+    )
+
+
+def set_shells(fake_tools: Path, *shells: tuple[str, str, int, int]) -> None:
+    """Add panes that run no agent.
+
+    Args:
+        fake_tools: The fake herdr's folder.
+        *shells: Each pane's ID, tab, shell pid and foreground process
+            group. A group equal to the shell pid means the shell sits
+            at its prompt.
+    """
+    panes = [
+        {
+            "pane_id": pane,
+            "tab_id": tab,
+            "agent": None,
+            "agent_status": "unknown",
+            "focused": False,
+            "process_info": {
+                "foreground_process_group_id": group,
+                "shell_pid": shell_pid,
+            },
+        }
+        for pane, tab, shell_pid, group in shells
+    ]
+    (fake_tools / "shells.json").write_text(json.dumps(panes))
+
+
+# Stands in for a pane's shell until its input closes. With an argument it
+# starts a job in its own process group but the shell's session, as bash does.
+FAKE_SHELL = """\
+import os, subprocess, sys
+
+jobs = [
+    subprocess.Popen(["sleep", "60"], preexec_fn=os.setpgrp)
+    for _ in sys.argv[1:]
+]
+print("ready", flush=True)
+sys.stdin.read()
+for job in jobs:
+    job.kill()
+"""
+
+
+@pytest.fixture
+def start_shell() -> Iterator[Callable[[bool], int]]:
+    """Start fake shells as real processes and end them after the test."""
+    shells: list[subprocess.Popen] = []
+
+    def start(with_job: bool) -> int:
+        """Start one fake shell, with a background job or none.
+
+        Args:
+            with_job: Whether the shell owns a job.
+
+        Returns:
+            The shell's pid, once its job has started.
+        """
+        shell = subprocess.Popen(
+            [sys.executable, "-c", FAKE_SHELL, *(["job"] if with_job else [])],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        shells.append(shell)
+        shell.stdout.readline()
+        return shell.pid
+
+    yield start
+    try:
+        for shell in shells:
+            shell.stdin.close()
+            shell.wait(timeout=10)
+    finally:
+        for shell in shells:
+            shell.kill()
+
+
+def read_closed_tabs(fake_tools: Path) -> list[str]:
+    """Read the tab IDs the fake herdr was asked to close.
+
+    Args:
+        fake_tools: The fake herdr's folder.
+
+    Returns:
+        The tab IDs, in order.
+    """
+    return [
+        call[2]
+        for call in read_calls(fake_tools)
+        if call[:2] == ["tab", "close"]
+    ]
+
+
+def run_git(folder: Path, *args: str) -> None:
+    """Run git in a folder as a made-up user.
+
+    Args:
+        folder: The folder git runs in.
+        *args: The git arguments, such as ``commit``.
+    """
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "-C",
+            str(folder),
+            *args,
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+
+@pytest.fixture
+def card_repo(tmp_path: Path) -> Path:
+    """Return a main checkout whose card worktree is clean and pushed.
+
+    The worktree is ``card-wt`` next to it, on ``feat/demo-kb-001-fix``,
+    since card branches start with the card's key in lowercase.
+
+    Args:
+        tmp_path: The test's own folder.
+
+    Returns:
+        The main checkout.
+    """
+    run_git(tmp_path, "init", "--bare", "origin.git")
+    run_git(tmp_path, "clone", "origin.git", "main")
+    main = tmp_path / "main"
+    run_git(main, "commit", "--allow-empty", "-m", "start")
+    run_git(main, "push", "origin", "HEAD")
+    run_git(
+        main, "worktree", "add", "-b", "feat/demo-kb-001-fix", "../card-wt"
+    )
+    run_git(tmp_path / "card-wt", "push", "origin", "feat/demo-kb-001-fix")
+    return main
+
+
+class TestClean:
+    """``hub clean``, which closes the tabs of finished work."""
+
+    @pytest.mark.parametrize("stage", ["accepted", "dropped"])
+    def test_clean_closes_finished_card_free_tab(
+        self, hub: Run, fake_tools: Path, card_repo: Path, stage: str
+    ) -> None:
+        """A free agent of a finished card loses its tab, and clean says so.
+
+        The hub runs clean after each acceptance, so a tab it misses
+        stays for the user to close by hand. The line tells the user
+        which tab went and why.
+        """
+        write_card(fake_tools, "DEMO-KB-001", [], "", stage=stage)
+        set_agents(
+            fake_tools,
+            [make_worker("demo-kb-001-impl", "idle", "w1:t1", card_repo)],
+        )
+
+        result = hub("clean")
+
+        assert result.returncode == 0
+        assert result.stdout == (
+            f"closed w1:t1 demo-kb-001-impl: DEMO-KB-001 {stage}\n"
+        )
+        assert read_closed_tabs(fake_tools) == ["w1:t1"]
+
+    @pytest.mark.parametrize(
+        ("leave_work", "reason"),
+        [
+            pytest.param(
+                lambda worktree: (worktree / "notes.txt").write_text("x"),
+                "uncommitted files",
+                id="uncommitted",
+            ),
+            pytest.param(
+                lambda worktree: run_git(
+                    worktree, "commit", "--allow-empty", "-m", "fix"
+                ),
+                "unpushed commits",
+                id="unpushed",
+            ),
+        ],
+    )
+    def test_clean_keeps_tab_with_unsaved_work(
+        self,
+        hub: Run,
+        fake_tools: Path,
+        card_repo: Path,
+        leave_work: Callable[[Path], object],
+        reason: str,
+    ) -> None:
+        """A finished card's tab stays while its worktree holds unsaved work.
+
+        The agent works from the main checkout, so only the branch name
+        ties the worktree to the card. Closing the tab would hide the
+        last sign of work that was never saved to the remote, and the
+        kept line names the folder so the user can look.
+        """
+        worktree = card_repo.parent / "card-wt"
+        leave_work(worktree)
+        write_card(fake_tools, "DEMO-KB-001", [], "", stage="accepted")
+        set_agents(
+            fake_tools,
+            [make_worker("demo-kb-001-impl", "done", "w1:t1", card_repo)],
+        )
+
+        result = hub("clean")
+
+        assert result.returncode == 0
+        assert result.stdout == (
+            f"kept demo-kb-001-impl: {reason} in {worktree}\n"
+            "nothing to close\n"
+        )
+        assert read_closed_tabs(fake_tools) == []
+
+    @pytest.mark.parametrize(
+        ("status", "stage", "fields", "prepare", "expected"),
+        [
+            pytest.param(
+                "working",
+                "accepted",
+                {},
+                lambda worktree: None,
+                "kept demo-kb-001-impl: working\nnothing to close\n",
+                id="working",
+            ),
+            pytest.param(
+                "idle",
+                "active",
+                {},
+                lambda worktree: None,
+                "nothing to close\n",
+                id="active-card",
+            ),
+            pytest.param(
+                "idle",
+                "accepted",
+                {"focused": True},
+                lambda worktree: None,
+                "nothing to close\n",
+                id="focused",
+            ),
+            pytest.param(
+                "idle",
+                "accepted",
+                {},
+                lambda worktree: (worktree / ".git").write_text(
+                    "gitdir: missing"
+                ),
+                # Git versions word this error differently.
+                "kept demo-kb-001-impl: git failed, fatal: .+\n"
+                "nothing to close\n",
+                id="git-failed",
+            ),
+        ],
+    )
+    def test_clean_keeps_tab_cutting_off_work(
+        self,
+        hub: Run,
+        fake_tools: Path,
+        card_repo: Path,
+        status: str,
+        stage: str,
+        fields: dict,
+        prepare: Callable[[Path], object],
+        expected: str,
+    ) -> None:
+        """Clean leaves a tab where closing would cut off work or the user.
+
+        A working agent would lose its turn, an active card still has
+        work to do, and the focused tab is the one the user reads. When
+        git fails the worktree may hold unsaved work, so the tab stays
+        and the kept line shows git's message. The other kept tabs
+        print nothing, since the user does not expect them to close.
+        """
+        worktree = card_repo.parent / "card-wt"
+        prepare(worktree)
+        write_card(fake_tools, "DEMO-KB-001", [], "", stage=stage)
+        set_agents(
+            fake_tools,
+            [
+                make_worker(
+                    "demo-kb-001-impl",
+                    status,
+                    "w1:t1",
+                    card_repo,
+                    **fields,
+                )
+            ],
+        )
+
+        result = hub("clean")
+
+        assert result.returncode == 0
+        assert re.fullmatch(expected, result.stdout)
+        assert read_closed_tabs(fake_tools) == []
+
+    def test_clean_closes_agentless_tab_at_prompt(
+        self, hub: Run, fake_tools: Path, start_shell: Callable[[bool], int]
+    ) -> None:
+        """A tab with no agent closes only while all its shells run nothing.
+
+        Such tabs often hold the user's editor, pager or picker, and
+        closing one would throw away what the user had open. Tab w1:t6
+        has one idle shell and one busy one, so it stays. The shell in
+        w1:t7 sits at its prompt but owns a job, such as an editor
+        stopped with Ctrl-Z, which closing the tab would kill.
+        """
+        shell = start_shell(False)
+        shell_with_job = start_shell(True)
+        set_agents(fake_tools, [])
+        set_shells(
+            fake_tools,
+            ("w1:p5", "w1:t5", shell, shell),
+            ("w1:p6", "w1:t6", shell, shell),
+            ("w1:p7", "w1:t6", shell, shell_with_job),
+            ("w1:p8", "w1:t7", shell_with_job, shell_with_job),
+        )
+
+        result = hub("clean")
+
+        assert result.returncode == 0
+        assert result.stdout == "closed w1:t5 no agent\n"
+        assert read_closed_tabs(fake_tools) == ["w1:t5"]
+
+    def test_clean_keeps_own_tab_at_prompt(
+        self, hub: Run, fake_tools: Path, start_shell: Callable[[bool], int]
+    ) -> None:
+        """The hub's own tab stays even when every pane in it could close.
+
+        Closing it would end the hub mid-run. Both panes run no agent
+        and sit at their prompt, so only the own-pane rule keeps them.
+        """
+        shell = start_shell(False)
+        set_agents(fake_tools, [])
+        set_shells(
+            fake_tools,
+            ("w1:kanban-hub", "w1:t8", shell, shell),
+            ("w1:p9", "w1:t8", shell, shell),
+        )
+
+        result = hub("clean")
+
+        assert result.returncode == 0
+        assert result.stdout == "nothing to close\n"
+        assert read_closed_tabs(fake_tools) == []
