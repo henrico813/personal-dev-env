@@ -154,7 +154,7 @@ Local model section.
     2. ...
 
     Lessons to save, pick by number
-    1. <rule> -> <skill>
+    3. <rule> -> <skill>
 
     Fallback: <the role least ready for a local model, and its fix>.
     Efficiency: <the largest step a local model could take, and its
@@ -164,6 +164,9 @@ Local model section.
     roadmap-run's references/prompts.md.
 
     Reply with the numbers to apply.
+
+Proposals and lessons share one run of numbers through the whole
+review, so each number in a reply like "1, 4" points to a single item.
 
 ## Guardrails
 
