@@ -37,6 +37,7 @@ named vault.
 | `card note KEY TEXT --needs-you` | Logs a question, approval or failure that waits on the user. |
 | `card note KEY TEXT --answered` | Logs the user's answer. |
 | `card add KEY SECTION TEXT` | Adds a bullet to Context, Open Questions or Decisions, or a `- [ ]` item to Acceptance Criteria. |
+| `card attach KEY FILE` | Copies FILE to `attachments/<KEY> <file name>` in the card's project folder and adds a `![[...]]` line to Context. Refuses a missing file and never overwrites an attachment. |
 | `card edit KEY SECTION N TEXT` | Replaces the words of item N, as `card show KEY --section SECTION` numbers it. A checkbox or bullet stays, with its tick. Logs the old words. |
 | `card edit KEY SECTION N --remove` | Removes item N and logs its words. |
 | `card set KEY title VALUE` | Changes the title heading and renames the file. |

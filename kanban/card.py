@@ -25,6 +25,7 @@ Usage::
     card move KEY STAGE [--user] [--why TEXT] [--session [AGENT]]
     card note KEY TEXT [--needs-you | --answered]
     card add KEY SECTION TEXT          add a bullet or criteria checkbox
+    card attach KEY FILE               copy FILE to attachments, embed it
     card edit KEY SECTION N TEXT|--remove  replace or remove item N
     card set KEY title|kind VALUE
     card link KEY PLAN|PR_URL
@@ -47,6 +48,7 @@ import fcntl
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Iterator
@@ -302,6 +304,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add.add_argument("text")
     add.set_defaults(run=run_add)
+
+    attach = commands.add_parser(
+        "attach", help="copy a file to attachments and embed it in Context"
+    )
+    attach.add_argument("key")
+    attach.add_argument("file")
+    attach.set_defaults(run=run_attach)
 
     edit = commands.add_parser(
         "edit",
@@ -797,6 +806,80 @@ def run_add(args: argparse.Namespace, projects: Path) -> int:
     update_card(card, lambda text: add_to_section(text, args.section, entry))
     print(f"{card.key} {args.section}: {entry}")
     return 0
+
+
+def run_attach(args: argparse.Namespace, projects: Path) -> int:
+    """Copy a file into the project's attachments folder and embed it.
+
+    The copy is ``<project>/attachments/<KEY> <file name>``, and Context
+    gets a ``![[...]]`` line for it. When the card cannot be saved,
+    card removes the copy it just made, so trying again is not refused.
+
+    Args:
+        args: The parsed arguments.
+        projects: The vault's Projects folder.
+
+    Returns:
+        The exit code.
+
+    Raises:
+        CardError: FILE is missing or a folder, its name is empty once
+            the characters Obsidian refuses are removed, the attachment
+            already exists, or the card kept changing while being saved.
+    """
+    source = Path(args.file)
+    if not source.is_file():
+        raise CardError(f"no file at {args.file}")
+    card = find_card(projects, args.key)
+    name = BAD_NAME_CHARS_RE.sub("", source.name).strip()
+    if not name:
+        raise CardError(
+            f"nothing is left of the name {source.name!r} once the"
+            " characters Obsidian refuses are removed"
+        )
+    attachment = card.path.parent / "attachments" / f"{card.key} {name}"
+    entry = f"- ![[{attachment.name}]]"
+    copy_to_new_file(source, attachment)
+    try:
+        update_card(card, lambda text: add_to_section(text, "Context", entry))
+    except BaseException:
+        attachment.unlink()
+        raise
+    print(f"{card.key} Context: {entry}")
+    return 0
+
+
+def copy_to_new_file(source: Path, target: Path) -> None:
+    """Copy a file to a path where no file exists yet.
+
+    The exclusive create checks for the name and makes the file in one
+    step, so two commands cannot both write it. A rename would replace
+    a file already there. A copy cut short is removed.
+
+    Args:
+        source: The file to copy.
+        target: The new file, whose folder is made when missing.
+
+    Raises:
+        CardError: A file already has the target's name.
+    """
+    with open(source, "rb") as reader:
+        target.parent.mkdir(exist_ok=True)
+        try:
+            writer = open(target, "xb")
+        except FileExistsError:
+            raise CardError(
+                f"{target.name} is already in {target.parent.name},"
+                " rename the file and try again"
+            ) from None
+        try:
+            with writer:
+                shutil.copyfileobj(reader, writer)
+                writer.flush()
+                os.fsync(writer.fileno())
+        except BaseException:
+            target.unlink()
+            raise
 
 
 def run_edit(args: argparse.Namespace, projects: Path) -> int:

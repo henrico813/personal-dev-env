@@ -111,6 +111,7 @@ is missing, then renames the report to `report-<name>.read`.
 | Find text | `card grep "nobs" --section Context` |
 | Move a card | `card move KEY review --why "PR #450 open"` |
 | Fix one item | `card show KEY --section "Acceptance Criteria"`, then `card edit KEY "Acceptance Criteria" N "new text"` or `N --remove` |
+| Attach a photo or file | `card attach KEY ~/photo.jpg` |
 | Record a question or answer | `card note KEY --needs-you "..."` |
 | Start a worker's card | `card move KEY active --session WORKER` |
 | Link work | `card link KEY "PDEV-415 Title"`, `card link KEY URL`, `card link KEY --session WORKER` |
