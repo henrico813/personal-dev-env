@@ -24,6 +24,8 @@ hub [--machine LABEL] flag NAME
 hub [--machine LABEL] unflag NAME
 hub handoff --run DIR NAME HANDOFF       start the next hub
 hub brief --run DIR                      what waits on the user
+hub go                                   show the next hub
+hub gather                               put hubs at the top
 hub --version
 ```
 
@@ -78,6 +80,17 @@ machine to every `herdr` call, as `herdr --machine` does.
   `DIR/decisions.md` in full. It exits 2, printing nothing, when an
   entry lacks its question, two choices, `Recommended:` or
   `If no reply:`.
+- `go` shows the hub after the one the user looks at, in sidebar
+  order, and wraps to the first. A hub is a session whose name ends in
+  `-hub-<n>`, such as `kanban-hub-13`. The managed Herdr config runs
+  it from `ctrl+b shift+h`, in the background, so a press with no hub
+  running does nothing visible. While a hub hands off, the old and new
+  hub share a workspace, and `go` stops at both until the old hub's
+  tab closes.
+- `gather` moves every hub's workspace into one block at the top of
+  the sidebar, through Herdr's socket, since the `herdr` command
+  cannot reorder workspaces. Herdr keeps the order.
+- `go` and `gather` work on this machine only and refuse `--machine`.
 
 Exit codes are 0 when the command did its work, 1 when a `herdr` call
 failed, with Herdr's message on standard error, and 2 when refused.
