@@ -188,6 +188,10 @@ reviewing source code or tests. Add prose only for supported facts that code,
 types, names, and tests do not already make clear. This skill adds Python
 docstring and doctest mechanics in [documentation](references/documentation.md).
 
+The limit on prose above has two exceptions. Every test gets a
+docstring. In Google style, the `Args:`, `Returns:` and `Raises:`
+sections stay, even when the type hints show the same facts.
+
 Use the repository's docstring format. Do not rewrite correct documentation
 merely to make it longer or change styles. Keep examples executable when users
 depend on them and volatile output will not make them brittle.
