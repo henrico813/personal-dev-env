@@ -64,9 +64,14 @@ from hub.send import run_next, run_send
 from hub.sidebar import run_gather, run_go
 from hub.status import CardError, run_status
 
+DEPRECATION = (
+    "hub-py is deprecated and will be removed;"
+    " full installs use hub, the Rust hub"
+)
+
 
 def main(argv: list[str] | None = None) -> int:
-    """Run one hub command and return its exit code.
+    """Warn that hub-py is deprecated, then run one hub command.
 
     Args:
         argv: The arguments after ``hub``, or None for ``sys.argv``.
@@ -75,6 +80,7 @@ def main(argv: list[str] | None = None) -> int:
         0 when the command did its work, 1 when a herdr or card call
         failed, and 2 when the command was refused.
     """
+    print(DEPRECATION, file=sys.stderr)
     args = parse_args(argv)
     try:
         return args.command(args)

@@ -41,6 +41,13 @@ type buildSpec struct {
 // link keeps one binary, so the two names cannot drift apart.
 const approveAlias = "pde-pr-approve"
 
+// Old and new names of renamed builds. The installer deletes the file at an
+// old name once the profile builds the new name and not the old one.
+var renamedBuilds = []struct{ from, to string }{
+	{from: "hub-next", to: "hub"},
+	{from: "hub", to: "hub-py"},
+}
+
 type buildState struct {
 	Inputs     map[string]string `json:"inputs"`
 	Toolchains map[string]string `json:"toolchains"`
@@ -122,9 +129,18 @@ func (m Manager) Reconcile(selected profile.Profile) (*fsutil.Journal, error) {
 	if m.current(specs, inputs) {
 		return &fsutil.Journal{}, nil
 	}
+	oldFiles, err := m.findOldBuildFiles(specs)
+	if err != nil {
+		return nil, err
+	}
 	if m.Runner.DryRun {
 		for _, spec := range specs {
 			if err := m.Runner.Plan("build and atomically activate "+spec.name, nil); err != nil {
+				return nil, err
+			}
+		}
+		for _, path := range oldFiles {
+			if err := m.Runner.Plan("remove "+path, nil); err != nil {
 				return nil, err
 			}
 		}
@@ -146,9 +162,9 @@ func (m Manager) Reconcile(selected profile.Profile) (*fsutil.Journal, error) {
 		}
 	}()
 	cargoTargets := map[string]string{
-		"vibe":     filepath.Join(stageRoot, "vibe-target"),
-		"glimmer":  filepath.Join(stageRoot, "glimmer-target"),
-		"hub-next": filepath.Join(stageRoot, "hub-target"),
+		"vibe":    filepath.Join(stageRoot, "vibe-target"),
+		"glimmer": filepath.Join(stageRoot, "glimmer-target"),
+		"hub":     filepath.Join(stageRoot, "hub-target"),
 	}
 	for _, spec := range specs {
 		if err := fsutil.GuardHome(m.Home, stageRoot); err != nil {
@@ -202,6 +218,11 @@ func (m Manager) Reconcile(selected profile.Profile) (*fsutil.Journal, error) {
 				return nil, journal.Revert(err)
 			}
 			tracked = true
+		}
+	}
+	for _, path := range oldFiles {
+		if err := removeWithBackup(journal, path); err != nil {
+			return nil, journal.Revert(fmt.Errorf("remove %s: %w", path, err))
 		}
 	}
 	for _, spec := range specs {
@@ -672,8 +693,7 @@ func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []bu
 			verifyArg: "help",
 		},
 		{
-			// The Rust hub, installed beside the Python hub until it replaces it.
-			name:   "hub-next",
+			name:   "hub",
 			source: filepath.Join(m.RepoRoot, "hub-rs"),
 			output: filepath.Join(stageRoot, "hub-target", "release", "hub"),
 			command: run.Command{
@@ -699,12 +719,13 @@ func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []bu
 			pythonPackage: "skill_lessons",
 		},
 		{
-			name:   "hub",
+			// The Python hub, kept as a fallback while agents move to the Rust hub.
+			name:   "hub-py",
 			source: filepath.Join(m.RepoRoot, "hub"),
-			output: filepath.Join(stageRoot, "hub"),
+			output: filepath.Join(stageRoot, "hub-py"),
 			command: run.Command{
 				Name: m.python,
-				Args: []string{"-I", "build.py", filepath.Join(stageRoot, "hub")},
+				Args: []string{"-I", "build.py", filepath.Join(stageRoot, "hub-py")},
 				Dir:  filepath.Join(m.RepoRoot, "hub"), Env: environment,
 			},
 			verifyArg:     "--version",
@@ -756,6 +777,42 @@ func (spec buildSpec) hashSource() (string, error) {
 		return hashPythonSources(spec.source, spec.pythonPackage)
 	}
 	return hashTree(spec.source)
+}
+
+// Returns the files in ~/.local/bin that renamedBuilds says to delete for
+// these specs. A profile that builds neither name keeps its file.
+func (m Manager) findOldBuildFiles(specs []buildSpec) ([]string, error) {
+	built := map[string]bool{}
+	for _, spec := range specs {
+		built[spec.name] = true
+	}
+	var paths []string
+	for _, rename := range renamedBuilds {
+		if !built[rename.to] || built[rename.from] {
+			continue
+		}
+		path := filepath.Join(m.Home, ".local", "bin", rename.from)
+		if _, err := os.Lstat(path); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		paths = append(paths, path)
+	}
+	return paths, nil
+}
+
+// Deletes path after recording a copy in journal, so a rollback puts it back
+// and a commit deletes the copy.
+func removeWithBackup(journal *fsutil.Journal, path string) error {
+	backup := fsutil.BackupName(path)
+	if err := fsutil.CopyPath(path, backup); err != nil {
+		return err
+	}
+	if err := journal.RecordReplaced(path, backup); err != nil {
+		return err
+	}
+	return os.Remove(path)
 }
 
 func managedVersion(name string) string {

@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"pde-installer/internal/fsutil"
+	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 	"pde-installer/internal/testfile"
 )
@@ -285,7 +286,7 @@ func TestClientBlinkPinMatchesBuildPin(t *testing.T) {
 }
 
 // A failed check of a built tool must put back every old tool. A broken
-// glimmer stops Ctrl+b e opening, and a broken hub-next stays installed.
+// glimmer stops Ctrl+b e opening, and a broken hub stops every hub command.
 func TestFailedToolCheckRestoresEveryTool(t *testing.T) {
 	tests := []struct {
 		tool, source string
@@ -295,7 +296,7 @@ func TestFailedToolCheckRestoresEveryTool(t *testing.T) {
 			source: "glimmer",
 		},
 		{
-			tool:   "hub-next",
+			tool:   "hub",
 			source: "hub-rs",
 		},
 	}
@@ -331,8 +332,8 @@ func TestFailedToolCheckRestoresEveryTool(t *testing.T) {
 	}
 }
 
-// A client laptop has no Go or Rust, so any build but skill-lessons and hub,
-// which only zip Python files, would fail every client install.
+// A client laptop has no Go or Rust, so any build but skill-lessons and
+// hub-py, which only zip Python files, would fail every client install.
 func TestClientBuildsOnlyPythonTools(t *testing.T) {
 	home, repoRoot := t.TempDir(), t.TempDir()
 	writeBuildSources(t, repoRoot)
@@ -349,6 +350,51 @@ func TestClientBuildsOnlyPythonTools(t *testing.T) {
 	}
 	if got := readBuildLog(t, logPath); got != "python\npython\n" {
 		t.Fatalf("build log = %q, want two python builds", got)
+	}
+}
+
+// A renamed tool's old file would keep running an old build under its old
+// name. On full that is hub-next, and on client the Python hub that hub-py
+// replaced.
+func TestReconcileRemovesRenamedToolsOldFile(t *testing.T) {
+	tests := []struct {
+		profile                   profile.Profile
+		oldName, newName, builtBy string
+	}{
+		{
+			profile: "full",
+			oldName: "hub-next",
+			newName: "hub",
+			builtBy: "cargo",
+		},
+		{
+			profile: "client",
+			oldName: "hub",
+			newName: "hub-py",
+			builtBy: "python",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.profile), func(t *testing.T) {
+			home, repoRoot := t.TempDir(), t.TempDir()
+			writeBuildSources(t, repoRoot)
+			manager := newFixtureManager(t, home, repoRoot, filepath.Join(t.TempDir(), "build.log"))
+			oldPath := filepath.Join(home, ".local", "bin", tt.oldName)
+			writeBuildFile(t, oldPath, "old "+tt.oldName+"\n", 0o755)
+
+			journal, err := manager.Reconcile(tt.profile)
+			if err != nil {
+				t.Fatalf("Reconcile() error = %v", err)
+			}
+			if err := journal.Commit(); err != nil {
+				t.Fatalf("Commit() error = %v", err)
+			}
+
+			if _, err := os.Lstat(oldPath); !os.IsNotExist(err) {
+				t.Fatalf("Lstat(%s) error = %v, want not exist", tt.oldName, err)
+			}
+			assertBuildFile(t, filepath.Join(home, ".local", "bin", tt.newName), "#!/bin/sh\nexit 0\n# built by "+tt.builtBy+"\n")
+		})
 	}
 }
 
@@ -715,9 +761,9 @@ func assertBuildOutputs(t *testing.T, home string) {
 		"vibe":                 "cargo",
 		"pde-gh-write":         "go",
 		"glimmer":              "cargo",
-		"hub-next":             "cargo",
+		"hub":                  "cargo",
 		"skill-lessons":        "python",
-		"hub":                  "python",
+		"hub-py":               "python",
 		"prs":                  "go",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "#!/bin/sh\nexit 0\n# built by "+tool+"\n")

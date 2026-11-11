@@ -15,6 +15,10 @@ from pathlib import Path
 import pytest
 
 BUILD = Path(__file__).parents[1] / "build.py"
+DEPRECATION = (
+    "hub-py is deprecated and will be removed;"
+    " full installs use hub, the Rust hub\n"
+)
 
 # Answers each call from files in $FAKE, logs it to calls.jsonl, and
 # fails as Herdr does without agents.json. agents.json holds one agent
@@ -193,7 +197,8 @@ def hub(packed: Path, fake_tools: Path) -> Run:
     hundredth of a second so ``hub next`` tests end quickly. HOME is
     the fakes' folder, so no test reads the real OpenCode database. The
     Herdr socket is a file there too, so no test reaches the user's
-    real Herdr.
+    real Herdr. The deprecation line is cut from standard error, so
+    each test checks only its command's own messages.
 
     Args:
         packed: The packed hub.
@@ -210,7 +215,8 @@ def hub(packed: Path, fake_tools: Path) -> Run:
             *args: The arguments after ``hub``.
 
         Returns:
-            The finished process, with its output as text.
+            The finished process, with its output as text and without
+            the deprecation line.
         """
         env = os.environ | {
             "FAKE": str(fake_tools),
@@ -220,13 +226,15 @@ def hub(packed: Path, fake_tools: Path) -> Run:
             "HERDR_SOCKET_PATH": str(fake_tools / "herdr.sock"),
             "HUB_POLL_SECONDS": "0.01",
         }
-        return subprocess.run(
+        result = subprocess.run(
             [str(packed), *args],
             env=env,
             capture_output=True,
             text=True,
             timeout=30,
         )
+        result.stderr = result.stderr.removeprefix(DEPRECATION)
+        return result
 
     return run
 
@@ -368,6 +376,28 @@ def write_messages(
             ],
         )
     database.close()
+
+
+class TestDeprecation:
+    """The warning that hub-py is deprecated."""
+
+    def test_version_warns_on_stderr_not_stdout(self, packed: Path) -> None:
+        """The warning goes to standard error and changes nothing else.
+
+        A script that reads ``hub-py`` output, such as ``status``, would
+        break if the warning reached standard output. The ``hub``
+        fixture cuts this line from every other test's standard error.
+        """
+        result = subprocess.run(
+            [str(packed), "--version"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        assert result.returncode == 0
+        assert result.stdout == "0.1.0\n"
+        assert result.stderr == DEPRECATION
 
 
 class TestStatus:

@@ -1,4 +1,9 @@
-# hub
+# hub-py
+
+This Python hub is deprecated and will be removed. Use `hub`, the Rust
+hub in `../hub-rs/`. Until then it stays installed as `hub-py`, a
+fallback that prints a deprecation line to standard error on every
+run, then works as before. Run each command below as `hub-py`.
 
 A small command for the hub, the one Herdr session that other agent
 sessions report to. It shows every session on one short table, sends
@@ -9,7 +14,7 @@ when to use each command.
 ## Install
 
 `pde-installer install` builds and installs it on the client and full
-profiles, at `~/.local/bin/hub`. `build.py` packs the `.py` files in
+profiles, at `~/.local/bin/hub-py`. `build.py` packs the `.py` files in
 `src/hub/` into one file that runs with `/usr/bin/python3`, so a
 machine needs only Python 3.10 or later.
 
