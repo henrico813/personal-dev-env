@@ -1,6 +1,7 @@
 mod common;
 
 use std::fs;
+use std::io;
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
@@ -259,6 +260,35 @@ fn hub_flag_sends_machine_to_herdr() {
         read_script_calls(&script)[0],
         ["--machine", "laptop", "agent", "get", "docs-fix"]
     );
+}
+
+/// A reader that closes early, as `head` does, must leave the exit code
+/// at 0 with no panic text. The hub used to panic there and exit 101,
+/// which is none of the hub's exit codes, so scripts saw a failure.
+#[test]
+fn hub_output_stops_quietly_when_reader_closes() {
+    let folder = TempFolder::new();
+    let answer = r#"{"result":{"agent":{"name":"docs-fix","agent":"opencode",
+        "agent_status":"idle","pane_id":"w4:p2","workspace_id":"w4","tab_id":"w4:t2",
+        "focused":false,"state_change_seq":1288}}}"#;
+    folder.write_script("herdr", answer, "", 0);
+    // Dropping the reading end first makes the hub's first write fail.
+    let (reader, writer) = io::pipe().unwrap();
+    drop(reader);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_hub"))
+        .args(["flag", "docs-fix"])
+        .env_clear()
+        .env("PATH", format!("{}:/usr/bin:/bin", folder.path().display()))
+        .env("HOME", folder.path())
+        .env("HERDR_SOCKET_PATH", folder.path().join("herdr.sock"))
+        .stdout(Stdio::from(writer))
+        .output()
+        .unwrap();
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(0), "{stderr}");
+    assert!(!stderr.contains("panicked"), "{stderr}");
 }
 
 /// The hub sends long messages with `hub send NAME --file PATH`. If

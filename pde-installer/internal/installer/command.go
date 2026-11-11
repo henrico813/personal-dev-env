@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	"pde-installer/internal/aqua"
@@ -34,6 +35,7 @@ func NewCommand() *cobra.Command {
 	root.AddCommand(mutatingCommand("install [terminal|client|full|i3|sway]", "Install pinned PDE components", &repoRoot, reconcile))
 	root.AddCommand(readCommand("doctor", "Check host prerequisites and managed paths", &repoRoot, doctor))
 	root.AddCommand(readCommand("list", "List ownership and installed state", &repoRoot, list))
+	root.AddCommand(newVersionCommand())
 	return root
 }
 
@@ -146,6 +148,8 @@ func reconcile(config config, runner run.Runner) error {
 	if err := config.validate(); err != nil {
 		return err
 	}
+	// Warn before any stage runs, so the owner sees it before anything is replaced.
+	warnReplacingBranch(config, runner)
 	// Check before apt runs, so a refused install changes nothing.
 	if config.Profile.Has(profile.Workstation) {
 		if err := direct.New(config.Home, runner).RejectToolRemoval(config.Profile); err != nil {
@@ -245,6 +249,9 @@ func reconcile(config config, runner run.Runner) error {
 	if err := fsutil.CommitJournals(journals...); err != nil {
 		return fmt.Errorf("clean successful backups: %w", err)
 	}
+	// Record before the lesson render and the OpenCode refresh, so their
+	// errors cannot leave the previous build's record in place.
+	recordInstall(config, runner, time.Now())
 	// Render after the chezmoi apply, which copies the empty Lessons sections,
 	// and before the OpenCode refresh, whose errors return early.
 	// Terminal installs no skills.
