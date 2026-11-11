@@ -234,6 +234,25 @@ func TestValidatePlanRejectsNewLengthCaps(t *testing.T) {
 	}
 }
 
+// Counting the Base commit first line against the limit would reject Current
+// State text that fits on its own.
+func TestCurrentStateLimitIgnoresBaseLine(t *testing.T) {
+	baseLine := "Base commit: " + strings.Repeat("a", 40) + "\n"
+	plan := validPlan()
+
+	plan.DefinitionOfDone.CurrentState = baseLine + strings.Repeat("c", MaxCurrentStateLength)
+	if err := ValidatePlan(plan); err != nil {
+		t.Fatalf("full-length text after the base line was rejected: %v", err)
+	}
+
+	plan.DefinitionOfDone.CurrentState = baseLine + strings.Repeat("c", MaxCurrentStateLength+1)
+	want := fmt.Sprintf("current_state must be no more than %d characters (got %d)",
+		MaxCurrentStateLength, MaxCurrentStateLength+1)
+	if err := ValidatePlan(plan); err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("error = %v, want %q", err, want)
+	}
+}
+
 // Planner once limited every Module Shape line, so Decisions prose
 // had to be hand-wrapped and broke up on a phone. The limit must stop
 // at the first ### heading.
