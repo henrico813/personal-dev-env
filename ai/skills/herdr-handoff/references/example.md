@@ -52,7 +52,7 @@ it, and the prompt says "Load each skill it names when it says."
 test "${HERDR_ENV:-}" = 1
 herdr agent get "$HERDR_PANE_ID"    # .result.agent.agent is opencode
 herdr workspace create \
-  --cwd /home/justin/Projects/personal-dev-env \
+  --cwd ~/Projects/personal-dev-env \
   --label pdev-design-process --no-focus
 # .result.root_pane.pane_id gives <pane>
 herdr agent start design-process --kind opencode --pane <pane> \

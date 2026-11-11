@@ -1,4 +1,4 @@
-//! Lists each folder as a module.
+//! This module lists each folder of the crate as a module.
 
 pub mod commands;
 mod language_rules;
