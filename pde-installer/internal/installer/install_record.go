@@ -92,7 +92,7 @@ func recordInstall(config config, runner run.Runner, now time.Time) {
 
 // Warns on stderr when an install from main will replace an install from
 // another branch, so a branch under test is not lost unnoticed. A missing or
-// unreadable record prints nothing, because this install rewrites it.
+// unreadable record names no branch, so nothing prints.
 func warnReplacingBranch(config config, runner run.Runner) {
 	record, err := readInstallRecord(config.Home)
 	if err != nil || record.Branch == "main" {

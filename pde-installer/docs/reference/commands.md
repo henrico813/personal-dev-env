@@ -76,9 +76,9 @@ configures Git and chezmoi-managed content, and runs source-managed scripts.
 It rejects UID 0. `--dry-run` prints ordered actions and does not mutate HOME.
 
 An install from `main` prints one warning line on stderr when the install
-record names another branch, with that branch, commit, and install time, so a
-branch install under test is not replaced unnoticed. The install still runs,
-and `--dry-run` prints the warning too.
+record names another branch. The line names that branch, its commit and its
+install time, so a branch install under test is never replaced silently. The
+install still runs, and `--dry-run` prints the warning too.
 
 The removed `update`, `config`, and `--profile` interfaces have no aliases.
 
