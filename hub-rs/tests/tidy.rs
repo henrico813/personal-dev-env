@@ -131,10 +131,10 @@ fn run_clean_dry_run_changes_nothing() {
     assert!(read_events(&test_tools.run_path()).is_empty());
 }
 
-/// The hub runs `hub send` as a process of its own, beside `hub clean`
-/// and the minute pass of `hub next`. So a message can come in between
-/// the verdict and the close or park. Closing then would leave
-/// the message for a closed tab. The state is worked out again first.
+/// The hub runs `hub send` as a process of its own, beside `hub clean`.
+/// So a message can come in between the verdict and the close or park.
+/// Closing then would leave the message for a closed tab. The state is
+/// worked out again first.
 #[test]
 fn run_clean_skips_session_messaged_meanwhile() {
     let mut test_tools = TestTools::new();

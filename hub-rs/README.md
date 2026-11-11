@@ -84,13 +84,16 @@ code.
   prints the same facts as JSON. It keeps its memory in
   `events.jsonl`, not in `next-seen.json`.
 - `next` runs a minute pass at most once a minute, and only after a
-  session's state changed or a report was read. It prints nothing.
-  It reads `card board`. Each time the board crosses into its limit,
-  it wakes the hub once with `board over its limit: 25/8 (hub 131k)`.
-  It runs the tidy pass. For each worker past 150k that the pass does
-  not close or park, it holds one handoff ask. It keeps its time in
-  `.minute-pass.json`.
-- `clean` takes a run folder and runs the tidy pass now. It closes
+  session's state changed or a report was read. It reads `card board`.
+  Each time the board crosses into its limit, it wakes the hub once
+  with `board over its limit: 25/8 (hub 131k)`. It never closes or
+  parks a session. It lists each session that becomes `to-close` or
+  `to-park` once, in one line per state and why, such as
+  `to-close demo-kb-001-impl: DEMO-KB-001 accepted; run hub clean`.
+  For each worker past 150k that is not `to-close` or `to-park`, it
+  holds one handoff ask. It keeps its time and the finished sessions
+  in `.minute-pass.json`.
+- `clean` takes a run folder and runs the tidy pass. It closes
   the tab of each `to-close` session and parks each `to-park` session.
   Each change prints one line, such as
   `closed demo-kb-001-impl: DEMO-KB-001 accepted`. It deletes the

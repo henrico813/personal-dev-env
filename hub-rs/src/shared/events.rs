@@ -71,6 +71,11 @@ pub(crate) enum EventKind {
     BoardOver { busy: u32, limit: u32 },
     /// The minute pass saw the board back within its limit.
     BoardUnder { busy: u32, limit: u32 },
+    /// `hub next` printed that NAMES became `state`, `to-close` or
+    /// `to-park`.
+    Listed { state: String, names: Vec<String> },
+    /// The minute pass saw NAMES leave the state they were listed in.
+    Unlisted { names: Vec<String> },
     /// `hub handoff` started `new` after `old`, whose tab is `tab`.
     Handoff {
         old: String,
@@ -116,6 +121,8 @@ pub(crate) struct Memory {
     pub handoff_asked: BTreeSet<String>,
     /// The board was over its limit at the last crossing.
     pub board_over: bool,
+    /// The state, `to-close` or `to-park`, each name was last listed in.
+    pub listed: BTreeMap<String, String>,
     /// How many `read` events the log holds, for the minute pass.
     pub read_count: usize,
     /// When `hub read` last archived each name's report.
@@ -188,6 +195,16 @@ fn fold_events(events: impl IntoIterator<Item = Event>) -> Memory {
             }
             EventKind::BoardOver { .. } => memory.board_over = true,
             EventKind::BoardUnder { .. } => memory.board_over = false,
+            EventKind::Listed { state, names } => {
+                for name in names {
+                    memory.listed.insert(name, state.clone());
+                }
+            }
+            EventKind::Unlisted { names } => {
+                for name in names {
+                    memory.listed.remove(&name);
+                }
+            }
             EventKind::Delivered { name, .. } => {
                 memory.last_delivered.insert(name, event.at);
             }

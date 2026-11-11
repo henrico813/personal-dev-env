@@ -458,7 +458,7 @@ fn describe_planned_action(action: &TidyAction<'_>) -> TidyOutcome {
 
 /// Returns why a session's tab closes, such as `DEMO-KB-007 accepted`
 /// for a done card, else the verdict's why, such as `report read`.
-fn describe_close_why(facts: &SessionFacts, verdict: &Verdict) -> String {
+pub(crate) fn describe_close_why(facts: &SessionFacts, verdict: &Verdict) -> String {
     match &facts.card {
         Some(card) if matches!(card.stage, Stage::Accepted | Stage::Dropped) => {
             format!("{} {}", card.key.as_str(), card.stage.as_str())

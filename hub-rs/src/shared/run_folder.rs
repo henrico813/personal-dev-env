@@ -47,6 +47,18 @@ pub(crate) struct MinuteMark {
     pub state_seqs: BTreeMap<String, u64>,
     /// How many `read` events the log held.
     pub read_count: usize,
+    /// The `to-close` and `to-park` sessions the pass found.
+    pub finished: Vec<FinishedSession>,
+}
+
+/// A session the minute pass found `to-close` or `to-park`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct FinishedSession {
+    pub name: String,
+    /// `to-close` or `to-park`.
+    pub state: String,
+    /// Why, as `hub clean` prints it, such as `DEMO-KB-007 accepted`.
+    pub why: String,
 }
 
 /// Holds `.watcher.lock` while a `hub next` runs. Dropping it, or the

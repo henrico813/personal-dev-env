@@ -2,7 +2,9 @@
 //! prints one line. Read `run_next`, then `check_for_news`.
 //! `choose_news` is pure and holds the order of the news lines.
 //! `run_minute_pass` is the slow part, at most once a minute, which
-//! reads the board, runs the tidy pass and asks workers to hand off.
+//! reads the board, finds finished sessions and asks workers to hand
+//! off. It never closes or parks a session, which only `hub clean`
+//! does.
 
 use std::thread;
 use std::time::{Duration, Instant};
@@ -18,7 +20,7 @@ use crate::shared::events::{self, Event, EventKind, Memory};
 use crate::shared::facts::{self, CollectedFacts, HubLine};
 use crate::shared::lifecycle::{Lifecycle, decide_lifecycle};
 use crate::shared::messages::{self, SendOutcome};
-use crate::shared::run_folder::{MinuteMark, ReportFile, RunFolder};
+use crate::shared::run_folder::{FinishedSession, MinuteMark, ReportFile, RunFolder};
 use crate::shared::tidy;
 use crate::shared::{HubError, Tools};
 
@@ -45,12 +47,36 @@ pub struct NextOptions {
 /// The one line `hub next` prints.
 #[derive(Debug, PartialEq, Eq)]
 enum News {
-    Report { name: String, mtime_ns: u64 },
-    Blocked { name: String, state_seq: u64 },
-    NotSent { name: String, reason: String },
-    Unsure { name: String, reason: String },
-    HubHandOff { session_id: String, tokens: u64 },
-    BoardOver { busy: u32, limit: u32 },
+    Report {
+        name: String,
+        mtime_ns: u64,
+    },
+    Blocked {
+        name: String,
+        state_seq: u64,
+    },
+    NotSent {
+        name: String,
+        reason: String,
+    },
+    Unsure {
+        name: String,
+        reason: String,
+    },
+    HubHandOff {
+        session_id: String,
+        tokens: u64,
+    },
+    BoardOver {
+        busy: u32,
+        limit: u32,
+    },
+    /// Sessions that became `state` for the same `why`.
+    Finished {
+        state: String,
+        names: Vec<String>,
+        why: String,
+    },
     Replaced,
     Timeout,
 }
@@ -65,6 +91,8 @@ struct NewsFacts<'a> {
     hub: &'a HubLine,
     /// Read only when the minute pass ran in this check.
     board: Option<&'a BoardCounts>,
+    /// From the last minute pass, kept until each is listed.
+    finished: &'a [FinishedSession],
 }
 
 /// Claims the watcher, takes the watcher lock, then checks every
@@ -131,12 +159,12 @@ fn check_for_news(
     // Delivery comes last, since an error after it would lose its
     // not-sent or unsure line.
     let reports = run.list_reports(now)?;
-    let mark = run.read_minute_mark()?;
-    let board = if is_minute_pass_due(&agents, &memory, mark.as_ref(), now) {
-        run_minute_pass(tools, run, &agents, &memory, now)?
-    } else {
-        None
-    };
+    let mut mark = run.read_minute_mark()?;
+    let mut board = None;
+    if is_minute_pass_due(&agents, &memory, mark.as_ref(), now) {
+        board = run_minute_pass(tools, run, &agents, &memory, now)?;
+        mark = run.read_minute_mark()?;
+    }
     let outcome = messages::deliver_held_messages(tools, run, &agents, now)?;
     Ok(choose_news(&NewsFacts {
         outcome: outcome.as_ref(),
@@ -145,6 +173,7 @@ fn check_for_news(
         memory: &memory,
         hub,
         board: board.as_ref(),
+        finished: mark.as_ref().map_or(&[], |mark| &mark.finished),
     }))
 }
 
@@ -169,12 +198,11 @@ fn is_minute_pass_due(
     state_changed || memory.read_count != last.read_count
 }
 
-/// Reads the board, runs the tidy pass and the handoff asks on one
-/// collection of facts, records `board_under` when the board fell back
-/// within its limit, and saves the minute mark. Returns the board
-/// counts when `card board` answered. The tidy outcomes are dropped,
-/// since each close and park logged itself to the event log and
-/// `notes.md`, and a kept session needs nothing.
+/// Reads the board, finds the finished sessions and holds the handoff
+/// asks on one collection of facts, records `board_under` when the
+/// board fell back within its limit, and saves the minute mark with the
+/// finished sessions. Returns the board counts when `card board`
+/// answered.
 fn run_minute_pass(
     tools: &Tools<'_>,
     run: &RunFolder,
@@ -197,10 +225,9 @@ fn run_minute_pass(
         };
         events::append_event(run, &under)?;
     }
-    let lock = tools.parked.take_tidy_lock()?;
     let collected = facts::collect_session_facts(tools, run, memory)?;
-    tidy::run_tidy_pass(tools, run, &collected, &lock, now, false)?;
-    drop(lock);
+    let finished = find_finished_sessions(&collected);
+    forget_left_sessions(run, &finished, memory, now)?;
     ask_for_worker_handoffs(run, &collected, memory, now)?;
     run.write_minute_mark(&MinuteMark {
         at: now.timestamp(),
@@ -209,15 +236,66 @@ fn run_minute_pass(
             .map(|agent| (agent.name.clone(), agent.state_seq))
             .collect(),
         read_count: memory.read_count,
+        finished,
     })?;
     Ok(board)
+}
+
+/// Returns each `to-close` and `to-park` session with why, as
+/// `hub clean` prints it.
+fn find_finished_sessions(collected: &CollectedFacts) -> Vec<FinishedSession> {
+    collected
+        .sessions
+        .iter()
+        .filter_map(|facts| {
+            let verdict = decide_lifecycle(facts);
+            let why = match (verdict.state, &facts.card) {
+                (Lifecycle::ToClose, _) => tidy::describe_close_why(facts, &verdict),
+                (Lifecycle::ToPark, Some(card)) => format!("{} review", card.key.as_str()),
+                _ => return None,
+            };
+            Some(FinishedSession {
+                name: facts.name.clone(),
+                state: verdict.state.word().to_owned(),
+                why,
+            })
+        })
+        .collect()
+}
+
+/// Logs the listed sessions that left the state they were listed in,
+/// so each is listed again if it comes back to that state.
+fn forget_left_sessions(
+    run: &RunFolder,
+    finished: &[FinishedSession],
+    memory: &Memory,
+    now: &Zoned,
+) -> Result<(), HubError> {
+    let names: Vec<String> = memory
+        .listed
+        .iter()
+        .filter(|(name, state)| {
+            !finished
+                .iter()
+                .any(|session| &session.name == *name && &session.state == *state)
+        })
+        .map(|(name, _)| name.clone())
+        .collect();
+    if names.is_empty() {
+        return Ok(());
+    }
+    let left = Event {
+        at: now.timestamp(),
+        kind: EventKind::Unlisted { names },
+    };
+    events::append_event(run, &left)
 }
 
 /// Holds one handoff ask for each worker on a card that is working,
 /// idle or done, has `HANDOFF_TOKENS` tokens or more, and never got
 /// one, then records the ask. Delivery sends it by the usual rules.
-/// A session this pass closes or parks gets no ask, since delivering
-/// it would reopen finished work.
+/// A `to-close` or `to-park` session gets no ask. `hub clean` may
+/// close or park it, and delivering the ask would reopen finished work.
 fn ask_for_worker_handoffs(
     run: &RunFolder,
     collected: &CollectedFacts,
@@ -270,7 +348,8 @@ fn ask_for_worker_handoffs(
 /// Picks the most urgent news in a fixed order, or `None` when nothing
 /// is new. A message that was not sent or is unsure comes first, since
 /// nothing prints it again. Then come reports, blocked states, the
-/// hub's own handoff and the board crossing its limit.
+/// hub's own handoff, the board crossing its limit and finished
+/// sessions not listed yet.
 fn choose_news(facts: &NewsFacts<'_>) -> Option<News> {
     match facts.outcome {
         Some(SendOutcome::NotSent { name, reason }) => {
@@ -317,7 +396,28 @@ fn choose_news(facts: &NewsFacts<'_>) -> Option<News> {
             limit: board.limit,
         });
     }
-    None
+    find_unlisted_finished(facts.finished, facts.memory)
+}
+
+/// Returns the first finished session not yet listed in its state,
+/// with every other such session of the same state and why. Each later
+/// check lists the next group.
+fn find_unlisted_finished(finished: &[FinishedSession], memory: &Memory) -> Option<News> {
+    let unlisted: Vec<&FinishedSession> = finished
+        .iter()
+        .filter(|session| memory.listed.get(&session.name) != Some(&session.state))
+        .collect();
+    let first = unlisted.first()?;
+    let names = unlisted
+        .iter()
+        .filter(|session| session.state == first.state && session.why == first.why)
+        .map(|session| session.name.clone())
+        .collect();
+    Some(News::Finished {
+        state: first.state.clone(),
+        names,
+        why: first.why.clone(),
+    })
 }
 
 /// Returns reports at least 2 seconds old whose current version was
@@ -359,6 +459,10 @@ fn record_news(news: &News) -> Option<EventKind> {
             busy: *busy,
             limit: *limit,
         }),
+        News::Finished { state, names, .. } => Some(EventKind::Listed {
+            state: state.clone(),
+            names: names.clone(),
+        }),
         News::NotSent { .. } | News::Unsure { .. } | News::Replaced | News::Timeout => None,
     }
 }
@@ -373,7 +477,9 @@ fn make_outcome(news: &News, hub_tokens: Option<u64>, json: bool) -> Outcome {
 }
 
 /// Writes news as one line. Most lines end with the hub's own context,
-/// such as `report docs-fix (hub 131k)`.
+/// such as `report docs-fix (hub 131k)`. A finished line ends with what
+/// the hub should do, such as
+/// `to-close demo-kb-001-impl: DEMO-KB-001 accepted; run hub clean`.
 fn format_news_line(news: &News, hub_tokens: Option<u64>) -> String {
     let hub = format!("(hub {})", format_tokens(hub_tokens));
     match news {
@@ -385,6 +491,9 @@ fn format_news_line(news: &News, hub_tokens: Option<u64>) -> String {
             format!("hand off now: hub at {}", format_tokens(Some(*tokens)))
         }
         News::BoardOver { busy, limit } => format!("board over its limit: {busy}/{limit} {hub}"),
+        News::Finished { state, names, why } => {
+            format!("{state} {}: {why}; run hub clean", names.join(", "))
+        }
         News::Replaced => "replaced by a newer hub next".to_owned(),
         News::Timeout => format!("timeout {hub}"),
     }
@@ -394,17 +503,21 @@ fn format_news_line(news: &News, hub_tokens: Option<u64>) -> String {
 /// `{"news":"report","name":"docs-fix","detail":null,"hub_context_tokens":131204}`.
 fn format_news_json(news: &News, hub_tokens: Option<u64>) -> String {
     let (word, name, detail) = match news {
-        News::Report { name, .. } => ("report", Some(name), None),
-        News::Blocked { name, .. } => ("blocked", Some(name), None),
-        News::NotSent { name, reason } => ("not_sent", Some(name), Some(reason.clone())),
-        News::Unsure { name, reason } => ("unsure", Some(name), Some(reason.clone())),
+        News::Report { name, .. } => ("report", Some(name.clone()), None),
+        News::Blocked { name, .. } => ("blocked", Some(name.clone()), None),
+        News::NotSent { name, reason } => ("not_sent", Some(name.clone()), Some(reason.clone())),
+        News::Unsure { name, reason } => ("unsure", Some(name.clone()), Some(reason.clone())),
         News::HubHandOff { .. } => ("hand_off", None, None),
         News::BoardOver { busy, limit } => ("board_over", None, Some(format!("{busy}/{limit}"))),
+        News::Finished { state, names, why } => {
+            (state.as_str(), Some(names.join(", ")), Some(why.clone()))
+        }
         News::Replaced => ("replaced", None, None),
         News::Timeout => ("timeout", None, None),
     };
     json!({
-        "news": word,
+        // A state such as `to-park` prints as the word `to_park`.
+        "news": word.replace('-', "_"),
         "name": name,
         "detail": detail,
         "hub_context_tokens": hub_tokens,
@@ -469,6 +582,7 @@ mod tests {
             at: at.parse().unwrap(),
             state_seqs: [("docs-fix".to_owned(), state_seq)].into(),
             read_count: 3,
+            finished: Vec::new(),
         };
         let cases = [
             Case {
@@ -540,6 +654,7 @@ mod tests {
             memory: &memory,
             hub: &hub,
             board: None,
+            finished: &[],
         };
 
         let news = choose_news(&facts);

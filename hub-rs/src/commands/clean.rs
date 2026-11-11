@@ -1,5 +1,5 @@
-//! Runs `hub clean` and `hub park`. The tidy pass they share with
-//! `hub next` lives in `shared/tidy.rs`.
+//! Runs `hub clean` and `hub park`, the only commands that run the
+//! tidy pass. The tidy pass lives in `shared/tidy.rs`.
 
 use std::collections::BTreeSet;
 
