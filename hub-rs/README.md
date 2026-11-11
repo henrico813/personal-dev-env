@@ -9,7 +9,7 @@ pde-installer builds this folder on the Development tier and installs
 it as `~/.local/bin/hub-next`, so you can try it beside the Python
 `hub`. So far it has `status`, `next`, `send`, `read`, `report`,
 `inbox`, `note`, `brief`, `handoff`, `clean`, `park`, `auto`, `flag`,
-`unflag`, `alive`, `go` and `gather`.
+`unflag`, `alive`, `go`, `gather` and `board`.
 
 ```bash
 make build   # target/release/hub
@@ -111,6 +111,9 @@ code.
   saves a record in `~/.local/state/pde/hub/parked/`, adds the
   session to its card, and closes its tab. It exits 3 with
   `NAME stays: REASON` otherwise.
+- `board` is new. For now it only checks that its mouse reports
+  leave Herdr working in a pane. Keys 0 to 4 switch the mouse mode,
+  and q quits.
 - `send` to a parked session opens a new tab and resumes its OpenCode
   session there. It holds the message until the session starts.
 - `status` shows each session's lifecycle state in its STATE column,

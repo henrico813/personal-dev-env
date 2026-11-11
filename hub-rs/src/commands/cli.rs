@@ -47,6 +47,7 @@ $HUB_RUN.
   alive    is an OpenCode session alive
   go       show the next hub
   gather   put hubs at the top
+  board    check the mouse in a pane
 
 {after-help}",
     after_help = "Exit: 0 done, 1 a tool failed,\n2 wrong usage, 3 not done."
@@ -210,6 +211,9 @@ pub enum Command {
     /// Put hubs at the top
     #[command(after_help = "Example: hub gather")]
     Gather,
+    /// Check the mouse in a Herdr pane
+    #[command(after_help = "Example: hub board")]
+    Board,
 }
 
 // The steps run in the order the `auto-run` skill gives.
@@ -270,6 +274,7 @@ impl Command {
             Command::Alive { .. } => "alive",
             Command::Go => "go",
             Command::Gather => "gather",
+            Command::Board => "board",
         }
     }
 }
@@ -333,7 +338,8 @@ pub fn takes_machine(command: &Command) -> bool {
         | Command::Auto { .. }
         | Command::Alive { .. }
         | Command::Go
-        | Command::Gather => false,
+        | Command::Gather
+        | Command::Board => false,
     }
 }
 
