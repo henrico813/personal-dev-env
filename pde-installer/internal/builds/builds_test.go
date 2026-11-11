@@ -51,8 +51,8 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 
 	// Files from the previous install, including a plain-file pde-pr-approve.
 	for _, name := range []string{
-		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "glimmer", "skill-lessons",
-		"hub", "prs",
+		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "glimmer", "hub-next",
+		"skill-lessons", "hub", "prs",
 	} {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
 	}
@@ -76,8 +76,8 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 		t.Fatalf("Rollback() error = %v", err)
 	}
 	for _, name := range []string{
-		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "glimmer", "skill-lessons",
-		"hub", "prs",
+		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "glimmer", "hub-next",
+		"skill-lessons", "hub", "prs",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n")
 	}
@@ -241,8 +241,8 @@ func TestBrokenSkillLessonsRevertsEveryTool(t *testing.T) {
 	manager := newFixtureManager(t, home, repoRoot, filepath.Join(t.TempDir(), "build.log"))
 	testfile.WriteExecutable(t, manager.python, "#!/bin/sh\nprintf '%s\\n' '#!/bin/sh' 'exit 1' > \"$3\"\nchmod +x \"$3\"\n")
 	names := []string{
-		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "glimmer", "skill-lessons",
-		"hub", "prs",
+		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "glimmer", "hub-next",
+		"skill-lessons", "hub", "prs",
 	}
 	for _, name := range names {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
@@ -284,34 +284,50 @@ func TestClientBlinkPinMatchesBuildPin(t *testing.T) {
 	}
 }
 
-// A failed check of glimmer must put back every old tool, or Ctrl+b e stops
-// opening.
-func TestBrokenReviewToolRestoresEveryTool(t *testing.T) {
-	home, repoRoot := t.TempDir(), t.TempDir()
-	writeBuildSources(t, repoRoot)
-	manager := newFixtureManager(t, home, repoRoot, filepath.Join(t.TempDir(), "build.log"))
-	writeBuildFile(t, filepath.Join(repoRoot, "glimmer", "fail-help"), "fail\n", 0o644)
-	names := []string{
-		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve",
-		"glimmer", "skill-lessons", "hub", "prs",
+// A failed check of a built tool must put back every old tool. A broken
+// glimmer stops Ctrl+b e opening, and a broken hub-next stays installed.
+func TestFailedToolCheckRestoresEveryTool(t *testing.T) {
+	tests := []struct {
+		tool, source string
+	}{
+		{
+			tool:   "glimmer",
+			source: "glimmer",
+		},
+		{
+			tool:   "hub-next",
+			source: "hub-rs",
+		},
 	}
-	for _, name := range names {
-		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
-	}
-	writeBuildFile(t, manager.statePath(), "old state\n", 0o644)
+	for _, tt := range tests {
+		t.Run(tt.tool, func(t *testing.T) {
+			home, repoRoot := t.TempDir(), t.TempDir()
+			writeBuildSources(t, repoRoot)
+			manager := newFixtureManager(t, home, repoRoot, filepath.Join(t.TempDir(), "build.log"))
+			writeBuildFile(t, filepath.Join(repoRoot, tt.source, "fail-help"), "fail\n", 0o644)
+			names := []string{
+				"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve",
+				"glimmer", "hub-next", "skill-lessons", "hub", "prs",
+			}
+			for _, name := range names {
+				writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
+			}
+			writeBuildFile(t, manager.statePath(), "old state\n", 0o644)
 
-	_, err := manager.Reconcile("full")
+			_, err := manager.Reconcile("full")
 
-	if err == nil || !strings.Contains(err.Error(), "verify glimmer") {
-		t.Fatalf("Reconcile() error = %v, want the review tool check to fail", err)
-	}
-	for _, name := range names {
-		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n")
-	}
-	assertBuildFile(t, manager.statePath(), "old state\n")
-	stage := filepath.Join(home, ".local", "state", "pde", "build-stage")
-	if _, err := os.Stat(stage); !os.IsNotExist(err) {
-		t.Fatalf("build stage remains after failure: %v", err)
+			if err == nil || !strings.Contains(err.Error(), "verify "+tt.tool) {
+				t.Fatalf("Reconcile() error = %v, want the %s check to fail", err, tt.tool)
+			}
+			for _, name := range names {
+				assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n")
+			}
+			assertBuildFile(t, manager.statePath(), "old state\n")
+			stage := filepath.Join(home, ".local", "state", "pde", "build-stage")
+			if _, err := os.Stat(stage); !os.IsNotExist(err) {
+				t.Fatalf("build stage remains after failure: %v", err)
+			}
+		})
 	}
 }
 
@@ -358,7 +374,7 @@ func newCommittedManager(t *testing.T) (manager Manager, repoRoot, logPath strin
 func writeBuildSources(t *testing.T, repoRoot string) {
 	t.Helper()
 	for _, source := range []string{
-		"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2", "glimmer", "prs",
+		"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2", "glimmer", "hub-rs", "prs",
 	} {
 		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
 	}
@@ -670,7 +686,7 @@ printf '%%s\n' cache > "$CARGO_HOME/content"
 output=$target/release/$name
 mkdir -p "$(dirname "$output")"
 printf '%%s\n' '#!/bin/sh' 'exit 0' '# built by cargo' > "$output"
-if [ "$name" = glimmer ] && [ -f fail-help ]; then
+if [ -f fail-help ]; then
   printf '%%s\n' '#!/bin/sh' 'exit 1' > "$output"
 fi
 chmod +x "$output"
@@ -699,6 +715,7 @@ func assertBuildOutputs(t *testing.T, home string) {
 		"vibe":                 "cargo",
 		"pde-gh-write":         "go",
 		"glimmer":              "cargo",
+		"hub-next":             "cargo",
 		"skill-lessons":        "python",
 		"hub":                  "python",
 		"prs":                  "go",
@@ -725,6 +742,7 @@ func assertBuildArtifactsRemoved(t *testing.T, stageRoot string) {
 		filepath.Join(stageRoot, "opencode-inline-shim"),
 		filepath.Join(stageRoot, "vibe-target"),
 		filepath.Join(stageRoot, "glimmer-target"),
+		filepath.Join(stageRoot, "hub-target"),
 		filepath.Join(stageRoot, "go-cache"),
 		filepath.Join(stageRoot, "go-mod-cache"),
 		filepath.Join(stageRoot, "cargo-home"),

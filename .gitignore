@@ -44,3 +44,4 @@ pde-installer/pde-installer
 pde-installer/pde-installer.exe
 vibe/target/
 glimmer/target/
+hub-rs/target/

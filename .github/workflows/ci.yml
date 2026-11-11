@@ -73,6 +73,16 @@ jobs:
       - name: check
         run: make check
 
+  hub-rs:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hub-rs
+    steps:
+      - uses: actions/checkout@v4
+      - name: check
+        run: make check
+
   opencode-inline-nvim:
     runs-on: ubuntu-latest
     defaults:

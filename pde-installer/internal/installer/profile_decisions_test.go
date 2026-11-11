@@ -117,6 +117,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"build and atomically activate vibe",
 				"build and atomically activate pde-gh-write",
 				"build and atomically activate glimmer",
+				"build and atomically activate hub-next",
 				"build and atomically activate skill-lessons",
 				"build and atomically activate hub",
 				"build and atomically activate prs",
