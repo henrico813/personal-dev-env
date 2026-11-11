@@ -35,7 +35,9 @@ from the roadmap page too.
     folders you make with `mktemp -d`, except that you write your full
     report to the file your brief names; never remove a fixed /tmp
     path or use another agent's folder. Read a skill's SKILL.md,
-    then only the references your step needs. Send test, lint and
+    then only the references your step needs. Work on large files
+    and plans with scripts, `git show` and `sed -n` ranges, never by
+    reading them whole. Send test, lint and
     build output to a log file in your folder, and read only its
     summary lines, such as counts and the names of failed tests.
     Never run a whole test suite or linter; a script runs them once
@@ -117,8 +119,10 @@ new planner needs no earlier session.
 
 ## Skill review
 
-Start one per skill, all at once, after the build. Each gets the same
-change description and its own focus:
+Start the reviewers loop step 4 names, all at once, after the build.
+Each gets the same change description and its own focus. When one
+reviewer covers several skills, name each on its Applicable skills
+line and give it each skill's focus:
 
     Review a code change before its pull request opens.
     Applicable skills: review-plan, <this skill>.

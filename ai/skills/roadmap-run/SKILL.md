@@ -2,12 +2,12 @@
 name: roadmap-run
 description: Builds the remaining pull requests of an approved roadmap
   as a stack while the user is away. Each PR is planned, reviewed
-  fresh, built from the plan's exported trees, reviewed by one agent
-  per skill, fixed, checked and pushed, and its approval and comment
-  review are queued for the user. Use when the user asks to build
-  several roadmap PRs without reviewing each step, such as "build the
-  rest of the roadmap overnight". For one task an agent does and you
-  review, use delegate.
+  fresh, built from the plan's exported trees, reviewed by skill
+  (one agent per skill when risky), fixed, checked and pushed, and
+  its approval and comment review are queued for the user. Use when
+  the user asks to build several roadmap PRs without reviewing each
+  step, such as "build the rest of the roadmap overnight". For one
+  task an agent does and you review, use delegate.
 metadata:
   pde-workflow: "true"
 ---
@@ -46,7 +46,17 @@ answering the comment reviews you queued.
    feedback list, and each role's model. Parallel sessions of the run
    share it, so write its path on the roadmap page. Send each model
    the run will use a one-line job, "reply OK", and write in
-   `rules.md` which answered.
+   `rules.md` which answered. When the brief names no model for a
+   role, use these:
+   - Planners: Opus 5.5 with 1M context, at high reasoning where the
+     harness takes it. Never Sonnet: its context overflowed and
+     compacted many times on one large plan.
+   - Reviews of a new plan, `review-plan` reviews and language-skill
+     reviews: Sonnet 5, medium thinking. When step 4 calls a PR
+     risky because it can change files or data the user owns,
+     `review-plan` runs on Opus.
+   - `code-documentation` and `behavior-focused-testing` reviews:
+     Sonnet 5, medium thinking or more, never `gpt-5.6-luna`.
 
 ## The loop for each PR
 
@@ -87,10 +97,19 @@ that summary and run at most the one test a finding needs.
    failed build command means a stale plan or a broken tool: stop
    this PR and its children, put the error on the roadmap page as a
    blocking question, and keep building other stacks.
-4. **Skill reviews.** Start one new agent per skill at once:
-   `review-plan`, each language skill, `code-documentation` and
-   `behavior-focused-testing`. Wait for all of them.
-5. **Revise.** Settle disagreements between reviewers, decide the
+4. **Skill reviews.** Call a PR risky if its code can change or
+   remove files or data the user owns, or if it enforces a
+   permission, an approval or a safety check. In doubt, call it
+   risky, and note each PR's call on the roadmap page. A risky PR
+   gets one new agent per skill, started together: `review-plan`,
+   each language skill, `code-documentation` and
+   `behavior-focused-testing`; its last two are the fresh checks
+   prompts.md's Skill review describes. Any other PR gets a single
+   agent for `review-plan` plus the language skills, and those two
+   fresh checks. Wait for all of them.
+5. **Revise.** Verify every required fix a reviewer asks for, in the
+   code or by a quick test, and drop any that is false, saying why.
+   Settle disagreements between reviewers, decide the
    optional items, and start a new planner for the fixes. Run the design
    check on the revised plan, then commit its tree as one fix commit.
    A test may be deleted only when a reviewer's finding names it and
@@ -105,15 +124,23 @@ that summary and run at most the one test a finding needs.
    planner as a fix. Handle each `stale` line yourself, as build.md
    says. A local model may run these scripts, as prompts.md's Local
    model says.
-7. **Ship.** Write the PR text, then run build.md's ship script. It
+7. **Ship.** You or Sonnet 5 write the PR text, never
+   `gpt-5.6-luna`. `msg lint` cannot tell whether it reads well, so
+   read it yourself and rewrite it until it meets `git-messages`
+   item 5. Then run build.md's ship script. It
    stops when the branch's tree differs from the plan, on bad PR text,
    a failed check, the wrong branch, a parent that moved or a branch
    already pushed. It squashes onto the parent, pushes, and stops.
    Deploy the pushed commit and try it, as pull-request Guardrail 4
-   says. Add the one-line result to Testing in `$D/FILE`. Write the
-   same line, starting with the pushed commit's full hash, to
-   `tested` in the run folder. Then rerun ship.sh. The rerun saves
-   and runs the PR request script, which calls
+   says. In a brief for an agent that deploys and tries it, name the
+   folder in every command, as in `git -C <worktree>`. Take
+   `git status --short` of the main checkout both before that agent
+   starts and after it ends, and move into its run folder only the
+   files that showed up while it ran. Add the one-line result to
+   Testing in `$D/FILE`. Write the same line, starting with the
+   pushed commit's full hash, to `tested` in the run folder. Then
+   rerun ship.sh. The rerun saves and runs the PR request script,
+   which calls
    `pde-gh-write pr create --base <parent branch>`. When a child PR
    cannot run until its parent merges, you hold it. For a held PR, set
    NEXT to `held until <parent branch> merges`, print its status
@@ -204,7 +231,8 @@ entries parked.
 - When reviewers disagree, pick one, and tell the planner which and
   why.
 - Each test checks only what its name says, in the PR that owns the
-  behavior. Never move a test into a child PR.
+  behavior. A miss is a required correction, as
+  `behavior-focused-testing` says. Never move a test into a child PR.
 - A question that blocks one PR parks only that PR; keep building the
   others. Put non-blocking questions in the roadmap page as "your
   call".
