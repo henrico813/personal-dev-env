@@ -118,7 +118,8 @@ Status words vary by owner. Common values include `missing`, `installed`,
 ### `pde-installer version`
 
 Prints the commit, branch, and UTC time of the last install on this machine
-that put every component in place, read from `~/.local/state/pde/install.json`:
+that put every component in place. It reads them from
+`~/.local/state/pde/install.json`:
 
 ```text
 commit 3f9c2e1a...
