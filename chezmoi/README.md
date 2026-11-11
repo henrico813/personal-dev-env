@@ -199,7 +199,7 @@ user-owned state.
 
 Use `Ctrl-A` for tmux and `Ctrl-B` for Herdr. Herdr uses its mobile status header
 and full-screen machine switcher at 100 columns and below. Machine labels
-distinguish Local and ***REMOVED*** agents. The managed config is validated with Herdr
+distinguish Local and Office agents. The managed config is validated with Herdr
 0.9.1, so run `herdr config check` after upgrades.
 
 See the [maintenance guide](../pde-installer/docs/how-to/update-chezmoi-content.md).
