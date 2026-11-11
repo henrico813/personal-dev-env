@@ -105,10 +105,12 @@ machine to every `herdr` call, as `herdr --machine` does.
   the agent works in and each one whose branch holds the card's key
   in lowercase. The main checkout is not checked for unsaved work,
   since it holds the user's own files. A tab with no agent closes
-  when its shell runs nothing. A tab closes only when all its panes
-  may close, and the hub's own tab and the tab the user looks at
-  always stay. A `kept` line names a finished card's agent that
-  still works or holds unsaved work. With nothing closed it prints
+  when its shell sits at the prompt and owns no background or
+  stopped job. A tab closes only when all its panes may close, and
+  the hub's own tab and the tab the user looks at always stay. A
+  `kept` line names a finished card's agent whose tab stays because
+  the agent still works, holds unsaved work, or has a worktree that
+  git failed to read. With nothing closed it prints
   `nothing to close`. It exits 2 with `--machine`, since it runs git
   on this machine.
 - `auto` runs the steps of an auto run, which the `auto-run` skill

@@ -196,8 +196,8 @@ def find_card_worktrees(folders: set[str], key: str) -> list[Path]:
     """Find the linked worktrees a card's agent may have worked in.
 
     These are the worktrees holding the agent's folders and those whose
-    branch names the card. The main checkout is never one, since it
-    holds the user's own files.
+    branch contains the card's key. The main checkout is never one,
+    since it holds the user's own files.
 
     Args:
         folders: The agent's working folders, as Herdr prints them.
@@ -268,8 +268,8 @@ def list_linked_worktrees(folder: Path) -> list[tuple[Path, str]]:
 def find_unsaved_work(worktree: Path) -> str:
     """Describe work in a worktree that only this folder holds.
 
-    No fetch runs first, so a remote branch git has not seen yet makes
-    pushed commits look unpushed and the tab stays.
+    No fetch runs first. A remote branch that git has not seen yet makes
+    pushed commits look unpushed, so the tab stays open.
 
     Args:
         worktree: The worktree's folder.
