@@ -114,6 +114,7 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
                 poll: read_poll_interval()?,
                 json: *json,
                 process_id: std::process::id(),
+                cwd: read_current_folder()?,
             };
             next::run_next(&tools, &run, &options)
         }
@@ -168,12 +169,10 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         Command::Handoff { run, name, handoff } => {
             let run = find_run(run)?;
             let poll = read_poll_interval()?;
-            let cwd = env::current_dir().map_err(|source| HubError::File {
-                path: PathBuf::from("."),
-                source,
-            })?;
+            let cwd = read_current_folder()?;
             handoff::run_handoff(&tools, &run, name, handoff, &cwd, &now, poll)
         }
+        Command::Adopt { run, old } => handoff::run_adopt(&tools, &find_run(run)?, old, &now),
         Command::Clean { run, dry_run } => {
             clean::run_clean(&tools, &find_run(run)?, *dry_run, &now)
         }
@@ -246,6 +245,15 @@ fn read_report_text(file: Option<&Path>) -> Result<String, HubError> {
             Ok(text)
         }
     }
+}
+
+/// Returns the folder this command runs in, where the sessions it
+/// starts open.
+fn read_current_folder() -> Result<PathBuf, HubError> {
+    env::current_dir().map_err(|source| HubError::File {
+        path: PathBuf::from("."),
+        source,
+    })
 }
 
 /// Returns `HUB_POLL_SECONDS` as a duration, such as `0.5` for half a

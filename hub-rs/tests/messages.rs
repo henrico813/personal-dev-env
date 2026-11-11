@@ -44,6 +44,7 @@ fn check_once(test_tools: &TestTools) -> String {
         poll: Duration::ZERO,
         json: false,
         process_id: 1,
+        cwd: test_tools.path().to_owned(),
     };
     let outcome = run_next(&test_tools.tools(), &test_tools.run(), &options).unwrap();
     outcome.lines.join("\n")
