@@ -7,6 +7,7 @@ use std::time::Duration;
 use hub::commands::Outcome;
 use hub::commands::next::{NextOptions, run_next};
 use hub::commands::send::{SendRequest, run_inbox, run_send};
+use hub::external::cards::CardNote;
 use hub::external::herdr::{Agent, AgentStatus, HerdrCode};
 use hub::shared::{HubError, Tools};
 use serde_json::Value;
@@ -430,13 +431,16 @@ fn run_next_moves_message_to_card_successor() {
             ..make_agent("demo-kb-012-fix", AgentStatus::Idle)
         },
     ];
-    test_tools.cards.sessions = [(
+    test_tools.cards.card_notes = [(
         "DEMO-KB-012".to_owned(),
-        vec![
-            "ses_plan".to_owned(),
-            "ses_old".to_owned(),
-            "ses_new".to_owned(),
-        ],
+        CardNote {
+            sessions: vec![
+                "ses_plan".to_owned(),
+                "ses_old".to_owned(),
+                "ses_new".to_owned(),
+            ],
+            ..CardNote::default()
+        },
     )]
     .into();
 

@@ -194,10 +194,17 @@ impl RunFolder {
     /// Returns a file of the run folder, or empty text when it does not
     /// exist.
     pub(crate) fn read_optional_file(&self, file_name: &str) -> Result<String, HubError> {
+        Ok(self.read_file_if_exists(file_name)?.unwrap_or_default())
+    }
+
+    /// Returns a file of the run folder, or `None` when it does not
+    /// exist. Use it when a missing file changes what the caller does,
+    /// such as an auto run with no `approved.md`.
+    pub(crate) fn read_file_if_exists(&self, file_name: &str) -> Result<Option<String>, HubError> {
         let path = self.path.join(file_name);
         match fs::read_to_string(&path) {
-            Ok(text) => Ok(text),
-            Err(source) if source.kind() == io::ErrorKind::NotFound => Ok(String::new()),
+            Ok(text) => Ok(Some(text)),
+            Err(source) if source.kind() == io::ErrorKind::NotFound => Ok(None),
             Err(source) => Err(HubError::File { path, source }),
         }
     }

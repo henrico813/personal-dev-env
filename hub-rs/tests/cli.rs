@@ -15,8 +15,10 @@ use common::{TempFolder, read_script_calls};
 
 /// Scripts and hubs tell a tool failure (1), wrong usage (2), and a
 /// stopped command (3) apart by exit code, and a tool failure also
-/// shows Herdr's own words. The `no-report` case finds its run folder
-/// through `HUB_RUN` alone, as a worker's pane gives it.
+/// shows Herdr's or `card`'s own words. The `no-report` case finds its
+/// run folder through `HUB_RUN` alone, as a worker's pane gives it.
+/// The `auto-other-reply` case also checks that `hub auto approve`
+/// takes the run number before the reply.
 #[test]
 fn hub_exit_code_follows_failure_kind() {
     struct Case {
@@ -111,11 +113,40 @@ fn hub_exit_code_follows_failure_kind() {
             exit_code: 2,
             says: "hub: no run folder; pass --run DIR or set HUB_RUN\n",
         },
+        Case {
+            name: "auto-ready-card",
+            herdr_stdout: "",
+            herdr_exit_code: 0,
+            args: &["auto", "ready"],
+            hub_run: true,
+            exit_code: 1,
+            says: "hub: card: no default vault\n",
+        },
+        Case {
+            name: "auto-check-no-list",
+            herdr_stdout: "",
+            herdr_exit_code: 0,
+            args: &["auto", "check"],
+            hub_run: true,
+            exit_code: 3,
+            says: "hub: run.md does not exist\n",
+        },
+        Case {
+            name: "auto-other-reply",
+            herdr_stdout: "",
+            herdr_exit_code: 0,
+            args: &["auto", "approve", "2", "go"],
+            hub_run: true,
+            exit_code: 3,
+            says: "hub: the reply is not 'approve run 2'; nothing was approved\n",
+        },
     ];
 
     for case in cases {
         let folder = TempFolder::new();
         folder.write_script("herdr", case.herdr_stdout, "", case.herdr_exit_code);
+        // Every case gets a `card` that fails as it does without a vault.
+        folder.write_script("card", "", "card: no default vault\n", 1);
 
         // The child gets only these variables, so the user's own Herdr
         // is never reached.

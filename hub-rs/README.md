@@ -8,8 +8,8 @@ use until this program replaces it.
 pde-installer builds this folder on the Development tier and installs
 it as `~/.local/bin/hub-next`, so you can try it beside the Python
 `hub`. So far it has `next`, `send`, `read`, `report`, `inbox`,
-`note`, `brief`, `handoff`, `flag`, `unflag`, `alive`, `go` and
-`gather`.
+`note`, `brief`, `handoff`, `auto`, `flag`, `unflag`, `alive`, `go`
+and `gather`.
 
 ```bash
 make build   # target/release/hub
@@ -55,6 +55,11 @@ code.
   when `card` fails. When nothing else waits, the board line is
   followed by `Nothing waits on the user.`, the same line the Python
   hub printed.
+- `auto check`, `auto approve` and `auto now` exit 3, not 2, when
+  they stop, such as for a reply that approves nothing. Every `auto`
+  step takes the run folder from `--run DIR`, else from `HUB_RUN`.
+  `auto check` prints `hub: ` before its first problem only, one
+  problem per line.
 - `hub-next --machine LABEL alive` exits 2 with
   `alive works on this machine only`, the same words as `go`.
 - `send` sends at once to an OpenCode or Claude Code session that is

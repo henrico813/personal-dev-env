@@ -333,7 +333,7 @@ mod herdr_cli {
 }
 
 mod card_cli {
-    use hub::external::cards::{CardCli, Cards};
+    use hub::external::cards::{CardCli, CardKey, Cards};
 
     use super::common::{TempFolder, read_script_calls};
 
@@ -380,6 +380,25 @@ mod card_cli {
 
         assert_eq!(note.sessions, ["ses_0a1b2c3d4e5f", "ses_9f8e7d6c5b4a"]);
         assert_eq!(read_script_calls(&script), [["show", "DEMO-KB-007"]]);
+    }
+
+    /// `hub auto ready` and `hub auto check` work from this list. A
+    /// draft card in it could be run without the user's say, and a
+    /// ready card left out never reaches the user's briefing.
+    #[test]
+    fn card_cli_lists_ready_keys_in_order() {
+        let folder = TempFolder::new();
+        let card_list = "DEMO-KB-007 ready task Retry failed uploads\n\
+                         DEMO-KB-003 ready task Fix the docs\n\
+                         2 cards\n";
+        let script = folder.write_script("card", card_list, "", 0);
+        let cards = CardCli::new(script.clone());
+
+        let keys = cards.list_ready().unwrap();
+
+        let keys: Vec<&str> = keys.iter().map(CardKey::as_str).collect();
+        assert_eq!(keys, ["DEMO-KB-007", "DEMO-KB-003"]);
+        assert_eq!(read_script_calls(&script), [["list", "--stage", "ready"]]);
     }
 
     /// `hub brief` shows card's own reason on its board line, such as a

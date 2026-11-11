@@ -9,11 +9,12 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
-use hub::commands::cli::{self, Cli, Command, RunArg};
+use hub::commands::auto::AutoApproval;
+use hub::commands::cli::{self, AutoStep, Cli, Command, RunArg};
 use hub::commands::next::NextOptions;
 use hub::commands::reports::{CardChoice, ReadRequest};
 use hub::commands::send::SendRequest;
-use hub::commands::{Outcome, alive, brief, flag, handoff, next, reports, send, sidebar};
+use hub::commands::{Outcome, alive, auto, brief, flag, handoff, next, reports, send, sidebar};
 use hub::external::cards::CardCli;
 use hub::external::herdr::HerdrCli;
 use hub::external::opencode::OpenCodeDb;
@@ -160,6 +161,25 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
             })?;
             handoff::run_handoff(&tools, &run, name, handoff, &cwd, &now, poll)
         }
+        Command::Auto { step } => match step {
+            AutoStep::Ready { run } => auto::run_auto_ready(&tools, &find_run(run)?),
+            AutoStep::Check { run } => auto::run_auto_check(&tools, &find_run(run)?),
+            AutoStep::Approve {
+                run,
+                given,
+                number,
+                reply,
+            } => {
+                let run = find_run(run)?;
+                let approval = AutoApproval {
+                    number: *number,
+                    reply: reply.clone(),
+                    given: *given,
+                };
+                auto::run_auto_approve(&tools, &run, &approval, &now)
+            }
+            AutoStep::Now { run } => auto::run_auto_now(&find_run(run)?),
+        },
         Command::Flag { name } => flag::run_flag(&tools, name),
         Command::Unflag { name } => flag::run_unflag(&tools, name),
         Command::Alive { session } => alive::run_alive(&tools, session, &now),

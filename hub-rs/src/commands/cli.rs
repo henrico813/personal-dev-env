@@ -38,6 +38,7 @@ $HUB_RUN.
   note*    add a timed line to notes.md
   brief*   what waits on the user
   handoff* start the next hub
+  auto     the steps of an auto run
   flag     mark a pane \"needs you\"
   unflag   clear the mark
   alive    is an OpenCode session alive
@@ -150,6 +151,12 @@ pub enum Command {
         /// The handoff file for the next hub
         handoff: PathBuf,
     },
+    /// The steps of an auto run
+    #[command(after_help = "Example: hub auto check --run /tmp/auto-run-2")]
+    Auto {
+        #[command(subcommand)]
+        step: AutoStep,
+    },
     /// Mark a pane "needs you"
     #[command(after_help = "Example: hub flag docs-fix")]
     Flag {
@@ -176,6 +183,43 @@ pub enum Command {
     Gather,
 }
 
+// The steps run in the order the `auto-run` skill gives.
+#[derive(clap::Subcommand)]
+pub enum AutoStep {
+    /// Write the ready cards to ready.md
+    #[command(after_help = "Example: hub auto ready")]
+    Ready {
+        #[command(flatten)]
+        run: RunArg,
+    },
+    /// Compare run.md against the ready cards
+    #[command(after_help = "Example: hub auto check")]
+    Check {
+        #[command(flatten)]
+        run: RunArg,
+    },
+    /// Save run.md with the user's reply
+    #[command(after_help = "Example: hub auto approve 2 \"approve run 2\"")]
+    Approve {
+        #[command(flatten)]
+        run: RunArg,
+        /// The reply is the user's own words naming exactly the run's
+        /// cards, not `approve run N`
+        #[arg(long)]
+        given: bool,
+        /// The run's number
+        number: u32,
+        /// The user's reply, word for word
+        reply: String,
+    },
+    /// Write and print brief-now.md
+    #[command(after_help = "Example: hub auto now")]
+    Now {
+        #[command(flatten)]
+        run: RunArg,
+    },
+}
+
 impl Command {
     /// Returns the name the user typed, such as `go`.
     pub fn name(&self) -> &'static str {
@@ -188,6 +232,7 @@ impl Command {
             Command::Note { .. } => "note",
             Command::Brief { .. } => "brief",
             Command::Handoff { .. } => "handoff",
+            Command::Auto { .. } => "auto",
             Command::Flag { .. } => "flag",
             Command::Unflag { .. } => "unflag",
             Command::Alive { .. } => "alive",
@@ -248,6 +293,7 @@ pub fn takes_machine(command: &Command) -> bool {
         | Command::Note { .. }
         | Command::Brief { .. }
         | Command::Handoff { .. }
+        | Command::Auto { .. }
         | Command::Alive { .. }
         | Command::Go
         | Command::Gather => false,

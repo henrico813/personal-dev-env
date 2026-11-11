@@ -254,13 +254,16 @@ impl Herdr for &InMemoryHerdr {
     }
 }
 
-/// The `card` command, as the `Cards` trait, with the board and card
-/// sessions in memory. It records each note it is asked to add.
+/// The `card` command, as the `Cards` trait, with the board, the ready
+/// cards and what `card show` gives in memory. It records each note it
+/// is asked to add.
 #[derive(Default)]
 pub struct InMemoryCards {
-    /// Each card's session IDs, oldest first, by card key. Any other
-    /// card fails as `card show` does for a missing card.
-    pub sessions: BTreeMap<String, Vec<String>>,
+    /// The keys of ready cards, in `card list` order.
+    pub ready: Vec<String>,
+    /// What `card show` gives, by card key. Any other card fails as
+    /// `card show` does for a missing card.
+    pub card_notes: BTreeMap<String, CardNote>,
     /// `None` answers as `card` does without a vault.
     pub board: Option<BoardCounts>,
     /// Each `add_note` call, as the card key and the text.
@@ -270,14 +273,15 @@ pub struct InMemoryCards {
 }
 
 impl Cards for InMemoryCards {
+    fn list_ready(&self) -> Result<Vec<CardKey>, CardError> {
+        Ok(self.ready.iter().map(|key| key.parse().unwrap()).collect())
+    }
+
     fn read_card(&self, key: &CardKey) -> Result<CardNote, CardError> {
-        let sessions = self
-            .sessions
+        self.card_notes
             .get(key.as_str())
-            .ok_or_else(|| CardError::Failed(format!("card: no card {}", key.as_str())))?;
-        Ok(CardNote {
-            sessions: sessions.clone(),
-        })
+            .cloned()
+            .ok_or_else(|| CardError::Failed(format!("card: no card {}", key.as_str())))
     }
 
     fn read_board(&self) -> Result<BoardCounts, CardError> {
