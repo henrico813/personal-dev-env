@@ -9,7 +9,7 @@ mod herdr_cli {
     use hub::outside::herdr::{AgentStatus, Herdr, HerdrCli};
     use serde_json::{Value, json};
 
-    use super::common::{TempFolder, read_script_calls, write_script};
+    use super::common::{TempFolder, read_script_calls};
 
     /// Herdr's answer to a call that changes something.
     const OK_ANSWER: &str = r#"{"id":"cli","result":{"type":"ok"}}"#;
@@ -33,7 +33,7 @@ mod herdr_cli {
     #[test]
     fn herdr_cli_puts_pane_before_source() {
         let folder = TempFolder::new();
-        let script = write_script(folder.path(), "herdr", OK_ANSWER, "", 0);
+        let script = folder.write_script("herdr", OK_ANSWER, "", 0);
         let herdr = HerdrCli::new(script.clone(), None, folder.path().join("herdr.sock"));
 
         herdr
@@ -71,7 +71,7 @@ mod herdr_cli {
         let answer = r#"{"result":{"agents":[],"workspaces":[],"agent":{
             "name":"docs-fix","agent_status":"idle","pane_id":"w4:p2",
             "workspace_id":"w4","focused":false}}}"#;
-        let script = write_script(folder.path(), "herdr", answer, "", 0);
+        let script = folder.write_script("herdr", answer, "", 0);
         let herdr = HerdrCli::new(
             script.clone(),
             Some("laptop".to_owned()),
@@ -99,13 +99,7 @@ mod herdr_cli {
     #[test]
     fn herdr_cli_uses_stderr_without_json() {
         let folder = TempFolder::new();
-        let script = write_script(
-            folder.path(),
-            "herdr",
-            "",
-            "herdr: no server at /run/herdr.sock\n",
-            1,
-        );
+        let script = folder.write_script("herdr", "", "herdr: no server at /run/herdr.sock\n", 1);
         let herdr = HerdrCli::new(script, None, folder.path().join("herdr.sock"));
 
         let error = herdr.list_agents().unwrap_err();

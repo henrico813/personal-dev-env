@@ -2,7 +2,7 @@ mod common;
 
 use std::process::Command;
 
-use common::{TempFolder, read_script_calls, write_script};
+use common::{TempFolder, read_script_calls};
 
 /// Scripts and hubs act on the exit code. They must tell a tool failure
 /// (1) from wrong usage (2) and from a command that stopped for a
@@ -62,13 +62,7 @@ fn hub_exit_code_follows_failure_kind() {
 
     for case in cases {
         let folder = TempFolder::new();
-        write_script(
-            folder.path(),
-            "herdr",
-            case.herdr_stdout,
-            "",
-            case.herdr_exit_code,
-        );
+        folder.write_script("herdr", case.herdr_stdout, "", case.herdr_exit_code);
 
         // The child gets only these variables, so the user's own Herdr
         // is never reached.
@@ -96,7 +90,7 @@ fn hub_flag_sends_machine_to_herdr() {
     let folder = TempFolder::new();
     let answer = r#"{"result":{"agent":{"name":"docs-fix","agent_status":"idle",
         "pane_id":"w4:p2","workspace_id":"w4","focused":false}}}"#;
-    let script = write_script(folder.path(), "herdr", answer, "", 0);
+    let script = folder.write_script("herdr", answer, "", 0);
 
     // The child gets only these variables, so the user's own Herdr is
     // never reached.

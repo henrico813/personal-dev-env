@@ -6,6 +6,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use hub::outside::herdr::{Agent, AgentStatus, Herdr, HerdrError, Workspace};
 
@@ -90,57 +91,67 @@ pub fn make_workspaces(ids: &[&str]) -> Vec<Workspace> {
         .collect()
 }
 
-/// A temporary folder, deleted on drop.
-pub struct TempFolder(PathBuf);
+/// Lets one test at a time write scripts and start processes, because a
+/// process started while another test's script is open for writing keeps
+/// that file open, and running the script then fails with "Text file busy".
+static PROCESS_LOCK: Mutex<()> = Mutex::new(());
+
+/// A temporary folder, deleted on drop. It holds `PROCESS_LOCK` until
+/// then, so a test that writes a script or starts a process makes one
+/// first, and never holds two at once.
+pub struct TempFolder {
+    path: PathBuf,
+    _process_lock: MutexGuard<'static, ()>,
+}
 
 impl TempFolder {
     pub fn new() -> Self {
+        // A test that panicked while holding the lock must not fail the
+        // tests after it.
+        let process_lock = PROCESS_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
         let output = Command::new("mktemp").arg("-d").output().unwrap();
         assert!(output.status.success());
         let path = String::from_utf8(output.stdout).unwrap();
-        Self(PathBuf::from(path.trim_end_matches('\n')))
+        Self {
+            path: PathBuf::from(path.trim_end_matches('\n')),
+            _process_lock: process_lock,
+        }
     }
 
     pub fn path(&self) -> &Path {
-        &self.0
+        &self.path
+    }
+
+    /// Writes a script `name` in this folder that logs its arguments,
+    /// prints `stdout` and `stderr`, and exits with `exit_code`, as a
+    /// stand-in for a program such as `herdr`. Returns its path.
+    pub fn write_script(&self, name: &str, stdout: &str, stderr: &str, exit_code: i32) -> PathBuf {
+        let script = self.path.join(name);
+        fs::write(script.with_extension("out"), stdout).unwrap();
+        fs::write(script.with_extension("err"), stderr).unwrap();
+        // Each argument ends in a NUL byte and each call in a record
+        // separator byte, so an argument may hold spaces or newlines.
+        let body = format!(
+            "#!/bin/sh\nprintf '%s\\0' \"$@\" >> '{log}'\nprintf '\\036' >> '{log}'\n\
+             cat '{out}'\ncat '{err}' >&2\nexit {exit_code}\n",
+            log = script.with_extension("log").display(),
+            out = script.with_extension("out").display(),
+            err = script.with_extension("err").display(),
+        );
+        fs::write(&script, body).unwrap();
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+        script
     }
 }
 
 impl Drop for TempFolder {
     fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
+        let _ = fs::remove_dir_all(&self.path);
     }
 }
 
-/// A script `name` in `folder` that logs its arguments, prints
-/// `stdout` and `stderr`, and exits with `exit_code`, as a stand-in for
-/// a program such as `herdr`. Returns its path.
-pub fn write_script(
-    folder: &Path,
-    name: &str,
-    stdout: &str,
-    stderr: &str,
-    exit_code: i32,
-) -> PathBuf {
-    let script = folder.join(name);
-    fs::write(script.with_extension("out"), stdout).unwrap();
-    fs::write(script.with_extension("err"), stderr).unwrap();
-    // Each argument ends in a NUL byte and each call in a record
-    // separator byte, so an argument may hold spaces or newlines.
-    let body = format!(
-        "#!/bin/sh\nprintf '%s\\0' \"$@\" >> '{log}'\nprintf '\\036' >> '{log}'\n\
-         cat '{out}'\ncat '{err}' >&2\nexit {exit_code}\n",
-        log = script.with_extension("log").display(),
-        out = script.with_extension("out").display(),
-        err = script.with_extension("err").display(),
-    );
-    fs::write(&script, body).unwrap();
-    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
-    script
-}
-
-/// Returns the arguments of each call a `write_script` script logged,
-/// in order.
+/// Returns the arguments of each call a `TempFolder::write_script`
+/// script logged, in order.
 pub fn read_script_calls(script: &Path) -> Vec<Vec<String>> {
     let log = fs::read_to_string(script.with_extension("log")).unwrap_or_default();
     log.split_terminator('\u{1e}')
