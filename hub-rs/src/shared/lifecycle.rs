@@ -102,6 +102,18 @@ pub(crate) struct Verdict {
     pub why: String,
 }
 
+impl Verdict {
+    /// Returns the why, or the state's word when the why is empty, such
+    /// as `working`.
+    pub(crate) fn why_or_state(&self) -> &str {
+        if self.why.is_empty() {
+            self.state.word()
+        } else {
+            &self.why
+        }
+    }
+}
+
 /// Everything `decide_lifecycle` needs about one session.
 #[derive(Clone, Debug)]
 pub(crate) struct SessionFacts {

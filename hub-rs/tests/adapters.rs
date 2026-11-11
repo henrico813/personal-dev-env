@@ -195,6 +195,65 @@ mod herdr_cli {
         );
     }
 
+    /// Reopening a parked session whose workspace is gone makes a new
+    /// workspace with `HUB_RUN` set, and the tidy pass closes tabs by
+    /// ID. A flag in the wrong place starts the session without its run
+    /// folder, and a wrong tab ID closes another tab.
+    #[test]
+    fn herdr_cli_creates_workspace_and_closes_tab() {
+        let folder = TempFolder::new();
+        let answer = r#"{"result":{"type":"workspace_created","root_pane":{"pane_id":"w4:p1"},"tab":{"tab_id":"w4:t1"},"workspace":{"workspace_id":"w4"}}}"#;
+        let script = folder.write_script("herdr", answer, "", 0);
+        let herdr = HerdrCli::new(script.clone(), None, folder.path().join("herdr.sock"));
+        let place = NewPlace {
+            label: "DEMO-KB-007 impl".to_owned(),
+            cwd: "/home/u/wt/demo-kb-007".into(),
+            env: vec![("HUB_RUN".to_owned(), "/home/u/run".to_owned())],
+        };
+
+        let ids = herdr.create_workspace(&place).unwrap();
+        herdr.close_tab("w1:t3").unwrap();
+
+        assert_eq!(ids.root_pane_id, "w4:p1");
+        assert_eq!(
+            read_script_calls(&script),
+            [
+                vec![
+                    "workspace",
+                    "create",
+                    "--no-focus",
+                    "--label",
+                    "DEMO-KB-007 impl",
+                    "--cwd",
+                    "/home/u/wt/demo-kb-007",
+                    "--env",
+                    "HUB_RUN=/home/u/run",
+                ],
+                vec!["tab", "close", "w1:t3"],
+            ]
+        );
+    }
+
+    /// The tidy pass closes a quiet shell only with its finished agent's
+    /// tab, and it knows the shell is quiet only from these two numbers.
+    /// A field read from the wrong key keeps every such tab open, and
+    /// the leak of finished tabs comes back.
+    #[test]
+    fn herdr_cli_reads_shell_process_info() {
+        let folder = TempFolder::new();
+        let answer = r#"{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p8","shell_pid":4100,"foreground_process_group_id":4200,"foreground_processes":[]}}}"#;
+        let script = folder.write_script("herdr", answer, "", 0);
+        let herdr = HerdrCli::new(script.clone(), None, folder.path().join("herdr.sock"));
+
+        let info = herdr.read_process_info("w1:p8").unwrap();
+
+        assert_eq!((info.shell_pid, info.foreground_group), (4100, 4200));
+        assert_eq!(
+            read_script_calls(&script),
+            [["pane", "process-info", "--pane", "w1:p8"]]
+        );
+    }
+
     /// When Herdr prints no JSON error, its standard error is the only
     /// reason the hub can show, such as a server that is not running.
     #[test]
@@ -411,6 +470,25 @@ mod card_cli {
         assert_eq!(read_script_calls(&script), [["list", "--stage", "ready"]]);
     }
 
+    /// Parking adds the session to its card before closing the tab, so
+    /// the card keeps a way back to the reviewed work. The agent name
+    /// read as a plan note or a PR link would link nothing.
+    #[test]
+    fn card_cli_passes_link_arguments_in_order() {
+        let folder = TempFolder::new();
+        let script = folder.write_script("card", "", "", 0);
+        let cards = CardCli::new(script.clone());
+
+        cards
+            .link_session(&"DEMO-KB-007".parse().unwrap(), "demo-kb-007-impl")
+            .unwrap();
+
+        assert_eq!(
+            read_script_calls(&script),
+            [["link", "DEMO-KB-007", "--session", "demo-kb-007-impl"]]
+        );
+    }
+
     /// `hub brief` shows card's own reason on its board line, such as a
     /// vault it cannot find, so the user can fix it.
     #[test]
@@ -545,5 +623,83 @@ mod requests {
             ]
         );
         assert_eq!(open.bad_files, 1);
+    }
+}
+
+mod opencode {
+    use std::path::Path;
+
+    use hub::external::opencode::OpenCodeDb;
+
+    use super::common::{TempFolder, write_opencode_session};
+
+    /// Reopening starts OpenCode in the session's own folder, and
+    /// `--session` with an ID the database lacks starts an empty session.
+    /// A wrong folder, or a missing session read as present, sends the
+    /// review comments to a session that knows nothing of the work.
+    #[test]
+    fn find_session_returns_folder_or_none() {
+        let folder = TempFolder::new();
+        let database = folder.path().join("opencode.db");
+        write_opencode_session(&database, "ses_007", Path::new("/home/u/wt/demo-kb-007"));
+        let opencode = OpenCodeDb::new(database);
+
+        let found = opencode.find_session("ses_007").unwrap();
+        let missing = opencode.find_session("ses_gone").unwrap();
+
+        assert_eq!(found.as_deref(), Some(Path::new("/home/u/wt/demo-kb-007")));
+        assert_eq!(missing, None);
+    }
+}
+
+mod processes {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Child, Command, Stdio};
+
+    use hub::external::processes::has_shell_jobs;
+
+    use super::common::TempFolder;
+
+    /// A stand-in shell that starts `job` in the background and waits
+    /// for its input to close. It prints the job's process ID once the
+    /// job is ready.
+    fn start_shell(job: &str) -> (Child, String) {
+        let script = format!("{job} & read line");
+        let mut shell = Command::new("sh")
+            .args(["-c", &script])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut job_pid = String::new();
+        BufReader::new(shell.stdout.take().unwrap())
+            .read_line(&mut job_pid)
+            .unwrap();
+        (shell, job_pid.trim().to_owned())
+    }
+
+    /// A tab whose shell holds an editor stopped with Ctrl-Z looks idle
+    /// to Herdr, and closing it would throw away the user's open file.
+    /// The stopped job sits in a process group of its own, as a shell
+    /// with job control puts it. A child in the shell's own group is
+    /// no job, or every quiet shell would keep its tab.
+    #[test]
+    fn has_shell_jobs_finds_stopped_job() {
+        let _folder = TempFolder::new();
+        // `setsid` gives the job a group of its own before it stops.
+        let (stopped, stopped_job) = start_shell("setsid sh -c 'echo $$; kill -STOP $$'");
+        let (plain, plain_job) = start_shell("sh -c 'echo $$; exec sleep 60'");
+
+        let stopped_found = has_shell_jobs(stopped.id()).unwrap();
+        let plain_found = has_shell_jobs(plain.id()).unwrap();
+
+        // End both shells and their jobs, then check.
+        for (mut shell, job) in [(stopped, stopped_job), (plain, plain_job)] {
+            Command::new("kill").args(["-KILL", &job]).status().unwrap();
+            drop(shell.stdin.take());
+            shell.wait().unwrap();
+        }
+        assert!(stopped_found);
+        assert!(!plain_found);
     }
 }

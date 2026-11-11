@@ -214,6 +214,23 @@ impl OpenCodeDb {
         }))
     }
 
+    /// Returns the folder a session works in, from the `session` table,
+    /// or `None` when the database lacks the session.
+    pub fn find_session(&self, session: &str) -> Result<Option<PathBuf>, OpenCodeError> {
+        let Some(connection) = self.open()? else {
+            return Ok(None);
+        };
+        let directory: Option<String> = connection
+            .query_row(
+                "select directory from session where id = ?1",
+                [session],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(OpenCodeError::Database)?;
+        Ok(directory.map(PathBuf::from))
+    }
+
     /// Opens the database read-only, or returns `None` when this machine
     /// has none.
     fn open(&self) -> Result<Option<Connection>, OpenCodeError> {

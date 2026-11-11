@@ -39,12 +39,20 @@ pub trait Herdr {
     fn mark_needs_you(&self, pane_id: &str, states: &[AgentStatus]) -> Result<(), HerdrError>;
     /// Removes the hub's state labels from a pane.
     fn clear_marks(&self, pane_id: &str) -> Result<(), HerdrError>;
+    /// Returns every pane with its tab and focus, plain shells included.
+    fn list_panes(&self) -> Result<Vec<Pane>, HerdrError>;
+    /// Returns a pane's shell process and the process group in front.
+    fn read_process_info(&self, pane_id: &str) -> Result<ProcessInfo, HerdrError>;
     /// Returns workspaces in sidebar order, top first.
     fn list_workspaces(&self) -> Result<Vec<Workspace>, HerdrError>;
+    /// Makes an unfocused workspace and returns its root pane.
+    fn create_workspace(&self, place: &NewPlace) -> Result<PlaceIds, HerdrError>;
     /// Makes an unfocused tab in a workspace and returns its root pane.
     fn create_tab(&self, workspace_id: &str, place: &NewPlace) -> Result<PlaceIds, HerdrError>;
     /// Starts an OpenCode agent at a pane's shell prompt.
     fn start_agent(&self, start: &AgentStart) -> Result<(), HerdrError>;
+    /// Closes one tab and every pane in it.
+    fn close_tab(&self, tab_id: &str) -> Result<(), HerdrError>;
     /// Shows the agent's pane in every terminal attached to Herdr.
     fn focus_agent(&self, name: &str) -> Result<(), HerdrError>;
     /// Moves workspaces into one block before another, through
@@ -112,6 +120,28 @@ impl HerdrCli {
         let mut args = vec!["pane", "report-metadata", pane_id, "--source", LABEL_SOURCE];
         args.extend_from_slice(options);
         self.run_herdr(&args).map(drop)
+    }
+
+    /// Runs `command`, such as `tab create --no-focus`, with the place's
+    /// label, folder and environment, and returns the new root pane.
+    fn create_place(&self, command: &[&str], place: &NewPlace) -> Result<PlaceIds, HerdrError> {
+        let cwd = place.cwd.to_string_lossy();
+        let env: Vec<String> = place
+            .env
+            .iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect();
+        let mut args = command.to_vec();
+        args.extend(["--label", place.label.as_str(), "--cwd", cwd.as_ref()]);
+        for pair in &env {
+            args.push("--env");
+            args.push(pair);
+        }
+        let printed = self.run_herdr(&args)?;
+        let result = read_result(&printed)?;
+        Ok(PlaceIds {
+            root_pane_id: read_text(&result["root_pane"], "pane_id")?,
+        })
     }
 }
 
@@ -185,6 +215,28 @@ impl Herdr for HerdrCli {
         self.report_pane_labels(pane_id, &["--clear-state-labels"])
     }
 
+    fn list_panes(&self) -> Result<Vec<Pane>, HerdrError> {
+        let printed = self.run_herdr(&["pane", "list"])?;
+        parse_pane_list(&read_result(&printed)?)
+    }
+
+    fn read_process_info(&self, pane_id: &str) -> Result<ProcessInfo, HerdrError> {
+        let printed = self.run_herdr(&["pane", "process-info", "--pane", pane_id])?;
+        let result = read_result(&printed)?;
+        let info = &result["process_info"];
+        // Herdr gives null for a pane whose shell it cannot see.
+        let read_number = |field: &str| {
+            info[field]
+                .as_u64()
+                .and_then(|number| u32::try_from(number).ok())
+                .ok_or_else(|| make_missing_field_error(field))
+        };
+        Ok(ProcessInfo {
+            shell_pid: read_number("shell_pid")?,
+            foreground_group: read_number("foreground_process_group_id")?,
+        })
+    }
+
     fn list_workspaces(&self) -> Result<Vec<Workspace>, HerdrError> {
         let printed = self.run_herdr(&["workspace", "list"])?;
         let result = read_result(&printed)?;
@@ -196,38 +248,19 @@ impl Herdr for HerdrCli {
             .map(|raw| {
                 Ok(Workspace {
                     workspace_id: read_text(raw, "workspace_id")?,
+                    label: read_text(raw, "label")?,
                 })
             })
             .collect()
     }
 
+    fn create_workspace(&self, place: &NewPlace) -> Result<PlaceIds, HerdrError> {
+        self.create_place(&["workspace", "create", "--no-focus"], place)
+    }
+
     fn create_tab(&self, workspace_id: &str, place: &NewPlace) -> Result<PlaceIds, HerdrError> {
-        let cwd = place.cwd.to_string_lossy();
-        let env: Vec<String> = place
-            .env
-            .iter()
-            .map(|(key, value)| format!("{key}={value}"))
-            .collect();
-        let mut args = vec![
-            "tab",
-            "create",
-            "--no-focus",
-            "--workspace",
-            workspace_id,
-            "--label",
-            place.label.as_str(),
-            "--cwd",
-            cwd.as_ref(),
-        ];
-        for pair in &env {
-            args.push("--env");
-            args.push(pair);
-        }
-        let printed = self.run_herdr(&args)?;
-        let result = read_result(&printed)?;
-        Ok(PlaceIds {
-            root_pane_id: read_text(&result["root_pane"], "pane_id")?,
-        })
+        let command = ["tab", "create", "--no-focus", "--workspace", workspace_id];
+        self.create_place(&command, place)
     }
 
     fn start_agent(&self, start: &AgentStart) -> Result<(), HerdrError> {
@@ -245,6 +278,10 @@ impl Herdr for HerdrCli {
         ];
         args.extend(start.args.iter().map(String::as_str));
         self.run_herdr(&args).map(drop)
+    }
+
+    fn close_tab(&self, tab_id: &str) -> Result<(), HerdrError> {
+        self.run_herdr(&["tab", "close", tab_id]).map(drop)
     }
 
     fn focus_agent(&self, name: &str) -> Result<(), HerdrError> {
@@ -325,13 +362,34 @@ pub enum AgentKind {
     Other(String),
 }
 
+/// One pane as `pane list` shows it. Herdr's pane list holds no agent
+/// names, so a session's pane is found by its pane ID.
+#[derive(Clone, Debug)]
+pub struct Pane {
+    pub pane_id: String,
+    pub tab_id: String,
+    pub focused: bool,
+    /// False for a plain shell pane.
+    pub has_agent: bool,
+}
+
+/// A pane's shell and the process group in front, from
+/// `pane process-info`.
+#[derive(Clone, Copy, Debug)]
+pub struct ProcessInfo {
+    pub shell_pid: u32,
+    pub foreground_group: u32,
+}
+
 /// One workspace in sidebar order.
 #[derive(Clone, Debug)]
 pub struct Workspace {
     pub workspace_id: String,
+    /// Its name in the sidebar, such as `DEMO-KB-007 impl`.
+    pub label: String,
 }
 
-/// A new tab to make.
+/// A new workspace or tab to make.
 #[derive(Clone, Debug)]
 pub struct NewPlace {
     pub label: String,
@@ -340,7 +398,7 @@ pub struct NewPlace {
     pub env: Vec<(String, String)>,
 }
 
-/// The IDs Herdr gives a new tab.
+/// The IDs Herdr gives a new workspace or tab.
 #[derive(Clone, Debug)]
 pub struct PlaceIds {
     pub root_pane_id: String,
@@ -506,6 +564,27 @@ fn parse_agent(raw: &Value, machine: Option<&str>) -> Result<Agent, HerdrError> 
     })
 }
 
+/// Turns `pane list`'s result into panes. A pane whose `agent` is null
+/// is a plain shell.
+fn parse_pane_list(result: &Value) -> Result<Vec<Pane>, HerdrError> {
+    let raw_panes = result["panes"]
+        .as_array()
+        .ok_or_else(|| HerdrError::Failed("Herdr's pane list has no panes".to_owned()))?;
+    raw_panes
+        .iter()
+        .map(|raw| {
+            Ok(Pane {
+                pane_id: read_text(raw, "pane_id")?,
+                tab_id: read_text(raw, "tab_id")?,
+                focused: raw["focused"]
+                    .as_bool()
+                    .ok_or_else(|| make_missing_field_error("focused"))?,
+                has_agent: !raw["agent"].is_null(),
+            })
+        })
+        .collect()
+}
+
 /// Returns one text field of Herdr's JSON.
 fn read_text(raw: &Value, field: &str) -> Result<String, HerdrError> {
     raw[field]
@@ -658,6 +737,38 @@ mod tests {
             [
                 ("docs-fix", AgentStatus::Unknown),
                 ("notes-fix", AgentStatus::Idle),
+            ]
+        );
+    }
+
+    /// The tidy pass closes a shell pane only with its finished agent's
+    /// tab. An agent pane read as a shell could let its tab close under
+    /// a session that is not finished.
+    #[test]
+    fn parse_pane_list_tells_shells_from_agents() {
+        let result = json!({"panes": [
+            {"pane_id": "w1:p7", "tab_id": "w1:t3", "focused": false, "agent": "opencode"},
+            {"pane_id": "w1:p8", "tab_id": "w1:t3", "focused": true, "agent": null},
+        ]});
+
+        let panes = parse_pane_list(&result).unwrap();
+
+        let read: Vec<(&str, &str, bool, bool)> = panes
+            .iter()
+            .map(|pane| {
+                (
+                    pane.pane_id.as_str(),
+                    pane.tab_id.as_str(),
+                    pane.focused,
+                    pane.has_agent,
+                )
+            })
+            .collect();
+        assert_eq!(
+            read,
+            [
+                ("w1:p7", "w1:t3", false, true),
+                ("w1:p8", "w1:t3", true, false)
             ]
         );
     }

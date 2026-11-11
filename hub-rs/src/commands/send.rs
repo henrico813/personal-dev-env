@@ -8,6 +8,7 @@ use crate::external::cards::CardKey;
 use crate::external::herdr::Herdr;
 use crate::shared::events::{self, Event, EventKind, Via};
 use crate::shared::messages::{self, Delivery, SendOutcome, SendState, StoredMessage, Target};
+use crate::shared::parking;
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{AgentName, HubError, Tools};
 
@@ -24,7 +25,8 @@ pub struct SendRequest {
 }
 
 /// Sends the message now when the session can take it. Otherwise it
-/// holds the message behind any older one, or sends it to the session
+/// holds the message behind any older one, reopens a parked session
+/// and holds the message until it starts, or sends it to the session
 /// that took over the card after a handoff. The message file is
 /// written before Herdr is called, so a crash leaves it as `.sending`
 /// and the text stays on disk.
@@ -34,7 +36,7 @@ pub struct SendRequest {
 /// `HubError::NotSent` when Herdr turned it down before taking it, or
 /// when the session is gone. `HubError::Unsure` when it may have
 /// arrived. `HubError::PartlyDone` when the message was held or sent
-/// and a later step failed.
+/// and a later step failed, such as a reopen.
 pub fn run_send(
     tools: &Tools<'_>,
     run: &RunFolder,
@@ -44,13 +46,22 @@ pub fn run_send(
     let name = request.name.as_str();
     let target = match tools.herdr.get_agent(name) {
         Ok(agent) => Target::Live(agent),
-        // Only a name with a card key can have a successor on its card.
-        Err(error) if error.is_agent_not_found() => match CardKey::find_in_name(name) {
-            Some(_) => {
-                messages::find_card_successor(tools.cards, name, &tools.herdr.list_agents()?)
+        Err(error) if error.is_agent_not_found() => {
+            // Parked records are this machine's own.
+            let record = match request.machine {
+                None => tools.parked.find_parked_record(name)?,
+                Some(_) => None,
+            };
+            match (record, CardKey::find_in_name(name)) {
+                (Some(record), _) => Target::Parked(record),
+                // Only a name with a card key can have a successor on its
+                // card.
+                (None, Some(_)) => {
+                    messages::find_card_successor(tools.cards, name, &tools.herdr.list_agents()?)
+                }
+                (None, None) => Target::Gone,
             }
-            None => Target::Gone,
-        },
+        }
         Err(error) => return Err(error.into()),
     };
     let older_waiting = messages::list_messages(run, Some(name))?.len();
@@ -69,20 +80,22 @@ pub fn run_send(
             Ok(Outcome::line(format!("sent {name}")))
         }
         Delivery::Hold(why) => {
-            let stored =
-                messages::write_message(run, name, machine, &request.text, SendState::Held, now)?;
-            let held = Event {
-                at: now.timestamp(),
-                kind: EventKind::Held {
-                    name: name.to_owned(),
-                    id: stored.id,
-                },
-            };
-            events::append_event(run, &held).map_err(|error| HubError::PartlyDone {
+            messages::hold_message(run, name, machine, &request.text, now)?;
+            Ok(Outcome::line(format!("held {name}: {}", why.words())))
+        }
+        Delivery::Reopen(record) => {
+            messages::hold_message(run, name, machine, &request.text, now)?;
+            let reopened = tools
+                .parked
+                .take_tidy_lock()
+                .and_then(|lock| parking::reopen_session(tools, run, &record, &lock, now));
+            reopened.map_err(|error| HubError::PartlyDone {
                 done: format!("held {name}"),
                 error: Box::new(error),
             })?;
-            Ok(Outcome::line(format!("held {name}: {}", why.words())))
+            Ok(Outcome::line(format!(
+                "reopening {name}; held until it starts"
+            )))
         }
         Delivery::MoveTo(successor) => {
             let stored = messages::write_message(

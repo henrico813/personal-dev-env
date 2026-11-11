@@ -11,7 +11,7 @@ use std::str::FromStr;
 use std::sync::LazyLock;
 
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// A whole card key. The card command allows digits in a project code,
 /// such as `DEMO2-KB-001`.
@@ -42,6 +42,9 @@ pub trait Cards {
     fn read_board(&self) -> Result<BoardCounts, CardError>;
     /// Adds one line to the card's Log.
     fn add_note(&self, key: &CardKey, text: &str) -> Result<(), CardError>;
+    /// Adds a live agent's session ID to the card's sessions list.
+    /// `card` reads the ID from Herdr, so the agent must still run.
+    fn link_session(&self, key: &CardKey, agent_name: &str) -> Result<(), CardError>;
 }
 
 /// Runs the `card` command.
@@ -106,11 +109,17 @@ impl Cards for CardCli {
     fn add_note(&self, key: &CardKey, text: &str) -> Result<(), CardError> {
         self.run_card(&["note", "--", key.as_str(), text]).map(drop)
     }
+
+    fn link_session(&self, key: &CardKey, agent_name: &str) -> Result<(), CardError> {
+        // Neither value is user text, and neither can start with a dash.
+        self.run_card(&["link", key.as_str(), "--session", agent_name])
+            .map(drop)
+    }
 }
 
 /// A card key in upper case, such as `DEMO-KB-007`. Reading one from
 /// JSON checks its form, so a parked record cannot hold a bad key.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "String")]
 pub struct CardKey(String);
 

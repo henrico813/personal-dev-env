@@ -39,6 +39,8 @@ $HUB_RUN.
   note*    add a timed line to notes.md
   brief*   what waits on the user
   handoff* start the next hub
+  clean*   close and park finished tabs
+  park*    park one finished session
   auto     the steps of an auto run
   flag     mark a pane \"needs you\"
   unflag   clear the mark
@@ -161,6 +163,23 @@ pub enum Command {
         /// The handoff file for the next hub
         handoff: PathBuf,
     },
+    /// Close and park finished tabs
+    #[command(after_help = "Example: hub clean --dry-run")]
+    Clean {
+        #[command(flatten)]
+        run: RunArg,
+        /// Print what it would do, and change nothing
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Close a finished session, keeping its ID
+    #[command(after_help = "Example: hub park docs-fix")]
+    Park {
+        #[command(flatten)]
+        run: RunArg,
+        /// The session's agent name
+        name: AgentName,
+    },
     /// The steps of an auto run
     #[command(after_help = "Example: hub auto check --run /tmp/auto-run-2")]
     Auto {
@@ -243,6 +262,8 @@ impl Command {
             Command::Note { .. } => "note",
             Command::Brief { .. } => "brief",
             Command::Handoff { .. } => "handoff",
+            Command::Clean { .. } => "clean",
+            Command::Park { .. } => "park",
             Command::Auto { .. } => "auto",
             Command::Flag { .. } => "flag",
             Command::Unflag { .. } => "unflag",
@@ -307,6 +328,8 @@ pub fn takes_machine(command: &Command) -> bool {
         | Command::Note { .. }
         | Command::Brief { .. }
         | Command::Handoff { .. }
+        | Command::Clean { .. }
+        | Command::Park { .. }
         | Command::Auto { .. }
         | Command::Alive { .. }
         | Command::Go
@@ -323,7 +346,10 @@ mod tests {
     /// sessions unseen, unmarked or without their message. Allowing it
     /// on `go` would make `go` jump, in this machine's sidebar, to a hub
     /// found on another machine, and on `alive` would read this
-    /// machine's database for another machine's session.
+    /// machine's database for another machine's session. `clean` and
+    /// `park` check this machine's worktrees with git. With `--machine`,
+    /// they would read this machine's git facts but close tabs on
+    /// another machine.
     #[test]
     fn takes_machine_refuses_local_only_commands() {
         let name: AgentName = "docs-fix".parse().unwrap();
@@ -352,6 +378,22 @@ mod tests {
                 "alive",
                 Command::Alive {
                     session: "ses_0a1b2c3d4e5f".to_owned(),
+                },
+                false,
+            ),
+            (
+                "clean",
+                Command::Clean {
+                    run: RunArg { run: None },
+                    dry_run: false,
+                },
+                false,
+            ),
+            (
+                "park",
+                Command::Park {
+                    run: RunArg { run: None },
+                    name: name.clone(),
                 },
                 false,
             ),
