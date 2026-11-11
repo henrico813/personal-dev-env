@@ -16,7 +16,7 @@ make check   # format, lint and test, as CI does
 make test
 ```
 
-Exit codes: 0 done, 1 an outside system such as Herdr failed, 2 wrong
+Exit codes: 0 done, 1 an external system such as Herdr failed, 2 wrong
 usage, 3 not done, such as when no hub is running. Each failure prints
 its reason.
 

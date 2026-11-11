@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use hub::commands::handoff::run_handoff;
-use hub::outside::herdr::{Agent, AgentStatus, HerdrError};
+use hub::external::herdr::{Agent, AgentStatus, HerdrError};
 use hub::shared::{AgentName, HubError};
 use serde_json::json;
 
