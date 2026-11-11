@@ -145,6 +145,15 @@ in `/` is a directory record rather than an individual file: block worktree
 removal and do not allowlist it. If either command fails, a record is incomplete,
 a record ends in `/`, or a path cannot be classified, block worktree removal.
 
+Run the check under `set -o pipefail`; then a failing `git` command
+blocks removal. Print just the records you must decide on, never the
+whole ignored list, which a virtualenv alone fills with hundreds of
+files. Still print sensitive names, even in an allowed folder; paths
+outside `.venv/`, `target/`, `.pytest_cache/` and `__pycache__/`,
+matched against whole path parts; incomplete records; and records ending
+in `/`. Show every `.venv/` or `target/` folder that fails its parent
+check.
+
 Classify every remaining ignored file in this order:
 
 1. Block sensitive paths before allowlisted output paths. A sensitive basename
