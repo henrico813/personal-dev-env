@@ -1,9 +1,9 @@
 //! Values the `mod tests` blocks in `src/` share. Tests in `tests/`
 //! cannot see this file and keep their own copy in `tests/common`.
 
-use crate::outside::cards::{CardKey, Stage};
-use crate::outside::git::Unsaved;
-use crate::outside::herdr::{Agent, AgentKind, AgentStatus};
+use crate::external::cards::{CardKey, Stage};
+use crate::external::git::Unsaved;
+use crate::external::herdr::{Agent, AgentKind, AgentStatus};
 use crate::shared::lifecycle::{CardFacts, ReportFacts, SessionFacts};
 use crate::shared::messages::MessageCounts;
 use crate::shared::parking::ParkedRecord;

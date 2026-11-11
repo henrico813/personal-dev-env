@@ -21,7 +21,7 @@ use jiff::Zoned;
 use regex::Regex;
 
 use super::Outcome;
-use crate::outside::cards::{CardKey, CardNote};
+use crate::external::cards::{CardKey, CardNote};
 use crate::shared::decisions;
 use crate::shared::run_folder::{self, RunFolder};
 use crate::shared::{HubError, Tools};

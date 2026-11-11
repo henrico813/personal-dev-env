@@ -6,7 +6,7 @@ use std::fs;
 use jiff::Zoned;
 
 use super::Outcome;
-use crate::outside::cards::CardKey;
+use crate::external::cards::CardKey;
 use crate::shared::events::{self, Event, EventKind};
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{AgentName, HubError, Tools};

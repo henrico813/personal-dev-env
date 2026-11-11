@@ -6,7 +6,7 @@ mod herdr_cli {
     use std::path::Path;
     use std::thread::{self, JoinHandle};
 
-    use hub::outside::herdr::{
+    use hub::external::herdr::{
         AgentStart, AgentStatus, Herdr, HerdrCli, HerdrCode, HerdrError, NewPlace,
     };
     use serde_json::{Value, json};
@@ -342,7 +342,7 @@ mod herdr_cli {
 }
 
 mod card_cli {
-    use hub::outside::cards::{CardCli, CardKey, Cards};
+    use hub::external::cards::{CardCli, CardKey, Cards};
 
     use super::common::{TempFolder, read_script_calls};
 
@@ -428,7 +428,7 @@ mod git {
     use std::fs;
     use std::path::Path;
 
-    use hub::outside::git::{Unsaved, check_unsaved, find_card_worktrees};
+    use hub::external::git::{Unsaved, check_unsaved, find_card_worktrees};
 
     use super::common::{TempFolder, make_card_repo, run_git};
 
@@ -489,7 +489,7 @@ mod git {
 mod requests {
     use std::fs;
 
-    use hub::outside::requests::RequestFolder;
+    use hub::external::requests::RequestFolder;
     use serde_json::json;
 
     use super::common::TempFolder;

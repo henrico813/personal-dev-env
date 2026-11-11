@@ -1,4 +1,4 @@
-//! Gathers every session's facts from the outside systems, calling
+//! Gathers every session's facts from the external systems, calling
 //! each as few times as it can. Read `collect_session_facts` first.
 //! The small functions after it decide which slow calls a session
 //! needs.
@@ -11,10 +11,10 @@ use super::messages;
 use super::parking::ParkedRecord;
 use super::run_folder::{ReportedNames, RunFolder};
 use super::{HubError, Tools};
-use crate::outside::cards::{CardError, CardKey, CardNote, Stage};
-use crate::outside::git::{self, Unsaved};
-use crate::outside::herdr::{Agent, AgentKind, AgentStatus};
-use crate::outside::requests::PrRequest;
+use crate::external::cards::{CardError, CardKey, CardNote, Stage};
+use crate::external::git::{self, Unsaved};
+use crate::external::herdr::{Agent, AgentKind, AgentStatus};
+use crate::external::requests::PrRequest;
 
 /// The facts of every session, and what the status view needs beside
 /// them.

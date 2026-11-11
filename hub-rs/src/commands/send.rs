@@ -4,8 +4,8 @@
 use jiff::Zoned;
 
 use super::Outcome;
-use crate::outside::cards::CardKey;
-use crate::outside::herdr::Herdr;
+use crate::external::cards::CardKey;
+use crate::external::herdr::Herdr;
 use crate::shared::events::{self, Event, EventKind, Via};
 use crate::shared::messages::{self, Delivery, SendOutcome, SendState, StoredMessage, Target};
 use crate::shared::run_folder::RunFolder;

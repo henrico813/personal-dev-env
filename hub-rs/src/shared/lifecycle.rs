@@ -1,15 +1,15 @@
 //! Works out one session's lifecycle state from its facts, with no
-//! outside calls. Read `decide_lifecycle` first. Its rules apply in
+//! external calls. Read `decide_lifecycle` first. Its rules apply in
 //! order and the first match wins, so a blocked session is `you` even
 //! when its card is accepted. The later tidy pass closes or parks a
-//! session only in the `close` or `park` state, so each rule that
-//! gives one of those decides what the hub may close.
+//! session only in the `to-close` or `to-park` state, so each rule
+//! that gives one of those decides what the hub may close.
 
 use super::messages::MessageCounts;
 use super::parking::ParkedRecord;
-use crate::outside::cards::{CardKey, Stage};
-use crate::outside::git::Unsaved;
-use crate::outside::herdr::{Agent, AgentKind, AgentStatus};
+use crate::external::cards::{CardKey, Stage};
+use crate::external::git::Unsaved;
+use crate::external::herdr::{Agent, AgentKind, AgentStatus};
 
 /// The review session that `hub handoff` creates for the old hub gets
 /// a name starting with this, so `review-kanban-hub-16` is not a hub.
@@ -24,21 +24,21 @@ pub(crate) enum Lifecycle {
     WaitsOnHub,
     WaitsOnUser,
     Kept(KeptReason),
-    Close,
-    Park,
+    ToClose,
+    ToPark,
     Parked,
 }
 
 impl Lifecycle {
-    /// Returns the word `hub status` shows, such as `hub` or `park`.
+    /// Returns the word `hub status` shows, such as `hub` or `to-park`.
     pub(crate) fn word(self) -> &'static str {
         match self {
             Lifecycle::Working => "working",
             Lifecycle::WaitsOnHub => "hub",
             Lifecycle::WaitsOnUser => "you",
             Lifecycle::Kept(_) => "kept",
-            Lifecycle::Close => "close",
-            Lifecycle::Park => "park",
+            Lifecycle::ToClose => "to-close",
+            Lifecycle::ToPark => "to-park",
             Lifecycle::Parked => "parked",
         }
     }
@@ -51,8 +51,8 @@ impl Lifecycle {
             Lifecycle::WaitsOnHub => 1,
             Lifecycle::WaitsOnUser => 2,
             Lifecycle::Kept(_) => 3,
-            Lifecycle::Close => 4,
-            Lifecycle::Park => 5,
+            Lifecycle::ToClose => 4,
+            Lifecycle::ToPark => 5,
             Lifecycle::Parked => 6,
         }
     }
@@ -152,7 +152,7 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
     // parked record. Its record goes once its card is done.
     let Some(agent) = &facts.agent else {
         return match stage {
-            Some(Stage::Accepted | Stage::Dropped) => make_verdict(Lifecycle::Close, "card done"),
+            Some(Stage::Accepted | Stage::Dropped) => make_verdict(Lifecycle::ToClose, "card done"),
             _ => make_verdict(Lifecycle::Parked, ""),
         };
     };
@@ -220,15 +220,15 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
         // Rule 8. A finished worker waits for the user's review, and
         // parking keeps a way back to it.
         (Some(_), Some(Stage::Review)) => find_kept_reason(facts, agent, true)
-            .unwrap_or_else(|| make_verdict(Lifecycle::Park, "")),
+            .unwrap_or_else(|| make_verdict(Lifecycle::ToPark, "")),
         // Rule 9. Nothing waits on a done card's session.
         (Some(_), _) => find_kept_reason(facts, agent, false)
-            .unwrap_or_else(|| make_verdict(Lifecycle::Close, "card done")),
+            .unwrap_or_else(|| make_verdict(Lifecycle::ToClose, "card done")),
         // Rule 10. A session with no card that never reported is the
         // user's own.
         (None, _) if !facts.reports.ever_reported => make_kept(KeptReason::Yours),
         (None, _) => find_kept_reason(facts, agent, false)
-            .unwrap_or_else(|| make_verdict(Lifecycle::Close, "report read")),
+            .unwrap_or_else(|| make_verdict(Lifecycle::ToClose, "report read")),
     }
 }
 
@@ -275,11 +275,11 @@ fn find_kept_reason(facts: &SessionFacts, agent: &Agent, needs_reopen: bool) -> 
     None
 }
 
-/// Returns `close` with WHY, unless the user is in the pane or an
+/// Returns `to-close` with WHY, unless the user is in the pane or an
 /// approval waits. git does not look, since a newer hub or session
 /// owns the worktree.
 fn make_close_unless_user_waits(facts: &SessionFacts, agent: &Agent, why: &str) -> Verdict {
-    find_focus_or_approval(facts, agent).unwrap_or_else(|| make_verdict(Lifecycle::Close, why))
+    find_focus_or_approval(facts, agent).unwrap_or_else(|| make_verdict(Lifecycle::ToClose, why))
 }
 
 /// Returns a kept verdict when the user is in the pane or an approval
@@ -330,7 +330,7 @@ mod tests {
     }
 
     /// The state table. Each row changes the base worker from
-    /// `make_facts`, which `park`s, in one way.
+    /// `make_facts`, which gives `to-park`, in one way.
     fn make_lifecycle_rows() -> Vec<Row> {
         let worker = "demo-kb-007-impl";
         let base = make_facts(worker);
@@ -387,7 +387,7 @@ mod tests {
             Row {
                 id: "parked-card-done",
                 facts: parked(Stage::Accepted),
-                expected: Lifecycle::Close,
+                expected: Lifecycle::ToClose,
             },
             Row {
                 id: "other-machine-idle",
@@ -452,7 +452,7 @@ mod tests {
             Row {
                 id: "predecessor-hub",
                 facts: hub(true),
-                expected: Lifecycle::Close,
+                expected: Lifecycle::ToClose,
             },
             Row {
                 id: "predecessor-focused",
@@ -475,7 +475,7 @@ mod tests {
                     facts.card.as_mut().unwrap().newer_session_live = true;
                     facts
                 },
-                expected: Lifecycle::Close,
+                expected: Lifecycle::ToClose,
             },
             Row {
                 id: "handed-off-approval",
@@ -512,7 +512,7 @@ mod tests {
             Row {
                 id: "review-clean",
                 facts: base,
-                expected: Lifecycle::Park,
+                expected: Lifecycle::ToPark,
             },
             Row {
                 id: "review-files",
@@ -564,7 +564,7 @@ mod tests {
             Row {
                 id: "accepted-clean",
                 facts: with_stage(Stage::Accepted),
-                expected: Lifecycle::Close,
+                expected: Lifecycle::ToClose,
             },
             Row {
                 id: "accepted-files",
@@ -599,20 +599,20 @@ mod tests {
             Row {
                 id: "no-card-report-read",
                 facts: no_card("notes", true),
-                expected: Lifecycle::Close,
+                expected: Lifecycle::ToClose,
             },
             Row {
                 id: "session-review",
                 facts: no_card("review-kanban-hub-16", true),
-                expected: Lifecycle::Close,
+                expected: Lifecycle::ToClose,
             },
         ]
     }
 
-    /// The tidy pass will close every `close` session and park every
-    /// `park` one. A rule out of order, or a check left out, can close
-    /// a tab that holds unsaved work, a pending approval, or the user's
-    /// own typing. A blocked session whose card was accepted must still
+    /// The tidy pass will close every `to-close` session and park
+    /// every `to-park` one. A rule out of order, or a check left out,
+    /// can close a tab that holds unsaved work, a pending approval, or
+    /// the user's own typing. A blocked session whose card was accepted must still
     /// reach the user.
     #[test]
     fn decide_lifecycle_matches_state_table() {
@@ -646,8 +646,8 @@ mod tests {
             Lifecycle::Working,
             Lifecycle::WaitsOnHub,
             Lifecycle::WaitsOnUser,
-            Lifecycle::Close,
-            Lifecycle::Park,
+            Lifecycle::ToClose,
+            Lifecycle::ToPark,
             Lifecycle::Parked,
         ];
         states.extend(reasons.map(Lifecycle::Kept));
@@ -669,8 +669,8 @@ mod tests {
                     | KeptReason::Yours
                     | KeptReason::CardUnknown,
                 )
-                | Lifecycle::Close
-                | Lifecycle::Park
+                | Lifecycle::ToClose
+                | Lifecycle::ToPark
                 | Lifecycle::Parked => {}
             }
             assert!(

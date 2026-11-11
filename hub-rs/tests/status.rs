@@ -3,8 +3,8 @@ mod common;
 use std::fs;
 
 use hub::commands::status::run_status;
-use hub::outside::cards::{CardNote, Stage};
-use hub::outside::herdr::{Agent, AgentStatus};
+use hub::external::cards::{CardNote, Stage};
+use hub::external::herdr::{Agent, AgentStatus};
 use serde_json::{Value, json};
 
 use common::{TestTools, make_agent, make_card_repo, make_time};
@@ -146,7 +146,7 @@ fn run_status_rows_cover_sessions_not_hub() {
             ),
             (
                 "kanban-hub-16".to_owned(),
-                "close".to_owned(),
+                "to-close".to_owned(),
                 "handed off".to_owned(),
             ),
             (
@@ -184,7 +184,7 @@ fn run_status_lists_only_unread_reports() {
 /// A `card` that fails, such as without a vault, must not hide the
 /// sessions. The hub still sees every row, and one line says why the
 /// card facts are missing. An idle worker whose report was read must
-/// stay `kept`, since the tidy pass would close a `close` row while
+/// stay `kept`, since the tidy pass would close a `to-close` row while
 /// its card may still be active.
 #[test]
 fn run_status_keeps_rows_when_card_fails() {
@@ -296,8 +296,8 @@ fn run_status_names_cards_with_no_session() {
     );
 }
 
-/// The tidy pass will close or park a `close` or `park` row, so git
-/// must look before either. A session with no card must stay while
+/// The tidy pass will close or park a `to-close` or `to-park` row, so
+/// git must look before either. A session with no card must stay while
 /// the linked worktree that holds its folder has uncommitted files. A
 /// git failure, in listing worktrees or inside one, or an agent Herdr
 /// gave no folder, must keep its session too, since nothing is known

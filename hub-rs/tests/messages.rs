@@ -7,8 +7,8 @@ use std::time::Duration;
 use hub::commands::Outcome;
 use hub::commands::next::{NextOptions, run_next};
 use hub::commands::send::{SendRequest, run_inbox, run_send};
-use hub::outside::cards::CardNote;
-use hub::outside::herdr::{Agent, AgentStatus, HerdrCode};
+use hub::external::cards::CardNote;
+use hub::external::herdr::{Agent, AgentStatus, HerdrCode};
 use hub::shared::{HubError, Tools};
 use serde_json::Value;
 

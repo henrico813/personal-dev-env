@@ -1,5 +1,5 @@
 //! Holds what every command shares. `HubError` is the one error type
-//! a command returns, `Tools` is the bundle of outside systems, and
+//! a command returns, `Tools` is the bundle of external systems, and
 //! `AgentName` is a checked session name.
 
 pub(crate) mod context;
@@ -18,10 +18,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use crate::outside::cards::{CardError, Cards};
-use crate::outside::herdr::{Herdr, HerdrError};
-use crate::outside::opencode::{OpenCodeDb, OpenCodeError};
-use crate::outside::requests::RequestFolder;
+use crate::external::cards::{CardError, Cards};
+use crate::external::herdr::{Herdr, HerdrError};
+use crate::external::opencode::{OpenCodeDb, OpenCodeError};
+use crate::external::requests::RequestFolder;
 use parking::ParkedFolder;
 
 /// A command that stopped, with the exit code `main` gives it. Tests
@@ -59,7 +59,7 @@ pub enum HubError {
 }
 
 impl HubError {
-    /// Returns 1 for an outside failure, 2 for wrong usage and 3 for
+    /// Returns 1 for an external failure, 2 for wrong usage and 3 for
     /// work not done.
     pub fn exit_code(&self) -> u8 {
         match self {
@@ -95,7 +95,7 @@ impl fmt::Display for HubError {
     }
 }
 
-/// Returns the outside error behind a failure, when there is one.
+/// Returns the external error behind a failure, when there is one.
 impl std::error::Error for HubError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
@@ -161,7 +161,7 @@ impl AgentName {
     }
 }
 
-/// The outside systems one command may call, built once by `main`.
+/// The external systems one command may call, built once by `main`.
 /// Tests build the doubles first and lend them here, so they can read
 /// what each double recorded after the call.
 pub struct Tools<'a> {

@@ -2,7 +2,7 @@
 //! sidebar. A hub is an agent whose name ends in `-hub-<n>`.
 
 use super::Outcome;
-use crate::outside::herdr::{Agent, Workspace};
+use crate::external::herdr::{Agent, Workspace};
 use crate::shared::lifecycle::is_hub_name;
 use crate::shared::{HubError, Tools};
 

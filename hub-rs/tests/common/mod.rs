@@ -9,13 +9,13 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use hub::outside::cards::{BoardCounts, CardError, CardKey, CardNote, Cards, Stage};
-use hub::outside::herdr::{
+use hub::external::cards::{BoardCounts, CardError, CardKey, CardNote, Cards, Stage};
+use hub::external::herdr::{
     Agent, AgentKind, AgentStart, AgentStatus, Herdr, HerdrCode, HerdrError, NewPlace, PlaceIds,
     Workspace,
 };
-use hub::outside::opencode::OpenCodeDb;
-use hub::outside::requests::RequestFolder;
+use hub::external::opencode::OpenCodeDb;
+use hub::external::requests::RequestFolder;
 use hub::shared::Tools;
 use hub::shared::parking::ParkedFolder;
 use hub::shared::run_folder::RunFolder;
@@ -328,7 +328,7 @@ impl Cards for InMemoryCards {
     }
 }
 
-/// Every outside system for a command test. It holds the doubles and a
+/// Every external system for a command test. It holds the doubles and a
 /// temporary folder. The folder holds the run folder `run`; the state
 /// folder `state`, with its request folder `pr-write` and parked folder
 /// `hub/parked`; and the OpenCode database `opencode.db`. The request

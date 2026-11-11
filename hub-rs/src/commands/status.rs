@@ -7,7 +7,7 @@ use jiff::tz::TimeZone;
 use serde_json::{Value, json};
 
 use super::Outcome;
-use crate::outside::cards::{BoardCounts, CardKey, Stage};
+use crate::external::cards::{BoardCounts, CardKey, Stage};
 use crate::shared::context::{HANDOFF_TOKENS, format_tokens};
 use crate::shared::events;
 use crate::shared::facts::{self, HubLine};
@@ -86,8 +86,8 @@ struct StateCounts {
     hub: usize,
     you: usize,
     kept: usize,
-    close: usize,
-    park: usize,
+    to_close: usize,
+    to_park: usize,
     parked: usize,
 }
 
@@ -99,8 +99,8 @@ impl StateCounts {
             Lifecycle::WaitsOnHub => &mut self.hub,
             Lifecycle::WaitsOnUser => &mut self.you,
             Lifecycle::Kept(_) => &mut self.kept,
-            Lifecycle::Close => &mut self.close,
-            Lifecycle::Park => &mut self.park,
+            Lifecycle::ToClose => &mut self.to_close,
+            Lifecycle::ToPark => &mut self.to_park,
             Lifecycle::Parked => &mut self.parked,
         };
         *field += 1;
@@ -183,8 +183,8 @@ fn format_status_text(view: &StatusView) -> Vec<String> {
             counts.working, counts.hub, counts.you
         ),
         format!(
-            "  {} kept, {} close, {} park; {} parked",
-            counts.kept, counts.close, counts.park, counts.parked
+            "  {} kept, {} to-close, {} to-park; {} parked",
+            counts.kept, counts.to_close, counts.to_park, counts.parked
         ),
         unread,
         String::new(),
@@ -263,8 +263,8 @@ fn format_status_json(view: &StatusView) -> String {
             "hub": counts.hub,
             "you": counts.you,
             "kept": counts.kept,
-            "close": counts.close,
-            "park": counts.park,
+            "to-close": counts.to_close,
+            "to-park": counts.to_park,
             "parked": counts.parked,
         },
         "unread": view.unread,
@@ -331,7 +331,7 @@ fn format_columns(table: &[[String; 4]]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::outside::git::Unsaved;
+    use crate::external::git::Unsaved;
     use crate::shared::lifecycle::KeptReason;
     use crate::shared::test_values::{make_facts, make_parked_record};
 
@@ -368,11 +368,11 @@ mod tests {
             (parked, make_verdict(Lifecycle::Parked, "")),
             (
                 make_row_facts("demo-kb-090-auto", Some(104_000), Some(Stage::Review)),
-                make_verdict(Lifecycle::Park, ""),
+                make_verdict(Lifecycle::ToPark, ""),
             ),
             (
                 make_row_facts("review-kanban-hub-16", Some(60_000), None),
-                make_verdict(Lifecycle::Close, "report read"),
+                make_verdict(Lifecycle::ToClose, "report read"),
             ),
             (
                 make_row_facts("demo-kb-012-auto", Some(77_310), Some(Stage::Review)),
@@ -429,17 +429,17 @@ mod tests {
                 "hub kanban-hub-18 131k, watcher running",
                 "board 24/8, review 19",
                 "open 6: 1 working, 1 hub, 1 you,",
-                "  1 kept, 1 close, 1 park; 1 parked",
+                "  1 kept, 1 to-close, 1 to-park; 1 parked",
                 "unread 2: demo-kb-007-impl docs-fix",
                 "",
-                "NAME                  STATE    CTX   WHY",
-                "docs-fix              working  152k  1 held, hand off",
-                "demo-kb-007-impl      hub      98k   unread report",
-                "demo-kb-009-auto      you      12k   blocked",
-                "demo-kb-012-auto      kept     77k   unsaved files in /home/u/wt/demo-kb-012",
-                "review-kanban-hub-16  close    60k   report read",
-                "demo-kb-090-auto      park     104k  -",
-                "demo-kb-081-auto      parked   -     since 11-10 22:41",
+                "NAME                  STATE     CTX   WHY",
+                "docs-fix              working   152k  1 held, hand off",
+                "demo-kb-007-impl      hub       98k   unread report",
+                "demo-kb-009-auto      you       12k   blocked",
+                "demo-kb-012-auto      kept      77k   unsaved files in /home/u/wt/demo-kb-012",
+                "review-kanban-hub-16  to-close  60k   report read",
+                "demo-kb-090-auto      to-park   104k  -",
+                "demo-kb-081-auto      parked    -     since 11-10 22:41",
                 "",
                 "no session: DEMO-KB-004 active",
             ]
@@ -500,8 +500,8 @@ mod tests {
                     "hub": 1,
                     "you": 1,
                     "kept": 1,
-                    "close": 1,
-                    "park": 1,
+                    "to-close": 1,
+                    "to-park": 1,
                     "parked": 1,
                 },
                 "unread": ["demo-kb-007-impl", "docs-fix"],
@@ -522,10 +522,10 @@ mod tests {
                         Some(("DEMO-KB-009", "active")),
                     ),
                     home,
-                    session("review-kanban-hub-16", "close", "report read", Some(60_000), None),
+                    session("review-kanban-hub-16", "to-close", "report read", Some(60_000), None),
                     session(
                         "demo-kb-090-auto",
-                        "park",
+                        "to-park",
                         "-",
                         Some(104_000),
                         Some(("DEMO-KB-090", "review")),

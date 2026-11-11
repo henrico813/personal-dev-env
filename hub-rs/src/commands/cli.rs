@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use clap::Parser;
 use clap::error::ErrorKind;
 
-use crate::outside::cards::CardKey;
+use crate::external::cards::CardKey;
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{AgentName, HubError};
 

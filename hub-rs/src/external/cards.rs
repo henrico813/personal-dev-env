@@ -432,7 +432,7 @@ mod tests {
     /// Every session's lifecycle starts from its card's stage, read
     /// from one `card list` line. A stage read from the wrong word, or
     /// the count line read as a card, gives sessions the wrong state,
-    /// such as `close` for a worker whose card is still active.
+    /// such as `to-close` for a worker whose card is still active.
     #[test]
     fn parse_card_list_reads_key_and_stage() {
         let listing = "DEMO-KB-004 active   task     Fix the docs\n\

@@ -10,7 +10,7 @@ use jiff::Timestamp;
 use serde::Deserialize;
 
 use super::HubError;
-use crate::outside::cards::CardKey;
+use crate::external::cards::CardKey;
 
 /// What `hub status` reads from a parked record. The file holds more,
 /// such as the session ID and folder that reopening needs.

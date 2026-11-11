@@ -17,7 +17,7 @@ make check   # format, lint and test, as CI does
 make test
 ```
 
-Exit codes: 0 done, 1 an outside system such as Herdr failed, 2 wrong
+Exit codes: 0 done, 1 an external system such as Herdr failed, 2 wrong
 usage, 3 not done, such as when no hub is running. Each failure prints
 its reason.
 
@@ -84,8 +84,8 @@ its reason.
 - `next` does not close or park finished sessions yet.
 - `status` shows each session's lifecycle state in its STATE column,
   not Herdr's status: `working`, `hub` (waits on the hub), `you`
-  (waits on the user), `kept`, `close`, `park` or `parked`. The WHY
-  column says why, such as `unread report`, `1 held` or the kept
+  (waits on the user), `kept`, `to-close`, `to-park` or `parked`. The
+  WHY column says why, such as `unread report`, `1 held` or the kept
   reason. It replaces the CARD, REPORT, SEND and LABEL columns. Above
   the table it prints the hub's own line, the board line, one count
   per state and the unread reports. Below it, one `no session:` line
