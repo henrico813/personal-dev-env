@@ -244,6 +244,8 @@ you make any card.
   workspace on this machine into one block at the top of the sidebar.
   The user presses `ctrl+b shift+h`, or runs `hub go`, to show the
   next hub in sidebar order, wrapping to the first.
+- The workspace labelled `desk` is the user's. Never open a tab or pane
+  in it or start an agent there.
 - A card's worker gets its own workspace, named
   `<card key> <one word>`, such as `demo-kb-007 approvals`. Cards that
   belong together share one workspace, named `<project> <topic>`, such
