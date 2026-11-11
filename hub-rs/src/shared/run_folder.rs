@@ -1,11 +1,12 @@
 //! Names the files in the hub's run folder, and reads and writes
-//! reports and notes. Read `RunFolder` first. Every whole-file write
-//! goes through `write_file_whole`.
+//! reports, notes and the watcher files. Read `RunFolder` first. Every
+//! whole-file write goes through `write_file_whole`.
 
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
+use std::time::{Duration, SystemTime};
 
 use jiff::Zoned;
 use regex::Regex;
@@ -14,6 +15,21 @@ use super::{AgentName, HubError};
 
 /// The model in `rules.md`, written as `--model '<provider>/<model>#<effort>'`.
 static RULES_MODEL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"--model '([^']+)'").unwrap());
+
+/// One unread `report-NAME.md`.
+#[derive(Clone, Debug)]
+pub(crate) struct ReportFile {
+    pub name: String,
+    /// Its modification time, which tells one version from the next.
+    pub mtime_ns: u64,
+    pub age: Duration,
+}
+
+/// Holds `.watcher.lock` while a `hub next` runs. Dropping it, or the
+/// process ending, lets the next watcher in.
+pub(crate) struct WatcherLock {
+    _file: File,
+}
 
 /// The hub's run folder, checked to exist.
 pub struct RunFolder {
@@ -38,22 +54,39 @@ impl RunFolder {
         &self.path
     }
 
-    /// Returns the names with an unread report, sorted.
-    pub(crate) fn list_reports(&self) -> Result<Vec<String>, HubError> {
+    /// Lists unread reports with their modification time and age, by
+    /// name.
+    pub(crate) fn list_reports(&self, now: &Zoned) -> Result<Vec<ReportFile>, HubError> {
         let entries = fs::read_dir(&self.path).map_err(|source| self.make_file_error(source))?;
-        let mut names = Vec::new();
+        let now = SystemTime::from(now.timestamp());
+        let mut reports = Vec::new();
         for entry in entries {
             let entry = entry.map_err(|source| self.make_file_error(source))?;
             let file_name = entry.file_name().to_string_lossy().into_owned();
-            if let Some(name) = file_name
+            let Some(name) = file_name
                 .strip_prefix("report-")
                 .and_then(|rest| rest.strip_suffix(".md"))
-            {
-                names.push(name.to_owned());
-            }
+            else {
+                continue;
+            };
+            let modified = entry
+                .metadata()
+                .and_then(|metadata| metadata.modified())
+                .map_err(|source| HubError::File {
+                    path: entry.path(),
+                    source,
+                })?;
+            let since_epoch = modified
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default();
+            reports.push(ReportFile {
+                name: name.to_owned(),
+                mtime_ns: u64::try_from(since_epoch.as_nanos()).unwrap_or(u64::MAX),
+                age: now.duration_since(modified).unwrap_or_default(),
+            });
         }
-        names.sort();
-        Ok(names)
+        reports.sort_by(|left, right| left.name.cmp(&right.name));
+        Ok(reports)
     }
 
     /// Renames a report to its `HHMM` archive name, or `HHMM-2` and
@@ -130,6 +163,34 @@ impl RunFolder {
         Ok(last.map(|found| found[1].to_owned()))
     }
 
+    /// Writes this process's ID to `.watcher-pid`, which tells an
+    /// older `hub next` to stop.
+    pub(crate) fn claim_watcher(&self, process_id: u32) -> Result<(), HubError> {
+        write_file_whole(&self.path.join(".watcher-pid"), &format!("{process_id}\n"))
+    }
+
+    /// Waits for the lock on `.watcher.lock` and holds it.
+    pub(crate) fn take_watcher_lock(&self) -> Result<WatcherLock, HubError> {
+        let path = self.path.join(".watcher.lock");
+        let locked = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(&path)
+            .and_then(|file| file.lock().map(|()| file));
+        match locked {
+            Ok(file) => Ok(WatcherLock { _file: file }),
+            Err(source) => Err(HubError::File { path, source }),
+        }
+    }
+
+    /// Tells whether a newer `hub next` claimed the watcher.
+    pub(crate) fn is_replaced(&self, process_id: u32) -> Result<bool, HubError> {
+        let claimed = self.read_optional_file(".watcher-pid")?;
+        let claimed = claimed.trim();
+        Ok(!claimed.is_empty() && claimed != process_id.to_string())
+    }
+
     /// Returns a file of the run folder, or empty text when it does not
     /// exist.
     pub(crate) fn read_optional_file(&self, file_name: &str) -> Result<String, HubError> {
@@ -152,7 +213,7 @@ impl RunFolder {
 
 /// Replaces a file through a temporary file and a rename, so a reader
 /// never sees half of it.
-fn write_file_whole(path: &Path, text: &str) -> Result<(), HubError> {
+pub(crate) fn write_file_whole(path: &Path, text: &str) -> Result<(), HubError> {
     let file_name = path.file_name().unwrap_or_default().to_string_lossy();
     // The dot keeps the temporary file out of `list_reports`.
     let temporary = path.with_file_name(format!(".{file_name}.{}.tmp", std::process::id()));

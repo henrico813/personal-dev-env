@@ -1,6 +1,6 @@
 //! Reads sessions from this machine's OpenCode database, read-only.
-//! Read `judge_activity` for the rule this file holds; the rest are
-//! queries.
+//! Read `count_trusted_context` and `judge_activity` for the two rules
+//! this file holds; the rest are queries.
 
 use std::fmt;
 use std::path::PathBuf;
@@ -44,6 +44,13 @@ impl ActivityWord {
             ActivityWord::Stopped => "stopped",
         }
     }
+}
+
+/// One model step's token counts.
+struct TokenStep {
+    input: u64,
+    cache_read: u64,
+    cache_write: u64,
 }
 
 /// One message row, as `judge_activity` and `find_last_tool` read it.
@@ -94,6 +101,39 @@ impl OpenCodeDb {
     /// `~/.local/share/opencode/opencode.db`.
     pub fn new(path: PathBuf) -> OpenCodeDb {
         OpenCodeDb { path }
+    }
+
+    /// Returns the context of the newest trusted step, or `None` when
+    /// there is none. A missing database file reads as no rows.
+    pub(crate) fn read_context_tokens(&self, session: &str) -> Result<Option<u64>, OpenCodeError> {
+        let Some(connection) = self.open()? else {
+            return Ok(None);
+        };
+        let mut statement = connection
+            .prepare(
+                "select coalesce(json_extract(data, '$.tokens.input'), 0), \
+                 coalesce(json_extract(data, '$.tokens.cache.read'), 0), \
+                 coalesce(json_extract(data, '$.tokens.cache.write'), 0) \
+                 from session_message \
+                 where session_id = ?1 and type = 'assistant' order by seq",
+            )
+            .map_err(OpenCodeError::Database)?;
+        let raw_steps = statement
+            .query_map([session], |row| {
+                // SQLite stores integers signed; a negative count reads as zero.
+                let count = |index| row.get::<_, i64>(index).map(|value| value.max(0) as u64);
+                Ok(TokenStep {
+                    input: count(0)?,
+                    cache_read: count(1)?,
+                    cache_write: count(2)?,
+                })
+            })
+            .map_err(OpenCodeError::Database)?;
+        let mut steps = Vec::new();
+        for raw_step in raw_steps {
+            steps.push(raw_step.map_err(OpenCodeError::Database)?);
+        }
+        Ok(count_trusted_context(steps))
     }
 
     /// Returns the first reply's reasoning effort, `default` when it
@@ -192,6 +232,22 @@ fn parse_row_data(data: &str) -> Result<Value, OpenCodeError> {
         .map_err(|error| OpenCodeError::BadRow(format!("an OpenCode message is not JSON: {error}")))
 }
 
+/// Returns the newest step's context that was not zero and did not
+/// come right after a zero step. The claude-code provider logs some
+/// steps as zero and adds them to the next one.
+fn count_trusted_context(steps: impl IntoIterator<Item = TokenStep>) -> Option<u64> {
+    let mut context = None;
+    let mut after_zero = false;
+    for step in steps {
+        let size = step.input + step.cache_read + step.cache_write;
+        if size > 0 && !after_zero {
+            context = Some(size);
+        }
+        after_zero = size == 0;
+    }
+    context
+}
+
 /// Returns working while a tool part runs, or while the newest row
 /// changed in the last 2 minutes. Returns finished after a succeeded
 /// `idle` row. Returns stopped otherwise. An unfinished step alone is
@@ -236,6 +292,36 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    /// The hub's context ends every `hub next` line and decides when it
+    /// hands off. A step that follows a zero step holds two steps' tokens,
+    /// so counting it shows about twice the real context and makes the
+    /// hub hand off far too early.
+    #[test]
+    fn count_trusted_context_skips_zero_and_next() {
+        let step = |input, cache_read, cache_write| TokenStep {
+            input,
+            cache_read,
+            cache_write,
+        };
+        let cases = [
+            ("no-steps", vec![], None),
+            (
+                "newest-counts",
+                vec![step(10, 100_000, 7_000), step(20, 110_000, 0)],
+                Some(110_020),
+            ),
+            (
+                "zero-and-next-skipped",
+                vec![step(10, 100_000, 7_000), step(0, 0, 0), step(0, 217_700, 0)],
+                Some(107_010),
+            ),
+        ];
+
+        for (case_name, steps, expected) in cases {
+            assert_eq!(count_trusted_context(steps), expected, "{case_name}");
+        }
+    }
 
     /// The hub runs `hub alive` before it tells the user a session
     /// died. A session killed mid-step keeps an unfinished step forever.

@@ -5,11 +5,13 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use hub::commands::handoff::run_handoff;
-use hub::external::herdr::{Agent, AgentStatus, HerdrError};
+use hub::external::herdr::{Agent, AgentStatus, HerdrCode};
 use hub::shared::{AgentName, HubError};
 use serde_json::json;
 
-use common::{OpenCodeRow, TestTools, make_agent, make_time, read_events, write_opencode_db};
+use common::{
+    OpenCodeRow, TestTools, make_agent, make_refusal, make_time, read_events, write_opencode_db,
+};
 
 /// The model the newest `rules.md` line names.
 const MODEL: &str = "claude-code/claude-opus-5-5[1m]#medium";
@@ -197,7 +199,7 @@ fn run_handoff_says_started_when_prompt_fails() {
     let (test_tools, handoff) = make_handoff_tools();
     test_tools
         .herdr
-        .fail_next("prompt", HerdrError::Refused("Herdr said no".to_owned()));
+        .fail_next("prompt", make_refusal(HerdrCode::Other(String::new())));
 
     let error = run_next_hub(&test_tools, &handoff).unwrap_err();
 
