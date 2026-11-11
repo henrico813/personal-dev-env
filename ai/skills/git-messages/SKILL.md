@@ -21,13 +21,22 @@ Follow the repository's documented style first. Otherwise use these defaults.
    limit or risk. Skip the body only when the title says everything.
 4. Wrap body lines to 72 characters. For PRs, use `## Overview`, `## Changes`,
    and `## Testing`, in that order. The Overview becomes the squash commit
-   body, so it must stand alone (why and what) and pass `msg lint`. Add one
-   Changes bullet per change and append a bullet as the PR changes.
-5. In Testing, write a short prose block: why the check matters, how to run a
-   human-runnable check in a code fence, what to expect, and the real result.
-   Report only checks actually run.
+   body, so it must stand alone (why and what) and pass `msg lint`.
+5. Write PR text for a reader who missed the work, short enough to
+   read on a phone. Overview: two sentences on who was affected and
+   what changed. Changes: one short line per piece of work, with
+   review fixes folded into those lines rather than listed as rounds.
+   Testing: one or two sentences of real results, naming the version
+   or commit they ran on, with at most one short line of real output,
+   such as `20 passed`. For an evaluation, give one concrete example
+   with and without the change, and its limits. End with one line on
+   what was not done, if anything. Report only checks actually run,
+   and never refer to commits the squash removes.
 6. Leave out branch-only commit hashes, meaningless test counts, private
    tracker references, unexplained project terms, and AI attribution.
+   Never name a private machine, the user's employer or work, private
+   vaults, personal information or secrets, here or in a branch name;
+   describe the change in general terms.
 7. Follow [plain-direct-english](../plain-direct-english/SKILL.md) and
    review all text for AI slop: would a new reader
    understand every term, does each sentence say something specific, are the
@@ -63,11 +72,7 @@ Example pull request:
 
     ## Testing
 
-    This checks that previewing a change remains safe. Run:
-    ```bash
-    ./tool --dry-run
-    ```
-    Expect planned file changes and no modified files. Result: I saw the
-    preview and the working tree stayed clean.
+    On version 2.3.0, `./tool --dry-run` listed the planned file
+    changes and the working tree stayed clean.
 
 Bad titles: `fix: update stuff.`; `feat: improve things for everyone`.
