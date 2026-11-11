@@ -17,7 +17,9 @@ make test
 
 Exit codes: 0 done, 1 an external system such as Herdr failed, 2 wrong
 usage, 3 not done, such as when no hub is running. Each failure prints
-its reason.
+its reason. When the reader of the output stops early, as
+`hub-next go | head` does, the hub stops printing and keeps its exit
+code.
 
 ## Differences from hub
 

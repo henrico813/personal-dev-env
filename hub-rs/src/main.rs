@@ -33,14 +33,29 @@ fn main() -> ExitCode {
         Command::Gather => sidebar::run_gather(&tools),
     };
     match result {
-        Ok(outcome) => {
-            for line in outcome.lines {
-                println!("{line}");
-            }
-            ExitCode::SUCCESS
-        }
+        Ok(outcome) => print_lines(&outcome.lines),
         Err(error) => report_error(&error),
     }
+}
+
+/// Prints each line on standard output and returns success. A reader
+/// that closes early, as `head` does, ends the printing with no error.
+/// Any other write failure prints its reason and returns 1.
+fn print_lines(lines: &[String]) -> ExitCode {
+    use std::io::{ErrorKind, Write};
+
+    let mut stdout = std::io::stdout().lock();
+    for line in lines {
+        match writeln!(stdout, "{line}") {
+            Ok(()) => {}
+            Err(error) if error.kind() == ErrorKind::BrokenPipe => break,
+            Err(error) => {
+                eprintln!("hub: cannot write output: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 /// Returns Herdr's socket from `HERDR_SOCKET_PATH`, which Herdr sets in
