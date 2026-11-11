@@ -151,6 +151,11 @@ This is the heart of the doc. Write it as a narrative that walks the reader thro
 
 For each of these, include code sketches or schema definitions where they clarify the design — not as full implementations, but as contracts that a reviewer can evaluate.
 
+**Say what each module does.** If the design adds modules or lays out
+source files, give each module's job in a sentence and trace the
+main thing the user does through them. Pick plain names that a
+newcomer can follow without the earlier discussion.
+
 **Explain how this fits into the system's trajectory.** A design doesn't exist in isolation. Describe where the system has been (the history that created today's state), where it's going (the technical direction the team is aligned on), and how this change moves along that vector. If this change diverges from the current direction, the justification must be explicit and strong. A new team member reading this doc in six months should understand the reasoning without any oral tradition.
 
 ---
