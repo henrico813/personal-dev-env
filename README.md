@@ -18,7 +18,7 @@ pde-installer install terminal
 Building the installer needs Go 1.21 or newer, for example from
 `sudo apt install golang-go` on Ubuntu 24.04.
 
-`terminal` is for headless homelab VMs, `client` for a laptop that edits files
+`terminal` is for headless server VMs, `client` for a laptop that edits files
 and shows Herdr sessions from other machines, with nothing compiled by the
 installer, and `full` for development machines. A fresh installation must choose
 `terminal`, `client`, or `full`; the installer saves that selection in

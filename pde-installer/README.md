@@ -33,7 +33,7 @@ the current directory, `--repo-root`, or `PDE_REPO_ROOT`.
 
 Pick the profile for the machine:
 
-- `terminal`: headless homelab VMs that run services. Shell, tmux, and
+- `terminal`: headless server VMs that run services. Shell, tmux, and
   command-line tools.
 - `client`: a laptop that edits files, runs OpenCode, and shows herdr sessions
   from other machines, with nothing compiled by the installer. Full without Go,
