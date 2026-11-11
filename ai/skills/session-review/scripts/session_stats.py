@@ -1,7 +1,7 @@
 """Print the numbers a session review starts from.
 
 Reads one OpenCode session from the local database, read-only, and
-prints about twenty plain lines. Read ``report_session`` first.
+prints about thirty plain lines. Read ``report_session`` first.
 ``--context`` prints one line instead, from ``describe_context``, which
 the ``pde-context`` command runs.
 
@@ -36,6 +36,7 @@ SKILL_LOAD = re.compile(
 )
 REPEATS_SHOWN = 5
 SUBAGENTS_SHOWN = 5
+CARRIED_SHOWN = 5
 
 
 def report_session(db: sqlite3.Connection, session: str) -> list[str]:
@@ -91,6 +92,7 @@ def report_session(db: sqlite3.Connection, session: str) -> list[str]:
         describe_skills(steps),
         *describe_subagents(db, session),
         *describe_repeats(steps),
+        *describe_carry(messages),
     ]
 
 
@@ -236,11 +238,7 @@ def describe_skills(steps: list[tuple[int, dict]]) -> str:
     first: dict[str, int] = {}
     for seq, step in steps:
         for call in list_tool_calls(step):
-            output = "".join(
-                part.get("text", "")
-                for part in call["state"].get("content") or []
-            )
-            for skill in find_skill_loads(output):
+            for skill in find_skill_loads(join_tool_output(call)):
                 first.setdefault(skill, seq)
     loaded = ", ".join(f"{skill} (seq {seq})" for skill, seq in first.items())
     return f"skills loaded {loaded or 'none'}"
@@ -313,6 +311,80 @@ def describe_repeats(steps: list[tuple[int, dict]]) -> list[str]:
         for n, cmd in repeats[:REPEATS_SHOWN]
     ]
     return [f"repeated commands {len(repeats)}", *shown]
+
+
+def describe_carry(messages: list[tuple[str, int, str]]) -> list[str]:
+    """Sum the carry of each tool and list the calls carried most.
+
+    A call's carry is its tokens times the later model steps that read
+    it again before the next compaction. Steps logged with zero tokens
+    do not count. Tokens are characters divided by 4, which undercounts
+    tool output, so carry is a low estimate.
+
+    Args:
+        messages: Type, sequence number and data of each message.
+
+    Returns:
+        A heading with one line per tool, most carry first, then a
+        heading with the calls that have the most carry.
+    """
+    tools: dict[str, list[int]] = {}
+    calls = []
+    # Walk backwards so each step knows how many later steps read it.
+    later = 0
+    for kind, seq, data in reversed(messages):
+        if kind == "compaction":
+            later = 0
+        if kind != "assistant":
+            continue
+        step = json.loads(data)
+        for call in list_tool_calls(step):
+            given = call["state"]["input"]
+            tokens = (
+                len(join_tool_output(call)) // 4 + len(json.dumps(given)) // 4
+            )
+            name = call.get("name") or "?"
+            totals = tools.setdefault(name, [0, 0, 0])
+            totals[0] += 1
+            totals[1] += tokens
+            totals[2] += tokens * later
+            label = str(
+                given.get("command")
+                or given.get("path")
+                or given.get("id")
+                or ""
+            ).partition("\n")[0][:100]
+            calls.append((tokens * later, tokens, later, seq, name, label))
+        later += count_context_tokens(step) > 0
+    lines = ["carry by tool"]
+    for name, (count, tokens, carry) in sorted(
+        tools.items(), key=lambda item: (-item[1][2], item[0])
+    ):
+        lines.append(
+            f"  {name} calls {count} tokens {tokens:,} carry {carry:,}"
+        )
+    lines.append("largest carried outputs")
+    calls.sort(key=lambda call: (-call[0], call[3]))
+    for carry, tokens, later, seq, name, label in calls[:CARRIED_SHOWN]:
+        lines.append(
+            f"  carry {carry:,} tokens {tokens:,} later steps {later}"
+            f" seq {seq} {name} {label}".rstrip()
+        )
+    return lines
+
+
+def join_tool_output(call: dict) -> str:
+    """Return the text a tool call returned, from its content parts.
+
+    Args:
+        call: One tool call from ``list_tool_calls``.
+
+    Returns:
+        The text parts joined, or an empty string when there are none.
+    """
+    return "".join(
+        part.get("text", "") for part in call["state"].get("content") or []
+    )
 
 
 def list_tool_calls(step: dict) -> list[dict]:
