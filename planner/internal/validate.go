@@ -70,9 +70,12 @@ func walkValidationRules(plan Plan) []ValidationError {
 			add(field, fmt.Sprintf("%s must be no more than %d characters (got %d)", field, MaxDoDGoalLength, got), got)
 		}
 	}
+	// The Base commit first line is metadata for guarded commands, so it does
+	// not count toward the limit.
+	_, stateText := cutBaseCommitLine(dod.CurrentState)
 	if strings.TrimSpace(dod.CurrentState) == "" {
 		add("definition_of_done.current_state", "definition_of_done.current_state is required", 0)
-	} else if got := utf8.RuneCountInString(dod.CurrentState); got > MaxCurrentStateLength {
+	} else if got := utf8.RuneCountInString(stateText); got > MaxCurrentStateLength {
 		add("definition_of_done.current_state", fmt.Sprintf("definition_of_done.current_state must be no more than %d characters (got %d)", MaxCurrentStateLength, got), got)
 	}
 	// Only the file list above the first ### heading has a line limit,

@@ -354,6 +354,71 @@ func TestNewPreservesExistingFile(t *testing.T) {
 	}
 }
 
+// A file named with a plan key in a vault project folder must get issue
+// frontmatter without flags, or planner list misses the plan. The same name
+// anywhere else must stay plain.
+func TestNewInfersIssueFromVaultPath(t *testing.T) {
+	root := t.TempDir()
+	devEnv := filepath.Join(root, "vault", vaultProjectsSubdir, "DevEnv")
+	codeRepo := filepath.Join(root, "Projects", "repo")
+	cases := []struct {
+		name        string
+		path        string
+		flags       []string
+		wantProject string
+	}{
+		{
+			name:        "keyed file in vault project",
+			path:        filepath.Join(devEnv, "PDEV-12 Example.md"),
+			wantProject: "DevEnv",
+		},
+		{
+			name: "design doc in vault project",
+			path: filepath.Join(devEnv, "DESIGN-Example.md"),
+		},
+		{
+			name: "keyed file in code folder",
+			path: filepath.Join(codeRepo, "PDEV-12 Example.md"),
+		},
+		{
+			name: "keyed file in project subfolder",
+			path: filepath.Join(devEnv, "notes", "PDEV-12 Example.md"),
+		},
+		{
+			name:        "explicit project wins",
+			path:        filepath.Join(devEnv, "PDEV-13 Example.md"),
+			flags:       []string{"--issue", "--project", "Homelab"},
+			wantProject: "Homelab",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := os.MkdirAll(filepath.Dir(tc.path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			var stdout, stderr bytes.Buffer
+
+			exit := Execute(append([]string{"new", tc.path}, tc.flags...), &stdout, &stderr)
+
+			if exit != 0 {
+				t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+			}
+			got, err := os.ReadFile(tc.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			gotProject := ""
+			if frontmatter, ok := strings.CutPrefix(string(got), "---\n"); ok {
+				_, project, _ := strings.Cut(frontmatter, "\nproject: ")
+				gotProject, _, _ = strings.Cut(project, "\n")
+			}
+			if gotProject != tc.wantProject {
+				t.Fatalf("project = %q, want %q", gotProject, tc.wantProject)
+			}
+		})
+	}
+}
+
 func TestRunInspectUsage(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

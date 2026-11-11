@@ -14,7 +14,9 @@ planner new plan.md
 
 `planner new` fails without changing an existing destination. When the plan
 belongs in the default vault, pass `--issue --project <name>` to
-prepend the vault issue frontmatter. See the
+prepend the vault issue frontmatter. A file named with an issue key, such as
+`HOME-165 Title.md`, in a vault `500 Zettelkasten/Projects/<name>/` folder gets
+it without the flags. See the
 [command reference](../reference/commands.md) for the supported shape.
 
 The scaffold contains a title, overview, definition of done, at least one
@@ -39,8 +41,9 @@ Record the full source commit in the first line of `### Current State`:
 
     Base commit: <full 40-character or 64-character commit ID>
 
-`planner check` reads this line when `--base-commit` is not supplied. It uses
-the current directory's repository when `--repo` is not supplied.
+`planner inspect`, `patch`, `check`, and `export` read this line when
+`--base-commit` is not supplied. They use the repository that contains the
+current directory when `--repo` is not supplied.
 
 ## 4. Check the plan
 

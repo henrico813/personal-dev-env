@@ -665,10 +665,9 @@ func TestGuardedErrorJSONShape(t *testing.T) {
 	}
 }
 
-// Each options type validates itself, so the operation functions must reject bad
-// combinations with USAGE before reading anything. Testing through inspect and
-// patch keeps that rule independent of the CLI flag grammar; check defaults its
-// repo and base commit, so it has no required pair to reject.
+// Each options type validates itself, so inspect and patch must reject bad
+// flag combinations with USAGE before reading any file. Calling them directly
+// checks that rule without going through flag parsing.
 func TestGuardedOptionsRejectBadCombinations(t *testing.T) {
 	const target = "implementation[1].file_changes[1]"
 	baseCommit := strings.Repeat("a", 40)
@@ -679,10 +678,6 @@ func TestGuardedOptionsRejectBadCombinations(t *testing.T) {
 	}{
 		{"inspect missing target", func() error {
 			_, err := guardedInspect(guardedInspectOptions{Repo: "repo", BaseCommit: baseCommit})
-			return err
-		}, "USAGE"},
-		{"inspect missing repo and base commit", func() error {
-			_, err := guardedInspect(guardedInspectOptions{Target: target})
 			return err
 		}, "USAGE"},
 		{"inspect before without code-out", func() error {
@@ -700,12 +695,6 @@ func TestGuardedOptionsRejectBadCombinations(t *testing.T) {
 		{"patch missing expect", func() error {
 			_, err := guardedPatch(guardedPatchOptions{
 				Target: target, AfterFile: "a", Repo: "repo", BaseCommit: baseCommit,
-			})
-			return err
-		}, "USAGE"},
-		{"patch missing repo and base commit", func() error {
-			_, err := guardedPatch(guardedPatchOptions{
-				Target: target, Expect: "sha256:x", AfterFile: "a",
 			})
 			return err
 		}, "USAGE"},
@@ -740,28 +729,74 @@ func TestGuardedOptionsRejectBadCombinations(t *testing.T) {
 	}
 }
 
-// inspect and patch always need the repository and the base commit, so a
-// missing --repo or --base-commit exits 2 with USAGE. Without a base commit the
-// edit token could not identify the source the change was prepared against.
-func TestGuardedCommandsRequireBaseCommit(t *testing.T) {
-	_, _, name := revisionFixture(t, false)
-	target := "implementation[1].file_changes[1]"
-	cases := []struct {
-		name string
-		args []string
-	}{
-		{"inspect", []string{"inspect", name, "--target", target}},
-		{"patch", []string{"patch", name, "--target", target, "--expect", "sha256:x",
-			"--after-file", os.DevNull}},
+// Without a Base commit line or --base-commit, inspect must stop rather than
+// fall back to HEAD, which moves as implementation steps are committed. patch,
+// check and export share the same lookup.
+func TestInspectRequiresRecordedBaseCommit(t *testing.T) {
+	repo, _, name := revisionFixture(t, false)
+	chdir(t, repo)
+
+	code, _, diagnostic := revisionExecute("inspect", name,
+		"--target", "implementation[1].file_changes[1]")
+
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1: %s", code, diagnostic)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			code, _, diagnostic := revisionExecute(tc.args...)
-			if code != 2 {
-				t.Fatalf("exit = %d, want 2: %s", code, diagnostic)
-			}
-			requireGuardedError(t, diagnostic, "USAGE")
-		})
+	requireGuardedError(t, diagnostic, codeBaseCommitRequired)
+}
+
+// Without either flag, inspect, patch and export must find the repository from
+// a subfolder and still use the plan's base commit after HEAD moves. Otherwise
+// a plan revised during implementation would be checked against later commits.
+func TestInspectPatchExportDefaultBothFlags(t *testing.T) {
+	// Move HEAD past the base commit and run from a subfolder of the repository.
+	repo, baseCommit, name := checkPlanFixture(t)
+	if err := os.WriteFile(filepath.Join(repo, "foo.txt"), []byte("Z\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	revisionGit(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+		"-c", "commit.gpgsign=false", "commit", "--quiet", "-am", "later commit")
+	subfolder := filepath.Join(repo, "sub")
+	if err := os.Mkdir(subfolder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	chdir(t, subfolder)
+	target := "implementation[1].file_changes[1]"
+
+	// Inspect writes the source from the plan's base commit, not from HEAD.
+	before := filepath.Join(t.TempDir(), "before.txt")
+	code, out, diagnostic := revisionExecute("inspect", name, "--target", target,
+		"--before", "--code-out", before)
+	if code != 0 {
+		t.Fatalf("inspect: exit %d: %s", code, diagnostic)
+	}
+	view := decodeGuardedResult[guardedInspectResult](t, out)
+	if source, err := os.ReadFile(before); err != nil || string(source) != "A\n" {
+		t.Fatalf("before source = %q, err=%v; want the base commit's A", source, err)
+	}
+
+	// Patch accepts the token and rewrites the change against the same commit.
+	after := filepath.Join(t.TempDir(), "after.txt")
+	if err := os.WriteFile(after, []byte("D\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, diagnostic = revisionExecute("patch", name, "--target", target,
+		"--expect", view.EditExpect, "--after-file", after)
+	if code != 0 {
+		t.Fatalf("patch: exit %d: %s", code, diagnostic)
+	}
+	if result := decodeGuardedResult[guardedPatchResult](t, out); !result.Written || result.BaseCommit != baseCommit {
+		t.Fatalf("patch result = %+v, want written against %s", result, baseCommit)
+	}
+
+	// Export builds the tree from the base commit plus the patched change.
+	tree := filepath.Join(t.TempDir(), "tree")
+	code, _, diagnostic = revisionExecute("export", name, "--out", tree)
+	if code != 0 {
+		t.Fatalf("export: exit %d: %s", code, diagnostic)
+	}
+	if source, err := os.ReadFile(filepath.Join(tree, "foo.txt")); err != nil || string(source) != "D\n" {
+		t.Fatalf("exported source = %q, err=%v; want D", source, err)
 	}
 }
 

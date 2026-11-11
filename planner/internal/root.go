@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,15 +22,15 @@ Usage:
   planner help
 	planner new <output.md> [--issue --project NAME] [--diff] [--dry-run] [--json-errors]
   planner check <plan.md> [--repo DIR] [--base-commit COMMIT] [--json-errors]
-  planner export <plan.md> --repo DIR --base-commit COMMIT --out NEWDIR
+  planner export <plan.md> [--repo DIR] [--base-commit COMMIT] --out NEWDIR
       [--through STEP] [--json-errors]
   planner list [PROJECT [PLAN]] [--status STATUS] [--dir PROJECTS_DIR] [--json]
   planner inspect <plan.md>
-  planner inspect <plan.md> --target SELECTOR --repo DIR
-      --base-commit COMMIT [--code-out NEWFILE [--before]] [--json-errors]
+  planner inspect <plan.md> --target SELECTOR [--repo DIR]
+      [--base-commit COMMIT] [--code-out NEWFILE [--before]] [--json-errors]
   planner key <plan.md> [--json-errors]
-  planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR
-      --base-commit COMMIT (--after-file FILE | --diff-file FILE)
+  planner patch <plan.md> --target SELECTOR --expect TOKEN [--repo DIR]
+      [--base-commit COMMIT] (--after-file FILE | --diff-file FILE)
       [--dry-run] [--diff] [--json-errors]
 
 List JSON provides overview, project, and detail views. Status filters accept
@@ -40,6 +41,9 @@ Global flags:
 
 Markdown-first authoring:
   1. Run planner new plan.md. It fails without changing an existing destination.
+     A file named like "ABC-12 Title.md" directly in a vault
+     "500 Zettelkasten/Projects/NAME/" folder gets issue frontmatter for
+     project NAME, as if run with --issue --project NAME.
   2. Edit prose and structure directly in the Markdown file.
   3. Change code diffs only through planner patch, which checks each diff against
      the base commit: inspect with --code-out to write the source to a file and
@@ -178,6 +182,9 @@ func runNew(args []string, stdout io.Writer, stderr io.Writer) int {
 		reportError(stderr, "new", newPlannerCLIError(PlannerReadInputError, err, outputPath))
 		return 1
 	}
+	if !issue.issue {
+		issue = inferIssueOptions(outputPath)
+	}
 	var rendered string
 	if issue.issue {
 		rendered, err = renderIssueScaffold(issue.project, time.Now())
@@ -253,6 +260,23 @@ func parseNewIssueFlags(args []string) (newIssueOptions, []string, error) {
 		return opts, nil, fmt.Errorf("--issue requires --project")
 	}
 	return opts, kept, nil
+}
+
+// Returns issue options when the file name starts with a plan key and its
+// folder sits directly under vaultProjectsSubdir. The folder name becomes the
+// project, and any other path gets a plain plan.
+func inferIssueOptions(outputPath string) newIssueOptions {
+	abs, err := filepath.Abs(outputPath)
+	if err != nil {
+		return newIssueOptions{}
+	}
+	projectDir := filepath.Dir(abs)
+	projectsDir := filepath.ToSlash(filepath.Dir(projectDir))
+	if !strings.HasSuffix(projectsDir, "/"+vaultProjectsSubdir) ||
+		!planKeyPattern.MatchString(filepath.Base(abs)) {
+		return newIssueOptions{}
+	}
+	return newIssueOptions{issue: true, project: filepath.Base(projectDir)}
 }
 
 func printHelp(w io.Writer) {
