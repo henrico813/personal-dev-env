@@ -4,7 +4,8 @@ The local backend builds repository applications: `planner`,
 `opencode-inline-shim`, `vibe`, `pde-gh-write` (also linked as
 `pde-pr-approve`), `glimmer`, `skill-lessons`, `hub` and `prs`.
 `skill-lessons` and `hub` each have a `build.py` that packs them into one file
-run by `/usr/bin/python3`. Client builds only `skill-lessons` and `hub`, and
+run by `/usr/bin/python3` on Linux and by Homebrew's Python 3.13 on macOS,
+which the installer passes to `build.py` as `PDE_PYTHON`. Client builds only `skill-lessons` and `hub`, and
 terminal builds no local applications.
 
 The installer builds `glimmer` from the Rust source in `glimmer/`

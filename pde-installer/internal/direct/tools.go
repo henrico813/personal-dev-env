@@ -55,6 +55,9 @@ func Tools() ([]Tool, error) {
 }
 
 func toolsForPlatform(goos, goarch string) ([]Tool, error) {
+	if goos == "darwin" && goarch == "arm64" {
+		return listMacOSTools(), nil
+	}
 	if goos != "linux" {
 		return nil, fmt.Errorf("direct tools do not support %s/%s", goos, goarch)
 	}
@@ -86,10 +89,7 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 		return nil, fmt.Errorf("direct tools do not support %s/%s", goos, goarch)
 	}
 
-	version := func(name string) string {
-		item, _ := manifest.Find(name, manifest.Direct)
-		return item.Version
-	}
+	version := readPinnedVersion
 	nvimVersion, goVersion := version("neovim"), version("go")
 	rustVersion, nodeVersion := version("rust"), version("node")
 	herdrVersion := version("herdr")
@@ -111,6 +111,26 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 		{Name: "herdr", Version: herdrVersion, Archive: herdrArchive, URL: "https://github.com/herdrdev/herdr/releases/download/" + herdrVersion + "/" + herdrArchive, SHA256: checksums["herdr"], Directory: "herdr", Binary: "herdr", Links: []string{"herdr"}, Kind: fileTool},
 		{Name: "nobs", Version: nobsVersion, Archive: nobsAsset, URL: "https://github.com/henrico813/nobs/releases/download/" + nobsVersion + "/" + nobsAsset, SHA256: checksums["nobs"], Directory: "nobs", Binary: "nobs", Links: []string{"nobs"}, Kind: fileTool},
 	}, nil
+}
+
+// Returns the client's release tools for an Apple Silicon Mac. macOS refuses
+// full, so its tools have no macOS entry, and nobs publishes no macOS build.
+func listMacOSTools() []Tool {
+	nvimVersion, nodeVersion, herdrVersion := readPinnedVersion("neovim"), readPinnedVersion("node"), readPinnedVersion("herdr")
+	nvimArchive := "nvim-macos-arm64.tar.gz"
+	nodeArchive := "node-v" + nodeVersion + "-darwin-arm64.tar.xz"
+	herdrArchive := "herdr-macos-aarch64"
+	return []Tool{
+		{Name: "neovim", Version: nvimVersion, Archive: nvimArchive, URL: "https://github.com/neovim/neovim/releases/download/v" + nvimVersion + "/" + nvimArchive, SHA256: "532da1d00e465a660fa01c3d4991333d09c52107dce7df937368545daca0a14e", Directory: "neovim", Binary: "nvim", VersionPrefix: "NVIM v", Links: []string{"nvim"}, VersionArgs: []string{"--version"}, Kind: archiveTool},
+		{Name: "node", Version: nodeVersion, Archive: nodeArchive, URL: "https://nodejs.org/dist/v" + nodeVersion + "/" + nodeArchive, SHA256: "e28ad5531b2aafe0ea555a51b2412c42fdc0f91a6a53fbd03ac93e3847e91389", Directory: "node", Binary: "node", VersionPrefix: "v", Links: []string{"corepack", "node", "npm", "npx"}, VersionArgs: []string{"--version"}, Kind: archiveTool},
+		{Name: "herdr", Version: herdrVersion, Archive: herdrArchive, URL: "https://github.com/herdrdev/herdr/releases/download/" + herdrVersion + "/" + herdrArchive, SHA256: "5fc7a7e7adfaca56fa80aa89dcb025693357268dab8285b9ce2d08a2313c89de", Directory: "herdr", Binary: "herdr", Links: []string{"herdr"}, Kind: fileTool},
+	}
+}
+
+// Returns the manifest's pinned version of a direct tool.
+func readPinnedVersion(name string) string {
+	item, _ := manifest.Find(name, manifest.Direct)
+	return item.Version
 }
 
 // Returns the release tools that the manifest marks for the profile.

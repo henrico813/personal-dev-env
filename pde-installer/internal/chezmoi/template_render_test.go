@@ -27,6 +27,7 @@ func TestIgnoreListMatchesEachProfile(t *testing.T) {
 		"README.md",
 		".config/nvim/pack/plugins/start/opencode-inline.nvim",
 		".config/nvim/pack/plugins/start/opencode-inline.nvim/**",
+		".config/aquaproj-aqua/aqua-macos.yaml",
 		".config/aquaproj-aqua/aqua.yaml",
 		".config/aquaproj-aqua/aqua-checksums.json",
 		".claude",
@@ -59,6 +60,7 @@ func TestIgnoreListMatchesEachProfile(t *testing.T) {
 		"README.md",
 		".config/nvim/pack/plugins/start/opencode-inline.nvim",
 		".config/nvim/pack/plugins/start/opencode-inline.nvim/**",
+		".config/aquaproj-aqua/aqua-macos.yaml",
 		".config/aquaproj-aqua/aqua-terminal.yaml",
 		".config/aquaproj-aqua/aqua-terminal-checksums.json",
 		".config/nvim/pack/plugins/start/blink.cmp",
@@ -1186,6 +1188,8 @@ func renderTemplateWithData(t *testing.T, name, pdeData, colorProfile, checkout 
 	if err := json.Unmarshal([]byte(pdeData), &values); err != nil {
 		t.Fatal(err)
 	}
+	// chezmoi sets .chezmoi.os, and these tests check the Linux files.
+	values["chezmoi"] = map[string]any{"os": "linux"}
 	functions := template.FuncMap{
 		"env": func(key string) string {
 			if key == "PDE_REPO_ROOT" {

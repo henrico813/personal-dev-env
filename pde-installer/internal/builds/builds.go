@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -98,15 +99,23 @@ var wallpaperPlayers = map[string]wallpaperPlayer{
 	},
 }
 
+// Homebrew's Python, from the python@3.13 formula in profiles.yaml. macOS's
+// own /usr/bin/python3 is older than the 3.10 that skill-lessons and hub need.
+const macOSPython = "/opt/homebrew/opt/python@3.13/bin/python3.13"
+
 // New returns a local build manager.
 func New(home, repoRoot string, runner run.Runner) Manager {
+	python := "/usr/bin/python3"
+	if runtime.GOOS == "darwin" {
+		python = macOSPython
+	}
 	return Manager{
 		Home:        home,
 		RepoRoot:    repoRoot,
 		Runner:      runner,
 		blinkURL:    defaultBlinkURL,
 		blinkSHA256: defaultBlinkSHA256,
-		python:      "/usr/bin/python3",
+		python:      python,
 		players:     wallpaperPlayers,
 	}
 }
@@ -798,6 +807,8 @@ func (m Manager) environment(stage ...string) []string {
 			// Go makes module folders read-only, which stops the stage's removal.
 			"GOFLAGS=-modcacherw",
 			"CARGO_HOME="+filepath.Join(stage[0], "cargo-home"),
+			// build.py writes this interpreter into the packed file's #! line.
+			"PDE_PYTHON="+m.python,
 		)
 	}
 	return environment

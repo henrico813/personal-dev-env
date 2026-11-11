@@ -20,12 +20,16 @@ type tool struct {
 	version string
 }
 
-func checksum(architecture string) (string, bool) {
-	switch architecture {
-	case "amd64":
+// Returns the sha256 of aqua's release archive for a platform such as
+// "linux/amd64".
+func checksum(platform string) (string, bool) {
+	switch platform {
+	case "linux/amd64":
 		return "d6f920201c71fb42881af51f8f63c3f06da778b38399248b2c777a288ebe3884", true
-	case "arm64":
+	case "linux/arm64":
 		return "c203124300502abc7f338a0d460810cee769049d44348c8fadb5eee90119ecdd", true
+	case "darwin/arm64":
+		return "19a5ab28a1238c4bbe06c40bcbce36e78b52838bb055d0d57cd4a844d165bdc4", true
 	default:
 		return "", false
 	}
@@ -74,8 +78,8 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	if !ok {
 		return nil, fmt.Errorf("aqua is missing from manifest")
 	}
-	checksum, ok := checksum(runtime.GOARCH)
-	if runtime.GOOS != "linux" || !ok {
+	checksum, ok := checksum(runtime.GOOS + "/" + runtime.GOARCH)
+	if !ok {
 		return nil, fmt.Errorf("unsupported Aqua platform %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
 	configName, checksumsName := m.profile.AquaFiles()
@@ -90,7 +94,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	if err != nil {
 		return nil, err
 	}
-	url := fmt.Sprintf("https://github.com/aquaproj/aqua/releases/download/%s/aqua_linux_%s.tar.gz", aqua.Version, runtime.GOARCH)
+	url := fmt.Sprintf("https://github.com/aquaproj/aqua/releases/download/%s/aqua_%s_%s.tar.gz", aqua.Version, runtime.GOOS, runtime.GOARCH)
 	if m.runner.DryRun {
 		if err := m.runner.Plan("download and verify "+url+" sha256="+checksum, nil); err != nil {
 			return nil, err
@@ -276,11 +280,16 @@ func (m Manager) ToolStatus(name, version string) (string, string) {
 
 // ToolProbe reports a tool version without hiding probe errors.
 func (m Manager) ToolProbe(name, version string) (string, string, error) {
+	// jq names its macOS builds jq-macos-*, and yq names them yq_darwin_*.
+	jqOS := runtime.GOOS
+	if jqOS == "darwin" {
+		jqOS = "macos"
+	}
 	binaryNames := map[string]string{
 		"ripgrep": "rg",
 		"bottom":  "btm",
-		"jq":      "jq-linux-" + runtime.GOARCH,
-		"yq":      "yq_linux_" + runtime.GOARCH,
+		"jq":      "jq-" + jqOS + "-" + runtime.GOARCH,
+		"yq":      "yq_" + runtime.GOOS + "_" + runtime.GOARCH,
 	}
 	binary := name
 	if mapped := binaryNames[name]; mapped != "" {

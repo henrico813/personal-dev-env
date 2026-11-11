@@ -2,6 +2,8 @@ package manifest
 
 import (
 	"fmt"
+	"runtime"
+	"slices"
 
 	"pde-installer/internal/profile"
 )
@@ -17,6 +19,8 @@ const (
 	Local   Backend = "local"
 	Direct  Backend = "direct"
 	Chezmoi Backend = "chezmoi"
+	// Installs macOS's system tools, in apt's place.
+	Homebrew Backend = "homebrew"
 )
 
 // Holds a managed item's owner, requested version, tier and desktop. A
@@ -32,11 +36,28 @@ type Item struct {
 // Returns the items whose tier the profile has, leaving out items for other
 // desktops.
 func ItemsFor(selected profile.Profile, desktop profile.Desktop) []Item {
+	return ListItemsForPlatform(selected, desktop, runtime.GOOS)
+}
+
+// Returns what ItemsFor returns on goos, such as "darwin". On macOS, Homebrew
+// owns the items named in the profile's formulae, unpinned.
+func ListItemsForPlatform(selected profile.Profile, desktop profile.Desktop, goos string) []Item {
 	var result []Item
 	for _, item := range Items() {
-		if selected.Has(item.Tier) && (item.Desktop == "" || item.Desktop == desktop) {
-			result = append(result, item)
+		if !selected.Has(item.Tier) || item.Desktop != "" && item.Desktop != desktop {
+			continue
 		}
+		if goos == "darwin" {
+			switch {
+			case slices.Contains(selected.Formulae(), item.Name):
+				item.Owner, item.Version = Homebrew, ""
+			// macOS has no apt and needs no other apt item, and nobs has no
+			// macOS build.
+			case item.Owner == Ubuntu || item.Name == "nobs":
+				continue
+			}
+		}
+		result = append(result, item)
 	}
 	return result
 }

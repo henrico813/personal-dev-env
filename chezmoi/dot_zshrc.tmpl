@@ -1,6 +1,12 @@
 {{- $colors := index .colorProfiles (env "PDE_COLOR_PROFILE") -}}
 # Disable terminal flow control to enable Ctrl-S for forward history search
 stty -ixon
+{{- if eq .chezmoi.os "darwin" }}
+
+# Homebrew provides tmux, git and Python on macOS. The PATH lines below put
+# pdev's own tools ahead of it.
+eval "$(/opt/homebrew/bin/brew shellenv)"
+{{- end }}
 
 {{- if has "development" .pde.tiers }}
 # SSH agent via keychain (lazy key loading)
@@ -59,7 +65,7 @@ export FZF_DEFAULT_OPTS="--height=40% --layout=reverse --border --margin=1 --pad
 # PATH
 export AQUA_ROOT_DIR="$HOME/.local/share/aquaproj-aqua"
 {{- if not (has "development" .pde.tiers) }}
-export AQUA_GLOBAL_CONFIG="$HOME/.config/aquaproj-aqua/aqua-terminal.yaml"
+export AQUA_GLOBAL_CONFIG="$HOME/.config/aquaproj-aqua/aqua-{{ if eq .chezmoi.os "darwin" }}macos{{ else }}terminal{{ end }}.yaml"
 export AQUA_CHECKSUMS_PATH="$HOME/.config/aquaproj-aqua/aqua-terminal-checksums.json"
 {{- else }}
 export AQUA_GLOBAL_CONFIG="$HOME/.config/aquaproj-aqua/aqua.yaml"
@@ -127,7 +133,7 @@ tm() {
     slug="${slug//[^A-Za-z0-9_-]/-}"
     [[ -n "$slug" ]] || slug=root
     slug="${slug[1,24]}"
-    hash="$(print -rn -- "$dir" | command sha256sum)" || return 1
+    hash="$(print -rn -- "$dir" | command {{ if eq .chezmoi.os "darwin" }}shasum -a 256{{ else }}sha256sum{{ end }})" || return 1
     hash="${hash%% *}"
     scope="tm-${slug}-${hash[1,8]}"
     herdr_bin="$(command -v herdr)" || {

@@ -52,6 +52,11 @@ case "$memory_max" in
         ;;
 esac
 
+# macOS has no systemd, so OpenCode runs uncapped there without a warning.
+if [ "$(uname -s)" = Darwin ]; then
+    exec "$binary" "$@"
+fi
+
 if ! command -v systemctl >/dev/null 2>&1 || ! command -v systemd-run >/dev/null 2>&1 || ! systemctl --user show-environment >/dev/null 2>&1; then
     printf '%s\n' 'PDE OpenCode launcher: no systemd user manager; running uncapped.' >&2
     exec "$binary" "$@"

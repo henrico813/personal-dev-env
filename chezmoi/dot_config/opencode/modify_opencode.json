@@ -50,10 +50,11 @@ if [ -n "${HOME:-}" ] && [ -n "$goog_base_url" ]; then
         warn 'OpenCode Goog key file is missing; keeping configured models.'
     elif [ ! -f "$key_file" ]; then
         warn 'OpenCode Goog key file is not a regular file; keeping configured models.'
-    elif [ "$(stat -c '%u' "$key_file" 2>/dev/null)" != "$(id -u)" ]; then
+    # GNU stat reads -c and macOS stat reads -f.
+    elif [ "$(stat -c '%u' "$key_file" 2>/dev/null || stat -f '%u' "$key_file" 2>/dev/null)" != "$(id -u)" ]; then
         warn 'OpenCode Goog key file is not owned by this user; keeping configured models.'
     else
-        key_mode=$(stat -c '%a' "$key_file" 2>/dev/null || printf '0')
+        key_mode=$(stat -c '%a' "$key_file" 2>/dev/null || stat -f '%Lp' "$key_file" 2>/dev/null || printf '0')
         key_group=$(( (key_mode / 10) % 10 ))
         key_other=$(( key_mode % 10 ))
         if [ $((key_group & 2)) -ne 0 ] || [ $((key_other & 2)) -ne 0 ]; then

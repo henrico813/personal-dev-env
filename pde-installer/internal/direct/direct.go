@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"pde-installer/internal/fsutil"
 	"pde-installer/internal/manifest"
@@ -67,12 +68,14 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		if err := m.Runner.Plan("atomically activate managed fonts", nil); err != nil {
 			return nil, err
 		}
-		if err := m.Runner.Plan("refresh font cache", nil); err != nil {
-			return nil, err
+		if runtime.GOOS != "darwin" {
+			if err := m.Runner.Plan("refresh font cache", nil); err != nil {
+				return nil, err
+			}
 		}
 		return &fsutil.Journal{}, nil
 	}
-	parent := filepath.Join(m.Home, ".local", "share", "fonts", "pde")
+	parent := m.fontsRoot()
 	if err := fsutil.GuardHome(m.Home, filepath.Dir(parent), parent); err != nil {
 		return nil, err
 	}
@@ -151,14 +154,27 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		return nil, journal.Revert(err)
 	}
 	tracked = true
+	// macOS finds new fonts without a cache refresh.
+	if runtime.GOOS == "darwin" {
+		return journal, nil
+	}
 	if err := m.Runner.Run("refresh font cache", run.Command{Name: "fc-cache", Args: []string{"-f"}}); err != nil {
 		return nil, journal.Revert(err)
 	}
 	return journal, nil
 }
 
+// Returns the folder that holds the managed fonts. macOS reads user fonts
+// from ~/Library/Fonts.
+func (m Manager) fontsRoot() string {
+	if runtime.GOOS == "darwin" {
+		return filepath.Join(m.Home, "Library", "Fonts", "pde")
+	}
+	return filepath.Join(m.Home, ".local", "share", "fonts", "pde")
+}
+
 func (m Manager) current(font Font) (bool, error) {
-	data, err := os.ReadFile(filepath.Join(m.Home, ".local", "share", "fonts", "pde", font.Name, ".pde-checksum"))
+	data, err := os.ReadFile(filepath.Join(m.fontsRoot(), font.Name, ".pde-checksum"))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil

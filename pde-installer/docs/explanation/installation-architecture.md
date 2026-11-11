@@ -27,13 +27,15 @@ The full order is:
 1. Install missing Ubuntu dependencies with apt.
 2. Check the host compiler, build tools, Ubuntu release, repository metadata,
    and writable destinations.
-3. Download and activate the existing amd64-only direct tmux 3.7b binary.
+3. Download and activate the existing amd64-only direct tmux 3.7b binary. On
+   macOS, Homebrew installs tmux instead.
 4. Install Aqua and all Aqua tools.
 5. Install direct-release tools, including Node.js, Go, and Rust.
 6. Install npm tools with the managed npm.
-7. Install direct-release fonts and run `fc-cache`.
+7. Install direct-release fonts and run `fc-cache`, which macOS does not need.
 8. Build repository applications with the managed toolchains, and pack
-   `skill-lessons` and `hub` with `/usr/bin/python3`.
+   `skill-lessons` and `hub` with `/usr/bin/python3`, or Homebrew's Python on
+   macOS.
 9. Migrate legacy PDE and Neovim configuration.
 10. Install the inline plugin runtime.
 11. Apply the chezmoi source.

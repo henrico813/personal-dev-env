@@ -6,6 +6,10 @@
 README.md
 .config/nvim/pack/plugins/start/opencode-inline.nvim
 .config/nvim/pack/plugins/start/opencode-inline.nvim/**
+{{- if ne .chezmoi.os "darwin" }}
+# Only macOS reads this Aqua config.
+.config/aquaproj-aqua/aqua-macos.yaml
+{{- end }}
 {{- if not (has "development" .pde.tiers) }}
 .config/aquaproj-aqua/aqua.yaml
 .config/aquaproj-aqua/aqua-checksums.json

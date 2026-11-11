@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,6 +25,12 @@ func refreshOpenCodeServers(home string, runner run.Runner) error {
 	// The user can stop them after seeing which shared sessions may be affected.
 	if runner.DryRun {
 		return runner.Plan("refresh OpenCode server environment", nil)
+	}
+	// macOS has no /proc to read a running server's PATH from.
+	if runtime.GOOS == "darwin" {
+		fmt.Fprintln(runner.Out(), "Open new shells or tmux panes to use the updated PATH.")
+		fmt.Fprintln(runner.Out(), "Restart any running OpenCode server so agents use the gh guard.")
+		return nil
 	}
 	servers, err := staleOpenCodeServers(home)
 	if err != nil {

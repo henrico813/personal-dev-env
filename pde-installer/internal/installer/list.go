@@ -14,14 +14,13 @@ import (
 	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 	"pde-installer/internal/tmux"
-	"pde-installer/internal/ubuntu"
 )
 
 func list(config config, runner run.Runner) error {
 	if err := config.validate(); err != nil {
 		return err
 	}
-	ubuntuManager := ubuntu.New(config.Profile, config.Desktop, runner)
+	packages, _ := pickSystemPackages(config, runner)
 	tmuxManager := tmux.New(config.Home, runner)
 	aquaManager := aqua.New(config.Home, config.RepoRoot, config.Profile, runner)
 	aquaInstalled, aquaState, err := aquaManager.Probe()
@@ -52,8 +51,8 @@ func list(config config, runner run.Runner) error {
 	for _, item := range manifest.ItemsFor(config.Profile, config.Desktop) {
 		requested, installed, state := item.Version, "", "missing"
 		switch item.Owner {
-		case manifest.Ubuntu:
-			installed, state, err = ubuntuManager.Probe(item.Name)
+		case manifest.Ubuntu, manifest.Homebrew:
+			installed, state, err = packages.Probe(item.Name)
 			if err != nil {
 				return fmt.Errorf("read %s status: %w", item.Name, err)
 			}

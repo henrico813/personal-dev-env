@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -13,6 +14,7 @@ import (
 	"pde-installer/internal/colorprofile"
 	"pde-installer/internal/direct"
 	"pde-installer/internal/fsutil"
+	"pde-installer/internal/homebrew"
 	"pde-installer/internal/manifest"
 	"pde-installer/internal/npm"
 	"pde-installer/internal/profile"
@@ -156,9 +158,11 @@ func reconcile(config config, runner run.Runner) error {
 			return err
 		}
 	}
-	// APT owns system dependencies. Later stages journal changes below HOME.
-	if err := ubuntu.New(config.Profile, config.Desktop, runner).Reconcile(); err != nil {
-		return fmt.Errorf("Ubuntu packages: %w", err)
+	// APT, or Homebrew on macOS, owns system dependencies. Later stages
+	// journal changes below HOME.
+	packages, system := pickSystemPackages(config, runner)
+	if err := packages.Reconcile(); err != nil {
+		return fmt.Errorf("%s packages: %w", system, err)
 	}
 	if err := hostPreflight(config, runner, preflightQuiet); err != nil {
 		return err
@@ -174,11 +178,14 @@ func reconcile(config config, runner run.Runner) error {
 		}
 		return fmt.Errorf("%s: %w", stage, errors.Join(failures...))
 	}
-	tmuxJournal, err := tmux.New(config.Home, runner).Reconcile()
-	if err != nil {
-		return fail("tmux", err)
+	// Homebrew installed tmux on macOS above.
+	if runtime.GOOS != "darwin" {
+		tmuxJournal, err := tmux.New(config.Home, runner).Reconcile()
+		if err != nil {
+			return fail("tmux", err)
+		}
+		journals = append(journals, tmuxJournal)
 	}
-	journals = append(journals, tmuxJournal)
 	// Order matters: runtimes precede their package tools, and config precedes
 	// builds that use files installed by chezmoi.
 	buildManager := builds.New(config.Home, config.RepoRoot, runner)
@@ -264,4 +271,20 @@ func reconcile(config config, runner run.Runner) error {
 		return fmt.Errorf("refresh OpenCode servers: %w", err)
 	}
 	return nil
+}
+
+// Installs and reports the system packages that the other stages need.
+type packageManager interface {
+	Validate() error
+	Reconcile() error
+	Probe(name string) (string, string, error)
+}
+
+// Returns Homebrew on macOS and apt elsewhere, with the system name that
+// messages use, such as "Ubuntu" in "Ubuntu packages".
+func pickSystemPackages(config config, runner run.Runner) (packageManager, string) {
+	if runtime.GOOS == "darwin" {
+		return homebrew.New(config.Profile, config.Desktop, runner), "macOS"
+	}
+	return ubuntu.New(config.Profile, config.Desktop, runner), "Ubuntu"
 }

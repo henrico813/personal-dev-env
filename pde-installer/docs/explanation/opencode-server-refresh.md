@@ -8,7 +8,8 @@ pane cannot update the environment it already received.
 After applying the `gh` guard, the installer scans user-owned `/proc`
 processes for `opencode serve` and `opencode.exe ... serve`. It compares the
 server's first `gh` on `PATH` with `~/.local/bin/gh`. A mismatch is reported so
-the user can choose whether to stop the server.
+the user can choose whether to stop the server. macOS has no `/proc`, so there
+the installer skips the scan and prints a notice to restart OpenCode.
 
 OpenCode terminal sessions share the background server, so stopping it can
 affect all active sessions. Stopping sends `SIGTERM`; it does not migrate or

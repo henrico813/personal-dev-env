@@ -1,0 +1,66 @@
+name: Install on macOS
+# Installs pdev on an Apple Silicon macOS runner with the script the macOS
+# guide gives a new user, then runs it again to show a second run is safe.
+# An install is slow, so this runs only when the script, the installer or its
+# config changes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - install/macos.sh
+      - pde-installer/**
+      - chezmoi/**
+      - hub/**
+      - skill-lessons/**
+      - .github/workflows/install-macos.yml
+  pull_request:
+    paths:
+      - install/macos.sh
+      - pde-installer/**
+      - chezmoi/**
+      - hub/**
+      - skill-lessons/**
+      - .github/workflows/install-macos.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  client:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      # Aqua reads this token, so its GitHub downloads are not rate limited.
+      GITHUB_TOKEN: ${{ github.token }}
+      # Install the checked-out commit instead of cloning or pulling.
+      PDE_DIR: ${{ github.workspace }}
+      PDE_NO_PULL: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: set a Git email, as the guide asks
+        run: git config --global user.email ci@example.com
+      # The script ends by printing ok, or by failing on each item that is
+      # missing or outdated.
+      - name: install client
+        run: bash install/macos.sh client
+      - name: install client again
+        run: bash install/macos.sh client
+      # skill-lessons and hub fail to start when their #! line names macOS's
+      # own Python, which is too old. The runner has its own rg and jq, so
+      # these must resolve under the Aqua root.
+      - name: start zsh and find the tools
+        shell: zsh {0}
+        run: |
+          zsh -i -c 'for tool in nvim tmux rg fzf fd bat eza jq gh chezmoi herdr; do
+            command -v "$tool" >/dev/null || { print -u2 "missing $tool"; exit 1; }
+          done
+          skill-lessons --version && hub --version || exit 1
+          for tool in rg jq; do
+            [[ "$(command -v $tool)" == "$AQUA_ROOT_DIR"/* ]] ||
+              { print -u2 "$tool is not from Aqua: $(command -v $tool)"; exit 1; }
+          done'
+      # These tests swap real folders on APFS, as every reinstall does.
+      - name: test atomic swaps on macOS
+        working-directory: pde-installer
+        run: go test ./internal/fsutil/

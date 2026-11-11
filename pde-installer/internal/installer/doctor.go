@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"syscall"
 
 	chezmoibackend "pde-installer/internal/chezmoi"
@@ -14,7 +16,6 @@ import (
 	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 	"pde-installer/internal/tmux"
-	"pde-installer/internal/ubuntu"
 )
 
 func doctor(config config, runner run.Runner) error {
@@ -69,7 +70,12 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 				}
 			}
 		}
-		for _, tool := range []string{"sh", "tar", "gzip", "xz", "unzip", "sed", "awk", "grep", "file"} {
+		hostTools := []string{"sh", "tar", "gzip", "xz", "unzip", "sed", "awk", "grep", "file"}
+		// macOS tar reads xz archives itself, and macOS has no xz command.
+		if runtime.GOOS == "darwin" {
+			hostTools = slices.DeleteFunc(hostTools, func(tool string) bool { return tool == "xz" })
+		}
+		for _, tool := range hostTools {
 			command := run.Command{Name: tool, Args: probeArgs(tool)}
 			if tool == "grep" {
 				command.Stdin = "pde\n"
@@ -89,8 +95,9 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 	if err := manifest.Validate(); err != nil {
 		failures = append(failures, "ownership: "+err.Error())
 	}
-	if err := ubuntu.New(config.Profile, config.Desktop, runner).Validate(); err != nil {
-		failures = append(failures, "Ubuntu release: "+err.Error())
+	packages, system := pickSystemPackages(config, runner)
+	if err := packages.Validate(); err != nil {
+		failures = append(failures, system+" release: "+err.Error())
 	}
 	if err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.Desktop, config.ColorProfile, runner).Validate(); err != nil {
 		failures = append(failures, "chezmoi source: "+err.Error())

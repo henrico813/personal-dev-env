@@ -5,6 +5,7 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -62,13 +63,15 @@ var profilesYAML []byte
 var profiles = loadOrPanic(profilesYAML)
 
 type catalog struct {
-	AptGroups map[string][]string      `yaml:"apt_groups"`
-	Profiles  map[Profile]entry        `yaml:"profiles"`
-	Desktops  map[Desktop]desktopEntry `yaml:"desktops"`
+	AptGroups  map[string][]string      `yaml:"apt_groups"`
+	BrewGroups map[string][]string      `yaml:"brew_groups"`
+	Profiles   map[Profile]entry        `yaml:"profiles"`
+	Desktops   map[Desktop]desktopEntry `yaml:"desktops"`
 }
 
 type entry struct {
 	Apt   []string `yaml:"apt"`
+	Brew  []string `yaml:"brew"`
 	Tiers []Tier   `yaml:"tiers"`
 }
 
@@ -92,7 +95,13 @@ func (selected Profile) Tiers() []Tier {
 // Returns the sorted Ubuntu packages of the profile's apt groups in
 // profiles.yaml. Each package appears once.
 func (selected Profile) Packages() []string {
-	return groupPackages(profiles.Profiles[selected].Apt)
+	return groupPackages(profiles.AptGroups, profiles.Profiles[selected].Apt)
+}
+
+// Returns the sorted Homebrew formulae of the profile's brew groups in
+// profiles.yaml. A profile with none does not install on macOS.
+func (selected Profile) Formulae() []string {
+	return groupPackages(profiles.BrewGroups, profiles.Profiles[selected].Brew)
 }
 
 // Returns the Aqua config and checksums file names. Only profiles with the
@@ -100,6 +109,10 @@ func (selected Profile) Packages() []string {
 func (selected Profile) AquaFiles() (string, string) {
 	if selected.Has(Development) {
 		return "aqua.yaml", "aqua-checksums.json"
+	}
+	// Homebrew installs fd, bat and eza on macOS, so its config leaves them out.
+	if runtime.GOOS == "darwin" {
+		return "aqua-macos.yaml", "aqua-terminal-checksums.json"
 	}
 	return "aqua-terminal.yaml", "aqua-terminal-checksums.json"
 }
@@ -124,7 +137,7 @@ func (selected Desktop) Valid() bool {
 // Returns the sorted Ubuntu packages of the desktop's apt groups in
 // profiles.yaml, or none for the empty Desktop.
 func (selected Desktop) Packages() []string {
-	return groupPackages(profiles.Desktops[selected].Apt)
+	return groupPackages(profiles.AptGroups, profiles.Desktops[selected].Apt)
 }
 
 // Returns the oldest Ubuntu release the desktop supports, such as "24.04".
@@ -132,10 +145,10 @@ func (selected Desktop) MinUbuntu() string {
 	return profiles.Desktops[selected].MinUbuntu
 }
 
-func groupPackages(groups []string) []string {
+func groupPackages(byName map[string][]string, groups []string) []string {
 	var packages []string
 	for _, group := range groups {
-		packages = append(packages, profiles.AptGroups[group]...)
+		packages = append(packages, byName[group]...)
 	}
 	slices.Sort(packages)
 	return slices.Compact(packages)
@@ -152,6 +165,11 @@ func load(data []byte) (catalog, error) {
 		for _, group := range entry.Apt {
 			if _, ok := loaded.AptGroups[group]; !ok {
 				return catalog{}, fmt.Errorf("profile %s uses unknown apt group %q", name, group)
+			}
+		}
+		for _, group := range entry.Brew {
+			if _, ok := loaded.BrewGroups[group]; !ok {
+				return catalog{}, fmt.Errorf("profile %s uses unknown brew group %q", name, group)
 			}
 		}
 		for _, tier := range entry.Tiers {

@@ -1,4 +1,4 @@
-"""Pack skill-lessons into one file that runs with ``/usr/bin/python3``.
+"""Pack skill-lessons into one runnable file.
 
 Example:
     python3 build.py /tmp/skill-lessons
@@ -7,15 +7,20 @@ Packs the regular ``.py`` files in ``src/skill_lessons/``; links and
 folders are skipped. The result is a zip behind a ``#!`` line, so a
 machine needs only Python 3.10 or later. That line runs Python with
 ``-I``, so ``PYTHON*`` variables and user site packages cannot change
-what runs.
+what runs. It names ``$PDE_PYTHON``, or ``/usr/bin/python3`` when that
+is unset.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 import zipfile
 from pathlib import Path
 
+# pde-installer sets PDE_PYTHON to Homebrew's Python on macOS, whose own
+# /usr/bin/python3 is older than 3.10.
+PYTHON = os.environ.get("PDE_PYTHON", "/usr/bin/python3")
 PACKAGE = Path(__file__).parent / "src" / "skill_lessons"
 # Write __main__ by hand; the one zipapp generates drops main()'s return
 # value, so a refused command would exit 0.
@@ -45,7 +50,7 @@ def build_packed_file(output: Path) -> None:
     """
     output.unlink(missing_ok=True)
     with output.open("wb") as file:
-        file.write(b"#!/usr/bin/python3 -I\n")
+        file.write(b"#!" + PYTHON.encode() + b" -I\n")
         with zipfile.ZipFile(file, "w") as archive:
             archive.writestr("__main__.py", MAIN)
             for path in list_sources():

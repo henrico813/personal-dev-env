@@ -46,11 +46,20 @@ func TestAquaRejectsInvalidProfile(t *testing.T) {
 	}
 }
 
-func TestProfileAquaPackages(t *testing.T) {
-	for _, name := range []profile.Profile{"full", "client", "terminal"} {
-		t.Run(string(name), func(t *testing.T) {
-			selected := name
-			configName, _ := selected.AquaFiles()
+// Each Aqua config must install exactly the Aqua items list shows, or list
+// reports them missing. macOS has its own config, which Linux tests read too.
+func TestAquaConfigsMatchManifestAquaItems(t *testing.T) {
+	for _, test := range []struct {
+		name, goos, configName string
+		profile                profile.Profile
+	}{
+		{name: "full", goos: "linux", configName: "aqua.yaml", profile: "full"},
+		{name: "client", goos: "linux", configName: "aqua-terminal.yaml", profile: "client"},
+		{name: "terminal", goos: "linux", configName: "aqua-terminal.yaml", profile: "terminal"},
+		{name: "client on macOS", goos: "darwin", configName: "aqua-macos.yaml", profile: "client"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			configName := test.configName
 			configPath := filepath.Join("..", "..", "..", "chezmoi", "dot_config", "aquaproj-aqua", configName)
 			configData, err := os.ReadFile(configPath)
 			if err != nil {
@@ -64,8 +73,8 @@ func TestProfileAquaPackages(t *testing.T) {
 				}
 			}
 			var expectedPackages []string
-			for _, item := range manifest.ByOwnerFor(selected, manifest.Aqua) {
-				if item.Name == "aqua" || item.Name == "ya" {
+			for _, item := range manifest.ListItemsForPlatform(test.profile, "", test.goos) {
+				if item.Owner != manifest.Aqua || item.Name == "aqua" || item.Name == "ya" {
 					continue
 				}
 				repository := aquaRepository(t, item.Name)

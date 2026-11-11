@@ -4,7 +4,10 @@
 
 1. Change the terminal-owned pin in both
    `../chezmoi/dot_config/aquaproj-aqua/aqua.yaml` and
-   `../chezmoi/dot_config/aquaproj-aqua/aqua-terminal.yaml`.
+   `../chezmoi/dot_config/aquaproj-aqua/aqua-terminal.yaml`. Change it in
+   `aqua-macos.yaml` too, unless the tool is fd, bat or eza, which Homebrew
+   installs on macOS. macOS reuses `aqua-terminal-checksums.json`, so that
+   file needs the new version's `darwin` `arm64` entry.
 2. Change the matching Aqua entry in `internal/manifest/manifest.go`.
 3. Update both
    `../chezmoi/dot_config/aquaproj-aqua/aqua-checksums.json` and
@@ -34,8 +37,8 @@
 
 ## Update Aqua Itself
 
-Update Aqua's version in `internal/manifest/manifest.go`. Update its amd64 and
-arm64 archive checksums in `internal/aqua/aqua.go`.
+Update Aqua's version in `internal/manifest/manifest.go`. Update its Linux amd64,
+Linux arm64 and macOS arm64 archive checksums in `internal/aqua/aqua.go`.
 
 The installer hashes the selected profile's Aqua manifest and matching checksum
 file. A changed hash causes it to stage an Aqua root for that profile, install

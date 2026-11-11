@@ -12,7 +12,9 @@ installs skip them all.
    from the release's `checksums.txt`.
 3. If the upstream archive name, URL, directory layout, or version output
    changed, update its `Tool` entry there too.
-4. Run:
+4. For Neovim, Node and Herdr, also update the macOS arm64 archive name and
+   checksum in `listMacOSTools`, from the same release.
+5. Run:
 
    ```bash
    go test ./...
