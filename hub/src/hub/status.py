@@ -181,7 +181,8 @@ def describe_context(machine: str | None, agent: dict) -> str:
     try:
         tokens = read_context_tokens(session)
     except sqlite3.Error:
-        # A locked or changed database costs one column, not the table.
+        # A locked or changed database loses this row's context, not the
+        # whole table.
         return "-"
     return "-" if tokens is None else f"{round(tokens / 1000)}k"
 

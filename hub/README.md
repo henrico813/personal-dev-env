@@ -73,9 +73,10 @@ machine to every `herdr` call, as `herdr --machine` does.
   `DIR/notes.md`. With no unread report from NAME it exits 2.
 - `alive` prints one line on an OpenCode session of this machine,
   such as `412 messages, newest 14:03:22, last tool shell, working`.
-  The last word is `finished` when its turn ended, `working` while a
-  tool runs or a message changed in the last 2 minutes, and `stopped`
-  otherwise. An unknown session exits 1, and `--machine` exits 2.
+  The last word is `finished` when its turn ended and succeeded,
+  `working` while a tool runs or a message changed in the last 2
+  minutes, and `stopped` otherwise. An unknown session exits 1, and
+  `--machine` exits 2.
 - `flag` makes the pane show "needs you" in place of its state:
   while `blocked` when it is blocked now, else while `idle` or `done`.
   `unflag` removes it.
