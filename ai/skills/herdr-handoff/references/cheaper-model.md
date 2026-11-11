@@ -44,6 +44,6 @@ points to that section instead of copying it.
 
 - Give the user the one-line prompt that starts the next session,
   such as "Continue the audit from the Handoff section of <note>."
-- To start that session in a new Herdr workspace, go back to
+- To start that session in Herdr, go back to
   SKILL.md and follow Write the handoff file and Start the session.
 - Write every message to the user by the `status-updates` skill.

@@ -205,6 +205,11 @@ mandatory approval stage.
    `planner patch "<plan.md>" --target '<selector>' --expect <edit_expect>
    --after-file <scratch-file> --repo <repo> --base-commit <commit>`. Copy the
    PLACEHOLDER fence when adding a change by hand; never leave an empty fence.
+   Inspect each change right before you patch it, since `inspect` fails
+   on a change while an earlier one is still a PLACEHOLDER. Put planner
+   calls with many flags in a bash script or an array, such as
+   `R=(--repo <repo> --base-commit <commit>)` passed as `"${R[@]}"`,
+   since zsh does not split a variable into words.
    Finish with `planner check "<plan.md>" --repo <repo> --json-errors`.
 8. For code revisions to an existing plan, run `planner inspect "<plan.md>"
    --target '<selector>' --repo <repo> --base-commit <commit> --code-out
