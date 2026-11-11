@@ -92,6 +92,12 @@ pub(crate) struct Memory {
     pub blocked_seen: BTreeMap<String, u64>,
     /// Hub session IDs told to hand off.
     pub hub_context_told: BTreeSet<String>,
+    /// When `hub read` last archived each name's report.
+    pub last_read: BTreeMap<String, Timestamp>,
+    /// When a message last reached each name.
+    pub last_delivered: BTreeMap<String, Timestamp>,
+    /// The old hub named in the last `handoff` event.
+    pub predecessor: Option<String>,
 }
 
 /// Adds one line to the log in a single write. Writes a newline first
@@ -147,13 +153,17 @@ fn fold_events(events: impl IntoIterator<Item = Event>) -> Memory {
             EventKind::HubContextTold { session } => {
                 memory.hub_context_told.insert(session);
             }
-            EventKind::Read { .. }
-            | EventKind::Held { .. }
-            | EventKind::Delivered { .. }
+            EventKind::Read { name, .. } => {
+                memory.last_read.insert(name, event.at);
+            }
+            EventKind::Delivered { name, .. } => {
+                memory.last_delivered.insert(name, event.at);
+            }
+            EventKind::Handoff { old, .. } => memory.predecessor = Some(old),
+            EventKind::Held { .. }
             | EventKind::Unsure { .. }
             | EventKind::NotSent { .. }
-            | EventKind::Moved { .. }
-            | EventKind::Handoff { .. } => {}
+            | EventKind::Moved { .. } => {}
         }
     }
     memory

@@ -3,6 +3,7 @@
 
 use super::Outcome;
 use crate::external::herdr::{Agent, Workspace};
+use crate::shared::lifecycle::is_hub_name;
 use crate::shared::{HubError, Tools};
 
 /// Shows the hub after the one the user looks at, in sidebar order,
@@ -75,34 +76,5 @@ fn choose_next_hub<'a>(hubs: &[&'a Agent]) -> Option<&'a Agent> {
     match hubs.iter().position(|hub| hub.focused) {
         Some(place) => Some(hubs[(place + 1) % hubs.len()]),
         None => hubs.first().copied(),
-    }
-}
-
-/// Tells whether a name belongs to a hub, such as `kanban-hub-13`.
-fn is_hub_name(name: &str) -> bool {
-    name.rsplit_once("-hub-").is_some_and(|(_, number)| {
-        !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit())
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Hubs are found by name alone, with hand-written matching in place
-    /// of a regex. A worker whose name only contains `-hub-`, if mistaken
-    /// for a hub, would be moved to the top by `gather` and shown by `go`.
-    #[test]
-    fn is_hub_name_needs_number_after_hub() {
-        let cases = [
-            ("hub", "kanban-hub-13", true),
-            ("no-number", "kanban-hub-", false),
-            ("text-after-number", "kanban-hub-13-notes", false),
-            ("worker", "demo-kb-001-impl", false),
-        ];
-
-        for (case_name, name, expected) in cases {
-            assert_eq!(is_hub_name(name), expected, "{case_name}");
-        }
     }
 }

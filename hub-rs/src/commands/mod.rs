@@ -12,6 +12,7 @@ pub mod next;
 pub mod reports;
 pub mod send;
 pub mod sidebar;
+pub mod status;
 
 /// The lines a command prints on standard output when it did its
 /// work. The program then exits 0.

@@ -14,10 +14,14 @@ use hub::commands::cli::{self, AutoStep, Cli, Command, RunArg};
 use hub::commands::next::NextOptions;
 use hub::commands::reports::{CardChoice, ReadRequest};
 use hub::commands::send::SendRequest;
-use hub::commands::{Outcome, alive, auto, brief, flag, handoff, next, reports, send, sidebar};
+use hub::commands::{
+    Outcome, alive, auto, brief, flag, handoff, next, reports, send, sidebar, status,
+};
 use hub::external::cards::CardCli;
 use hub::external::herdr::HerdrCli;
 use hub::external::opencode::OpenCodeDb;
+use hub::external::requests::RequestFolder;
+use hub::shared::parking::ParkedFolder;
 use hub::shared::{HubError, Tools};
 use jiff::Zoned;
 
@@ -77,10 +81,14 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
     let opencode = OpenCodeDb::new(home.join(".local/share/opencode/opencode.db"));
     let own_pane = env::var("HERDR_PANE_ID").ok();
     let state_folder = home.join(".local/state/pde");
+    let requests = RequestFolder::new(find_request_folder(&home));
+    let parked = ParkedFolder::new(state_folder.join("hub/parked"));
     let tools = Tools {
         herdr: &herdr,
         cards: &cards,
         opencode: &opencode,
+        requests: &requests,
+        parked: &parked,
         own_pane: own_pane.as_deref(),
         state_folder: &state_folder,
     };
@@ -88,6 +96,7 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
     let find_run = |run: &RunArg| cli::find_run_folder(run.run.as_deref(), hub_run.as_deref());
     let now = Zoned::now();
     match &cli.command {
+        Command::Status { run, json } => status::run_status(&tools, &find_run(run)?, *json, &now),
         Command::Next { run, timeout, json } => {
             let run = find_run(run)?;
             let timeout = match timeout {
@@ -196,6 +205,16 @@ fn find_socket(home: &Path) -> PathBuf {
         Some(socket) => PathBuf::from(socket),
         None => home.join(".config/herdr/herdr.sock"),
     }
+}
+
+/// Returns the folder pde-gh-write writes its requests to. Like
+/// pde-gh-write, it uses `XDG_STATE_HOME` when that is set and not
+/// empty, else `~/.local/state`.
+fn find_request_folder(home: &Path) -> PathBuf {
+    let state_home = env::var_os("XDG_STATE_HOME")
+        .filter(|folder| !folder.is_empty())
+        .map_or_else(|| home.join(".local/state"), PathBuf::from);
+    state_home.join("pde/pr-write")
 }
 
 /// Returns the report text from FILE, or from standard input when FILE
