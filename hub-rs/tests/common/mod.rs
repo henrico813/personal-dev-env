@@ -2,15 +2,17 @@
 #![allow(dead_code)]
 
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use hub::outside::cards::{BoardCounts, CardError, CardKey, Cards};
+use hub::outside::cards::{BoardCounts, CardError, CardKey, CardNote, Cards};
 use hub::outside::herdr::{
-    Agent, AgentStart, AgentStatus, Herdr, HerdrError, NewPlace, PlaceIds, Workspace,
+    Agent, AgentKind, AgentStart, AgentStatus, Herdr, HerdrCode, HerdrError, NewPlace, PlaceIds,
+    Workspace,
 };
 use hub::outside::opencode::OpenCodeDb;
 use hub::shared::Tools;
@@ -20,11 +22,21 @@ use rusqlite::Connection;
 use serde_json::Value;
 
 /// Herdr, as the `Herdr` trait, with its agents and workspaces in
-/// memory. It records each prompt, mark, clear, new tab, started agent,
-/// focus and workspace move it is asked for.
+/// memory. It records each prompt, Enter press, mark, clear, new tab,
+/// started agent, focus and workspace move it is asked for.
 #[derive(Default)]
 pub struct InMemoryHerdr {
     pub agents: Vec<Agent>,
+    /// Agents as they are once any prompt was tried, each in place of
+    /// the agent with its name, such as one the user focused meanwhile.
+    pub after_prompt: Vec<Agent>,
+    /// What `read_screen` shows, by agent name. Others show nothing.
+    pub screens: BTreeMap<String, String>,
+    /// The double each `on_machine` label returns.
+    pub machines: BTreeMap<String, InMemoryHerdr>,
+    /// Runs inside each `prompt` call, as another process acting
+    /// meanwhile.
+    pub on_prompt: Option<Box<dyn Fn()>>,
     /// The workspaces in sidebar order, top first.
     pub workspaces: Vec<Workspace>,
     /// Each `mark_needs_you` call, as its pane ID and states.
@@ -36,8 +48,11 @@ pub struct InMemoryHerdr {
     /// Each `move_workspaces` call, as the IDs moved and the ID they
     /// went before.
     pub moves: RefCell<Vec<(Vec<String>, String)>>,
-    /// Each `prompt` call, as the agent name and the text.
+    /// Each `prompt` call, as the agent name and the text, failed ones
+    /// included.
     pub prompts: RefCell<Vec<(String, String)>>,
+    /// The agent name of each `press_enter` call.
+    pub pressed: RefCell<Vec<String>>,
     /// Each `create_tab` call, as the workspace ID and the place.
     pub created_tabs: RefCell<Vec<(String, NewPlace)>>,
     /// Each `start_agent` call.
@@ -53,6 +68,19 @@ impl InMemoryHerdr {
         self.failures.borrow_mut().push((method, error));
     }
 
+    /// Returns the agents as they are now, with `after_prompt` applied
+    /// once a prompt was tried.
+    fn current_agents(&self) -> Vec<Agent> {
+        let mut agents = self.agents.clone();
+        if !self.prompts.borrow().is_empty() {
+            for changed in &self.after_prompt {
+                agents.retain(|agent| agent.name != changed.name);
+                agents.push(changed.clone());
+            }
+        }
+        agents
+    }
+
     /// Returns the failure set for `method`, once.
     fn take_failure(&self, method: &str) -> Result<(), HerdrError> {
         let mut failures = self.failures.borrow_mut();
@@ -66,24 +94,43 @@ impl InMemoryHerdr {
 impl Herdr for InMemoryHerdr {
     fn list_agents(&self) -> Result<Vec<Agent>, HerdrError> {
         self.take_failure("list_agents")?;
-        Ok(self.agents.clone())
+        Ok(self.current_agents())
     }
 
     fn get_agent(&self, target: &str) -> Result<Agent, HerdrError> {
         self.take_failure("get_agent")?;
-        self.agents
-            .iter()
+        self.current_agents()
+            .into_iter()
             .find(|agent| agent.name == target || agent.pane_id == target)
-            .cloned()
-            .ok_or_else(|| HerdrError::Refused(format!("agent target {target} not found")))
+            .ok_or_else(|| HerdrError::Refused {
+                code: HerdrCode::AgentNotFound,
+                message: format!("agent target {target} not found"),
+            })
     }
 
     fn prompt(&self, name: &str, text: &str) -> Result<(), HerdrError> {
-        self.take_failure("prompt")?;
         self.prompts
             .borrow_mut()
             .push((name.to_owned(), text.to_owned()));
+        if let Some(on_prompt) = &self.on_prompt {
+            on_prompt();
+        }
+        self.take_failure("prompt")
+    }
+
+    fn read_screen(&self, name: &str) -> Result<String, HerdrError> {
+        self.take_failure("read_screen")?;
+        Ok(self.screens.get(name).cloned().unwrap_or_default())
+    }
+
+    fn press_enter(&self, name: &str) -> Result<(), HerdrError> {
+        self.take_failure("press_enter")?;
+        self.pressed.borrow_mut().push(name.to_owned());
         Ok(())
+    }
+
+    fn wait_until_started(&self, _name: &str) -> Result<(), HerdrError> {
+        self.take_failure("wait_until_started")
     }
 
     fn mark_needs_you(&self, pane_id: &str, states: &[AgentStatus]) -> Result<(), HerdrError> {
@@ -135,12 +182,85 @@ impl Herdr for InMemoryHerdr {
             .push((ids.to_vec(), before_id.to_owned()));
         Ok(())
     }
+
+    /// Returns the double in `machines` for the label, so a test reads
+    /// what that machine's Herdr was asked.
+    fn on_machine(&self, label: &str) -> Box<dyn Herdr + '_> {
+        let machine = self
+            .machines
+            .get(label)
+            .unwrap_or_else(|| panic!("no double for machine {label}"));
+        Box::new(machine)
+    }
 }
 
-/// The `card` command, as the `Cards` trait, with the board in
-/// memory. It records each note it is asked to add.
+/// Lets `on_machine` return a borrowed double. Each call goes to the
+/// double itself.
+impl Herdr for &InMemoryHerdr {
+    fn list_agents(&self) -> Result<Vec<Agent>, HerdrError> {
+        (**self).list_agents()
+    }
+
+    fn get_agent(&self, target: &str) -> Result<Agent, HerdrError> {
+        (**self).get_agent(target)
+    }
+
+    fn prompt(&self, name: &str, text: &str) -> Result<(), HerdrError> {
+        (**self).prompt(name, text)
+    }
+
+    fn read_screen(&self, name: &str) -> Result<String, HerdrError> {
+        (**self).read_screen(name)
+    }
+
+    fn press_enter(&self, name: &str) -> Result<(), HerdrError> {
+        (**self).press_enter(name)
+    }
+
+    fn wait_until_started(&self, name: &str) -> Result<(), HerdrError> {
+        (**self).wait_until_started(name)
+    }
+
+    fn mark_needs_you(&self, pane_id: &str, states: &[AgentStatus]) -> Result<(), HerdrError> {
+        (**self).mark_needs_you(pane_id, states)
+    }
+
+    fn clear_marks(&self, pane_id: &str) -> Result<(), HerdrError> {
+        (**self).clear_marks(pane_id)
+    }
+
+    fn list_workspaces(&self) -> Result<Vec<Workspace>, HerdrError> {
+        (**self).list_workspaces()
+    }
+
+    fn create_tab(&self, workspace_id: &str, place: &NewPlace) -> Result<PlaceIds, HerdrError> {
+        (**self).create_tab(workspace_id, place)
+    }
+
+    fn start_agent(&self, start: &AgentStart) -> Result<(), HerdrError> {
+        (**self).start_agent(start)
+    }
+
+    fn focus_agent(&self, name: &str) -> Result<(), HerdrError> {
+        (**self).focus_agent(name)
+    }
+
+    fn move_workspaces(&self, ids: &[String], before_id: &str) -> Result<(), HerdrError> {
+        (**self).move_workspaces(ids, before_id)
+    }
+
+    fn on_machine(&self, label: &str) -> Box<dyn Herdr + '_> {
+        (**self).on_machine(label)
+    }
+}
+
+/// The `card` command, as the `Cards` trait, with the board and card
+/// sessions in memory. It records each note it is asked to add.
 #[derive(Default)]
 pub struct InMemoryCards {
+    /// Each card's session IDs, oldest first, by card key. Any other
+    /// card fails as `card show` does for a missing card.
+    pub sessions: BTreeMap<String, Vec<String>>,
     /// `None` answers as `card` does without a vault.
     pub board: Option<BoardCounts>,
     /// Each `add_note` call, as the card key and the text.
@@ -150,6 +270,16 @@ pub struct InMemoryCards {
 }
 
 impl Cards for InMemoryCards {
+    fn read_card(&self, key: &CardKey) -> Result<CardNote, CardError> {
+        let sessions = self
+            .sessions
+            .get(key.as_str())
+            .ok_or_else(|| CardError::Failed(format!("card: no card {}", key.as_str())))?;
+        Ok(CardNote {
+            sessions: sessions.clone(),
+        })
+    }
+
     fn read_board(&self) -> Result<BoardCounts, CardError> {
         self.board
             .clone()
@@ -286,17 +416,27 @@ pub fn read_events(run_path: &Path) -> Vec<Value> {
         .collect()
 }
 
-/// One unfocused agent in workspace `w1`, with pane `w1:<name>`, tab
-/// `w1:t-<name>` and no session ID.
+/// One unfocused OpenCode agent in workspace `w1`, with pane
+/// `w1:<name>`, tab `w1:t-<name>`, state change 1 and no session ID.
 pub fn make_agent(name: &str, status: AgentStatus) -> Agent {
     Agent {
         name: name.to_owned(),
         status,
+        kind: AgentKind::OpenCode,
         session_id: None,
         pane_id: format!("w1:{name}"),
         tab_id: format!("w1:t-{name}"),
         workspace_id: "w1".to_owned(),
         focused: false,
+        state_seq: 1,
+    }
+}
+
+/// A Herdr refusal with this code, as Herdr gives one.
+pub fn make_refusal(code: HerdrCode) -> HerdrError {
+    HerdrError::Refused {
+        code,
+        message: "Herdr said no".to_owned(),
     }
 }
 

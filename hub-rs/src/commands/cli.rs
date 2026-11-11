@@ -30,8 +30,11 @@ usage: {usage}
 {about-with-newline}Commands marked * take --run DIR, else
 $HUB_RUN.
 
+  next*    wait for news, print one line
+  send*    send now, or hold until free
   read*    print and archive a report
   report*  write your report (workers)
+  inbox*   print held messages (workers)
   note*    add a timed line to notes.md
   brief*   what waits on the user
   handoff* start the next hub
@@ -63,6 +66,32 @@ pub struct RunArg {
 
 #[derive(clap::Subcommand)]
 pub enum Command {
+    /// Wait for news, print one line
+    #[command(after_help = "Example: hub next --timeout 600")]
+    Next {
+        #[command(flatten)]
+        run: RunArg,
+        /// Give up after this many seconds
+        #[arg(long, value_name = "SECONDS")]
+        timeout: Option<f64>,
+        /// Print the news as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Deliver now, or hold until free
+    #[command(after_help = "Example: hub send docs-fix --file /tmp/msg.md")]
+    Send {
+        #[command(flatten)]
+        run: RunArg,
+        /// The session's agent name
+        name: AgentName,
+        /// The message text
+        #[arg(required_unless_present = "file", conflicts_with = "file")]
+        message: Option<String>,
+        /// Read the message from this file
+        #[arg(long, value_name = "PATH")]
+        file: Option<PathBuf>,
+    },
     /// Print and archive a report
     #[command(after_help = "Example: hub read docs-fix --note \"merged #9\"")]
     Read {
@@ -88,6 +117,14 @@ pub enum Command {
         /// The report file, or - for standard input
         // `None` reads standard input too.
         file: Option<PathBuf>,
+    },
+    /// Print held messages (workers)
+    #[command(after_help = "Example: hub inbox docs-fix")]
+    Inbox {
+        #[command(flatten)]
+        run: RunArg,
+        /// Your agent name
+        name: AgentName,
     },
     /// Add a timed line to notes.md
     #[command(after_help = "Example: hub note \"merged #9\"")]
@@ -143,8 +180,11 @@ impl Command {
     /// Returns the name the user typed, such as `go`.
     pub fn name(&self) -> &'static str {
         match self {
+            Command::Next { .. } => "next",
+            Command::Send { .. } => "send",
             Command::Read { .. } => "read",
             Command::Report { .. } => "report",
+            Command::Inbox { .. } => "inbox",
             Command::Note { .. } => "note",
             Command::Brief { .. } => "brief",
             Command::Handoff { .. } => "handoff",
@@ -195,14 +235,16 @@ pub fn find_run_folder(
     RunFolder::open(&path)
 }
 
-/// Tells whether a command works with `--machine`, which only `flag`
-/// and `unflag` do. The rest read this machine's files and database,
-/// or its own Herdr sidebar.
+/// Tells whether a command works with `--machine`, which only `send`,
+/// `flag` and `unflag` do. The rest read this machine's files and
+/// database, or its own Herdr sidebar.
 pub fn takes_machine(command: &Command) -> bool {
     match command {
-        Command::Flag { .. } | Command::Unflag { .. } => true,
-        Command::Read { .. }
+        Command::Send { .. } | Command::Flag { .. } | Command::Unflag { .. } => true,
+        Command::Next { .. }
+        | Command::Read { .. }
         | Command::Report { .. }
+        | Command::Inbox { .. }
         | Command::Note { .. }
         | Command::Brief { .. }
         | Command::Handoff { .. }
@@ -216,8 +258,9 @@ pub fn takes_machine(command: &Command) -> bool {
 mod tests {
     use super::*;
 
-    /// A remote hub flags sessions on another machine with `--machine`,
-    /// so refusing it there leaves those sessions unmarked. Allowing it
+    /// A remote hub flags and messages sessions on another machine with
+    /// `--machine`, so refusing it there leaves those sessions unmarked
+    /// or without their message. Allowing it
     /// on `go` would make `go` jump, in this machine's sidebar, to a hub
     /// found on another machine, and on `alive` would read this
     /// machine's database for another machine's session.
@@ -225,6 +268,16 @@ mod tests {
     fn takes_machine_refuses_local_only_commands() {
         let name: AgentName = "docs-fix".parse().unwrap();
         let cases = [
+            (
+                "send",
+                Command::Send {
+                    run: RunArg { run: None },
+                    name: name.clone(),
+                    message: Some("Rebase on main.".to_owned()),
+                    file: None,
+                },
+                true,
+            ),
             ("flag", Command::Flag { name: name.clone() }, true),
             ("unflag", Command::Unflag { name: name.clone() }, true),
             (

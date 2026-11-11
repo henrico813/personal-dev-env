@@ -29,6 +29,12 @@ pub trait Herdr {
     /// Submits text and waits up to 30 seconds until the agent works
     /// or blocks.
     fn prompt(&self, name: &str, text: &str) -> Result<(), HerdrError>;
+    /// Returns the visible part of the agent's terminal.
+    fn read_screen(&self, name: &str) -> Result<String, HerdrError>;
+    /// Sends one Enter key press to the agent.
+    fn press_enter(&self, name: &str) -> Result<(), HerdrError>;
+    /// Waits up to 30 seconds for the agent to start working or block.
+    fn wait_until_started(&self, name: &str) -> Result<(), HerdrError>;
     /// Shows "needs you" in place of each given state in the sidebar.
     fn mark_needs_you(&self, pane_id: &str, states: &[AgentStatus]) -> Result<(), HerdrError>;
     /// Removes the hub's state labels from a pane.
@@ -44,6 +50,9 @@ pub trait Herdr {
     /// Moves workspaces into one block before another, through
     /// Herdr's socket.
     fn move_workspaces(&self, ids: &[String], before_id: &str) -> Result<(), HerdrError>;
+    /// Returns a Herdr for a saved machine, for a held message sent
+    /// with `--machine`.
+    fn on_machine(&self, label: &str) -> Box<dyn Herdr + '_>;
 }
 
 /// Runs the `herdr` command, on this machine or a saved one.
@@ -77,12 +86,8 @@ impl HerdrCli {
             return Ok(output.stdout);
         }
         let answer: Option<Value> = serde_json::from_slice(&output.stdout).ok();
-        let refusal = answer
-            .as_ref()
-            .and_then(|answer| answer.pointer("/error/message"))
-            .and_then(Value::as_str);
-        if let Some(message) = refusal {
-            return Err(HerdrError::Refused(message.to_owned()));
+        if let Some(refusal) = answer.as_ref().and_then(read_refusal) {
+            return Err(refusal);
         }
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
         if stderr.is_empty() {
@@ -122,6 +127,31 @@ impl Herdr for HerdrCli {
             name,
             text,
             "--wait",
+            "--until",
+            "working",
+            "--until",
+            "blocked",
+            "--timeout",
+            PROMPT_TIME_LIMIT_MS,
+        ];
+        self.run_herdr(&args).map(drop)
+    }
+
+    fn read_screen(&self, name: &str) -> Result<String, HerdrError> {
+        let printed = self.run_herdr(&["agent", "read", name, "--source", "visible"])?;
+        Ok(String::from_utf8_lossy(&printed).into_owned())
+    }
+
+    fn press_enter(&self, name: &str) -> Result<(), HerdrError> {
+        self.run_herdr(&["agent", "send-keys", name, "Enter"])
+            .map(drop)
+    }
+
+    fn wait_until_started(&self, name: &str) -> Result<(), HerdrError> {
+        let args = [
+            "agent",
+            "wait",
+            name,
             "--until",
             "working",
             "--until",
@@ -221,6 +251,14 @@ impl Herdr for HerdrCli {
         let params = json!({"workspace_ids": ids, "before_workspace_id": before_id});
         call_socket(&self.socket, "workspace.move_block", params)
     }
+
+    fn on_machine(&self, label: &str) -> Box<dyn Herdr + '_> {
+        Box::new(HerdrCli {
+            program: self.program.clone(),
+            machine: Some(label.to_owned()),
+            socket: self.socket.clone(),
+        })
+    }
 }
 
 /// One agent as Herdr lists it.
@@ -228,12 +266,16 @@ impl Herdr for HerdrCli {
 pub struct Agent {
     pub name: String,
     pub status: AgentStatus,
+    pub kind: AgentKind,
     /// The OpenCode or Claude Code session ID, once Herdr has seen it.
     pub session_id: Option<String>,
     pub pane_id: String,
     pub tab_id: String,
     pub workspace_id: String,
     pub focused: bool,
+    /// Herdr's count of state changes, which tells one blocked state
+    /// from the next.
+    pub state_seq: u64,
 }
 
 /// Herdr's state for an agent.
@@ -258,6 +300,15 @@ impl AgentStatus {
             AgentStatus::Unknown => "unknown",
         }
     }
+}
+
+/// Which agent program runs in the pane.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AgentKind {
+    OpenCode,
+    Claude,
+    /// Any other, such as `codex`, by Herdr's name for it.
+    Other(String),
 }
 
 /// One workspace in sidebar order.
@@ -294,18 +345,53 @@ pub struct AgentStart {
 /// after `hub: `.
 #[derive(Debug)]
 pub enum HerdrError {
-    /// Herdr answered with an error message.
-    Refused(String),
+    /// Herdr answered with an error code and message.
+    Refused { code: HerdrCode, message: String },
     /// `herdr` could not run or exited without a JSON error, or the
     /// socket gave no usable answer.
     Failed(String),
+}
+
+/// The Herdr error codes the hub acts on.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HerdrCode {
+    AgentPromptStalled,
+    Timeout,
+    AgentNotFound,
+    /// Any other code, such as `agent_blocked`, or none.
+    Other(String),
+}
+
+impl HerdrError {
+    /// Tells whether Herdr may have taken the text before it failed.
+    /// Herdr reports a stall or a timeout only after the text went in.
+    pub(crate) fn may_have_arrived(&self) -> bool {
+        matches!(
+            self,
+            HerdrError::Refused {
+                code: HerdrCode::AgentPromptStalled | HerdrCode::Timeout,
+                ..
+            }
+        )
+    }
+
+    /// Tells whether no live agent has the name.
+    pub(crate) fn is_agent_not_found(&self) -> bool {
+        matches!(
+            self,
+            HerdrError::Refused {
+                code: HerdrCode::AgentNotFound,
+                ..
+            }
+        )
+    }
 }
 
 /// Writes Herdr's own message.
 impl fmt::Display for HerdrError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            HerdrError::Refused(message) | HerdrError::Failed(message) => {
+            HerdrError::Refused { message, .. } | HerdrError::Failed(message) => {
                 formatter.write_str(message)
             }
         }
@@ -314,6 +400,22 @@ impl fmt::Display for HerdrError {
 
 /// Lets `HubError::source` return it.
 impl std::error::Error for HerdrError {}
+
+/// Returns the refusal in an answer's `error` object, or `None` when
+/// the answer holds no error message.
+fn read_refusal(answer: &Value) -> Option<HerdrError> {
+    let message = answer.pointer("/error/message")?.as_str()?;
+    let code = match answer.pointer("/error/code").and_then(Value::as_str) {
+        Some("agent_prompt_stalled") => HerdrCode::AgentPromptStalled,
+        Some("timeout") => HerdrCode::Timeout,
+        Some("agent_not_found") => HerdrCode::AgentNotFound,
+        other => HerdrCode::Other(other.unwrap_or_default().to_owned()),
+    };
+    Some(HerdrError::Refused {
+        code,
+        message: message.to_owned(),
+    })
+}
 
 /// Returns the `result` of an answer `herdr` printed.
 fn read_result(printed: &[u8]) -> Result<Value, HerdrError> {
@@ -350,9 +452,15 @@ fn parse_agent(raw: &Value) -> Result<Agent, HerdrError> {
         Some(_) => AgentStatus::Unknown,
         None => return Err(make_missing_field_error("agent_status")),
     };
+    let kind = match read_text(raw, "agent")?.as_str() {
+        "opencode" => AgentKind::OpenCode,
+        "claude" => AgentKind::Claude,
+        other => AgentKind::Other(other.to_owned()),
+    };
     Ok(Agent {
         name: read_text(raw, "name")?,
         status,
+        kind,
         session_id: raw["agent_session"]["value"].as_str().map(str::to_owned),
         pane_id: read_text(raw, "pane_id")?,
         tab_id: read_text(raw, "tab_id")?,
@@ -360,6 +468,9 @@ fn parse_agent(raw: &Value) -> Result<Agent, HerdrError> {
         focused: raw["focused"]
             .as_bool()
             .ok_or_else(|| make_missing_field_error("focused"))?,
+        state_seq: raw["state_change_seq"]
+            .as_u64()
+            .ok_or_else(|| make_missing_field_error("state_change_seq"))?,
     })
 }
 
@@ -401,8 +512,8 @@ fn call_socket(socket: &Path, method: &str, params: Value) -> Result<(), HerdrEr
     let no_usable_answer =
         || HerdrError::Failed(format!("Herdr gave no usable answer: {answer:?}"));
     let reply: Value = serde_json::from_str(&answer).map_err(|_| no_usable_answer())?;
-    if let Some(message) = reply.pointer("/error/message").and_then(Value::as_str) {
-        return Err(HerdrError::Refused(message.to_owned()));
+    if let Some(refusal) = read_refusal(&reply) {
+        return Err(refusal);
     }
     if reply.get("result").is_none() {
         return Err(no_usable_answer());
@@ -431,11 +542,13 @@ mod tests {
 
         assert_eq!(agent.name, "demo-kb-007-impl");
         assert_eq!(agent.status, AgentStatus::Idle);
+        assert_eq!(agent.kind, AgentKind::OpenCode);
         assert_eq!(agent.session_id.as_deref(), Some("ses_0a1b2c3d4e5f"));
         assert_eq!(agent.pane_id, "w1:p7");
         assert_eq!(agent.tab_id, "w1:t3");
         assert_eq!(agent.workspace_id, "w1");
         assert!(!agent.focused);
+        assert_eq!(agent.state_seq, 12);
     }
 
     /// Herdr lists a pane with no name when nobody started its agent by

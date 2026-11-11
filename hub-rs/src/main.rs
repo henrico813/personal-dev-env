@@ -10,16 +10,18 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use hub::commands::cli::{self, Cli, Command, RunArg};
+use hub::commands::next::NextOptions;
 use hub::commands::reports::{CardChoice, ReadRequest};
-use hub::commands::{Outcome, alive, brief, flag, handoff, reports, sidebar};
+use hub::commands::send::SendRequest;
+use hub::commands::{Outcome, alive, brief, flag, handoff, next, reports, send, sidebar};
 use hub::outside::cards::CardCli;
 use hub::outside::herdr::HerdrCli;
 use hub::outside::opencode::OpenCodeDb;
 use hub::shared::{HubError, Tools};
 use jiff::Zoned;
 
-/// How often `hub handoff` checks for the next hub's first reply when
-/// `HUB_POLL_SECONDS` is not set.
+/// How often `hub next` checks for news, and `hub handoff` for the
+/// next hub's first reply, when `HUB_POLL_SECONDS` is not set.
 const DEFAULT_POLL: Duration = Duration::from_secs(5);
 
 /// Parses the command line, runs the command, prints its lines or its
@@ -70,6 +72,45 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
     let find_run = |run: &RunArg| cli::find_run_folder(run.run.as_deref(), hub_run.as_deref());
     let now = Zoned::now();
     match &cli.command {
+        Command::Next { run, timeout, json } => {
+            let run = find_run(run)?;
+            let timeout = match timeout {
+                Some(seconds) => Some(Duration::try_from_secs_f64(*seconds).map_err(|_| {
+                    HubError::Usage(format!("--timeout {seconds} is not a number of seconds"))
+                })?),
+                None => None,
+            };
+            let options = NextOptions {
+                timeout,
+                poll: read_poll_interval()?,
+                json: *json,
+                process_id: std::process::id(),
+            };
+            next::run_next(&tools, &run, &options)
+        }
+        Command::Send {
+            run,
+            name,
+            message,
+            file,
+        } => {
+            let run = find_run(run)?;
+            // clap lets exactly one of MESSAGE and `--file` through.
+            let text = match file {
+                Some(path) => fs::read_to_string(path).map_err(|source| HubError::File {
+                    path: path.clone(),
+                    source,
+                })?,
+                None => message.clone().unwrap_or_default(),
+            };
+            let request = SendRequest {
+                name: name.clone(),
+                machine: cli.machine.clone(),
+                text,
+            };
+            send::run_send(&tools, &run, &request, &now)
+        }
+        Command::Inbox { run, name } => send::run_inbox(&find_run(run)?, name, &now),
         Command::Read {
             run,
             name,

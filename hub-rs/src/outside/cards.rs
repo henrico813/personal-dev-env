@@ -22,6 +22,8 @@ static KEY_IN_NAME: LazyLock<Regex> =
 /// Calls the `card` command. `CardCli` runs the real one; tests use
 /// `InMemoryCards` from `tests/common`.
 pub trait Cards {
+    /// Returns the card's note, with its session IDs oldest first.
+    fn read_card(&self, key: &CardKey) -> Result<CardNote, CardError>;
     /// Returns the board's counts and its limit.
     fn read_board(&self) -> Result<BoardCounts, CardError>;
     /// Adds one line to the card's Log.
@@ -63,6 +65,11 @@ impl CardCli {
 }
 
 impl Cards for CardCli {
+    fn read_card(&self, key: &CardKey) -> Result<CardNote, CardError> {
+        let printed = self.run_card(&["show", key.as_str()])?;
+        Ok(parse_card_note(&printed))
+    }
+
     fn read_board(&self) -> Result<BoardCounts, CardError> {
         let printed = self.run_card(&["board"])?;
         parse_board_counts(&printed)
@@ -106,6 +113,13 @@ impl FromStr for CardKey {
     }
 }
 
+/// What `card show` gives.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CardNote {
+    /// Session IDs, oldest first.
+    pub sessions: Vec<String>,
+}
+
 /// What `card board` gives.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BoardCounts {
@@ -136,6 +150,25 @@ impl fmt::Display for CardError {
 
 /// Lets `HubError::source` return it.
 impl std::error::Error for CardError {}
+
+/// Reads the `sessions:` list of `card show`'s front matter, whose
+/// items look like `- "opencode ses_0a1b2c3d4e5f"` with the ID last.
+fn parse_card_note(text: &str) -> CardNote {
+    let mut sessions = Vec::new();
+    let mut in_sessions = false;
+    // The front matter ends at the second `---` line.
+    for line in text.lines().skip(1).take_while(|line| line.trim() != "---") {
+        if line.trim() == "sessions:" {
+            in_sessions = true;
+        } else if let Some(item) = line.trim().strip_prefix("- ").filter(|_| in_sessions) {
+            let id = item.trim_matches('"').split_whitespace().last();
+            sessions.extend(id.map(str::to_owned));
+        } else {
+            in_sessions = false;
+        }
+    }
+    CardNote { sessions }
+}
 
 /// Reads `card board` text. Returns `None` when the text lacks its
 /// `review N` line or its `active+review N of M` line.

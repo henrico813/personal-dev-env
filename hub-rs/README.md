@@ -7,8 +7,9 @@ use until this program replaces it.
 
 pde-installer builds this folder on the Development tier and installs
 it as `~/.local/bin/hub-next`, so you can try it beside the Python
-`hub`. So far it has `read`, `report`, `note`, `brief`, `handoff`,
-`flag`, `unflag`, `alive`, `go` and `gather`.
+`hub`. So far it has `next`, `send`, `read`, `report`, `inbox`,
+`note`, `brief`, `handoff`, `flag`, `unflag`, `alive`, `go` and
+`gather`.
 
 ```bash
 make build   # target/release/hub
@@ -29,9 +30,10 @@ its reason.
 - `hub-next flag` on a working session marks it on idle and done, so
   "needs you" shows once it stops. The Python hub marked the working
   state, which showed "needs you" while the session still worked.
-- `read`, `report`, `note`, `brief` and `handoff` take the run folder
-  from `--run DIR`, else from `HUB_RUN`. With neither, or with a folder
-  that does not exist, they exit 2.
+- `next`, `send`, `read`, `report`, `inbox`, `note`, `brief` and
+  `handoff` take the run folder from `--run DIR`, else from
+  `HUB_RUN`. With neither, or with a folder that does not exist, they
+  exit 2.
 - `read` exits 3, not 2, when the session has no unread report.
   `read --note TEXT --card [KEY]` also adds the note to the card's Log,
   with the key in the session's name or the KEY given. If a step
@@ -53,3 +55,25 @@ its reason.
   hub printed.
 - `hub-next --machine LABEL alive` exits 2 with
   `alive works on this machine only`, the same words as `go`.
+- `send` sends at once to an OpenCode or Claude Code session that is
+  working, idle or done, when the user is not in its pane. Another
+  kind, such as Codex, still gets it only when idle or done.
+- `send` holds a second message behind the first instead of exiting
+  2, and `next` sends held messages oldest first. They wait in
+  `sends/` in the run folder, not in `send-NAME.*` files.
+- `send --file PATH` reads the message from a file. A message to a
+  session that handed off goes to the newest live session on its card.
+- "failed" is now "not sent". `send` exits 1 with
+  `not sent NAME: REASON` when Herdr turned the message down or the
+  session is gone, and with `unsure NAME: REASON; see sends/FILE` when
+  it may have arrived.
+- `inbox NAME` is new. It prints the messages held for NAME and counts
+  each as delivered, so `next` never sends them.
+- `next` prints each report once per version. Its report, blocked,
+  not-sent, unsure and timeout lines end with the hub's context, such
+  as `(hub 131k)`. Once the hub reaches 150k, it prints
+  `hand off now: hub at <tokens>` once instead. A newer `next` makes
+  an older one print `replaced by a newer hub next` and exit. `--json`
+  prints the same facts as JSON. It keeps its memory in
+  `events.jsonl`, not in `next-seen.json`.
+- `next` does not close or park finished sessions yet.
