@@ -20,6 +20,7 @@ hub [--machine LABEL] status --run DIR   sessions, then active cards
 hub [--machine LABEL] send --run DIR NAME MESSAGE
 hub next --run DIR [--timeout SECONDS]   wait for news, print one line
 hub read --run DIR NAME [--note TEXT]    print, archive, log a report
+hub alive SESSION                        working, finished or stopped
 hub [--machine LABEL] flag NAME
 hub [--machine LABEL] unflag NAME
 hub handoff --run DIR NAME HANDOFF       start the next hub
@@ -38,21 +39,26 @@ hub --version
 machine to every `herdr` call, as `herdr --machine` does.
 
 - `status` prints one row per named session, leaving out the hub's
-  own: its state, the context size from the pane's footer, its card
-  key, whether its report is unread, whether a message waits for it,
+  own: its state, its context size, its card key, whether its report
+  is unread, whether a message waits for it,
   and its pane's label. Then it prints one row per active card, from
   the `card` command: the card's newest live session, its state, and
   whom it waits on. `you` means the user: the session is blocked, is
   marked "needs you", has an unanswered needs-you note on its card, or
   is idle and has never reported to this hub. `hub` means an idle
   session that reports to this hub. When `card` fails, one `cards:`
-  line gives the reason.
+  line gives the reason. The context size comes from OpenCode's
+  database for the session Herdr names, counted as `pde-context`
+  counts it, such as `108k`. It is `-` with `--machine`, when the
+  database has no count for the session, or when it cannot be read.
 - `send` sends the message at once when the session is `idle` or
   `done` and the user is not in its pane. Otherwise it keeps the
   message in `DIR/send-NAME.json`, and `hub next` sends it later. A
   second message while one waits exits 2. When Herdr gives up after
   taking the text, the message stays in `DIR/send-NAME.sending`, since
-  it may have arrived.
+  it may have arrived. When Herdr says the prompt stalled and the
+  screen shows the text pasted in the input box, `send` presses Enter
+  once and counts the message sent when the session starts.
 - `next` checks every 5 seconds and prints one line, then exits:
   `report NAME` for an unread `DIR/report-NAME.md`, `blocked NAME` the
   first time a session is seen blocked, `failed NAME: REASON` when
@@ -65,6 +71,11 @@ machine to every `herdr` call, as `herdr --machine` does.
   replaced. The last line is `unread:` and the names of the other
   unread reports, or `-`. `--note TEXT` adds `- HHMM TEXT` to
   `DIR/notes.md`. With no unread report from NAME it exits 2.
+- `alive` prints one line on an OpenCode session of this machine,
+  such as `412 messages, newest 14:03:22, last tool shell, working`.
+  The last word is `finished` when its turn ended, `working` while a
+  tool runs or a message changed in the last 2 minutes, and `stopped`
+  otherwise. An unknown session exits 1, and `--machine` exits 2.
 - `flag` makes the pane show "needs you" in place of its state:
   while `blocked` when it is blocked now, else while `idle` or `done`.
   `unflag` removes it.

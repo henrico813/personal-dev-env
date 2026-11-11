@@ -44,10 +44,12 @@ session with the `hub` command, instead of `ls`, `cat` or
 
 It prints one line for every named session except the hub:
 
-    NAME              STATE  CTX    CARD         REPORT  SEND  LABEL
-    demo-kb-007-impl  idle   98.3K  DEMO-KB-007  unread  -     needs you
+    NAME              STATE  CTX   CARD         REPORT  SEND  LABEL
+    demo-kb-007-impl  idle   108k  DEMO-KB-007  unread  -     needs you
 
-CTX is the context size from the session's footer. REPORT is `unread`
+CTX is the session's context size from OpenCode's database. It is
+`-` with `--machine`, when the database has no count for the
+session, or when it cannot be read. REPORT is `unread`
 while `report-<name>.md` waits in the run folder. SEND is `held` while
 a message waits for the session, `failed` when Herdr refused one, and
 `unsure` when a send stopped part way. A named session missing from
@@ -71,6 +73,15 @@ Run `hub status` at the start and on each turn. Tell the user once
 what each `you` session waits on. When such a session has never
 reported to you, bring it under the hub at once: send it the new
 rules that Rules gives for a worker the user hands you.
+
+Before you send a worker new build work, check its CTX in
+`hub status`. A worker near 150k writes its handoff first, and the
+new session it hands off to gets the work.
+
+Before you tell the user that a worker or subagent died, run
+`hub alive <session ID>` with its OpenCode session ID. Its line ends
+in `working`, `finished` or `stopped`. Report it dead only on
+`stopped`.
 
 When you hand work to a new session with `herdr-handoff`, its
 Coordination section names you as the one session it reports to,
