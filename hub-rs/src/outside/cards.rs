@@ -18,11 +18,20 @@ static CARD_KEY: LazyLock<Regex> =
 /// A card key at the start of a session name, such as `demo-kb-007-impl`.
 static KEY_IN_NAME: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9]*-kb-[0-9]{3,}").unwrap());
+/// A card key anywhere in free text, in any case, such as `demo-kb-007,`.
+static KEY_IN_TEXT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\b[A-Z][A-Z0-9]*-KB-[0-9]{3,}\b").unwrap());
+
+/// The card sections whose bullets tell the AI model that sorts ready
+/// cards what the work needs.
+const CRITERIA_SECTIONS: [&str; 2] = ["Context", "Acceptance Criteria"];
 
 /// Calls the `card` command. `CardCli` runs the real one; tests use
 /// `InMemoryCards` from `tests/common`.
 pub trait Cards {
-    /// Returns the card's note, with its session IDs oldest first.
+    /// Returns the keys of ready cards in `card list` order.
+    fn list_ready(&self) -> Result<Vec<CardKey>, CardError>;
+    /// Returns a card's title, project, session IDs and criteria.
     fn read_card(&self, key: &CardKey) -> Result<CardNote, CardError>;
     /// Returns the board's counts and its limit.
     fn read_board(&self) -> Result<BoardCounts, CardError>;
@@ -65,9 +74,14 @@ impl CardCli {
 }
 
 impl Cards for CardCli {
+    fn list_ready(&self) -> Result<Vec<CardKey>, CardError> {
+        let printed = self.run_card(&["list", "--stage", "ready"])?;
+        Ok(parse_card_list(&printed))
+    }
+
     fn read_card(&self, key: &CardKey) -> Result<CardNote, CardError> {
         let printed = self.run_card(&["show", key.as_str()])?;
-        Ok(parse_card_note(&printed))
+        Ok(parse_card_note(key, &printed))
     }
 
     fn read_board(&self) -> Result<BoardCounts, CardError> {
@@ -82,7 +96,7 @@ impl Cards for CardCli {
 }
 
 /// A card key in upper case, such as `DEMO-KB-007`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CardKey(String);
 
 impl CardKey {
@@ -92,6 +106,15 @@ impl CardKey {
         KEY_IN_NAME
             .find(name)
             .map(|found| CardKey(found.as_str().to_uppercase()))
+    }
+
+    /// Returns every key named in free text, in any case, such as the
+    /// user's own words approving an auto run.
+    pub(crate) fn find_all_in_text(text: &str) -> Vec<CardKey> {
+        KEY_IN_TEXT
+            .find_iter(text)
+            .map(|found| CardKey(found.as_str().to_uppercase()))
+            .collect()
     }
 
     pub fn as_str(&self) -> &str {
@@ -114,10 +137,17 @@ impl FromStr for CardKey {
 }
 
 /// What `card show` gives.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CardNote {
+    /// The heading's words after the key, such as `Retry failed
+    /// uploads`, or empty.
+    pub title: String,
+    /// The front matter's `project:`, or empty.
+    pub project: String,
     /// Session IDs, oldest first.
     pub sessions: Vec<String>,
+    /// The bullets of Context and Acceptance Criteria, in note order.
+    pub criteria: Vec<String>,
 }
 
 /// What `card board` gives.
@@ -151,23 +181,53 @@ impl fmt::Display for CardError {
 /// Lets `HubError::source` return it.
 impl std::error::Error for CardError {}
 
-/// Reads the `sessions:` list of `card show`'s front matter, whose
-/// items look like `- "opencode ses_0a1b2c3d4e5f"` with the ID last.
-fn parse_card_note(text: &str) -> CardNote {
-    let mut sessions = Vec::new();
+/// Reads the keys of `card list` lines, which look like
+/// `DEMO-KB-007 ready task Retry failed uploads`. The last line,
+/// `N cards`, holds no key.
+fn parse_card_list(text: &str) -> Vec<CardKey> {
+    text.lines()
+        .filter_map(|line| line.split_once(' '))
+        .filter_map(|(first, _)| first.parse().ok())
+        .collect()
+}
+
+/// Reads `card show` text. The `sessions:` items of the front matter
+/// look like `- "opencode ses_0a1b2c3d4e5f"` with the ID last, and the
+/// title is the first `# KEY ...` heading after it.
+fn parse_card_note(key: &CardKey, text: &str) -> CardNote {
+    let mut note = CardNote::default();
+    let mut lines = text.lines().skip(1);
     let mut in_sessions = false;
     // The front matter ends at the second `---` line.
-    for line in text.lines().skip(1).take_while(|line| line.trim() != "---") {
+    for line in lines.by_ref().take_while(|line| line.trim() != "---") {
         if line.trim() == "sessions:" {
             in_sessions = true;
         } else if let Some(item) = line.trim().strip_prefix("- ").filter(|_| in_sessions) {
             let id = item.trim_matches('"').split_whitespace().last();
-            sessions.extend(id.map(str::to_owned));
+            note.sessions.extend(id.map(str::to_owned));
         } else {
             in_sessions = false;
+            if let Some(project) = line.strip_prefix("project:") {
+                note.project = project.trim().to_owned();
+            }
         }
     }
-    CardNote { sessions }
+    let heading = format!("# {}", key.as_str());
+    let mut found_heading = false;
+    let mut section = "";
+    for line in lines {
+        if let Some(name) = line.strip_prefix("## ") {
+            section = name.trim();
+        } else if let Some(words) = line.strip_prefix(&heading)
+            && !found_heading
+        {
+            note.title = words.trim().to_owned();
+            found_heading = true;
+        } else if CRITERIA_SECTIONS.contains(&section) && line.starts_with("- ") {
+            note.criteria.push(line.to_owned());
+        }
+    }
+    note
 }
 
 /// Reads `card board` text. Returns `None` when the text lacks its
@@ -225,5 +285,50 @@ mod tests {
         for (case_name, text, expected) in cases {
             assert_eq!(parse_board_counts(text), expected, "{case_name}");
         }
+    }
+
+    /// The AI model sorts ready cards from `hub auto ready`'s text
+    /// alone. A title, project or criterion read wrong, or a Log line
+    /// read as a criterion, sorts the card on wrong facts.
+    #[test]
+    fn parse_card_note_reads_title_project_criteria() {
+        let card_show = "---\n\
+                         stage: ready\n\
+                         project: Demo\n\
+                         topics: []\n\
+                         ---\n\
+                         \n\
+                         # DEMO-KB-001 Retry failed uploads\n\
+                         ---\n\
+                         \n\
+                         ## Context\n\
+                         ---\n\
+                         \n\
+                         - Uploads fail on a slow link.\n\
+                         \n\
+                         ## Acceptance Criteria\n\
+                         ---\n\
+                         \n\
+                         - [ ] A failed upload retries.\n\
+                         \n\
+                         ## Log\n\
+                         ---\n\
+                         \n\
+                         - 2026-11-10 ready: by the user\n";
+
+        let note = parse_card_note(&"DEMO-KB-001".parse().unwrap(), card_show);
+
+        assert_eq!(
+            note,
+            CardNote {
+                title: "Retry failed uploads".to_owned(),
+                project: "Demo".to_owned(),
+                sessions: Vec::new(),
+                criteria: vec![
+                    "- Uploads fail on a slow link.".to_owned(),
+                    "- [ ] A failed upload retries.".to_owned(),
+                ],
+            }
+        );
     }
 }
