@@ -24,11 +24,11 @@ func TestMainPicksEntryMode(t *testing.T) {
 		call   string // A call the mode makes to the fake herdr or moshi-hook.
 	}{
 		{name: "write", args: []string{"pde-gh-write"}, code: 2,
-			stderr: "pde-gh-write: usage: pde-gh-write pr {create|edit|comment|review|merge|ready|close|reopen} [gh arguments...]\n"},
+			stderr: "pde-gh-write: usage: pde-gh-write [--retry] pr {create|edit|comment|review|merge|ready|close|reopen} [gh arguments...]\n"},
 		{name: "approve by link name", args: []string{"/home/me/.local/bin/pde-pr-approve"}, code: 2,
 			stderr: "usage: pde-pr-approve REQUEST_ID\n"},
 		{name: "runner", args: []string{"pde-gh-write", "--pde-runner", "ran"}, code: 5,
-			stderr: "pde-gh-write: already ran ran, exit 5\n"},
+			stderr: "pde-gh-write: already ran ran, exit 5\npde-gh-write: to ask for approval again, rerun this exact command with --retry before pr\n"},
 		{name: "phone question", args: []string{"pde-gh-write", "--moshi-ask", "waiting"}, code: 0,
 			call: "ask --require-remote"},
 		{name: "popup without request ID", args: []string{"pde-pr-approve", "--herdr-popup"}, code: 1},
