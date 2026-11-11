@@ -5,7 +5,7 @@ mod go {
     use hub::external::herdr::{Agent, AgentStatus};
     use hub::shared::Tools;
 
-    use super::common::{InMemoryHerdr, make_agent, make_workspaces};
+    use super::common::{InMemoryHerdr, TestTools, make_agent, make_workspaces};
 
     /// The user presses `ctrl+b shift+h` again and again to move
     /// between hubs in sidebar order. A wrong order or a missing wrap
@@ -37,7 +37,11 @@ mod go {
                 workspaces: make_workspaces(&["w1", "w2", "w3"]),
                 ..InMemoryHerdr::default()
             };
-            let tools = Tools { herdr: &herdr };
+            let test_tools = TestTools::new();
+            let tools = Tools {
+                herdr: &herdr,
+                ..test_tools.tools()
+            };
 
             run_go(&tools).unwrap();
 
@@ -51,7 +55,7 @@ mod gather {
     use hub::external::herdr::{Agent, AgentStatus};
     use hub::shared::{HubError, Tools};
 
-    use super::common::{InMemoryHerdr, make_agent, make_workspaces};
+    use super::common::{InMemoryHerdr, TestTools, make_agent, make_workspaces};
 
     /// A hub runs `hub gather` from its own pane at each start, so the
     /// hubs sit together at the top of the sidebar. Herdr refuses a
@@ -82,7 +86,11 @@ mod gather {
             workspaces: make_workspaces(&["w1", "w2", "w3"]),
             ..InMemoryHerdr::default()
         };
-        let tools = Tools { herdr: &herdr };
+        let test_tools = TestTools::new();
+        let tools = Tools {
+            herdr: &herdr,
+            ..test_tools.tools()
+        };
 
         run_gather(&tools).unwrap();
 
@@ -102,7 +110,11 @@ mod gather {
             workspaces: make_workspaces(&["w1", "w2"]),
             ..InMemoryHerdr::default()
         };
-        let tools = Tools { herdr: &herdr };
+        let test_tools = TestTools::new();
+        let tools = Tools {
+            herdr: &herdr,
+            ..test_tools.tools()
+        };
 
         let error = run_gather(&tools).unwrap_err();
 
@@ -126,7 +138,11 @@ mod gather {
             workspaces: make_workspaces(&["w1", "w2"]),
             ..InMemoryHerdr::default()
         };
-        let tools = Tools { herdr: &herdr };
+        let test_tools = TestTools::new();
+        let tools = Tools {
+            herdr: &herdr,
+            ..test_tools.tools()
+        };
 
         run_gather(&tools).unwrap();
 

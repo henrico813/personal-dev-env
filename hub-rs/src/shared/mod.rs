@@ -2,23 +2,42 @@
 //! a command returns, `Tools` is the bundle of external systems, and
 //! `AgentName` is a checked session name.
 
+pub(crate) mod decisions;
+pub(crate) mod events;
+pub mod run_folder;
+
 use std::fmt;
+use std::io;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+use crate::external::cards::{CardError, Cards};
 use crate::external::herdr::{Herdr, HerdrError};
+use crate::external::opencode::{OpenCodeDb, OpenCodeError};
 
 /// A command that stopped, with the exit code `main` gives it. Tests
 /// match the variant, never the message.
 #[derive(Debug)]
 pub enum HubError {
-    /// Wrong usage clap does not report itself, such as a bad agent name
-    /// or `--machine` on a command that works on this machine only.
-    /// Exit 2.
+    /// Wrong usage clap does not report itself, such as a bad agent name,
+    /// no run folder, or `--machine` on a command that works on this
+    /// machine only. Exit 2.
     Usage(String),
     /// The command did not do its work, for the reason given. Exit 3.
     NotDone(String),
     /// Exit 1.
     Herdr(HerdrError),
+    /// Exit 1.
+    Card(CardError),
+    /// Exit 1.
+    OpenCode(OpenCodeError),
+    /// A run folder or state file the hub could not read or write.
+    /// Exit 1.
+    File { path: PathBuf, source: io::Error },
+    /// A step that failed after `done` already happened, such as
+    /// `archived report-docs-fix.2214.read`. It exits with the failed
+    /// step's code.
+    PartlyDone { done: String, error: Box<HubError> },
 }
 
 impl HubError {
@@ -26,9 +45,13 @@ impl HubError {
     /// work not done.
     pub fn exit_code(&self) -> u8 {
         match self {
-            HubError::Herdr(_) => 1,
+            HubError::Herdr(_)
+            | HubError::Card(_)
+            | HubError::OpenCode(_)
+            | HubError::File { .. } => 1,
             HubError::Usage(_) => 2,
             HubError::NotDone(_) => 3,
+            HubError::PartlyDone { error, .. } => error.exit_code(),
         }
     }
 }
@@ -39,14 +62,23 @@ impl fmt::Display for HubError {
         match self {
             HubError::Usage(message) | HubError::NotDone(message) => formatter.write_str(message),
             HubError::Herdr(error) => write!(formatter, "{error}"),
+            HubError::Card(error) => write!(formatter, "{error}"),
+            HubError::OpenCode(error) => write!(formatter, "{error}"),
+            HubError::File { path, source } => write!(formatter, "{}: {source}", path.display()),
+            HubError::PartlyDone { done, error } => write!(formatter, "{done}, but {error}"),
         }
     }
 }
 
+/// Returns the external error behind a failure, when there is one.
 impl std::error::Error for HubError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             HubError::Herdr(error) => Some(error),
+            HubError::Card(error) => Some(error),
+            HubError::OpenCode(error) => Some(error),
+            HubError::File { source, .. } => Some(source),
+            HubError::PartlyDone { error, .. } => Some(error.as_ref()),
             HubError::Usage(_) | HubError::NotDone(_) => None,
         }
     }
@@ -55,6 +87,18 @@ impl std::error::Error for HubError {
 impl From<HerdrError> for HubError {
     fn from(error: HerdrError) -> HubError {
         HubError::Herdr(error)
+    }
+}
+
+impl From<CardError> for HubError {
+    fn from(error: CardError) -> HubError {
+        HubError::Card(error)
+    }
+}
+
+impl From<OpenCodeError> for HubError {
+    fn from(error: OpenCodeError) -> HubError {
+        HubError::OpenCode(error)
     }
 }
 
@@ -94,6 +138,14 @@ impl AgentName {
 /// what each double recorded after the call.
 pub struct Tools<'a> {
     pub herdr: &'a dyn Herdr,
+    pub cards: &'a dyn Cards,
+    pub opencode: &'a OpenCodeDb,
+    /// This hub's own pane, from `HERDR_PANE_ID`, or `None` outside
+    /// Herdr.
+    pub own_pane: Option<&'a str>,
+    /// This project's state folder, `~/.local/state/pde`, which holds
+    /// the handoffs and session reviews.
+    pub state_folder: &'a Path,
 }
 
 #[cfg(test)]
