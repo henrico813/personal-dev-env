@@ -387,7 +387,7 @@ func TestJournalRejectsUnsafeCommitGroup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := atomicWriteJSON(path, append(data, '\n')); err != nil {
+	if err := WriteFileAtomic(path, append(data, '\n')); err != nil {
 		t.Fatal(err)
 	}
 	if err := RecoverJournals(config); err == nil {

@@ -77,6 +77,7 @@ var numberPattern = regexp.MustCompile(`^[0-9]+$`)
 //	prs            the PR list screen
 //	prs NUM        one PR's summary screen, from the current folder's repo
 //	prs REPO NUM   the same for any repo, such as prs owner/app 12
+//	prs status     the current folder's repo's open PRs, in Markdown
 func Run(
 	args []string,
 	stdin io.Reader,
@@ -112,6 +113,10 @@ func Run(
 		stdout: stdout,
 		stderr: stderr,
 		now:    time.Now(),
+	}
+	// prs status reads GitHub alone, so it works without a cache folder.
+	if len(args) == 1 && args[0] == "status" {
+		return a.printStatus()
 	}
 	if len(args) == 0 || !cachelessCommands[args[0]] {
 		a.store, err = cache.Open()
@@ -150,7 +155,7 @@ func Run(
 		}
 	}
 	if len(args) != 2 || !numberPattern.MatchString(args[1]) {
-		a.printError("usage: prs [NUMBER | OWNER/REPO NUMBER]")
+		a.printError("usage: prs [status | NUMBER | OWNER/REPO NUMBER]")
 		return 2
 	}
 	return a.openSummaryAlone(

@@ -55,6 +55,16 @@ largest subagents by tokens read
   ses_77ac claude-code/claude-opus-5-5[1m] read 2,210,560 written 12,900 P5 review
 repeated commands 1
   5x cd ~/src/tally && npm test
+carry by tool
+  shell calls 64 tokens 27,340 carry 1,873,500
+  skill calls 4 tokens 25,020 carry 1,451,160
+  read calls 18 tokens 22,610 carry 1,102,880
+largest carried outputs
+  carry 368,000 tokens 4,000 later steps 92 seq 704 shell cd ~/src/tally && npm test
+  carry 364,320 tokens 4,140 later steps 88 seq 716 shell cd ~/src/tally && npm test
+  carry 351,000 tokens 3,900 later steps 90 seq 730 shell cd ~/src/tally && npm test
+  carry 347,760 tokens 6,440 later steps 54 seq 8 skill create-plan
+  carry 335,320 tokens 4,040 later steps 83 seq 751 shell cd ~/src/tally && npm test
 
 Conversation notes:
 - Each of the 5 npm test runs printed about 4,000 tokens; about 90
