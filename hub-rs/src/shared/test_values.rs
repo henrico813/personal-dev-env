@@ -1,7 +1,7 @@
 //! Values the `mod tests` blocks in `src/` share. Tests in `tests/`
 //! cannot see this file and keep their own copy in `tests/common`.
 
-use crate::outside::herdr::{Agent, AgentKind, AgentStatus};
+use crate::external::herdr::{Agent, AgentKind, AgentStatus};
 
 /// One unfocused OpenCode agent in workspace `w1`, with pane
 /// `w1:<name>`, tab `w1:t-<name>`, state change 1 and no session ID.

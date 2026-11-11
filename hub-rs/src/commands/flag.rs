@@ -1,7 +1,7 @@
 //! Runs `hub flag` and `hub unflag`, the sidebar's "needs you" mark.
 
 use super::Outcome;
-use crate::outside::herdr::AgentStatus;
+use crate::external::herdr::AgentStatus;
 use crate::shared::{AgentName, HubError, Tools};
 
 /// Shows "needs you" in place of the session's state in the sidebar.

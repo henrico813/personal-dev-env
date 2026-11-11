@@ -14,9 +14,9 @@ use hub::commands::next::NextOptions;
 use hub::commands::reports::{CardChoice, ReadRequest};
 use hub::commands::send::SendRequest;
 use hub::commands::{Outcome, alive, brief, flag, handoff, next, reports, send, sidebar};
-use hub::outside::cards::CardCli;
-use hub::outside::herdr::HerdrCli;
-use hub::outside::opencode::OpenCodeDb;
+use hub::external::cards::CardCli;
+use hub::external::herdr::HerdrCli;
+use hub::external::opencode::OpenCodeDb;
 use hub::shared::{HubError, Tools};
 use jiff::Zoned;
 
@@ -41,7 +41,7 @@ fn main() -> ExitCode {
     }
 }
 
-/// Checks `--machine`, builds the outside systems and runs the
+/// Checks `--machine`, builds the external systems and runs the
 /// command. A command finds its run folder before it reads anything
 /// else, so a missing folder is reported first.
 fn run_command(cli: &Cli) -> Result<Outcome, HubError> {

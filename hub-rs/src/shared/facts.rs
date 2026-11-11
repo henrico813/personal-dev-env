@@ -1,4 +1,4 @@
-//! Reads facts about sessions from the outside systems. So far it reads
+//! Reads facts about sessions from the external systems. So far it reads
 //! only the hub's own line.
 
 use super::Tools;

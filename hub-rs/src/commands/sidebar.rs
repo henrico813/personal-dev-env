@@ -2,7 +2,7 @@
 //! sidebar. A hub is an agent whose name ends in `-hub-<n>`.
 
 use super::Outcome;
-use crate::outside::herdr::{Agent, Workspace};
+use crate::external::herdr::{Agent, Workspace};
 use crate::shared::{HubError, Tools};
 
 /// Shows the hub after the one the user looks at, in sidebar order,

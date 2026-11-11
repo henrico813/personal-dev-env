@@ -5,7 +5,7 @@
 use jiff::Zoned;
 
 use super::Outcome;
-use crate::outside::opencode::OpenCodeError;
+use crate::external::opencode::OpenCodeError;
 use crate::shared::{HubError, Tools};
 
 /// Prints the message count, the newest time, the last tool, and

@@ -12,7 +12,7 @@ use jiff::Zoned;
 use jiff::civil::Date;
 
 use super::Outcome;
-use crate::outside::herdr::{Agent, AgentStart, Herdr, HerdrError, NewPlace};
+use crate::external::herdr::{Agent, AgentStart, Herdr, HerdrError, NewPlace};
 use crate::shared::events::{self, Event, EventKind};
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{AgentName, HubError, Tools};
