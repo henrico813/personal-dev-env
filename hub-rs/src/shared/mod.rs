@@ -12,11 +12,13 @@ pub mod parking;
 pub mod run_folder;
 #[cfg(test)]
 pub(crate) mod test_values;
+pub(crate) mod tidy;
 
 use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::time::Duration;
 
 use crate::external::cards::{CardError, Cards};
 use crate::external::herdr::{Herdr, HerdrError};
@@ -171,11 +173,15 @@ pub struct Tools<'a> {
     pub requests: &'a RequestFolder,
     pub parked: &'a ParkedFolder,
     /// This hub's own pane, from `HERDR_PANE_ID`, or `None` outside
-    /// Herdr. It is never a status row.
+    /// Herdr. Nothing closes it, and it is never a status row.
     pub own_pane: Option<&'a str>,
     /// This project's state folder, `~/.local/state/pde`, which holds
     /// the handoffs and session reviews.
     pub state_folder: &'a Path,
+    /// The wait between reads of a reopened agent's session ID, one
+    /// second outside tests. Herdr learns the ID only after OpenCode
+    /// starts.
+    pub reopen_poll: Duration,
 }
 
 #[cfg(test)]

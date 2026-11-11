@@ -8,8 +8,8 @@ use until this program replaces it.
 pde-installer builds this folder on the Development tier and installs
 it as `~/.local/bin/hub-next`, so you can try it beside the Python
 `hub`. So far it has `status`, `next`, `send`, `read`, `report`,
-`inbox`, `note`, `brief`, `handoff`, `auto`, `flag`, `unflag`,
-`alive`, `go` and `gather`.
+`inbox`, `note`, `brief`, `handoff`, `clean`, `park`, `auto`, `flag`,
+`unflag`, `alive`, `go` and `gather`.
 
 ```bash
 make build   # target/release/hub
@@ -31,9 +31,9 @@ its reason.
   "needs you" shows once it stops. The Python hub marked the working
   state, which showed "needs you" while the session still worked.
 - `status`, `next`, `send`, `read`, `report`, `inbox`, `note`,
-  `brief` and `handoff` take the run folder from `--run DIR`, else
-  from `HUB_RUN`. With neither, or with a folder that does not exist,
-  they exit 2.
+  `brief`, `handoff`, `clean` and `park` take the run folder from
+  `--run DIR`, else from `HUB_RUN`. With neither, or with a folder
+  that does not exist, they exit 2.
 - `read` exits 3, not 2, when the session has no unread report.
   `read --note TEXT --card [KEY]` also adds the note to the card's Log,
   with the key in the session's name or the KEY given. If a step
@@ -81,7 +81,33 @@ its reason.
   an older one print `replaced by a newer hub next` and exit. `--json`
   prints the same facts as JSON. It keeps its memory in
   `events.jsonl`, not in `next-seen.json`.
-- `next` does not close or park finished sessions yet.
+- `next` runs a minute pass at most once a minute, and only after a
+  session's state changed or a report was read. It prints nothing.
+  It reads `card board`. Each time the board crosses into its limit,
+  it wakes the hub once with `board over its limit: 25/8 (hub 131k)`.
+  It runs the tidy pass. For each worker past 150k that the pass does
+  not close or park, it holds one handoff ask. It keeps its time in
+  `.minute-pass.json`.
+- `clean` takes a run folder and runs the tidy pass now. It closes
+  the tab of each `to-close` session and parks each `to-park` session.
+  Each change prints one line, such as
+  `closed demo-kb-001-impl: DEMO-KB-001 accepted`. It deletes the
+  parked record of a session that is live again, and prints
+  `forgot NAME`. Then it prints one `kept` line per kept session, or
+  `nothing to close` when nothing changed. `--dry-run` prints
+  `would close`, `would park` and `would forget` lines and changes
+  nothing. A plain shell closes only with its finished agent's tab. A
+  tab with only a shell stays open. The Python `clean` closes that
+  tab; this one does not. While `card` or a request
+  file cannot be read, it closes nothing and prints
+  `kept every session: REASON`. Closes and parks also go to
+  `notes.md` and `events.jsonl`.
+- `park NAME` is new. It parks one session whose state is `to-park`: it
+  saves a record in `~/.local/state/pde/hub/parked/`, adds the
+  session to its card, and closes its tab. It exits 3 with
+  `NAME stays: REASON` otherwise.
+- `send` to a parked session opens a new tab and resumes its OpenCode
+  session there. It holds the message until the session starts.
 - `status` shows each session's lifecycle state in its STATE column,
   not Herdr's status: `working`, `hub` (waits on the hub), `you`
   (waits on the user), `kept`, `to-close`, `to-park` or `parked`. The

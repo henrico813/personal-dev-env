@@ -1,25 +1,35 @@
 //! Runs `hub next`, which waits until something needs the hub and
 //! prints one line. Read `run_next`, then `check_for_news`.
 //! `choose_news` is pure and holds the order of the news lines.
+//! `run_minute_pass` is the slow part, at most once a minute, which
+//! reads the board, runs the tidy pass and asks workers to hand off.
 
 use std::thread;
 use std::time::{Duration, Instant};
 
-use jiff::Zoned;
+use jiff::{SignedDuration, Zoned};
 use serde_json::json;
 
 use super::Outcome;
+use crate::external::cards::{BoardCounts, CardKey};
 use crate::external::herdr::{Agent, AgentStatus};
 use crate::shared::context::{HANDOFF_TOKENS, format_tokens};
 use crate::shared::events::{self, Event, EventKind, Memory};
-use crate::shared::facts::{self, HubLine};
+use crate::shared::facts::{self, CollectedFacts, HubLine};
+use crate::shared::lifecycle::{Lifecycle, decide_lifecycle};
 use crate::shared::messages::{self, SendOutcome};
-use crate::shared::run_folder::{ReportFile, RunFolder};
+use crate::shared::run_folder::{MinuteMark, ReportFile, RunFolder};
+use crate::shared::tidy;
 use crate::shared::{HubError, Tools};
 
 /// A report younger than this may still be half written by hand, so
 /// `hub next` waits for it.
 const MIN_REPORT_AGE: Duration = Duration::from_secs(2);
+
+/// The least time between two minute passes. Each pass calls `card` on
+/// the network drive, git in many worktrees and the database once per
+/// worker, which is too slow for every 5-second check.
+const MINUTE_PASS_GAP: SignedDuration = SignedDuration::from_secs(60);
 
 /// How long `hub next` waits and how it prints.
 pub struct NextOptions {
@@ -40,6 +50,7 @@ enum News {
     NotSent { name: String, reason: String },
     Unsure { name: String, reason: String },
     HubHandOff { session_id: String, tokens: u64 },
+    BoardOver { busy: u32, limit: u32 },
     Replaced,
     Timeout,
 }
@@ -52,6 +63,8 @@ struct NewsFacts<'a> {
     agents: &'a [Agent],
     memory: &'a Memory,
     hub: &'a HubLine,
+    /// Read only when the minute pass ran in this check.
+    board: Option<&'a BoardCounts>,
 }
 
 /// Claims the watcher, takes the watcher lock, then checks every
@@ -103,9 +116,9 @@ pub fn run_next(
     }
 }
 
-/// Runs one check. Delivers held messages and returns the news to
-/// print, if any. Records nothing about the news itself, since
-/// `run_next` does that before printing.
+/// Runs one check. Runs the minute pass when it is due, delivers held
+/// messages and returns the news to print, if any. Records nothing
+/// about the news itself, since `run_next` does that before printing.
 fn check_for_news(
     tools: &Tools<'_>,
     run: &RunFolder,
@@ -118,6 +131,12 @@ fn check_for_news(
     // Delivery comes last, since an error after it would lose its
     // not-sent or unsure line.
     let reports = run.list_reports(now)?;
+    let mark = run.read_minute_mark()?;
+    let board = if is_minute_pass_due(&agents, &memory, mark.as_ref(), now) {
+        run_minute_pass(tools, run, &agents, &memory, now)?
+    } else {
+        None
+    };
     let outcome = messages::deliver_held_messages(tools, run, &agents, now)?;
     Ok(choose_news(&NewsFacts {
         outcome: outcome.as_ref(),
@@ -125,13 +144,133 @@ fn check_for_news(
         agents: &agents,
         memory: &memory,
         hub,
+        board: board.as_ref(),
     }))
+}
+
+/// Tells whether the minute pass should run. It runs at most once a
+/// minute, and only after an agent's state changed or the hub read a
+/// report since the last one. With no mark, it runs.
+fn is_minute_pass_due(
+    agents: &[Agent],
+    memory: &Memory,
+    last: Option<&MinuteMark>,
+    now: &Zoned,
+) -> bool {
+    let Some(last) = last else {
+        return true;
+    };
+    if now.timestamp().duration_since(last.at) < MINUTE_PASS_GAP {
+        return false;
+    }
+    let state_changed = agents
+        .iter()
+        .any(|agent| last.state_seqs.get(&agent.name) != Some(&agent.state_seq));
+    state_changed || memory.read_count != last.read_count
+}
+
+/// Reads the board, runs the tidy pass and the handoff asks on one
+/// collection of facts, records `board_under` when the board fell back
+/// within its limit, and saves the minute mark. Returns the board
+/// counts when `card board` answered. The tidy outcomes are dropped,
+/// since each close and park logged itself to the event log and
+/// `notes.md`, and a kept session needs nothing.
+fn run_minute_pass(
+    tools: &Tools<'_>,
+    run: &RunFolder,
+    agents: &[Agent],
+    memory: &Memory,
+    now: &Zoned,
+) -> Result<Option<BoardCounts>, HubError> {
+    // A `card` failure skips the board, as `hub status` shows it.
+    let board = tools.cards.read_board().ok();
+    if let Some(board) = &board
+        && board.busy <= board.limit
+        && memory.board_over
+    {
+        let under = Event {
+            at: now.timestamp(),
+            kind: EventKind::BoardUnder {
+                busy: board.busy,
+                limit: board.limit,
+            },
+        };
+        events::append_event(run, &under)?;
+    }
+    let lock = tools.parked.take_tidy_lock()?;
+    let collected = facts::collect_session_facts(tools, run, memory)?;
+    tidy::run_tidy_pass(tools, run, &collected, &lock, now, false)?;
+    drop(lock);
+    ask_for_worker_handoffs(run, &collected, memory, now)?;
+    run.write_minute_mark(&MinuteMark {
+        at: now.timestamp(),
+        state_seqs: agents
+            .iter()
+            .map(|agent| (agent.name.clone(), agent.state_seq))
+            .collect(),
+        read_count: memory.read_count,
+    })?;
+    Ok(board)
+}
+
+/// Holds one handoff ask for each worker on a card that is working,
+/// idle or done, has `HANDOFF_TOKENS` tokens or more, and never got
+/// one, then records the ask. Delivery sends it by the usual rules.
+/// A session this pass closes or parks gets no ask, since delivering
+/// it would reopen finished work.
+fn ask_for_worker_handoffs(
+    run: &RunFolder,
+    collected: &CollectedFacts,
+    memory: &Memory,
+    now: &Zoned,
+) -> Result<(), HubError> {
+    for facts in &collected.sessions {
+        let Some(agent) = &facts.agent else {
+            continue;
+        };
+        let Some(session) = &agent.session_id else {
+            continue;
+        };
+        let tokens = facts.context_tokens.unwrap_or_default();
+        let is_worker = facts.card.is_some() || CardKey::find_in_name(&facts.name).is_some();
+        let is_free = matches!(
+            agent.status,
+            AgentStatus::Working | AgentStatus::Idle | AgentStatus::Done
+        );
+        let is_finished = matches!(
+            decide_lifecycle(facts).state,
+            Lifecycle::ToClose | Lifecycle::ToPark
+        );
+        if !is_worker
+            || !is_free
+            || tokens < HANDOFF_TOKENS
+            || memory.handoff_asked.contains(session)
+            || is_finished
+        {
+            continue;
+        }
+        let ask = format!(
+            "Your context is about {}. Write your handoff with herdr-handoff now, \
+             put its path in your report, and end your turn.",
+            format_tokens(Some(tokens))
+        );
+        messages::hold_message(run, &facts.name, None, &ask, now)?;
+        let asked = Event {
+            at: now.timestamp(),
+            kind: EventKind::HandoffAsked {
+                name: facts.name.clone(),
+                session: session.clone(),
+            },
+        };
+        events::append_event(run, &asked)?;
+    }
+    Ok(())
 }
 
 /// Picks the most urgent news in a fixed order, or `None` when nothing
 /// is new. A message that was not sent or is unsure comes first, since
-/// nothing prints it again. Then come reports, blocked states and the
-/// hub's own handoff.
+/// nothing prints it again. Then come reports, blocked states, the
+/// hub's own handoff and the board crossing its limit.
 fn choose_news(facts: &NewsFacts<'_>) -> Option<News> {
     match facts.outcome {
         Some(SendOutcome::NotSent { name, reason }) => {
@@ -167,6 +306,15 @@ fn choose_news(facts: &NewsFacts<'_>) -> Option<News> {
         return Some(News::HubHandOff {
             session_id: session_id.clone(),
             tokens,
+        });
+    }
+    if let Some(board) = facts.board
+        && board.busy > board.limit
+        && !facts.memory.board_over
+    {
+        return Some(News::BoardOver {
+            busy: board.busy,
+            limit: board.limit,
         });
     }
     None
@@ -207,6 +355,10 @@ fn record_news(news: &News) -> Option<EventKind> {
         News::HubHandOff { session_id, .. } => Some(EventKind::HubContextTold {
             session: session_id.clone(),
         }),
+        News::BoardOver { busy, limit } => Some(EventKind::BoardOver {
+            busy: *busy,
+            limit: *limit,
+        }),
         News::NotSent { .. } | News::Unsure { .. } | News::Replaced | News::Timeout => None,
     }
 }
@@ -232,6 +384,7 @@ fn format_news_line(news: &News, hub_tokens: Option<u64>) -> String {
         News::HubHandOff { tokens, .. } => {
             format!("hand off now: hub at {}", format_tokens(Some(*tokens)))
         }
+        News::BoardOver { busy, limit } => format!("board over its limit: {busy}/{limit} {hub}"),
         News::Replaced => "replaced by a newer hub next".to_owned(),
         News::Timeout => format!("timeout {hub}"),
     }
@@ -243,9 +396,10 @@ fn format_news_json(news: &News, hub_tokens: Option<u64>) -> String {
     let (word, name, detail) = match news {
         News::Report { name, .. } => ("report", Some(name), None),
         News::Blocked { name, .. } => ("blocked", Some(name), None),
-        News::NotSent { name, reason } => ("not_sent", Some(name), Some(reason)),
-        News::Unsure { name, reason } => ("unsure", Some(name), Some(reason)),
+        News::NotSent { name, reason } => ("not_sent", Some(name), Some(reason.clone())),
+        News::Unsure { name, reason } => ("unsure", Some(name), Some(reason.clone())),
         News::HubHandOff { .. } => ("hand_off", None, None),
+        News::BoardOver { busy, limit } => ("board_over", None, Some(format!("{busy}/{limit}"))),
         News::Replaced => ("replaced", None, None),
         News::Timeout => ("timeout", None, None),
     };
@@ -296,6 +450,72 @@ mod tests {
         }
     }
 
+    /// The minute pass reads the board on the network drive, runs git
+    /// in many worktrees and asks the database about every worker. Run
+    /// on every check, it slows each check down. Skipped after a state
+    /// change or a read, it leaves finished tabs open and misses a
+    /// worker past 150k. With no mark, as after the first start, it
+    /// runs.
+    #[test]
+    fn is_minute_pass_due_follows_mark() {
+        struct Case {
+            name: &'static str,
+            mark: Option<MinuteMark>,
+            read_count: usize,
+            due: bool,
+        }
+        let now: Zoned = "2026-11-11T22:14:00+00:00[UTC]".parse().unwrap();
+        let mark = |at: &str, state_seq: u64| MinuteMark {
+            at: at.parse().unwrap(),
+            state_seqs: [("docs-fix".to_owned(), state_seq)].into(),
+            read_count: 3,
+        };
+        let cases = [
+            Case {
+                name: "no-mark",
+                mark: None,
+                read_count: 3,
+                due: true,
+            },
+            Case {
+                name: "state-changed-within-minute",
+                mark: Some(mark("2026-11-11T22:13:30Z", 0)),
+                read_count: 3,
+                due: false,
+            },
+            Case {
+                name: "nothing-changed",
+                mark: Some(mark("2026-11-11T22:12:00Z", 1)),
+                read_count: 3,
+                due: false,
+            },
+            Case {
+                name: "state-changed",
+                mark: Some(mark("2026-11-11T22:12:00Z", 0)),
+                read_count: 3,
+                due: true,
+            },
+            Case {
+                name: "report-read",
+                mark: Some(mark("2026-11-11T22:12:00Z", 1)),
+                read_count: 4,
+                due: true,
+            },
+        ];
+        let agents = [make_agent("docs-fix", AgentStatus::Idle)];
+
+        for case in cases {
+            let memory = Memory {
+                read_count: case.read_count,
+                ..Memory::default()
+            };
+
+            let due = is_minute_pass_due(&agents, &memory, case.mark.as_ref(), &now);
+
+            assert_eq!(due, case.due, "{}", case.name);
+        }
+    }
+
     /// A message that was not sent already left the queue, so if a
     /// report or a blocked state wins the line instead, nothing ever
     /// tells the hub and the message is silently lost.
@@ -319,6 +539,7 @@ mod tests {
             agents: &agents,
             memory: &memory,
             hub: &hub,
+            board: None,
         };
 
         let news = choose_news(&facts);
@@ -354,6 +575,12 @@ mod tests {
                 },
                 None,
                 r#"{"news":"not_sent","name":"docs-fix","detail":"the session is gone","hub_context_tokens":null}"#,
+            ),
+            (
+                "board-over",
+                News::BoardOver { busy: 25, limit: 8 },
+                Some(131_204),
+                r#"{"news":"board_over","name":null,"detail":"25/8","hub_context_tokens":131204}"#,
             ),
         ];
 

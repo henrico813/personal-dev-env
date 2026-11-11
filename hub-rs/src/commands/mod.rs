@@ -5,6 +5,7 @@
 pub mod alive;
 pub mod auto;
 pub mod brief;
+pub mod clean;
 pub mod cli;
 pub mod flag;
 pub mod handoff;

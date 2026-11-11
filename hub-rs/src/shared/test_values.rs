@@ -60,12 +60,14 @@ pub(crate) fn make_facts(name: &str) -> SessionFacts {
     }
 }
 
-/// A parked record for NAME on card `DEMO-KB-007`, parked at
-/// `2026-11-10T22:41:00Z`.
+/// A parked record for NAME's OpenCode session `ses_<NAME>` on card
+/// `DEMO-KB-007`, parked at `2026-11-10T22:41:00Z`.
 pub(crate) fn make_parked_record(name: &str) -> ParkedRecord {
     ParkedRecord {
         name: name.to_owned(),
+        session_id: format!("ses_{name}"),
         card: "DEMO-KB-007".parse().unwrap(),
+        workspace_label: "DEMO-KB-007 impl".to_owned(),
         parked_at: "2026-11-10T22:41:00Z".parse().unwrap(),
     }
 }
