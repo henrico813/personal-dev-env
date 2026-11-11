@@ -81,11 +81,14 @@ def make_step(context: int, *calls: dict) -> tuple[str, dict]:
     return ("assistant", {"tokens": tokens, "content": list(calls)})
 
 
-def make_call(command: str = "", output: str = "") -> dict:
+def make_call(
+    command: str = "", output: str = "", name: str = "shell", path: str = ""
+) -> dict:
     """A tool call as the database stores it, after it finished."""
-    state = {"input": {"command": command} if command else {}}
+    given = {"command": command, "path": path}
+    state = {"input": {key: value for key, value in given.items() if value}}
     state["content"] = [{"type": "text", "text": output}]
-    return {"type": "tool", "name": "shell", "state": state}
+    return {"type": "tool", "name": name, "state": state}
 
 
 def find_line(lines: list[str], opening: str) -> str:
@@ -321,6 +324,67 @@ class TestReportLines:
 
         assert find_line(lines, "repeated commands") == "repeated commands 1"
         assert "  2x git status" in lines
+
+    def test_carry_by_tool_counts_later_steps(self, tmp_path: Path) -> None:
+        """Sum each tool's carry from later steps that logged tokens.
+
+        Carry is what a review ranks outputs by, so it must count only
+        steps that re-read the output. A compaction drops the output,
+        and a zero-token step is folded into the next step, which still
+        counts. Each 4 characters of output is one token here.
+        """
+        make_db(
+            tmp_path,
+            [
+                make_step(1, make_call(output="x" * 400)),
+                make_step(0),
+                make_step(1, make_call(name="read", output="x" * 1200)),
+                make_step(1, make_call(output="x" * 40)),
+                ("compaction", {"reason": "auto"}),
+                make_step(1),
+            ],
+        )
+
+        lines = run_stats(tmp_path).stdout.splitlines()
+
+        start = lines.index("carry by tool")
+        assert lines[start : start + 3] == [
+            "carry by tool",
+            "  read calls 1 tokens 300 carry 300",
+            "  shell calls 2 tokens 110 carry 200",
+        ]
+
+    def test_largest_carried_outputs_capped_and_labeled(
+        self, tmp_path: Path
+    ) -> None:
+        """List the five calls with the most carry, each with its label.
+
+        The review proposes cutting the outputs that cost the most, so
+        it needs to know which command or file made each one. A long
+        list would cost the tokens the script exists to save, so only
+        five are shown, and a script command shows its first line.
+        """
+        make_db(
+            tmp_path,
+            [
+                make_step(1, make_call("pytest\n-q", output="x" * 400)),
+                make_step(1, make_call(name="read", path="/plan.md")),
+                *(make_step(1, make_call(f"ls {n}")) for n in range(3, 7)),
+                make_step(1),
+            ],
+        )
+
+        lines = run_stats(tmp_path).stdout.splitlines()
+
+        start = lines.index("largest carried outputs")
+        assert lines[start:] == [
+            "largest carried outputs",
+            "  carry 636 tokens 106 later steps 6 seq 1 shell pytest",
+            "  carry 25 tokens 5 later steps 5 seq 2 read /plan.md",
+            "  carry 16 tokens 4 later steps 4 seq 3 shell ls 3",
+            "  carry 12 tokens 4 later steps 3 seq 4 shell ls 4",
+            "  carry 8 tokens 4 later steps 2 seq 5 shell ls 5",
+        ]
 
 
 class TestContextLine:
