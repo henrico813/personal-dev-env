@@ -17,6 +17,11 @@ The output path must end in `.md`.
   records the project, status, and topics for vault views. `--project`
   is required with `--issue` and rejected without it, and
   `date_created` is today's local date.
+- Without those flags, a file named like `HOME-165 Title.md` directly in a
+  vault `500 Zettelkasten/Projects/<Name>/` folder gets the same frontmatter
+  with project `<Name>`. The key rule is the one `planner key` uses. Explicit
+  `--issue --project NAME` wins over the folder name. Any other path, or a
+  file name without a key such as `DESIGN-Example.md`, gets a plain plan.
 - `--diff` prints a review preview of the bytes that would be written. It is
   additive and still writes the file.
 - `--dry-run` suppresses the write. Use `--diff --dry-run` to preview without
@@ -145,11 +150,14 @@ K=$(planner key "$P") || exit 1
 
 ```text
 planner inspect <plan.md>
-planner inspect <plan.md> --target SELECTOR --repo DIR --base-commit COMMIT [--code-out NEWFILE [--before]] [--print FIELD]
+planner inspect <plan.md> --target SELECTOR [--repo DIR] [--base-commit COMMIT] [--code-out NEWFILE [--before]] [--print FIELD]
 ```
 
 Without `--target`, inspect prints a JSON view of the parsed plan. With
 `--target`, it is a guarded command.
+
+`--repo` and `--base-commit` default as they do for
+[planner check](#planner-check).
 
 `SELECTOR` is `implementation[N].file_changes[M]` with 1-based indices. Quote
 it, because zsh expands unquoted brackets. Leading zeros are accepted and the
@@ -164,7 +172,7 @@ inspect output remains JSON; `edit_expect` is the only supported print field.
 
 - `selector`: normalized target.
 - `filename`, `step_title`, `step_summary`, `explanation`: the selected change.
-- `base_commit`: the base commit passed in.
+- `base_commit`: the base commit used, from `--base-commit` or the plan.
 - `edit_expect`: The token is tied to the exact plan file contents, the selector,
   and the base commit. Any write to the plan makes it stale, so run inspect again
   before the next patch.
@@ -197,12 +205,13 @@ all listed problems before rerunning it. For example, one response can include:
 ## planner patch
 
 ```text
-planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR --base-commit COMMIT
+planner patch <plan.md> --target SELECTOR --expect TOKEN [--repo DIR] [--base-commit COMMIT]
   (--after-file FILE | --diff-file FILE) [--dry-run] [--diff]
 ```
 
 Patch replaces one fenced change. Exactly one of `--after-file` and
-`--diff-file` is required.
+`--diff-file` is required. `--repo` and `--base-commit` default as they do for
+[planner check](#planner-check).
 
 - `--after-file FILE` generates a diff from ordinary source. Use `/dev/null` to
   propose deleting the file. Existing file mode is retained; a new file
@@ -231,7 +240,7 @@ one; it never applies later changes.
 - `structure_valid`, `patch_syntax_valid`: checks that ran.
 - `prefix_applied`: always `true` on success.
 - `downstream_checked`: `false`; later changes are not applied.
-- `base_commit`: the base commit passed in.
+- `base_commit`: the base commit used, from `--base-commit` or the plan.
 - `behavior_checked`: `false`.
 
 ## planner check
@@ -242,9 +251,11 @@ planner check <plan.md> [--repo DIR] [--base-commit COMMIT] [--json-errors]
 
 `planner check` validates the plan structure, then applies every change against
 the base commit. If `--base-commit` is omitted, the first line of `### Current
-State` must be `Base commit: <full commit ID>`. If `--repo` is omitted, Planner
-uses the current working directory's Git repository. `--stdin` and `--format`
-are not accepted.
+State` must be `Base commit: <full commit ID>`; otherwise the command fails with
+`BASE_COMMIT_REQUIRED`. Planner never uses `HEAD` instead. If `--repo` is
+omitted, Planner uses the Git repository that contains the current directory,
+and fails with `BASE_UNAVAILABLE` outside one. inspect, patch, and export use
+the same defaults. `--stdin` and `--format` are not accepted.
 
 The check opens a disposable repository at the base commit and applies the
 whole plan in order. It reports `plan_sha256`, `structure_valid: true`,
@@ -267,7 +278,7 @@ runs the same check on earlier changes.
 ## planner export
 
 ```text
-planner export <plan.md> --repo DIR --base-commit COMMIT --out NEWDIR
+planner export <plan.md> [--repo DIR] [--base-commit COMMIT] --out NEWDIR
   [--through STEP] [--json-errors]
 ```
 
@@ -296,7 +307,8 @@ failures the same way; see [Diagnose guarded failures](../how-to/diagnose-guarde
 - Structure validation runs on parsed plan fields. It enforces required
   sections, non-empty fields, length limits, unique filenames per step, at
   least one goal, at least one implementation step, and at least one file
-  change per step. It does not read source. An optional
+  change per step. Current State's limit does not count its
+  `Base commit:` first line. It does not read source. An optional
   `## Notes for agents` section may follow Verification; its text is
   not checked.
 - Guarded apply validation applies every diff against the base commit in a
@@ -307,7 +319,8 @@ failures the same way; see [Diagnose guarded failures](../how-to/diagnose-guarde
 Plans in the default vault are issue documents, and the vault
 tracks each one through YAML frontmatter. `planner new` writes a
 plain plan by default; pass `--issue
---project NAME` to prepend that frontmatter. The supported shape starts with
+--project NAME` to prepend that frontmatter, or name the file with an issue key
+in a vault project folder, as [planner new](#planner-new) describes. The supported shape starts with
 `---` and contains a `tags` list with `"#Ticket"`, `type: issue`, a `status` of
 `open`, `in-progress`, `done`, or `wont-do`, `template_version: 1`, a non-empty
 `project`, a `date_created` in `YYYY-MM-DD` form, and a `topics` list. Any
