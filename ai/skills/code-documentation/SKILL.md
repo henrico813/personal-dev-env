@@ -103,9 +103,9 @@ codes, test names, comments and PR text you write. Do not give a
 dictionary word another meaning, and do not coin a new word for an
 idea it already names.
 
-Code, tests and docs never name a private machine, the user's
-employer or work, private vaults, personal information or secrets;
-describe the change in general terms.
+Treat code, tests and docs as public. Leave out secrets and anything
+that identifies the user, their machines, their work or their private
+places.
 
 When writing or reviewing comments, check each one against
 [references/comments-readers-reject.md](
