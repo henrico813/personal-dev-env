@@ -42,11 +42,10 @@ func savedMachines() []savedMachine {
 	return enabled
 }
 
-// otherMachineLines checks every enabled saved Herdr machine at once and
-// says what waits on each, such as "***REMOVED***: not reachable", or
-// "***REMOVED***: 1 waiting in" followed by "  notes". It only reads Herdr's pane
-// and workspace lists there; requests are still answered on the machine
-// that runs gh.
+// Returns one line for each enabled saved Herdr machine, checked at once,
+// with the workspaces where requests wait indented below it. It only reads
+// Herdr's pane and workspace lists there, and requests are still answered
+// on the machine that runs gh.
 func otherMachineLines() []string {
 	machines := savedMachines()
 	results := make([][]string, len(machines))

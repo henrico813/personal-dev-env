@@ -88,6 +88,7 @@ func Items() []Item {
 		{Name: "eza", Version: "v0.23.4", Owner: Aqua, Tier: profile.Terminal}, {Name: "zoxide", Version: "v0.9.8", Owner: Aqua, Tier: profile.Terminal},
 		{Name: "bottom", Version: "0.11.4", Owner: Aqua, Tier: profile.Terminal}, {Name: "yq", Version: "v4.53.3", Owner: Aqua, Tier: profile.Terminal},
 		{Name: "yazi", Version: "v25.5.31", Owner: Aqua, Tier: profile.Terminal}, {Name: "ya", Version: "v25.5.31", Owner: Aqua, Tier: profile.Terminal},
+		{Name: "gitleaks", Version: "v8.30.1", Owner: Aqua, Tier: profile.Terminal},
 		{Name: "gopls", Version: "v0.23.0", Owner: Aqua, Tier: profile.Development},
 		{Name: "lua-language-server", Version: "3.19.1", Owner: Aqua, Tier: profile.Development},
 		{

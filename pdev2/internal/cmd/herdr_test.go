@@ -262,7 +262,7 @@ func TestInboxPopupChecksOtherMachines(t *testing.T) {
 			// The fake herdr reports the socket and one saved, enabled machine.
 			approvaltest.FakeHerdr(t, `case "$*" in
 "status server") echo socket: $HERDR_TEST_SOCKET ;;
-"machine list --json") echo '[{"id":"id-***REMOVED***","label":"***REMOVED***","enabled":true}]' ;;
+"machine list --json") echo '[{"id":"id-office","label":"Office","enabled":true}]' ;;
 esac`)
 			t.Setenv("HERDR_TEST_SOCKET", socket)
 

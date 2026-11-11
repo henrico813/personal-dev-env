@@ -125,6 +125,7 @@ func aquaRepository(t *testing.T, name string) string {
 		"wt":     "max-sixty/worktrunk",
 		"bottom": "ClementTsang/bottom", "yq": "mikefarah/yq", "yazi": "sxyazi/yazi", "gopls": "golang.org/x/tools/gopls",
 		"lua-language-server": "LuaLS/lua-language-server",
+		"gitleaks":            "gitleaks/gitleaks",
 	}
 	repository, ok := repositories[name]
 	if !ok {
