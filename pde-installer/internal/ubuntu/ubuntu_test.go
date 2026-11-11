@@ -92,6 +92,46 @@ func TestDesktopsRequireUbuntu2404(t *testing.T) {
 	}
 }
 
+// A desktop in WSL would install a window manager nobody can start. Desktops
+// must still pass on plain Linux, where people use them.
+func TestValidateRefusesDesktopsOnWSL(t *testing.T) {
+	tests := []struct {
+		name    string
+		kernel  string
+		desktop profile.Desktop
+		wantErr string
+	}{
+		{
+			name:    "i3 on WSL",
+			kernel:  "6.6.87.2-microsoft-standard-WSL2\n",
+			desktop: "i3",
+			wantErr: "i3 desktop: WSL has no Linux desktop; install terminal, client or full without one",
+		},
+		{
+			name:    "sway on plain Linux",
+			kernel:  "6.8.0-48-generic\n",
+			desktop: "sway",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			manager, _ := fixtureManager(t, nil, false)
+			manager.desktop = test.desktop
+			writeFixture(t, manager.kernelReleasePath, test.kernel, 0o644)
+
+			err := manager.Validate()
+
+			got := ""
+			if err != nil {
+				got = err.Error()
+			}
+			if got != test.wantErr {
+				t.Fatalf("Validate() error = %q, want %q", got, test.wantErr)
+			}
+		})
+	}
+}
+
 func TestReconcileSkipsCurrentPackages(t *testing.T) {
 	installed := make(map[string]string, len(profile.Profile("full").Packages()))
 	for _, name := range profile.Profile("full").Packages() {
@@ -148,8 +188,11 @@ func fixtureManager(t *testing.T, installed map[string]string, dryRun bool) (Man
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	release := filepath.Join(root, "os-release")
 	writeFixture(t, release, "ID=ubuntu\nVERSION_ID=24.04\n", 0o644)
+	kernel := filepath.Join(root, "osrelease")
+	writeFixture(t, kernel, "6.8.0-48-generic\n", 0o644)
 	manager := New("full", "", run.Runner{DryRun: dryRun, Stdout: &strings.Builder{}, Stderr: &strings.Builder{}})
 	manager.osReleasePath = release
+	manager.kernelReleasePath = kernel
 	return manager, log
 }
 

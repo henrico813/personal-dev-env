@@ -1,0 +1,53 @@
+name: Install on WSL
+# Installs pdev inside WSL 2 Ubuntu 24.04 on a Windows runner, the way the
+# Windows guide tells a new user to. A full install builds most of the repo,
+# so any change but a Markdown one runs it.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**/*.md']
+  pull_request:
+    paths-ignore: ['**/*.md']
+  workflow_dispatch:
+
+# A new push stops the older run, which can take over an hour.
+concurrency:
+  group: install-wsl-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full:
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      - uses: Vampire/setup-wsl@v7
+        with:
+          distribution: Ubuntu-24.04
+      # setup-wsl runs steps as root, which the installer refuses, so a user
+      # with sudo runs the install as a new user would.
+      - name: add a sudo user
+        shell: wsl-bash {0}
+        run: |
+          useradd --create-home --shell /bin/bash pde
+          echo 'pde ALL=(ALL) NOPASSWD:ALL' >/etc/sudoers.d/pde
+          chmod 0440 /etc/sudoers.d/pde
+      # The guide clones from GitHub. A Windows checkout from actions/checkout
+      # would have CRLF line endings.
+      - name: clone the tested commit
+        shell: wsl-bash -u pde {0}
+        run: |
+          cd ~
+          git clone --quiet https://github.com/${{ github.repository }}.git personal-dev-env
+          git -C personal-dev-env fetch --quiet origin ${{ github.sha }}
+          git -C personal-dev-env checkout --quiet --detach FETCH_HEAD
+      - name: install full
+        shell: wsl-bash -u pde {0}
+        run: |
+          cd ~
+          git config --global user.email ci@example.com
+          bash personal-dev-env/install/wsl.sh full
+      # A new tab starts zsh only if the script changed the login shell.
+      - name: check the login shell
+        shell: wsl-bash {0}
+        run: |
+          test "$(getent passwd pde | cut -d: -f7)" = "$(command -v zsh)"

@@ -14,17 +14,24 @@ import (
 )
 
 type Manager struct {
-	profile       profile.Profile
-	desktop       profile.Desktop
-	runner        run.Runner
-	osReleasePath string
+	profile           profile.Profile
+	desktop           profile.Desktop
+	runner            run.Runner
+	osReleasePath     string
+	kernelReleasePath string
 }
 
 // Tool profiles support this release. A desktop may need a newer one.
 const minimumRelease = "22.04"
 
 func New(selected profile.Profile, desktop profile.Desktop, runner run.Runner) Manager {
-	return Manager{profile: selected, desktop: desktop, runner: runner, osReleasePath: "/etc/os-release"}
+	return Manager{
+		profile:           selected,
+		desktop:           desktop,
+		runner:            runner,
+		osReleasePath:     "/etc/os-release",
+		kernelReleasePath: "/proc/sys/kernel/osrelease",
+	}
 }
 
 // Validate checks whether the host can install Ubuntu packages.
@@ -42,6 +49,12 @@ func (m Manager) Validate() error {
 	if m.desktop != "" {
 		if err := validateRelease(m.osReleasePath, m.desktop.MinUbuntu()); err != nil {
 			return fmt.Errorf("%s desktop: %w", m.desktop, err)
+		}
+		if isWSLKernel(m.kernelReleasePath) {
+			return fmt.Errorf(
+				"%s desktop: WSL has no Linux desktop; install terminal, client or full without one",
+				m.desktop,
+			)
 		}
 	}
 	for _, name := range []string{"apt-get", "dpkg-query", "sudo"} {
@@ -128,6 +141,13 @@ func validateRelease(path, minimum string) error {
 		return fmt.Errorf("unsupported Ubuntu version %q: Ubuntu %s or newer required", values["VERSION_ID"], minimum)
 	}
 	return nil
+}
+
+// Reports whether the kernel release names Microsoft, as WSL kernels such as
+// 6.6.87.2-microsoft-standard-WSL2 do. An unreadable file counts as no WSL.
+func isWSLKernel(path string) bool {
+	data, err := os.ReadFile(path)
+	return err == nil && strings.Contains(strings.ToLower(string(data)), "microsoft")
 }
 
 // Returns the major and minor numbers of a version such as "24.04".

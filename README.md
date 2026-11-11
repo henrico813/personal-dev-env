@@ -18,6 +18,10 @@ pde-installer install terminal
 Building the installer needs Go 1.21 or newer, for example from
 `sudo apt install golang-go` on Ubuntu 24.04.
 
+On Windows, follow
+[Install on Windows with WSL](pde-installer/docs/how-to/install-on-windows-wsl.md),
+which ends with one install script.
+
 `terminal` is for headless server VMs, `client` for a laptop that edits files
 and shows Herdr sessions from other machines, with nothing compiled by the
 installer, and `full` for development machines. A fresh installation must choose

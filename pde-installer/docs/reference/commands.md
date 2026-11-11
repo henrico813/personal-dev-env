@@ -31,7 +31,8 @@ builds the desktop's wallpaper player, `xwinwrap` for i3 or `mpvpaper` for
 Sway, from a pinned archive into `~/.local/bin`. chezmoi applies desktop
 config only on a machine with that desktop. Changing the desktop, like
 narrowing the profile, leaves the old packages and files in place. To stop
-managing a desktop, delete the `desktop` key from `config.json`.
+managing a desktop, delete the `desktop` key from `config.json`. WSL has no
+Linux desktop, so the installer refuses both desktops there.
 
 `--color-profile` accepts `tokyo-night`, `everforest-dark`, or `gruvbox-dark`.
 This per-machine setting is independent of the component selection. Missing

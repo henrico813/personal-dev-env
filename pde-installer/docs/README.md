@@ -9,6 +9,7 @@ Maintenance guides use paths and commands relative to `pde-installer/`.
 
 ## How-to Guides
 
+- [Install on Windows with WSL](how-to/install-on-windows-wsl.md)
 - [Configure the OpenCode Goog provider](how-to/configure-opencode-goog.md)
 - [Recover an installation](how-to/recover-an-installation.md)
 - [Update Ubuntu dependencies and tmux](how-to/update-ubuntu-and-tmux.md)

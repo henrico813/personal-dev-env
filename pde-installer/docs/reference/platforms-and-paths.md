@@ -11,6 +11,10 @@
 
 Mutating commands reject UID 0. `doctor` also reports UID 0 as a problem.
 
+On Windows, the installer runs inside WSL 2 Ubuntu with the `terminal`,
+`client` or `full` profile and refuses desktops. See
+[Install on Windows with WSL](../how-to/install-on-windows-wsl.md).
+
 ## Managed Paths
 
 | Path | Purpose |
