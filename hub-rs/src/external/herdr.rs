@@ -118,12 +118,12 @@ impl HerdrCli {
 impl Herdr for HerdrCli {
     fn list_agents(&self) -> Result<Vec<Agent>, HerdrError> {
         let printed = self.run_herdr(&["agent", "list"])?;
-        parse_agent_list(&read_result(&printed)?)
+        parse_agent_list(&read_result(&printed)?, self.machine.as_deref())
     }
 
     fn get_agent(&self, target: &str) -> Result<Agent, HerdrError> {
         let printed = self.run_herdr(&["agent", "get", target])?;
-        parse_agent(&read_result(&printed)?["agent"])
+        parse_agent(&read_result(&printed)?["agent"], self.machine.as_deref())
     }
 
     fn prompt(&self, name: &str, text: &str) -> Result<(), HerdrError> {
@@ -279,9 +279,16 @@ pub struct Agent {
     pub tab_id: String,
     pub workspace_id: String,
     pub focused: bool,
+    /// The pane shows "needs you" for its present state.
+    pub marked: bool,
     /// Herdr's count of state changes, which tells one blocked state
     /// from the next.
     pub state_seq: u64,
+    /// Its working folder and its foreground process's folder, as
+    /// Herdr gives them.
+    pub folders: Vec<PathBuf>,
+    /// The saved machine it runs on, or `None` for this one.
+    pub machine: Option<String>,
 }
 
 /// Herdr's state for an agent.
@@ -438,19 +445,19 @@ fn read_result(printed: &[u8]) -> Result<Value, HerdrError> {
 
 /// Turns `agent list`'s result into agents, leaving out panes where
 /// Herdr found an agent nobody named.
-fn parse_agent_list(result: &Value) -> Result<Vec<Agent>, HerdrError> {
+fn parse_agent_list(result: &Value, machine: Option<&str>) -> Result<Vec<Agent>, HerdrError> {
     let raw_agents = result["agents"]
         .as_array()
         .ok_or_else(|| HerdrError::Failed("Herdr's agent list has no agents".to_owned()))?;
     raw_agents
         .iter()
         .filter(|raw| raw["name"].as_str().is_some_and(|name| !name.is_empty()))
-        .map(parse_agent)
+        .map(|raw| parse_agent(raw, machine))
         .collect()
 }
 
-/// Turns one agent from Herdr's JSON into an `Agent`.
-fn parse_agent(raw: &Value) -> Result<Agent, HerdrError> {
+/// Turns one agent from Herdr's JSON into an `Agent` on `machine`.
+fn parse_agent(raw: &Value, machine: Option<&str>) -> Result<Agent, HerdrError> {
     let status = match raw["agent_status"].as_str() {
         Some("working") => AgentStatus::Working,
         Some("idle") => AgentStatus::Idle,
@@ -472,6 +479,13 @@ fn parse_agent(raw: &Value) -> Result<Agent, HerdrError> {
             (kind, status)
         }
     };
+    let status_word = raw["agent_status"].as_str().unwrap_or_default();
+    let mut folders: Vec<PathBuf> = ["cwd", "foreground_cwd"]
+        .into_iter()
+        .filter_map(|field| raw[field].as_str())
+        .map(PathBuf::from)
+        .collect();
+    folders.dedup();
     Ok(Agent {
         name: read_text(raw, "name")?,
         status,
@@ -483,9 +497,12 @@ fn parse_agent(raw: &Value) -> Result<Agent, HerdrError> {
         focused: raw["focused"]
             .as_bool()
             .ok_or_else(|| make_missing_field_error("focused"))?,
+        marked: raw["state_labels"][status_word].as_str() == Some(NEEDS_YOU),
         state_seq: raw["state_change_seq"]
             .as_u64()
             .ok_or_else(|| make_missing_field_error("state_change_seq"))?,
+        folders,
+        machine: machine.map(str::to_owned),
     })
 }
 
@@ -549,11 +566,13 @@ mod tests {
     /// renamed, or one read from the wrong key, breaks every command
     /// at once. `hub handoff` names the old hub's session and tab from
     /// it, so a misread one sends the session review to the wrong place.
+    /// `hub status` reads the mark, folders and machine to decide what
+    /// may close.
     #[test]
     fn parse_agent_reads_herdr_fields() {
         let answer: Value = serde_json::from_str(AGENT_LIST).unwrap();
 
-        let agent = parse_agent(&answer["result"]["agents"][0]).unwrap();
+        let agent = parse_agent(&answer["result"]["agents"][0], Some("laptop")).unwrap();
 
         assert_eq!(agent.name, "demo-kb-007-impl");
         assert_eq!(agent.status, AgentStatus::Idle);
@@ -563,7 +582,26 @@ mod tests {
         assert_eq!(agent.tab_id, "w1:t3");
         assert_eq!(agent.workspace_id, "w1");
         assert!(!agent.focused);
+        assert!(agent.marked);
         assert_eq!(agent.state_seq, 12);
+        assert_eq!(agent.folders, [PathBuf::from("/home/u/wt/demo-kb-007")]);
+        assert_eq!(agent.machine.as_deref(), Some("laptop"));
+    }
+
+    /// Herdr keeps a label for each state, and a pane shows only the
+    /// label for its present state. Reading a label set for another
+    /// state would show a working agent as `you`, so the hub would send
+    /// the user to a session that needs nothing.
+    #[test]
+    fn parse_agent_marks_only_its_present_state() {
+        let answer: Value = serde_json::from_str(AGENT_LIST).unwrap();
+        // The sample labels only `idle` as needs you.
+        let mut raw = answer["result"]["agents"][0].clone();
+        raw["agent_status"] = Value::from("working");
+
+        let agent = parse_agent(&raw, None).unwrap();
+
+        assert!(!agent.marked);
     }
 
     /// Herdr lists a pane with no name when nobody started its agent by
@@ -573,7 +611,7 @@ mod tests {
     fn parse_agent_list_skips_unnamed_agents() {
         let answer: Value = serde_json::from_str(AGENT_LIST).unwrap();
 
-        let agents = parse_agent_list(&answer["result"]).unwrap();
+        let agents = parse_agent_list(&answer["result"], None).unwrap();
 
         let names: Vec<&str> = agents.iter().map(|agent| agent.name.as_str()).collect();
         assert_eq!(names, ["demo-kb-007-impl"]);
@@ -609,7 +647,7 @@ mod tests {
             },
         ]});
 
-        let agents = parse_agent_list(&result).unwrap();
+        let agents = parse_agent_list(&result, None).unwrap();
 
         let states: Vec<(&str, AgentStatus)> = agents
             .iter()

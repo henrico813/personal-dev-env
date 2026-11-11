@@ -7,9 +7,9 @@ use until this program replaces it.
 
 pde-installer builds this folder on the Development tier and installs
 it as `~/.local/bin/hub-next`, so you can try it beside the Python
-`hub`. So far it has `next`, `send`, `read`, `report`, `inbox`,
-`note`, `brief`, `handoff`, `auto`, `flag`, `unflag`, `alive`, `go`
-and `gather`.
+`hub`. So far it has `status`, `next`, `send`, `read`, `report`,
+`inbox`, `note`, `brief`, `handoff`, `auto`, `flag`, `unflag`,
+`alive`, `go` and `gather`.
 
 ```bash
 make build   # target/release/hub
@@ -32,10 +32,10 @@ code.
 - `hub-next flag` on a working session marks it on idle and done, so
   "needs you" shows once it stops. The Python hub marked the working
   state, which showed "needs you" while the session still worked.
-- `next`, `send`, `read`, `report`, `inbox`, `note`, `brief` and
-  `handoff` take the run folder from `--run DIR`, else from
-  `HUB_RUN`. With neither, or with a folder that does not exist, they
-  exit 2.
+- `status`, `next`, `send`, `read`, `report`, `inbox`, `note`,
+  `brief` and `handoff` take the run folder from `--run DIR`, else
+  from `HUB_RUN`. With neither, or with a folder that does not exist,
+  they exit 2.
 - `read` exits 3, not 2, when the session has no unread report.
   `read --note TEXT --card [KEY]` also adds the note to the card's Log,
   with the key in the session's name or the KEY given. If a step
@@ -84,3 +84,15 @@ code.
   prints the same facts as JSON. It keeps its memory in
   `events.jsonl`, not in `next-seen.json`.
 - `next` does not close or park finished sessions yet.
+- `status` shows each session's lifecycle state in its STATE column,
+  not Herdr's status: `working`, `hub` (waits on the hub), `you`
+  (waits on the user), `kept`, `to-close`, `to-park` or `parked`. The
+  WHY column says why, such as `unread report`, `1 held` or the kept
+  reason. It replaces the CARD, REPORT, SEND and LABEL columns. Above
+  the table it prints the hub's own line, the board line, one count
+  per state and the unread reports. Below it, one `no session:` line
+  names active and review cards that no session works on. This line
+  replaces the second table. `--json` prints the same facts as JSON.
+- `status` looks for unsaved work only in linked worktrees. An agent
+  that works in the main checkout gets no file check there, so its
+  uncommitted files in the main checkout do not keep it.
