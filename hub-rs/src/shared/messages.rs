@@ -20,6 +20,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use super::events::{self, Event, EventKind, Via};
+use super::parking::{self, ParkedRecord};
 use super::run_folder::{self, RunFolder};
 use super::{HubError, Tools};
 use crate::external::cards::{CardKey, Cards};
@@ -81,6 +82,8 @@ pub(crate) struct StoredMessage {
 #[derive(Debug)]
 pub(crate) enum Target {
     Live(Agent),
+    /// A session the hub parked, which a message reopens.
+    Parked(ParkedRecord),
     /// The newest live session of the same card, after a handoff.
     HandedOff(String),
     Gone,
@@ -91,6 +94,8 @@ pub(crate) enum Target {
 pub(crate) enum Delivery {
     Now,
     Hold(HoldReason),
+    /// Holds the message while the parked session reopens.
+    Reopen(ParkedRecord),
     MoveTo(String),
     Gone,
 }
@@ -152,13 +157,15 @@ impl MessageCounts {
     }
 }
 
-/// Decides whether a message goes now, waits or moves. OpenCode and
-/// Claude Code take a message while working, idle or done; other kinds
-/// only when idle or done. A blocked, focused or unknown session
-/// waits, and so does any message behind an older one.
+/// Decides whether a message goes now, waits, reopens its parked
+/// session or moves. OpenCode and Claude Code take a message while
+/// working, idle or done; other kinds only when idle or done. A
+/// blocked, focused or unknown session waits for its message. A
+/// message behind an older one waits too.
 pub(crate) fn choose_delivery(target: &Target, older_waiting: usize) -> Delivery {
     let agent = match target {
         Target::Live(agent) => agent,
+        Target::Parked(record) => return Delivery::Reopen(record.clone()),
         Target::HandedOff(successor) => return Delivery::MoveTo(successor.clone()),
         Target::Gone => return Delivery::Gone,
     };
@@ -174,9 +181,12 @@ pub(crate) fn choose_delivery(target: &Target, older_waiting: usize) -> Delivery
 }
 
 /// Sends each held message whose session can take it, oldest first,
-/// and moves the messages of sessions that handed off. Each session
-/// gets at most one message per check, since the first may block it
-/// and Herdr's prompt returns once it blocks. Stops at the first
+/// reopens parked sessions that have one, and moves the messages of
+/// sessions that handed off. A reopen that fails marks its message not
+/// sent, so a session that cannot reopen never stops `hub next`. Each
+/// session gets at most one message per check. The first message may
+/// block the session, and Herdr's prompt returns as soon as it blocks.
+/// Stops at the first
 /// message that was not sent or is unsure, and returns it. A later
 /// message with the same problem waits for the next `hub next` check,
 /// so each one gets its own line.
@@ -213,6 +223,13 @@ pub(crate) fn deliver_held_messages(
         };
         let target = match known.iter().find(|agent| agent.name == name) {
             Some(agent) => Target::Live(agent.clone()),
+            // Parked records are this machine's own.
+            None if stored.message.machine.is_none() => {
+                match tools.parked.find_parked_record(&name)? {
+                    Some(record) => Target::Parked(record),
+                    None => find_card_successor(tools.cards, &name, known),
+                }
+            }
             None => find_card_successor(tools.cards, &name, known),
         };
         // Each session gets one message per check, so none of its older
@@ -239,6 +256,23 @@ pub(crate) fn deliver_held_messages(
             }
             Delivery::Hold(_) => {
                 waiting_names.insert(name);
+            }
+            Delivery::Reopen(record) => {
+                waiting_names.insert(name);
+                // A tidy pass or another reopen of this session waits.
+                let lock = tools.parked.take_tidy_lock()?;
+                let reopened = parking::reopen_session(tools, run, &record, &lock, now);
+                drop(lock);
+                if let Err(error) = reopened
+                    && let Some(claimed) = claim_message(stored)?
+                {
+                    let reason = match error {
+                        HubError::NotSent { reason, .. } => reason,
+                        other => other.to_string(),
+                    };
+                    let outcome = mark_not_sent(run, claimed, &reason, now)?;
+                    return Ok(Some(outcome));
+                }
             }
             Delivery::MoveTo(successor) => {
                 if let Some(claimed) = claim_message(stored)? {
@@ -372,6 +406,30 @@ pub(crate) fn claim_message(stored: StoredMessage) -> Result<Option<StoredMessag
             source,
         }),
     }
+}
+
+/// Writes a held message and logs it, for `hub next` to send once the
+/// session can take it. A failed log returns `HubError::PartlyDone`,
+/// since the message is already held.
+pub(crate) fn hold_message(
+    run: &RunFolder,
+    name: &str,
+    machine: Option<&str>,
+    text: &str,
+    now: &Zoned,
+) -> Result<(), HubError> {
+    let stored = write_message(run, name, machine, text, SendState::Held, now)?;
+    let held = Event {
+        at: now.timestamp(),
+        kind: EventKind::Held {
+            name: name.to_owned(),
+            id: stored.id,
+        },
+    };
+    events::append_event(run, &held).map_err(|error| HubError::PartlyDone {
+        done: format!("held {name}"),
+        error: Box::new(error),
+    })
 }
 
 /// Writes a new message whole under its state's suffix, with the next

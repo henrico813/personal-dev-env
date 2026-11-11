@@ -5,10 +5,14 @@ use std::time::{Duration, SystemTime};
 
 use hub::commands::next::{NextOptions, run_next};
 use hub::commands::send::{SendRequest, run_send};
+use hub::external::cards::{BoardCounts, CardNote, Stage};
 use hub::external::herdr::{Agent, AgentStatus};
-use serde_json::json;
+use serde_json::{Value, json};
 
-use common::{OpenCodeRow, TestTools, make_agent, make_time, read_events, write_opencode_db};
+use common::{
+    OpenCodeRow, TestTools, make_agent, make_time, read_events, write_opencode_db,
+    write_opencode_session,
+};
 
 /// Runs one `hub next` check and returns its line.
 fn check_once(test_tools: &TestTools) -> String {
@@ -34,6 +38,31 @@ fn write_old_report(test_tools: &TestTools, name: &str) {
         .unwrap()
         .set_modified(a_minute_ago)
         .unwrap();
+}
+
+/// Deletes `.minute-pass.json`, so the next check runs the minute pass
+/// at once instead of a minute later.
+fn forget_minute_pass(test_tools: &TestTools) {
+    fs::remove_file(test_tools.run_path().join(".minute-pass.json")).unwrap();
+}
+
+/// Adds an idle worker whose report was read, on a card at `stage`,
+/// working from a folder outside any repository, so git finds nothing
+/// unsaved.
+fn add_finished_worker(test_tools: &mut TestTools, name: &str, key: &str, stage: Stage) {
+    let folder = test_tools.path().to_owned();
+    test_tools.herdr.agents.push(Agent {
+        session_id: Some(format!("ses_{name}")),
+        folders: vec![folder],
+        ..make_agent(name, AgentStatus::Idle)
+    });
+    test_tools.cards.stages.insert(key.to_owned(), stage);
+    test_tools
+        .cards
+        .card_notes
+        .insert(key.to_owned(), CardNote::default());
+    let archive = format!("report-{name}.2214.read");
+    fs::write(test_tools.run_path().join(archive), "PR opened.\n").unwrap();
 }
 
 /// Makes the hub's own pane `w1:kanban-hub` hold session `ses_hub`,
@@ -159,4 +188,184 @@ fn run_next_records_nothing_once_replaced() {
 
     assert_eq!(replaced, "replaced by a newer hub next");
     assert_eq!(next_check, "report notes-fix (hub -)");
+}
+
+/// A worker past 150k must be asked once to write its handoff, or it
+/// runs out of context mid-task. Asking on every minute pass interrupts
+/// the handoff it is writing.
+#[test]
+fn run_next_asks_worker_handoff_once() {
+    let mut test_tools = TestTools::new();
+    test_tools.herdr.agents = vec![Agent {
+        session_id: Some("ses_007".to_owned()),
+        ..make_agent("demo-kb-007-impl", AgentStatus::Working)
+    }];
+    let step = OpenCodeRow {
+        session: "ses_007",
+        kind: "assistant",
+        updated_ms: 0,
+        data: json!({"tokens": {"input": 152_000, "cache": {"read": 0, "write": 0}}}),
+    };
+    write_opencode_db(&test_tools.opencode_path(), &[step]);
+
+    check_once(&test_tools);
+    forget_minute_pass(&test_tools);
+    check_once(&test_tools);
+
+    let ask = "Your context is about 152k. Write your handoff with herdr-handoff now, \
+               put its path in your report, and end your turn.";
+    assert_eq!(
+        *test_tools.herdr.prompts.borrow(),
+        [("demo-kb-007-impl".to_owned(), ask.to_owned())]
+    );
+    let asked: Vec<Value> = read_events(&test_tools.run_path())
+        .into_iter()
+        .filter(|event| event["event"] == "handoff_asked")
+        .collect();
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0]["session"], "ses_007");
+}
+
+/// The hub must hear once when the board goes over its limit, so it
+/// starts no new work, and again after it fell back and rose again.
+/// Telling it on every check costs a hub turn each time, and never
+/// telling it again lets the board pile up a second time. A board
+/// already over its limit when the run starts is not a crossing, so
+/// the first check stays quiet.
+#[test]
+fn run_next_wakes_once_per_board_crossing() {
+    let mut test_tools = TestTools::new();
+    let board = |busy| BoardCounts {
+        active: busy,
+        review: 0,
+        busy,
+        limit: 8,
+    };
+    test_tools.cards.board = Some(board(25));
+
+    let first = check_once(&test_tools);
+    forget_minute_pass(&test_tools);
+    let still_over = check_once(&test_tools);
+    test_tools.cards.board = Some(board(5));
+    forget_minute_pass(&test_tools);
+    let under = check_once(&test_tools);
+    test_tools.cards.board = Some(board(25));
+    forget_minute_pass(&test_tools);
+    let over_again = check_once(&test_tools);
+
+    assert_eq!(first, "timeout (hub -)");
+    assert_eq!(still_over, "timeout (hub -)");
+    assert_eq!(under, "timeout (hub -)");
+    assert_eq!(over_again, "board over its limit: 25/8 (hub -)");
+}
+
+/// A message the old hub left as `send-NAME.json` is never sent by
+/// this hub, so the hub must hear of it to send it again. Printing it
+/// on every check costs the hub a turn every 5 seconds.
+#[test]
+fn run_next_prints_old_send_file_once() {
+    let test_tools = TestTools::new();
+    let old = test_tools.run_path().join("send-docs-fix.json");
+    fs::write(&old, "{}").unwrap();
+
+    let first = check_once(&test_tools);
+    let second = check_once(&test_tools);
+
+    assert_eq!(first, format!("old send file: {} (hub -)", old.display()));
+    assert_eq!(second, "timeout (hub -)");
+}
+
+/// `hub next` must name finished sessions and leave them open, so the
+/// hub decides when to run `hub clean`. A minute pass that closed them
+/// itself once closed a worker that had moved to another card and asked
+/// for a pull request approval, and the user waited on a request that
+/// no longer existed.
+#[test]
+fn run_next_only_lists_finished_sessions() {
+    let mut test_tools = TestTools::new();
+    add_finished_worker(
+        &mut test_tools,
+        "demo-kb-001-impl",
+        "DEMO-KB-001",
+        Stage::Accepted,
+    );
+    add_finished_worker(
+        &mut test_tools,
+        "demo-kb-007-impl",
+        "DEMO-KB-007",
+        Stage::Review,
+    );
+
+    let first = check_once(&test_tools);
+    let second = check_once(&test_tools);
+
+    assert_eq!(
+        first,
+        "to-close demo-kb-001-impl: DEMO-KB-001 accepted; run hub clean"
+    );
+    assert_eq!(
+        second,
+        "to-park demo-kb-007-impl: DEMO-KB-007 review; run hub clean"
+    );
+    assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
+    assert!(test_tools.cards.links.borrow().is_empty());
+    assert!(!test_tools.state_folder().join("hub/parked").exists());
+}
+
+/// The hub must hear about a finished session once. Listing it again on
+/// every minute pass costs the hub a turn each minute until it runs
+/// `hub clean`.
+#[test]
+fn run_next_lists_each_finished_session_once() {
+    let mut test_tools = TestTools::new();
+    add_finished_worker(
+        &mut test_tools,
+        "demo-kb-001-impl",
+        "DEMO-KB-001",
+        Stage::Accepted,
+    );
+
+    let listed = check_once(&test_tools);
+    forget_minute_pass(&test_tools);
+    let next_pass = check_once(&test_tools);
+
+    assert_eq!(
+        listed,
+        "to-close demo-kb-001-impl: DEMO-KB-001 accepted; run hub clean"
+    );
+    assert_eq!(next_pass, "timeout (hub -)");
+}
+
+/// A finished worker over the handoff limit gets no handoff ask. The
+/// ask makes a worker the user is reviewing write a handoff nobody
+/// needs, and once `hub clean` parks it, the held ask reopens it.
+#[test]
+fn run_next_skips_handoff_of_finished_worker() {
+    let mut test_tools = TestTools::new();
+    add_finished_worker(
+        &mut test_tools,
+        "demo-kb-007-impl",
+        "DEMO-KB-007",
+        Stage::Review,
+    );
+    let folder = test_tools.path().to_owned();
+    let step = OpenCodeRow {
+        session: "ses_demo-kb-007-impl",
+        kind: "assistant",
+        updated_ms: 0,
+        data: json!({"tokens": {"input": 152_000, "cache": {"read": 0, "write": 0}}}),
+    };
+    write_opencode_db(&test_tools.opencode_path(), &[step]);
+    write_opencode_session(&test_tools.opencode_path(), "ses_demo-kb-007-impl", &folder);
+
+    let first = check_once(&test_tools);
+    forget_minute_pass(&test_tools);
+    check_once(&test_tools);
+
+    assert_eq!(
+        first,
+        "to-park demo-kb-007-impl: DEMO-KB-007 review; run hub clean"
+    );
+    assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
+    assert!(test_tools.herdr.prompts.borrow().is_empty());
 }

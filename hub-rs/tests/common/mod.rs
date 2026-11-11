@@ -1,18 +1,19 @@
 // Each test file uses only some of these helpers.
 #![allow(dead_code)]
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
 use hub::external::cards::{BoardCounts, CardError, CardKey, CardNote, Cards, Stage};
 use hub::external::herdr::{
-    Agent, AgentKind, AgentStart, AgentStatus, Herdr, HerdrCode, HerdrError, NewPlace, PlaceIds,
-    Workspace,
+    Agent, AgentKind, AgentStart, AgentStatus, Herdr, HerdrCode, HerdrError, NewPlace, Pane,
+    PlaceIds, ProcessInfo, Workspace,
 };
 use hub::external::opencode::OpenCodeDb;
 use hub::external::requests::RequestFolder;
@@ -24,14 +25,24 @@ use rusqlite::Connection;
 use serde_json::Value;
 
 /// Herdr, as the `Herdr` trait, with its agents and workspaces in
-/// memory. It records each prompt, Enter press, mark, clear, new tab,
-/// started agent, focus and workspace move it is asked for.
+/// memory. It records each prompt, Enter press, mark, clear, new
+/// workspace, new tab, started agent, closed tab, focus and workspace
+/// move it is asked for. Its panes are the agents' panes and those
+/// `on_list_panes` adds or changes, and an agent whose tab was closed
+/// is gone.
 #[derive(Default)]
 pub struct InMemoryHerdr {
     pub agents: Vec<Agent>,
     /// Agents as they are once any prompt was tried, each in place of
     /// the agent with its name, such as one the user focused meanwhile.
     pub after_prompt: Vec<Agent>,
+    /// Agents as they are once any agent was started, in the same way,
+    /// such as the session a reopen resumed. Two agents with one name
+    /// show one per `get_agent` call after the start, and the last one
+    /// stays, as when Herdr learns a session ID late.
+    pub after_start: Vec<Agent>,
+    /// How many `get_agent` calls came after a start.
+    pub start_reads: Cell<usize>,
     /// What `read_screen` shows, by agent name. Others show nothing.
     pub screens: BTreeMap<String, String>,
     /// The double each `on_machine` label returns.
@@ -39,6 +50,14 @@ pub struct InMemoryHerdr {
     /// Runs inside each `prompt` call, as another process acting
     /// meanwhile.
     pub on_prompt: Option<Box<dyn Fn()>>,
+    /// Runs inside each `list_panes` call, as another process acting
+    /// between the tidy pass's verdicts and its actions. The panes it
+    /// returns are added, such as a shell the user opened meanwhile.
+    /// A returned pane replaces the listed pane with its ID.
+    pub on_list_panes: Option<Box<dyn Fn() -> Vec<Pane>>>,
+    /// The panes whose shell runs nothing. `read_process_info` names the
+    /// test process as their shell, and it starts no job of its own.
+    pub quiet_shells: Vec<String>,
     /// The workspaces in sidebar order, top first.
     pub workspaces: Vec<Workspace>,
     /// Each `mark_needs_you` call, as its pane ID and states.
@@ -55,10 +74,14 @@ pub struct InMemoryHerdr {
     pub prompts: RefCell<Vec<(String, String)>>,
     /// The agent name of each `press_enter` call.
     pub pressed: RefCell<Vec<String>>,
+    /// Each `create_workspace` call.
+    pub created_workspaces: RefCell<Vec<NewPlace>>,
     /// Each `create_tab` call, as the workspace ID and the place.
     pub created_tabs: RefCell<Vec<(String, NewPlace)>>,
     /// Each `start_agent` call.
     pub started: RefCell<Vec<AgentStart>>,
+    /// The tab ID of each `close_tab` call.
+    pub closed_tabs: RefCell<Vec<String>>,
     /// Failures the next call of a method returns, by method name.
     pub failures: RefCell<Vec<(&'static str, HerdrError)>>,
 }
@@ -71,15 +94,31 @@ impl InMemoryHerdr {
     }
 
     /// Returns the agents as they are now, with `after_prompt` applied
-    /// once a prompt was tried.
+    /// once a prompt was tried, `after_start` once an agent was started,
+    /// and the agents of closed tabs left out.
     fn current_agents(&self) -> Vec<Agent> {
         let mut agents = self.agents.clone();
+        let mut changes = Vec::new();
         if !self.prompts.borrow().is_empty() {
-            for changed in &self.after_prompt {
-                agents.retain(|agent| agent.name != changed.name);
-                agents.push(changed.clone());
+            changes.extend(&self.after_prompt);
+        }
+        if !self.started.borrow().is_empty() {
+            let read = self.start_reads.get();
+            let mut shown: BTreeMap<&str, usize> = BTreeMap::new();
+            for agent in &self.after_start {
+                let index = shown.entry(agent.name.as_str()).or_default();
+                if *index <= read {
+                    changes.push(agent);
+                }
+                *index += 1;
             }
         }
+        for changed in changes {
+            agents.retain(|agent| agent.name != changed.name);
+            agents.push(changed.clone());
+        }
+        let closed = self.closed_tabs.borrow();
+        agents.retain(|agent| !closed.contains(&agent.tab_id));
         agents
     }
 
@@ -101,7 +140,11 @@ impl Herdr for InMemoryHerdr {
 
     fn get_agent(&self, target: &str) -> Result<Agent, HerdrError> {
         self.take_failure("get_agent")?;
-        self.current_agents()
+        let agents = self.current_agents();
+        if !self.started.borrow().is_empty() {
+            self.start_reads.set(self.start_reads.get() + 1);
+        }
+        agents
             .into_iter()
             .find(|agent| agent.name == target || agent.pane_id == target)
             .ok_or_else(|| HerdrError::Refused {
@@ -149,9 +192,51 @@ impl Herdr for InMemoryHerdr {
         Ok(())
     }
 
+    fn list_panes(&self) -> Result<Vec<Pane>, HerdrError> {
+        self.take_failure("list_panes")?;
+        let added = match &self.on_list_panes {
+            Some(on_list_panes) => on_list_panes(),
+            None => Vec::new(),
+        };
+        let mut panes: Vec<Pane> = self
+            .current_agents()
+            .into_iter()
+            .map(|agent| Pane {
+                pane_id: agent.pane_id,
+                tab_id: agent.tab_id,
+                focused: agent.focused,
+                has_agent: true,
+            })
+            .collect();
+        panes.retain(|pane| !added.iter().any(|new| new.pane_id == pane.pane_id));
+        panes.extend(added);
+        Ok(panes)
+    }
+
+    /// Fails for a pane not in `quiet_shells`.
+    fn read_process_info(&self, pane_id: &str) -> Result<ProcessInfo, HerdrError> {
+        if !self.quiet_shells.iter().any(|quiet| quiet == pane_id) {
+            return Err(HerdrError::Failed(format!("no shell in pane {pane_id}")));
+        }
+        let shell_pid = std::process::id();
+        Ok(ProcessInfo {
+            shell_pid,
+            foreground_group: shell_pid,
+        })
+    }
+
     fn list_workspaces(&self) -> Result<Vec<Workspace>, HerdrError> {
         self.take_failure("list_workspaces")?;
         Ok(self.workspaces.clone())
+    }
+
+    /// Answers with root pane `new:p-<label>`.
+    fn create_workspace(&self, place: &NewPlace) -> Result<PlaceIds, HerdrError> {
+        self.take_failure("create_workspace")?;
+        self.created_workspaces.borrow_mut().push(place.clone());
+        Ok(PlaceIds {
+            root_pane_id: format!("new:p-{}", place.label),
+        })
     }
 
     /// Answers with root pane `<workspace>:p-<label>`.
@@ -168,6 +253,12 @@ impl Herdr for InMemoryHerdr {
     fn start_agent(&self, start: &AgentStart) -> Result<(), HerdrError> {
         self.take_failure("start_agent")?;
         self.started.borrow_mut().push(start.clone());
+        Ok(())
+    }
+
+    fn close_tab(&self, tab_id: &str) -> Result<(), HerdrError> {
+        self.take_failure("close_tab")?;
+        self.closed_tabs.borrow_mut().push(tab_id.to_owned());
         Ok(())
     }
 
@@ -231,8 +322,20 @@ impl Herdr for &InMemoryHerdr {
         (**self).clear_marks(pane_id)
     }
 
+    fn list_panes(&self) -> Result<Vec<Pane>, HerdrError> {
+        (**self).list_panes()
+    }
+
+    fn read_process_info(&self, pane_id: &str) -> Result<ProcessInfo, HerdrError> {
+        (**self).read_process_info(pane_id)
+    }
+
     fn list_workspaces(&self) -> Result<Vec<Workspace>, HerdrError> {
         (**self).list_workspaces()
+    }
+
+    fn create_workspace(&self, place: &NewPlace) -> Result<PlaceIds, HerdrError> {
+        (**self).create_workspace(place)
     }
 
     fn create_tab(&self, workspace_id: &str, place: &NewPlace) -> Result<PlaceIds, HerdrError> {
@@ -241,6 +344,10 @@ impl Herdr for &InMemoryHerdr {
 
     fn start_agent(&self, start: &AgentStart) -> Result<(), HerdrError> {
         (**self).start_agent(start)
+    }
+
+    fn close_tab(&self, tab_id: &str) -> Result<(), HerdrError> {
+        (**self).close_tab(tab_id)
     }
 
     fn focus_agent(&self, name: &str) -> Result<(), HerdrError> {
@@ -258,7 +365,7 @@ impl Herdr for &InMemoryHerdr {
 
 /// The `card` command, as the `Cards` trait, with the board, the
 /// stages, the ready cards and what `card show` gives in memory. It
-/// records each note it is asked to add.
+/// records each note it is asked to add and each session it links.
 #[derive(Default)]
 pub struct InMemoryCards {
     /// Each card's stage, as `card list` gives it.
@@ -274,6 +381,14 @@ pub struct InMemoryCards {
     pub notes: RefCell<Vec<(String, String)>>,
     /// When set, `add_note` fails with this message and records nothing.
     pub note_error: Option<String>,
+    /// Each `link_session` call, as the card key and the agent name.
+    pub links: RefCell<Vec<(String, String)>>,
+    /// When set, `link_session` fails with this message and records
+    /// nothing.
+    pub link_error: Option<String>,
+    /// Runs inside each `link_session` call that succeeds, as another
+    /// process acting while the card is linked.
+    pub on_link: Option<Box<dyn Fn()>>,
     /// When set, `list_stages` and `read_card` fail with this message,
     /// as `card` does without a vault.
     pub read_error: Option<String>,
@@ -326,6 +441,19 @@ impl Cards for InMemoryCards {
             .push((key.as_str().to_owned(), text.to_owned()));
         Ok(())
     }
+
+    fn link_session(&self, key: &CardKey, agent_name: &str) -> Result<(), CardError> {
+        if let Some(message) = &self.link_error {
+            return Err(CardError::Failed(message.clone()));
+        }
+        self.links
+            .borrow_mut()
+            .push((key.as_str().to_owned(), agent_name.to_owned()));
+        if let Some(on_link) = &self.on_link {
+            on_link();
+        }
+        Ok(())
+    }
 }
 
 /// Every external system for a command test. It holds the doubles and a
@@ -376,6 +504,7 @@ impl TestTools {
             parked: &self.parked,
             own_pane: self.own_pane.as_deref(),
             state_folder: &self.state_folder,
+            reopen_poll: Duration::ZERO,
         }
     }
 
@@ -442,6 +571,24 @@ pub fn write_opencode_db(path: &Path, rows: &[OpenCodeRow<'_>]) {
     }
 }
 
+/// Adds a row to the OpenCode database's `session` table at `path`,
+/// making the table first when it is missing.
+pub fn write_opencode_session(path: &Path, session: &str, directory: &Path) {
+    let database = Connection::open(path).unwrap();
+    database
+        .execute(
+            "create table if not exists session (id text primary key, directory text)",
+            [],
+        )
+        .unwrap();
+    database
+        .execute(
+            "insert into session values (?1, ?2)",
+            rusqlite::params![session, directory.to_string_lossy()],
+        )
+        .unwrap();
+}
+
 /// A fixed local time, such as `2026-11-11T22:14:00+00:00[UTC]`.
 pub fn make_time(text: &str) -> Zoned {
     text.parse().unwrap()
@@ -483,11 +630,12 @@ pub fn make_refusal(code: HerdrCode) -> HerdrError {
     }
 }
 
-/// Workspaces with these IDs, in this sidebar order.
+/// Workspaces with these IDs and no labels, in this sidebar order.
 pub fn make_workspaces(ids: &[&str]) -> Vec<Workspace> {
     ids.iter()
         .map(|id| Workspace {
             workspace_id: (*id).to_owned(),
+            label: String::new(),
         })
         .collect()
 }

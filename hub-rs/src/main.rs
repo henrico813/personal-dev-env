@@ -15,7 +15,7 @@ use hub::commands::next::NextOptions;
 use hub::commands::reports::{CardChoice, ReadRequest};
 use hub::commands::send::SendRequest;
 use hub::commands::{
-    Outcome, alive, auto, brief, flag, handoff, next, reports, send, sidebar, status,
+    Outcome, alive, auto, brief, clean, flag, handoff, next, reports, send, sidebar, status,
 };
 use hub::external::cards::CardCli;
 use hub::external::herdr::HerdrCli;
@@ -28,6 +28,9 @@ use jiff::Zoned;
 /// How often `hub next` checks for news, and `hub handoff` for the
 /// next hub's first reply, when `HUB_POLL_SECONDS` is not set.
 const DEFAULT_POLL: Duration = Duration::from_secs(5);
+
+/// The wait between reads of a reopened agent's session ID.
+const REOPEN_POLL: Duration = Duration::from_secs(1);
 
 /// Parses the command line, runs the command, prints its lines or its
 /// error, and returns its exit code.
@@ -91,6 +94,7 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         parked: &parked,
         own_pane: own_pane.as_deref(),
         state_folder: &state_folder,
+        reopen_poll: REOPEN_POLL,
     };
     let hub_run = env::var_os("HUB_RUN");
     let find_run = |run: &RunArg| cli::find_run_folder(run.run.as_deref(), hub_run.as_deref());
@@ -170,6 +174,10 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
             })?;
             handoff::run_handoff(&tools, &run, name, handoff, &cwd, &now, poll)
         }
+        Command::Clean { run, dry_run } => {
+            clean::run_clean(&tools, &find_run(run)?, *dry_run, &now)
+        }
+        Command::Park { run, name } => clean::run_park(&tools, &find_run(run)?, name, &now),
         Command::Auto { step } => match step {
             AutoStep::Ready { run } => auto::run_auto_ready(&tools, &find_run(run)?),
             AutoStep::Check { run } => auto::run_auto_check(&tools, &find_run(run)?),

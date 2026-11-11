@@ -25,6 +25,9 @@ pub(crate) struct CollectedFacts {
     pub unread: Vec<String>,
     /// Active and review cards with no live or parked session.
     pub no_session: Vec<(CardKey, Stage)>,
+    /// The names of parked records whose session is live again, left by
+    /// a failed close or a reopen. The tidy pass deletes them.
+    pub live_records: Vec<String>,
     /// One line per failed source, such as `cards: ...`.
     pub problems: Vec<String>,
 }
@@ -57,12 +60,11 @@ pub(crate) fn collect_session_facts(
         .filter(|agent| Some(agent.pane_id.as_str()) != tools.own_pane)
         .collect();
     let live_names: BTreeSet<&str> = agents.iter().map(|agent| agent.name.as_str()).collect();
-    let parked: Vec<ParkedRecord> = tools
+    let (live_records, parked): (Vec<ParkedRecord>, Vec<ParkedRecord>) = tools
         .parked
         .list_parked_records()?
         .into_iter()
-        .filter(|record| !live_names.contains(record.name.as_str()))
-        .collect();
+        .partition(|record| live_names.contains(record.name.as_str()));
     let (stages, stages_failed) = match tools.cards.list_stages() {
         Ok(stages) => (stages, false),
         Err(error) => {
@@ -250,6 +252,7 @@ pub(crate) fn collect_session_facts(
         sessions,
         unread: reported.unread.into_iter().collect(),
         no_session,
+        live_records: live_records.into_iter().map(|record| record.name).collect(),
         problems,
     })
 }
@@ -385,7 +388,7 @@ fn has_newer_live_session(
 
 /// Tells whether one of the requests came from the agent's pane or
 /// session.
-fn match_open_request(agent: &Agent, requests: &[PrRequest]) -> bool {
+pub(crate) fn match_open_request(agent: &Agent, requests: &[PrRequest]) -> bool {
     requests.iter().any(|request| {
         request.pane_id.as_deref() == Some(agent.pane_id.as_str())
             || (request.session_id.is_some() && request.session_id == agent.session_id)

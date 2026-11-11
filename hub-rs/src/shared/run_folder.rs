@@ -2,20 +2,24 @@
 //! reports, notes and the watcher files. Read `RunFolder` first. Every
 //! whole-file write goes through `write_file_whole`.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::time::{Duration, SystemTime};
 
-use jiff::Zoned;
+use jiff::{Timestamp, Zoned};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 
 use super::{AgentName, HubError};
 
 /// The model in `rules.md`, written as `--model '<provider>/<model>#<effort>'`.
 static RULES_MODEL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"--model '([^']+)'").unwrap());
+
+/// The file that keeps the last minute pass's mark.
+const MINUTE_MARK_FILE: &str = ".minute-pass.json";
 
 /// One unread `report-NAME.md`.
 #[derive(Clone, Debug)]
@@ -32,6 +36,29 @@ pub(crate) struct ReportFile {
 pub(crate) struct ReportedNames {
     pub unread: BTreeSet<String>,
     pub any: BTreeSet<String>,
+}
+
+/// When the last minute pass ran, and what it saw, saved in
+/// `.minute-pass.json` so a restarted `hub next` keeps the limit.
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct MinuteMark {
+    pub at: Timestamp,
+    /// Each agent's Herdr state change count, by name.
+    pub state_seqs: BTreeMap<String, u64>,
+    /// How many `read` events the log held.
+    pub read_count: usize,
+    /// The `to-close` and `to-park` sessions the pass found.
+    pub finished: Vec<FinishedSession>,
+}
+
+/// A session the minute pass found `to-close` or `to-park`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct FinishedSession {
+    pub name: String,
+    /// `to-close` or `to-park`.
+    pub state: String,
+    /// Why, as `hub clean` prints it, such as `DEMO-KB-007 accepted`.
+    pub why: String,
 }
 
 /// Holds `.watcher.lock` while a `hub next` runs. Dropping it, or the
@@ -239,6 +266,23 @@ impl RunFolder {
         let rules = self.read_optional_file("rules.md")?;
         let last = RULES_MODEL.captures_iter(&rules).last();
         Ok(last.map(|found| found[1].to_owned()))
+    }
+
+    /// Returns the last minute mark, or `None` before the first pass or
+    /// when the file does not parse.
+    pub(crate) fn read_minute_mark(&self) -> Result<Option<MinuteMark>, HubError> {
+        let text = self.read_file_if_exists(MINUTE_MARK_FILE)?;
+        Ok(text.and_then(|text| serde_json::from_str(&text).ok()))
+    }
+
+    /// Writes the minute mark whole.
+    pub(crate) fn write_minute_mark(&self, mark: &MinuteMark) -> Result<(), HubError> {
+        let path = self.path.join(MINUTE_MARK_FILE);
+        let text = serde_json::to_string(mark).map_err(|error| HubError::File {
+            path: path.clone(),
+            source: error.into(),
+        })?;
+        write_file_whole(&path, &text)
     }
 
     /// Writes this process's ID to `.watcher-pid`, which tells an
