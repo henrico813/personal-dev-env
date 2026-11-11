@@ -2,7 +2,7 @@
 
 ## Checkout Selection
 
-Every command needs the repository root. Resolution order is:
+Every command except `version` needs the repository root. Resolution order is:
 
 1. `--repo-root PATH`
 2. `PDE_REPO_ROOT`
@@ -114,6 +114,24 @@ OWNER  ITEM  REQUESTED  INSTALLED  STATUS
 
 Status words vary by owner. Common values include `missing`, `installed`,
 `current`, `outdated`, `drifted`, and `unavailable`.
+
+### `pde-installer version`
+
+Prints the commit, branch, and UTC time of the last install on this machine
+that put every component in place. It reads them from
+`~/.local/state/pde/install.json`:
+
+```text
+commit 3f9c2e1a...
+branch main
+installed 2026-11-10T08:30:00Z
+```
+
+Each real install writes the file after every component is in place; `--dry-run`
+writes nothing. A detached checkout records `HEAD` as its branch, and a field
+that git cannot read records `unknown`. The record does not show uncommitted
+changes in the checkout. `version` needs no checkout and works from any folder.
+With no record it exits with an error that says to run `pde-installer install`.
 
 ## Global Option
 

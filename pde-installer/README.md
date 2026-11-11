@@ -26,6 +26,7 @@ pde-installer install terminal --color-profile everforest-dark --dry-run
 pde-installer install terminal --color-profile everforest-dark
 pde-installer doctor
 pde-installer list
+pde-installer version
 ```
 
 The installer does not clone or update the checkout. It finds the checkout from

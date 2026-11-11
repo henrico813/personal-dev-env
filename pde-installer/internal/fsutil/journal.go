@@ -463,7 +463,7 @@ func (j *Journal) persist() error {
 	if err != nil {
 		return fmt.Errorf("encode journal: %w", err)
 	}
-	return atomicWriteJSON(j.path, append(data, '\n'))
+	return WriteFileAtomic(j.path, append(data, '\n'))
 }
 
 func (j *Journal) removeJournal() error {
@@ -540,7 +540,7 @@ func writeCommitGroup(journals []*Journal) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := atomicWriteJSON(path, append(data, '\n')); err != nil {
+	if err := WriteFileAtomic(path, append(data, '\n')); err != nil {
 		return "", err
 	}
 	return path, nil
@@ -613,7 +613,9 @@ func loadJournal(home, directory, path string) (*Journal, error) {
 	return &Journal{Home: home, directory: directory, path: path, state: state}, nil
 }
 
-func atomicWriteJSON(path string, data []byte) error {
+// Replaces path with data through a temporary file and a rename, so a crash
+// leaves the old file or the new one. The new file has mode 0600.
+func WriteFileAtomic(path string, data []byte) error {
 	directory := filepath.Dir(path)
 	temporary, err := os.CreateTemp(directory, ".journal-write-")
 	if err != nil {
