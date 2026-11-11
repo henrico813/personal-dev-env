@@ -76,6 +76,10 @@ would go to. Mine other sessions only when the user asks, and only
 the sessions they name; mining a day of sessions has cost over 13M
 tokens.
 
+Number the lessons after the proposals, without starting again at 1.
+After three proposals, the first lesson is 4. That way each number in
+the user's reply means one item.
+
 ### 4. Local models
 
 The user wants local models able to run the whole workflow,
@@ -152,9 +156,10 @@ Local model section.
     Proposals
     1. <change> in <where it lives>. Saves <n> tokens (measured).
     2. ...
+    3. ...
 
     Lessons to save, pick by number
-    3. <rule> -> <skill>
+    4. <rule> -> <skill>
 
     Fallback: <the role least ready for a local model, and its fix>.
     Efficiency: <the largest step a local model could take, and its
@@ -164,9 +169,6 @@ Local model section.
     roadmap-run's references/prompts.md.
 
     Reply with the numbers to apply.
-
-Proposals and lessons share one run of numbers through the whole
-review, so each number in a reply like "1, 4" points to a single item.
 
 ## Guardrails
 
@@ -204,6 +206,7 @@ review, and the user can move it into this list by a pull request.
 - At most three proposals, each with a saving marked measured or
   estimate, and where it would live.
 - No proposal is on the Do not propose list or a lesson.
+- Lessons are numbered after the proposals.
 - The review has a Fallback map, an Efficiency map and a Trials
   section, covering every role the session used.
 - A proposal or a lesson helps a local model take over a workflow,
