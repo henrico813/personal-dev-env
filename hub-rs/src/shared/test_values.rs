@@ -45,6 +45,7 @@ pub(crate) fn make_facts(name: &str) -> SessionFacts {
             stage: Stage::Review,
             needs_you_open: false,
             newer_session_live: false,
+            from_report: false,
         }),
         card_unknown: false,
         reports: ReportFacts {
@@ -55,6 +56,7 @@ pub(crate) fn make_facts(name: &str) -> SessionFacts {
         messages: MessageCounts::default(),
         unsaved: Unsaved::Clean,
         approval_pending: false,
+        filed_request_recently: false,
         is_predecessor: false,
         context_tokens: None,
     }

@@ -1,10 +1,12 @@
 mod common;
 
-use std::fs;
+use std::fs::{self, File};
+use std::time::{Duration, SystemTime};
 
 use hub::commands::status::run_status;
 use hub::external::cards::{CardNote, Stage};
 use hub::external::herdr::{Agent, AgentStatus};
+use jiff::{SignedDuration, Timestamp};
 use serde_json::{Value, json};
 
 use common::{TestTools, make_agent, make_card_repo, make_time};
@@ -262,6 +264,131 @@ fn run_status_bad_request_file_keeps_sessions() {
     assert_eq!(
         status["problems"],
         json!(["requests: 1 files did not parse"])
+    );
+}
+
+/// A worker can finish its own card and go on to another, such as a
+/// second pull request to merge. Its newest report names that card,
+/// here one in review whose pull request waits on the user. While that
+/// card is draft, ready, active or in review, the session must not be
+/// `to-close` or `to-park`, or the tidy pass closes a worker in the
+/// middle of its task. An older report names only the done card, so
+/// reading the wrong report closes the worker.
+#[test]
+fn run_status_follows_card_in_newest_report() {
+    let mut test_tools = TestTools::new();
+    // A folder outside any repository, where git finds nothing to keep.
+    let plain_folder = test_tools.path().to_owned();
+    test_tools.herdr.agents = vec![Agent {
+        folders: vec![plain_folder],
+        ..make_agent("demo-kb-082-rebase", AgentStatus::Idle)
+    }];
+    test_tools.cards.stages = [
+        ("DEMO-KB-082".to_owned(), Stage::Accepted),
+        ("DEMO-KB-007".to_owned(), Stage::Review),
+    ]
+    .into();
+    test_tools
+        .cards
+        .card_notes
+        .insert("DEMO-KB-007".to_owned(), CardNote::default());
+    // The older report, an hour before the newer one.
+    let run_path = test_tools.run_path();
+    let older = run_path.join("report-demo-kb-082-rebase.2110.read");
+    fs::write(&older, "DEMO-KB-082 rebased and merged.\n").unwrap();
+    File::options()
+        .write(true)
+        .open(&older)
+        .unwrap()
+        .set_modified(SystemTime::now() - Duration::from_secs(60 * 60))
+        .unwrap();
+    fs::write(
+        run_path.join("report-demo-kb-082-rebase.2210.read"),
+        "DEMO-KB-007: merge request sent, one more to go.\n",
+    )
+    .unwrap();
+
+    let status = read_status_json(&test_tools);
+
+    assert_eq!(
+        list_rows(&status),
+        [(
+            "demo-kb-082-rebase".to_owned(),
+            "hub".to_owned(),
+            "no reply yet".to_owned(),
+        )]
+    );
+    assert_eq!(status["sessions"][0]["card"], "DEMO-KB-007");
+}
+
+/// pde-gh-write marks a merge request `ran` seconds after the user
+/// approves it, and the worker often files its next request soon
+/// after. A session whose request changed in the last hour must stay
+/// `kept`, or the tidy pass closes it between two requests and the
+/// next approval has no session. The hour counts from the last change,
+/// since the user may approve hours after the worker filed. A request
+/// last changed two hours ago no longer keeps its session, so finished
+/// tabs still close.
+#[test]
+fn run_status_keeps_session_with_recent_request() {
+    let mut test_tools = TestTools::new();
+    // A folder outside any repository, where git finds nothing to keep.
+    let plain_folder = test_tools.path().to_owned();
+    test_tools.herdr.agents = vec![
+        Agent {
+            folders: vec![plain_folder.clone()],
+            ..make_agent("demo-kb-007-impl", AgentStatus::Idle)
+        },
+        Agent {
+            folders: vec![plain_folder],
+            ..make_agent("demo-kb-008-impl", AgentStatus::Idle)
+        },
+    ];
+    test_tools.cards.stages = [
+        ("DEMO-KB-007".to_owned(), Stage::Accepted),
+        ("DEMO-KB-008".to_owned(), Stage::Accepted),
+    ]
+    .into();
+    let requests = test_tools.state_folder().join("pr-write");
+    fs::create_dir(&requests).unwrap();
+    let filed_age = SignedDuration::from_hours(2);
+    let write_ran_request = |file: &str, pane: &str, changed_age: SignedDuration| {
+        let request = json!({
+            "state": "ran",
+            "pane_id": pane,
+            "created": (Timestamp::now() - filed_age).to_string(),
+            "updated": (Timestamp::now() - changed_age).to_string(),
+        });
+        fs::write(requests.join(file), request.to_string()).unwrap();
+    };
+    // Approved and run ten minutes ago, long after it was filed.
+    write_ran_request(
+        "req1.json",
+        "w1:demo-kb-007-impl",
+        SignedDuration::from_mins(10),
+    );
+    write_ran_request(
+        "req2.json",
+        "w1:demo-kb-008-impl",
+        SignedDuration::from_hours(2),
+    );
+
+    let status = read_status_json(&test_tools);
+
+    assert_eq!(
+        list_rows(&status),
+        [
+            (
+                "demo-kb-007-impl".to_owned(),
+                "kept".to_owned(),
+                "request in the last hour".to_owned(),
+            ),
+            (
+                "demo-kb-008-impl".to_owned(),
+                "to-close".to_owned(),
+                "card done".to_owned(),
+            ),
+        ]
     );
 }
 

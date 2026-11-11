@@ -85,8 +85,14 @@ impl HerdrCli {
         if output.status.success() {
             return Ok(output.stdout);
         }
-        let answer: Option<Value> = serde_json::from_slice(&output.stdout).ok();
-        if let Some(refusal) = answer.as_ref().and_then(read_refusal) {
+        // Herdr prints its JSON error on stderr, so both outputs are read.
+        let refusal = [&output.stdout, &output.stderr]
+            .into_iter()
+            .find_map(|printed| {
+                let answer: Value = serde_json::from_slice(printed).ok()?;
+                read_refusal(&answer)
+            });
+        if let Some(refusal) = refusal {
             return Err(refusal);
         }
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
@@ -314,7 +320,8 @@ impl AgentStatus {
 pub enum AgentKind {
     OpenCode,
     Claude,
-    /// Any other, such as `codex`, by Herdr's name for it.
+    /// Any other, such as `codex`, by Herdr's name for it. Empty while
+    /// Herdr has not yet detected the program.
     Other(String),
 }
 
@@ -459,10 +466,18 @@ fn parse_agent(raw: &Value, machine: Option<&str>) -> Result<Agent, HerdrError> 
         Some(_) => AgentStatus::Unknown,
         None => return Err(make_missing_field_error("agent_status")),
     };
-    let kind = match read_text(raw, "agent")?.as_str() {
-        "opencode" => AgentKind::OpenCode,
-        "claude" => AgentKind::Claude,
-        other => AgentKind::Other(other.to_owned()),
+    // Herdr lists a starting agent with `"agent": null` until it detects
+    // the program. Its state is then unknown, so a message for it waits.
+    let (kind, status) = match raw.get("agent") {
+        Some(Value::Null) => (AgentKind::Other(String::new()), AgentStatus::Unknown),
+        _ => {
+            let kind = match read_text(raw, "agent")?.as_str() {
+                "opencode" => AgentKind::OpenCode,
+                "claude" => AgentKind::Claude,
+                other => AgentKind::Other(other.to_owned()),
+            };
+            (kind, status)
+        }
     };
     let status_word = raw["agent_status"].as_str().unwrap_or_default();
     let mut folders: Vec<PathBuf> = ["cwd", "foreground_cwd"]
@@ -600,5 +615,50 @@ mod tests {
 
         let names: Vec<&str> = agents.iter().map(|agent| agent.name.as_str()).collect();
         assert_eq!(names, ["demo-kb-007-impl"]);
+    }
+
+    /// Herdr lists a new agent by name before it detects which program
+    /// runs there. That entry must stay in the list with an unknown
+    /// state, whatever state Herdr gives, so a message for it waits.
+    /// Left out, the session looks gone, and its message is marked not
+    /// sent or moved to an older session of the card.
+    #[test]
+    fn parse_agent_list_keeps_undetected_agents_unknown() {
+        let result = json!({"agents": [
+            {
+                "name": "docs-fix",
+                "agent": null,
+                "agent_status": "idle",
+                "pane_id": "w4:p2",
+                "workspace_id": "w4",
+                "tab_id": "w4:t2",
+                "focused": false,
+                "state_change_seq": 1,
+            },
+            {
+                "name": "notes-fix",
+                "agent": "opencode",
+                "agent_status": "idle",
+                "pane_id": "w4:p3",
+                "workspace_id": "w4",
+                "tab_id": "w4:t3",
+                "focused": false,
+                "state_change_seq": 1288,
+            },
+        ]});
+
+        let agents = parse_agent_list(&result, None).unwrap();
+
+        let states: Vec<(&str, AgentStatus)> = agents
+            .iter()
+            .map(|agent| (agent.name.as_str(), agent.status))
+            .collect();
+        assert_eq!(
+            states,
+            [
+                ("docs-fix", AgentStatus::Unknown),
+                ("notes-fix", AgentStatus::Idle),
+            ]
+        );
     }
 }

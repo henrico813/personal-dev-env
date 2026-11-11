@@ -118,6 +118,38 @@ impl RunFolder {
         Ok(names)
     }
 
+    /// Returns the text of NAME's newest report, read or not, by file
+    /// time. Returns `None` when NAME never reported.
+    pub(crate) fn read_newest_report(&self, name: &str) -> Result<Option<String>, HubError> {
+        let mut newest: Option<(SystemTime, PathBuf)> = None;
+        for file_name in self.list_file_names()? {
+            let is_names_report = file_name
+                .strip_prefix("report-")
+                .and_then(|rest| rest.split_once('.'))
+                .is_some_and(|(report_name, _)| report_name == name);
+            if !is_names_report {
+                continue;
+            }
+            let path = self.path.join(file_name);
+            let modified = fs::metadata(&path)
+                .and_then(|metadata| metadata.modified())
+                .map_err(|source| HubError::File {
+                    path: path.clone(),
+                    source,
+                })?;
+            if newest.as_ref().is_none_or(|(time, _)| modified > *time) {
+                newest = Some((modified, path));
+            }
+        }
+        let Some((_, path)) = newest else {
+            return Ok(None);
+        };
+        match fs::read_to_string(&path) {
+            Ok(text) => Ok(Some(text)),
+            Err(source) => Err(HubError::File { path, source }),
+        }
+    }
+
     /// Lists the Python hub's message files, `send-NAME.json`,
     /// `.sending` and `.failed`, which this hub never sends.
     pub(crate) fn find_old_send_files(&self) -> Result<Vec<PathBuf>, HubError> {

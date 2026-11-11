@@ -66,6 +66,7 @@ pub(crate) enum KeptReason {
     GitFailed,
     UserInPane,
     ApprovalWaits,
+    RecentRequest,
     CannotReopen,
     AnotherHub,
     OtherMachine,
@@ -83,6 +84,7 @@ impl KeptReason {
             KeptReason::GitFailed => "git failed",
             KeptReason::UserInPane => "user in pane",
             KeptReason::ApprovalWaits => "approval waits",
+            KeptReason::RecentRequest => "request in the last hour",
             KeptReason::CannotReopen => "cannot reopen",
             KeptReason::AnotherHub => "another hub",
             KeptReason::OtherMachine => "other machine",
@@ -119,6 +121,11 @@ pub(crate) struct SessionFacts {
     /// asks the user to approve a pull request change. A request file
     /// that does not parse sets it for every live session.
     pub approval_pending: bool,
+    /// True when this session's pane or session ID filed a
+    /// pde-gh-write request that is no longer open and changed in the
+    /// last hour. A worker that just merged one pull request may still
+    /// have more to do.
+    pub filed_request_recently: bool,
     /// The session is the hub named in this run's last `handoff`
     /// event.
     pub is_predecessor: bool,
@@ -133,6 +140,9 @@ pub(crate) struct CardFacts {
     pub needs_you_open: bool,
     /// A later session on the same card is live, as after a handoff.
     pub newer_session_live: bool,
+    /// The card comes from the session's newest report, not its name
+    /// or session ID.
+    pub from_report: bool,
 }
 
 /// What the run folder says about the session's reports.
@@ -205,8 +215,12 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
     }
     match (&facts.card, stage) {
         // Rule 7. The card's work goes on. A newer session owns the
-        // worktree, so closing this tab changes no file.
-        (Some(card), Some(Stage::Draft | Stage::Ready | Stage::Active)) => {
+        // worktree, so closing this tab changes no file. A card in
+        // review that the newest report names counts too, since its
+        // worker may still have merges to run.
+        (Some(card), Some(Stage::Draft | Stage::Ready | Stage::Active | Stage::Review))
+            if card.stage != Stage::Review || card.from_report =>
+        {
             if card.newer_session_live {
                 make_close_unless_user_waits(facts, agent, "newer session")
             } else if !facts.reports.ever_reported {
@@ -241,8 +255,8 @@ pub(crate) fn is_hub_name(name: &str) -> bool {
 
 /// Returns the first check that keeps a finished session open. The
 /// checks look for unsaved work, then the user in its pane, then a
-/// waiting approval. A session that would be parked also needs a way
-/// to reopen it.
+/// waiting or recent approval request. A session that would be
+/// parked also needs a way to reopen it.
 fn find_kept_reason(facts: &SessionFacts, agent: &Agent, needs_reopen: bool) -> Option<Verdict> {
     match &facts.unsaved {
         Unsaved::Clean => {}
@@ -276,20 +290,23 @@ fn find_kept_reason(facts: &SessionFacts, agent: &Agent, needs_reopen: bool) -> 
 }
 
 /// Returns `to-close` with WHY, unless the user is in the pane or an
-/// approval waits. git does not look, since a newer hub or session
-/// owns the worktree.
+/// approval request waits or changed lately. git does not look,
+/// since a newer hub or session owns the worktree.
 fn make_close_unless_user_waits(facts: &SessionFacts, agent: &Agent, why: &str) -> Verdict {
     find_focus_or_approval(facts, agent).unwrap_or_else(|| make_verdict(Lifecycle::ToClose, why))
 }
 
-/// Returns a kept verdict when the user is in the pane or an approval
-/// request from it waits.
+/// Returns a kept verdict when the user is in the pane, or an approval
+/// request from it waits or changed in the last hour.
 fn find_focus_or_approval(facts: &SessionFacts, agent: &Agent) -> Option<Verdict> {
     if agent.focused {
         return Some(make_kept(KeptReason::UserInPane));
     }
     if facts.approval_pending {
         return Some(make_kept(KeptReason::ApprovalWaits));
+    }
+    if facts.filed_request_recently {
+        return Some(make_kept(KeptReason::RecentRequest));
     }
     None
 }
@@ -552,6 +569,14 @@ mod tests {
                 expected: Lifecycle::Kept(KeptReason::ApprovalWaits),
             },
             Row {
+                id: "accepted-recent-request",
+                facts: SessionFacts {
+                    filed_request_recently: true,
+                    ..with_stage(Stage::Accepted)
+                },
+                expected: Lifecycle::Kept(KeptReason::RecentRequest),
+            },
+            Row {
                 id: "review-codex",
                 facts: with_agent(|agent| agent.kind = AgentKind::Other("codex".to_owned())),
                 expected: Lifecycle::Kept(KeptReason::CannotReopen),
@@ -636,6 +661,7 @@ mod tests {
             KeptReason::GitFailed,
             KeptReason::UserInPane,
             KeptReason::ApprovalWaits,
+            KeptReason::RecentRequest,
             KeptReason::CannotReopen,
             KeptReason::AnotherHub,
             KeptReason::OtherMachine,
@@ -663,6 +689,7 @@ mod tests {
                     | KeptReason::GitFailed
                     | KeptReason::UserInPane
                     | KeptReason::ApprovalWaits
+                    | KeptReason::RecentRequest
                     | KeptReason::CannotReopen
                     | KeptReason::AnotherHub
                     | KeptReason::OtherMachine

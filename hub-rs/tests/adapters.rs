@@ -209,8 +209,9 @@ mod herdr_cli {
     }
 
     /// Whether a failed message is unsure or not sent comes from Herdr's
-    /// error code. A code misread turns a message that may have arrived
-    /// into one the hub sends again, or the reverse.
+    /// error code, which Herdr prints on stderr with stdout empty. A
+    /// code misread turns a message that may have arrived into one the
+    /// hub sends again, or the reverse.
     #[test]
     fn herdr_cli_reads_refusal_code() {
         let cases = [
@@ -231,7 +232,7 @@ mod herdr_cli {
         let folder = TempFolder::new();
         for (case_name, code, expected) in cases {
             let answer = format!(r#"{{"error":{{"code":"{code}","message":"Herdr said no"}}}}"#);
-            let script = folder.write_script(&format!("herdr-{case_name}"), &answer, "", 1);
+            let script = folder.write_script(&format!("herdr-{case_name}"), "", &answer, 1);
             let herdr = HerdrCli::new(script, None, folder.path().join("herdr.sock"));
 
             let error = herdr.prompt("docs-fix", "Rebase on main.").unwrap_err();
