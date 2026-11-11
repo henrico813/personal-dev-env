@@ -30,6 +30,7 @@ usage: {usage}
 {about-with-newline}Commands marked * take --run DIR, else
 $HUB_RUN.
 
+  status*  each session and its state
   next*    wait for news, print one line
   send*    send now, or hold until free
   read*    print and archive a report
@@ -67,6 +68,15 @@ pub struct RunArg {
 
 #[derive(clap::Subcommand)]
 pub enum Command {
+    /// Each session and its state
+    #[command(after_help = "Example: hub status --json")]
+    Status {
+        #[command(flatten)]
+        run: RunArg,
+        /// Print the same facts as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Wait for news, print one line
     #[command(after_help = "Example: hub next --timeout 600")]
     Next {
@@ -224,6 +234,7 @@ impl Command {
     /// Returns the name the user typed, such as `go`.
     pub fn name(&self) -> &'static str {
         match self {
+            Command::Status { .. } => "status",
             Command::Next { .. } => "next",
             Command::Send { .. } => "send",
             Command::Read { .. } => "read",
@@ -280,12 +291,15 @@ pub fn find_run_folder(
     RunFolder::open(&path)
 }
 
-/// Tells whether a command works with `--machine`, which only `send`,
-/// `flag` and `unflag` do. The rest read this machine's files and
-/// database, or its own Herdr sidebar.
+/// Tells whether a command works with `--machine`, which only
+/// `status`, `send`, `flag` and `unflag` do. The rest read this
+/// machine's files and database, or its own Herdr sidebar.
 pub fn takes_machine(command: &Command) -> bool {
     match command {
-        Command::Send { .. } | Command::Flag { .. } | Command::Unflag { .. } => true,
+        Command::Status { .. }
+        | Command::Send { .. }
+        | Command::Flag { .. }
+        | Command::Unflag { .. } => true,
         Command::Next { .. }
         | Command::Read { .. }
         | Command::Report { .. }
@@ -304,9 +318,9 @@ pub fn takes_machine(command: &Command) -> bool {
 mod tests {
     use super::*;
 
-    /// A remote hub flags and messages sessions on another machine with
-    /// `--machine`, so refusing it there leaves those sessions unmarked
-    /// or without their message. Allowing it
+    /// A remote hub lists, flags and messages sessions on another
+    /// machine with `--machine`, so refusing it there leaves those
+    /// sessions unseen, unmarked or without their message. Allowing it
     /// on `go` would make `go` jump, in this machine's sidebar, to a hub
     /// found on another machine, and on `alive` would read this
     /// machine's database for another machine's session.
@@ -314,6 +328,14 @@ mod tests {
     fn takes_machine_refuses_local_only_commands() {
         let name: AgentName = "docs-fix".parse().unwrap();
         let cases = [
+            (
+                "status",
+                Command::Status {
+                    run: RunArg { run: None },
+                    json: false,
+                },
+                true,
+            ),
             (
                 "send",
                 Command::Send {

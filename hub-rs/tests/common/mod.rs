@@ -9,13 +9,15 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use hub::outside::cards::{BoardCounts, CardError, CardKey, CardNote, Cards};
+use hub::outside::cards::{BoardCounts, CardError, CardKey, CardNote, Cards, Stage};
 use hub::outside::herdr::{
     Agent, AgentKind, AgentStart, AgentStatus, Herdr, HerdrCode, HerdrError, NewPlace, PlaceIds,
     Workspace,
 };
 use hub::outside::opencode::OpenCodeDb;
+use hub::outside::requests::RequestFolder;
 use hub::shared::Tools;
+use hub::shared::parking::ParkedFolder;
 use hub::shared::run_folder::RunFolder;
 use jiff::Zoned;
 use rusqlite::Connection;
@@ -254,11 +256,13 @@ impl Herdr for &InMemoryHerdr {
     }
 }
 
-/// The `card` command, as the `Cards` trait, with the board, the ready
-/// cards and what `card show` gives in memory. It records each note it
-/// is asked to add.
+/// The `card` command, as the `Cards` trait, with the board, the
+/// stages, the ready cards and what `card show` gives in memory. It
+/// records each note it is asked to add.
 #[derive(Default)]
 pub struct InMemoryCards {
+    /// Each card's stage, as `card list` gives it.
+    pub stages: BTreeMap<String, Stage>,
     /// The keys of ready cards, in `card list` order.
     pub ready: Vec<String>,
     /// What `card show` gives, by card key. Any other card fails as
@@ -270,14 +274,37 @@ pub struct InMemoryCards {
     pub notes: RefCell<Vec<(String, String)>>,
     /// When set, `add_note` fails with this message and records nothing.
     pub note_error: Option<String>,
+    /// When set, `list_stages` and `read_card` fail with this message,
+    /// as `card` does without a vault.
+    pub read_error: Option<String>,
+}
+
+impl InMemoryCards {
+    /// Returns the failure `read_error` sets, if any.
+    fn check_read_error(&self) -> Result<(), CardError> {
+        match &self.read_error {
+            Some(message) => Err(CardError::Failed(message.clone())),
+            None => Ok(()),
+        }
+    }
 }
 
 impl Cards for InMemoryCards {
+    fn list_stages(&self) -> Result<BTreeMap<CardKey, Stage>, CardError> {
+        self.check_read_error()?;
+        Ok(self
+            .stages
+            .iter()
+            .map(|(key, stage)| (key.parse().unwrap(), *stage))
+            .collect())
+    }
+
     fn list_ready(&self) -> Result<Vec<CardKey>, CardError> {
         Ok(self.ready.iter().map(|key| key.parse().unwrap()).collect())
     }
 
     fn read_card(&self, key: &CardKey) -> Result<CardNote, CardError> {
+        self.check_read_error()?;
         self.card_notes
             .get(key.as_str())
             .cloned()
@@ -302,8 +329,10 @@ impl Cards for InMemoryCards {
 }
 
 /// Every outside system for a command test. It holds the doubles and a
-/// temporary folder that holds the run folder `run`, the state folder
-/// `state` and the OpenCode database `opencode.db`. A test that uses
+/// temporary folder. The folder holds the run folder `run`; the state
+/// folder `state`, with its request folder `pr-write` and parked folder
+/// `hub/parked`; and the OpenCode database `opencode.db`. The request
+/// and parked folders do not exist until a test writes to them. A test that uses
 /// it must not make another `TempFolder`. Its own `TempFolder` already
 /// holds the process lock, so a second one would wait for it forever.
 pub struct TestTools {
@@ -312,6 +341,8 @@ pub struct TestTools {
     /// The hub's own pane, as `HERDR_PANE_ID` gives it.
     pub own_pane: Option<String>,
     opencode: OpenCodeDb,
+    requests: RequestFolder,
+    parked: ParkedFolder,
     state_folder: PathBuf,
     folder: TempFolder,
 }
@@ -328,6 +359,8 @@ impl TestTools {
             cards: InMemoryCards::default(),
             own_pane: None,
             opencode: OpenCodeDb::new(folder.path().join("opencode.db")),
+            requests: RequestFolder::new(state_folder.join("pr-write")),
+            parked: ParkedFolder::new(state_folder.join("hub/parked")),
             state_folder,
             folder,
         }
@@ -339,6 +372,8 @@ impl TestTools {
             herdr: &self.herdr,
             cards: &self.cards,
             opencode: &self.opencode,
+            requests: &self.requests,
+            parked: &self.parked,
             own_pane: self.own_pane.as_deref(),
             state_folder: &self.state_folder,
         }
@@ -421,7 +456,8 @@ pub fn read_events(run_path: &Path) -> Vec<Value> {
 }
 
 /// One unfocused OpenCode agent in workspace `w1`, with pane
-/// `w1:<name>`, tab `w1:t-<name>`, state change 1 and no session ID.
+/// `w1:<name>`, tab `w1:t-<name>`, state change 1, no session ID, no
+/// mark, no folders and no machine.
 pub fn make_agent(name: &str, status: AgentStatus) -> Agent {
     Agent {
         name: name.to_owned(),
@@ -432,7 +468,10 @@ pub fn make_agent(name: &str, status: AgentStatus) -> Agent {
         tab_id: format!("w1:t-{name}"),
         workspace_id: "w1".to_owned(),
         focused: false,
+        marked: false,
         state_seq: 1,
+        folders: Vec::new(),
+        machine: None,
     }
 }
 
@@ -519,4 +558,50 @@ pub fn read_script_calls(script: &Path) -> Vec<Vec<String>> {
     log.split_terminator('\u{1e}')
         .map(|call| call.split_terminator('\0').map(str::to_owned).collect())
         .collect()
+}
+
+/// Runs git in `folder` as a made-up user, with no signing.
+pub fn run_git(folder: &Path, args: &[&str]) {
+    let output = Command::new("git")
+        .args([
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            "-C",
+        ])
+        .arg(folder)
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+}
+
+/// Makes a main checkout in `folder/main` with a pushed card
+/// worktree beside it, `folder/card-wt` on `feat/demo-kb-001-fix`.
+/// Returns the main checkout.
+pub fn make_card_repo(folder: &Path) -> PathBuf {
+    fs::create_dir(folder).unwrap();
+    run_git(folder, &["init", "--bare", "origin.git"]);
+    run_git(folder, &["clone", "origin.git", "main"]);
+    let main = folder.join("main");
+    run_git(&main, &["commit", "--allow-empty", "-m", "start"]);
+    run_git(&main, &["push", "origin", "HEAD"]);
+    run_git(
+        &main,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "feat/demo-kb-001-fix",
+            "../card-wt",
+        ],
+    );
+    run_git(
+        &folder.join("card-wt"),
+        &["push", "origin", "feat/demo-kb-001-fix"],
+    );
+    main
 }

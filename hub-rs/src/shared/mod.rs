@@ -6,7 +6,9 @@ pub(crate) mod context;
 pub(crate) mod decisions;
 pub(crate) mod events;
 pub(crate) mod facts;
+pub(crate) mod lifecycle;
 pub(crate) mod messages;
+pub mod parking;
 pub mod run_folder;
 #[cfg(test)]
 pub(crate) mod test_values;
@@ -19,6 +21,8 @@ use std::str::FromStr;
 use crate::outside::cards::{CardError, Cards};
 use crate::outside::herdr::{Herdr, HerdrError};
 use crate::outside::opencode::{OpenCodeDb, OpenCodeError};
+use crate::outside::requests::RequestFolder;
+use parking::ParkedFolder;
 
 /// A command that stopped, with the exit code `main` gives it. Tests
 /// match the variant, never the message.
@@ -164,8 +168,10 @@ pub struct Tools<'a> {
     pub herdr: &'a dyn Herdr,
     pub cards: &'a dyn Cards,
     pub opencode: &'a OpenCodeDb,
+    pub requests: &'a RequestFolder,
+    pub parked: &'a ParkedFolder,
     /// This hub's own pane, from `HERDR_PANE_ID`, or `None` outside
-    /// Herdr.
+    /// Herdr. It is never a status row.
     pub own_pane: Option<&'a str>,
     /// This project's state folder, `~/.local/state/pde`, which holds
     /// the handoffs and session reviews.

@@ -3,5 +3,7 @@
 //! failures are in one place.
 
 pub mod cards;
+pub mod git;
 pub mod herdr;
 pub mod opencode;
+pub mod requests;

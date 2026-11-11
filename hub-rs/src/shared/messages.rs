@@ -135,6 +135,23 @@ pub(crate) enum SendOutcome {
     },
 }
 
+/// How many of a session's messages wait, may have arrived, or were
+/// not sent, from their files in `sends/`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct MessageCounts {
+    pub held: usize,
+    /// `.sending` files. A process killed while sending leaves one too.
+    pub unsure: usize,
+    pub not_sent: usize,
+}
+
+impl MessageCounts {
+    /// Tells whether any message waits, is unsure or was not sent.
+    pub(crate) fn any(&self) -> bool {
+        self.held + self.unsure + self.not_sent > 0
+    }
+}
+
 /// Decides whether a message goes now, waits or moves. OpenCode and
 /// Claude Code take a message while working, idle or done; other kinds
 /// only when idle or done. A blocked, focused or unknown session
@@ -425,6 +442,44 @@ pub(crate) fn list_messages(
     Ok(found.into_iter().map(|(_, stored)| stored).collect())
 }
 
+/// Counts each name's message files by state.
+pub(crate) fn count_messages(run: &RunFolder) -> Result<BTreeMap<String, MessageCounts>, HubError> {
+    let sends = run.path().join("sends");
+    let entries = match fs::read_dir(&sends) {
+        Ok(entries) => entries,
+        Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
+        Err(source) => {
+            return Err(HubError::File {
+                path: sends,
+                source,
+            });
+        }
+    };
+    let mut counts: BTreeMap<String, MessageCounts> = BTreeMap::new();
+    for entry in entries {
+        let entry = entry.map_err(|source| HubError::File {
+            path: sends.clone(),
+            source,
+        })?;
+        let file_name = entry.file_name().to_string_lossy().into_owned();
+        let Some((id, suffix)) = file_name.rsplit_once('.') else {
+            continue;
+        };
+        // A name starting with a dot is a temporary file, mid-write.
+        let Some((name, _, _)) = split_message_id(id).filter(|_| !id.starts_with('.')) else {
+            continue;
+        };
+        let count = counts.entry(name.to_owned()).or_default();
+        match suffix {
+            "held" => count.held += 1,
+            "sending" => count.unsure += 1,
+            "notsent" => count.not_sent += 1,
+            _ => {}
+        }
+    }
+    Ok(counts)
+}
+
 /// Claims every message held for NAME, records it as delivered through
 /// `hub inbox`, then deletes its file. A failed record renames the file
 /// back to held. Returns the messages oldest first.
@@ -708,5 +763,41 @@ mod tests {
                 case.name
             );
         }
+    }
+
+    /// `hub status` holds a session at `hub` while a message to it is
+    /// held, unsure or not sent, so the tidy pass never closes a tab a
+    /// message still waits for. A suffix counted as another state shows
+    /// the wrong word. A file whose name starts with a dot is not a
+    /// message, and counting it would hold the session at `hub` for
+    /// nothing.
+    #[test]
+    fn count_messages_counts_states_not_temporary_files() {
+        let folder =
+            std::env::temp_dir().join(format!("hub-count-messages-{}", std::process::id()));
+        let sends = folder.join("sends");
+        fs::create_dir_all(&sends).unwrap();
+        for file_name in [
+            "docs-fix.20261111-221400.1.held",
+            "docs-fix.20261111-221400.2.sending",
+            "docs-fix.20261111-221400.3.notsent",
+            ".docs-fix.20261111-221400.4.held",
+        ] {
+            fs::write(sends.join(file_name), "{}").unwrap();
+        }
+
+        let counts = count_messages(&RunFolder::open(&folder).unwrap());
+        // Removed before the asserts, so a failure leaves no folder.
+        fs::remove_dir_all(&folder).unwrap();
+
+        let expected = MessageCounts {
+            held: 1,
+            unsure: 1,
+            not_sent: 1,
+        };
+        assert_eq!(
+            counts.unwrap(),
+            BTreeMap::from([("docs-fix".to_owned(), expected)])
+        );
     }
 }

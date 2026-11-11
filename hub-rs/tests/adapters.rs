@@ -66,23 +66,31 @@ mod herdr_cli {
     /// session up on that machine. Herdr reads `--machine` only before
     /// the command, and without it a local session with the same name
     /// gets the mark. A wrong command word breaks `go`, `gather` or
-    /// `flag` outright.
+    /// `flag` outright. Each agent must carry the machine, since
+    /// `hub status` keeps a remote session open only by it.
     #[test]
     fn herdr_cli_sends_each_command_to_machine() {
         let folder = TempFolder::new();
-        let answer = r#"{"result":{"agents":[],"workspaces":[],"agent":{
-            "name":"docs-fix","agent":"opencode","agent_status":"idle",
-            "pane_id":"w4:p2","workspace_id":"w4","tab_id":"w4:t2",
-            "focused":false,"state_change_seq":1288}}}"#;
-        let script = folder.write_script("herdr", answer, "", 0);
+        let agent = json!({
+            "name": "docs-fix",
+            "agent": "opencode",
+            "agent_status": "idle",
+            "pane_id": "w4:p2",
+            "workspace_id": "w4",
+            "tab_id": "w4:t2",
+            "focused": false,
+            "state_change_seq": 1288,
+        });
+        let answer = json!({"result": {"agents": [agent], "workspaces": [], "agent": agent}});
+        let script = folder.write_script("herdr", &answer.to_string(), "", 0);
         let herdr = HerdrCli::new(
             script.clone(),
             Some("laptop".to_owned()),
             folder.path().join("herdr.sock"),
         );
 
-        herdr.list_agents().unwrap();
-        herdr.get_agent("docs-fix").unwrap();
+        let listed = herdr.list_agents().unwrap();
+        let found = herdr.get_agent("docs-fix").unwrap();
         herdr.list_workspaces().unwrap();
         herdr.focus_agent("kanban-hub-1").unwrap();
 
@@ -95,6 +103,8 @@ mod herdr_cli {
                 vec!["--machine", "laptop", "agent", "focus", "kanban-hub-1"],
             ]
         );
+        assert_eq!(listed[0].machine.as_deref(), Some("laptop"));
+        assert_eq!(found.machine.as_deref(), Some("laptop"));
     }
 
     /// A message with spaces, quotes and a newline must reach the agent
@@ -411,5 +421,128 @@ mod card_cli {
         let error = cards.read_board().unwrap_err();
 
         assert_eq!(error.to_string(), "card: no default vault");
+    }
+}
+
+mod git {
+    use std::fs;
+    use std::path::Path;
+
+    use hub::outside::git::{Unsaved, check_unsaved, find_card_worktrees};
+
+    use super::common::{TempFolder, make_card_repo, run_git};
+
+    /// A finished worker's tab may close only when its worktree holds
+    /// nothing that exists nowhere else. Missing uncommitted files or
+    /// unpushed commits would close the last sign of that work. The
+    /// agent works from the main checkout here, so only the branch
+    /// name ties the worktree to its card. The repository hides new
+    /// files from a plain `git status`, as large repositories often do,
+    /// and the check must still find them.
+    #[test]
+    fn check_unsaved_finds_files_and_commits() {
+        struct Case {
+            name: &'static str,
+            leave_work: fn(&Path),
+            expected: fn(&Path) -> Unsaved,
+        }
+        let cases = [
+            Case {
+                name: "clean",
+                leave_work: |_| {},
+                expected: |_| Unsaved::Clean,
+            },
+            Case {
+                name: "files",
+                leave_work: |worktree| fs::write(worktree.join("notes.txt"), "x").unwrap(),
+                expected: |worktree| Unsaved::Files(worktree.to_owned()),
+            },
+            Case {
+                name: "commits",
+                leave_work: |worktree| run_git(worktree, &["commit", "--allow-empty", "-m", "fix"]),
+                expected: |worktree| Unsaved::Commits(worktree.to_owned()),
+            },
+        ];
+        let folder = TempFolder::new();
+
+        for case in cases {
+            let main = make_card_repo(&folder.path().join(case.name));
+            run_git(&main, &["config", "status.showUntrackedFiles", "no"]);
+            let worktree = folder
+                .path()
+                .join(case.name)
+                .join("card-wt")
+                .canonicalize()
+                .unwrap();
+            (case.leave_work)(&worktree);
+
+            let found =
+                find_card_worktrees(&[main], Some(&"DEMO-KB-001".parse().unwrap())).unwrap();
+            let unsaved = check_unsaved(&found[0]).unwrap();
+
+            assert_eq!(unsaved, (case.expected)(&worktree), "{}", case.name);
+            assert_eq!(found, [worktree], "{}", case.name);
+        }
+    }
+}
+
+mod requests {
+    use std::fs;
+
+    use hub::outside::requests::RequestFolder;
+    use serde_json::json;
+
+    use super::common::TempFolder;
+
+    /// A request that already ran must not keep a session open forever.
+    /// An approved one has not run `gh` yet, so its session must stay.
+    /// One file that is not JSON must not break `hub status`; it is
+    /// counted for one problem line instead.
+    #[test]
+    fn list_open_requests_skips_ran_and_unreadable() {
+        let folder = TempFolder::new();
+        let write = |name: &str, text: String| fs::write(folder.path().join(name), text).unwrap();
+        write(
+            "a.json",
+            json!({"state": "pending", "pane_id": "w1:p7"}).to_string(),
+        );
+        write(
+            "b.json",
+            json!({"state": "running", "session_id": "ses_b"}).to_string(),
+        );
+        write(
+            "c.json",
+            json!({"state": "ran", "pane_id": "w1:p8"}).to_string(),
+        );
+        write(
+            "f.json",
+            json!({"state": "approved", "pane_id": "w1:p6"}).to_string(),
+        );
+        write(
+            "d.json",
+            json!({"state": "declined", "pane_id": "w1:p9"}).to_string(),
+        );
+        write("e.json", "{cut off".to_owned());
+        write("notes.txt", "not a request".to_owned());
+
+        let open = RequestFolder::new(folder.path().to_owned())
+            .list_open_requests()
+            .unwrap();
+
+        let mut found: Vec<(Option<String>, Option<String>)> = open
+            .requests
+            .into_iter()
+            .map(|request| (request.pane_id, request.session_id))
+            .collect();
+        found.sort();
+        assert_eq!(
+            found,
+            [
+                (None, Some("ses_b".to_owned())),
+                (Some("w1:p6".to_owned()), None),
+                (Some("w1:p7".to_owned()), None),
+            ]
+        );
+        assert_eq!(open.bad_files, 1);
     }
 }

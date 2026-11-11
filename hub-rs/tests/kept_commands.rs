@@ -228,6 +228,7 @@ mod brief {
     fn run_brief_prints_board_reviews_then_decisions() {
         let mut test_tools = TestTools::new();
         test_tools.cards.board = Some(BoardCounts {
+            active: 5,
             review: 19,
             busy: 24,
             limit: 8,
@@ -267,6 +268,7 @@ mod brief {
     fn run_brief_says_when_nothing_waits() {
         let mut test_tools = TestTools::new();
         test_tools.cards.board = Some(BoardCounts {
+            active: 3,
             review: 0,
             busy: 3,
             limit: 8,

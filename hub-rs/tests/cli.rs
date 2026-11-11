@@ -41,6 +41,15 @@ fn hub_exit_code_follows_failure_kind() {
             says: "hub: herdr server is not running\n",
         },
         Case {
+            name: "status-herdr",
+            herdr_stdout: r#"{"error":{"code":"server_unavailable","message":"herdr server is not running"}}"#,
+            herdr_exit_code: 1,
+            args: &["status"],
+            hub_run: true,
+            exit_code: 1,
+            says: "hub: herdr server is not running\n",
+        },
+        Case {
             name: "no-hub",
             herdr_stdout: r#"{"result":{"agents":[],"workspaces":[]}}"#,
             herdr_exit_code: 0,

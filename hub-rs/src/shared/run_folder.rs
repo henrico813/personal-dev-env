@@ -2,7 +2,8 @@
 //! reports, notes and the watcher files. Read `RunFolder` first. Every
 //! whole-file write goes through `write_file_whole`.
 
-use std::fs::{self, File, OpenOptions};
+use std::collections::BTreeSet;
+use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
@@ -23,6 +24,14 @@ pub(crate) struct ReportFile {
     /// Its modification time, which tells one version from the next.
     pub mtime_ns: u64,
     pub age: Duration,
+}
+
+/// The names with an unread report, and every name that ever
+/// reported, read or not.
+#[derive(Debug, Default)]
+pub(crate) struct ReportedNames {
+    pub unread: BTreeSet<String>,
+    pub any: BTreeSet<String>,
 }
 
 /// Holds `.watcher.lock` while a `hub next` runs. Dropping it, or the
@@ -87,6 +96,43 @@ impl RunFolder {
         }
         reports.sort_by(|left, right| left.name.cmp(&right.name));
         Ok(reports)
+    }
+
+    /// Returns the names with a `report-NAME.md`, and the names with any
+    /// `report-NAME.*` file, archives included.
+    pub(crate) fn list_reported_names(&self) -> Result<ReportedNames, HubError> {
+        let mut names = ReportedNames::default();
+        for file_name in self.list_file_names()? {
+            let Some(rest) = file_name.strip_prefix("report-") else {
+                continue;
+            };
+            // Names hold no dot, so the name ends at the first one.
+            let Some((name, suffix)) = rest.split_once('.') else {
+                continue;
+            };
+            if suffix == "md" {
+                names.unread.insert(name.to_owned());
+            }
+            names.any.insert(name.to_owned());
+        }
+        Ok(names)
+    }
+
+    /// Lists the Python hub's message files, `send-NAME.json`,
+    /// `.sending` and `.failed`, which this hub never sends.
+    pub(crate) fn find_old_send_files(&self) -> Result<Vec<PathBuf>, HubError> {
+        let mut old = Vec::new();
+        for file_name in self.list_file_names()? {
+            let is_old = file_name.starts_with("send-")
+                && [".json", ".sending", ".failed"]
+                    .iter()
+                    .any(|suffix| file_name.ends_with(suffix));
+            if is_old {
+                old.push(self.path.join(file_name));
+            }
+        }
+        old.sort();
+        Ok(old)
     }
 
     /// Renames a report to its `HHMM` archive name, or `HHMM-2` and
@@ -184,6 +230,22 @@ impl RunFolder {
         }
     }
 
+    /// Tells whether a `hub next` holds the watcher lock now, by trying
+    /// it.
+    pub(crate) fn is_watcher_running(&self) -> Result<bool, HubError> {
+        let path = self.path.join(".watcher.lock");
+        let file = match File::open(&path) {
+            Ok(file) => file,
+            Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(false),
+            Err(source) => return Err(HubError::File { path, source }),
+        };
+        match file.try_lock() {
+            Ok(()) => Ok(false),
+            Err(TryLockError::WouldBlock) => Ok(true),
+            Err(TryLockError::Error(source)) => Err(HubError::File { path, source }),
+        }
+    }
+
     /// Tells whether a newer `hub next` claimed the watcher.
     pub(crate) fn is_replaced(&self, process_id: u32) -> Result<bool, HubError> {
         let claimed = self.read_optional_file(".watcher-pid")?;
@@ -207,6 +269,18 @@ impl RunFolder {
             Err(source) if source.kind() == io::ErrorKind::NotFound => Ok(None),
             Err(source) => Err(HubError::File { path, source }),
         }
+    }
+
+    /// Returns the name of every file in the folder.
+    fn list_file_names(&self) -> Result<Vec<String>, HubError> {
+        let entries = fs::read_dir(&self.path).map_err(|source| self.make_file_error(source))?;
+        entries
+            .map(|entry| {
+                entry
+                    .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                    .map_err(|source| self.make_file_error(source))
+            })
+            .collect()
     }
 
     /// Returns the failure to read the folder itself.
