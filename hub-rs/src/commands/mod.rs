@@ -3,6 +3,7 @@
 //! read plain values.
 
 pub mod alive;
+pub mod auto;
 pub mod brief;
 pub mod cli;
 pub mod flag;
