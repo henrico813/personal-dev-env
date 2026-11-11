@@ -329,9 +329,9 @@ class TestReportLines:
         """Sum each tool's carry from later steps that logged tokens.
 
         Carry is what a review ranks outputs by, so it must count only
-        steps that re-read the output. A compaction drops the output,
-        and a zero-token step is folded into the next step, which still
-        counts. Each 4 characters of output is one token here.
+        steps that re-read the output. A compaction drops the output.
+        A step logged with zero tokens does not count, but the step
+        after it does. Each 4 characters of output is one token here.
         """
         make_db(
             tmp_path,
