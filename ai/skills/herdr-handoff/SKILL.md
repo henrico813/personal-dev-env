@@ -134,7 +134,8 @@ model can run the loop from them.
    start.
 3. Create the new session's place, and read its pane from
    `.result.root_pane.pane_id`. `--no-focus` keeps the user's screen
-   where it was, so the new pane is not focused.
+   where it was, so the new pane is not focused. Step 6 focuses its
+   tab when the user will work in it.
 
    When a hub runs, make the place as Sidebar names of
    [herdr-hub](../herdr-hub/SKILL.md) says. Work with no card gets a
@@ -163,16 +164,20 @@ model can run the loop from them.
    be unique among live agents:
 
        herdr agent start <name> --kind <kind> --pane <pane> \
-         --timeout 90000 > <start file>
+         --timeout 90000 -- <agent flags> > <start file>
 
-   `<start file>` sits in a `mktemp -d` folder; read the reply there.
-   Put the agent flags below, after `--`, before the `>`. A start that
-   is cut off may not have started the agent, so step 6 confirms it
-   with `agent get`.
+   Make a folder with `mktemp -d` and put `<start file>` in it. Read
+   the reply from that file. The file keeps the reply even if your
+   tool stops waiting for the command. The agent flags are `--auto`
+   and `--model`, described below. Leave out `-- <agent flags>` when
+   you pass none.
 
-   For OpenCode, add `-- --auto` after the other flags, so the new
-   session approves its own tool permissions instead of stopping at
-   each one.
+   If the command stops before it writes a reply, the agent may not
+   exist. Check with `herdr agent get <name>` before step 5. Start it
+   again only when the agent is missing.
+
+   For OpenCode, pass `--auto` as an agent flag, so the new session
+   approves its own tool permissions instead of stopping at each one.
    Check that `.result.argv` in the reply includes `--auto`. If it
    does not, tell the user the session will stop at permission
    prompts. `--auto` still obeys rules that deny a command, and a
@@ -201,13 +206,15 @@ model can run the loop from them.
    Plain `--wait` waits until the agent finishes, so a long handoff
    runs past the timeout.
 6. Read the state in `herdr agent get <name>`:
-   - `working` means it started. When this session is one the user
-     will use directly, bring its tab into the user's view with
-     `herdr tab focus <tab ID>`, the ID from `.result.agent.tab_id`.
+   - `working` means it started.
    - `idle` or `done` means it already finished. Read its reply with
      `herdr agent read <name> --source recent-unwrapped --lines 80`.
    - `blocked` means it waits at an approval or a question. Those
      belong to the user, so never answer them; tell the user instead.
+
+   When the user will work in the new session, focus its tab with
+   `herdr tab focus <tab ID>` once `agent get` shows any state above.
+   The tab ID is `.result.agent.tab_id` in that reply.
 
 If a step times out or stalls, read `herdr agent get` and
 `herdr agent read` before trying again, since the prompt may have
@@ -280,6 +287,7 @@ or revising this skill.
   nothing and no hub runs.
 - The new agent was seen `working`, or `idle` or `done` after
   finishing.
+- When the user will work in the new session, its tab is focused.
 - The message to the user names the workspace or tab, the agent, the
   handoff file and the model.
 - Without a hub, when this session keeps nothing, the new session is
