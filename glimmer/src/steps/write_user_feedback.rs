@@ -1,11 +1,7 @@
 //! This module runs step 7, which writes each Answered Request into its file
-//! and saves a decision for each named comment. A comment that changed since
-//! the user answered it sends every Feedback Request in its file back to the
-//! agent instead. A stop signal waits until every file is written or back and
-//! the Review Session is saved, so one after the last file still ends with all
-//! User Feedback written. Step 5 runs the same rewrite in memory first, with
-//! every Agent Suggestion accepted. Read the
-//! `write_user_feedback(dir)`,
+//! and saves a decision for each named comment, and puts every file back when a
+//! write fails. A stop signal waits until every file is written or back and the
+//! Review Session is saved. Read the `write_user_feedback(dir)`,
 //! `check_suggestions_can_be_written(dir, list)`,
 //! `write_files_and_decisions(lock, root, backup_folder, files, decisions, signals)`,
 //! and `write_every_file(backup, signals)` functions to understand the module.
@@ -47,16 +43,10 @@ const TEXT_CHANGED_NOTE: &str = "A comment in this file changed after you sent t
 ///
 /// # Errors
 ///
-/// Refuses with `NothingToWrite` when nothing waits to be written, and passes
-/// on `FileUnreadable` or `WouldNotWrite` when a file cannot be rewritten.
-/// Errors from finding the repository and loading the Review Session pass
-/// through unchanged. Refuses with `TextChanged` when an answered comment is
-/// gone or holds other text, after giving every Feedback Request in its file
-/// the program's User Note. Refuses with `WriteFailed`, and saves why for the
-/// user, when a file changed while it was read or once every file is back after
-/// a failed write. Refuses with `WriteNotFinished` when a file cannot go back. Returns
-/// `SaveFailed` with everything written when only the save of `done` fails. A
-/// waiting-list error comes only after the Review Session is saved.
+/// Refuses with `TextChanged` when an answered comment is gone or holds other
+/// text, and sends every Feedback Request in its file back to the agent.
+/// Refuses with `WriteFailed` when a file changes or a write fails and every
+/// file is back, so the answers stay and the user can try again. `ErrorCode` lists the rest.
 pub fn write_user_feedback(dir: &Path) -> Result<WriteResult, Error> {
     let root = git::find_root(dir)?;
     let mut lock = review_session::lock(&root)?;
@@ -109,8 +99,7 @@ pub fn write_user_feedback(dir: &Path) -> Result<WriteResult, Error> {
 }
 
 /// Rewrites every file in memory with each Agent Suggestion accepted, as step 7
-/// would, so step 5 can refuse a list the user could not have written. Writes
-/// nothing.
+/// would, so step 5 can refuse a list the user could not have written.
 ///
 /// # Errors
 ///

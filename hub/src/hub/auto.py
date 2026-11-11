@@ -8,7 +8,8 @@ commands run in this order, each in the auto run's folder:
   the model that sorts them.
 - ``check`` checks ``run.md``, the list the user is asked to approve.
 - ``approve`` saves that list and the user's reply in
-  ``approved.md``, only when the reply is ``approve run N``.
+  ``approved.md``, only when the reply is ``approve run N``, or with
+  ``--given``, when the user's own words name exactly the run's cards.
 - ``now`` writes ``brief-now.md``, one line per card of the run.
 
 ``run.md`` names every ready card once. Only the cards under
@@ -36,6 +37,7 @@ from hub.status import CARD_LINE, call_card
 
 RUN_TITLE = re.compile(r"# Auto run (\d+)$")
 LISTED_CARD = re.compile(r"- ([A-Z][A-Z0-9]*-KB-\d{3,})\b")
+NAMED_CARD = re.compile(r"\b[A-Z][A-Z0-9]*-KB-\d{3,}\b", re.IGNORECASE)
 # The card sections that tell the sorting model what the work needs.
 CARD_SECTIONS = ("Context", "Acceptance Criteria")
 
@@ -82,27 +84,38 @@ def run_approve(args: argparse.Namespace) -> int:
 
     A reply other than ``approve run N``, such as "go" or an edit,
     starts nothing, since run 1 started on a "go" meant for another
-    question.
+    question. With ``--given``, the reply is the user's own words,
+    given before the briefing, and they pass only when they name by key
+    every card under ``## Run`` and no other card.
 
     Args:
         args: The parsed ``auto approve`` command line.
 
     Returns:
         0 after writing approved.md, or 2 when the run is already
-        approved, the reply is not the phrase, or the list fails its
-        check.
+        approved, the reply is not the phrase or does not name the
+        run's cards, or the list fails its check.
     """
     approved = args.run / "approved.md"
     phrase = f"approve run {args.number}"
     if approved.exists():
         return refuse(f"run {args.number} is already approved")
-    if " ".join(args.reply.lower().split()).strip("\"'.! ") != phrase:
-        return refuse(f"the reply is not {phrase!r}; nothing was approved")
+    if not args.given:
+        said = " ".join(args.reply.lower().split()).strip("\"'.! ")
+        if said != phrase:
+            return refuse(f"the reply is not {phrase!r}; nothing was approved")
     number, sections, problems = check_run_list(args.run / "run.md")
     if problems:
         return refuse("run.md fails its check; run hub auto check")
     if number != args.number:
         return refuse(f"run.md is run {number}, not run {args.number}")
+    if args.given:
+        named = {key.upper() for key in NAMED_CARD.findall(args.reply)}
+        if named != set(sections["Run"]):
+            return refuse(
+                "the words do not name every card under '## Run' and no"
+                " other; nothing was approved"
+            )
     approved.write_text(
         f"# Auto run {number} approved\n\n"
         f"Approved: {time.strftime('%Y-%m-%d %H:%M')}\n"

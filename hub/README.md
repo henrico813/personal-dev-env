@@ -28,7 +28,10 @@ hub brief --run DIR                      what waits on the user
 hub auto ready --run DIR                 ready cards, for sorting
 hub auto check --run DIR                 check the run's card list
 hub auto approve --run DIR N REPLY       save the user's approval
+hub auto approve --run DIR --given N WORDS
 hub auto now --run DIR                   one line per run card
+hub go                                   show the next hub
+hub gather                               put hubs at the top
 hub --version
 ```
 
@@ -102,11 +105,25 @@ machine to every `herdr` call, as `herdr --machine` does.
   leaves out a ready card. `approve` writes `DIR/approved.md`, with
   the time, REPLY and `run.md`, only when REPLY is `approve run N`,
   ignoring case, spaces, quotes and end punctuation, the list passes `check` and N is its number; otherwise it exits 2.
+  With `--given`, WORDS are the user's own words of approval, given
+  before the briefing: they pass when they name by key every card
+  under `## Run` and no other card, in upper or lower case.
   `now` writes `DIR/brief-now.md` and prints it: one line per card
   under `## Run`, from the first line of `DIR/status-<key>-auto.md`,
   marked `(needs you)` while a `decisions.md` entry's title starts
   with the key, then the number of questions and each one's title. It
   exits 2 before the run is approved.
+- `go` shows the hub after the one the user looks at, in sidebar
+  order, and wraps to the first. A hub is a session whose name ends in
+  `-hub-<n>`, such as `kanban-hub-13`. The managed Herdr config runs
+  it from `ctrl+b shift+h`, in the background, so a press with no hub
+  running does nothing visible. While a hub hands off, the old and new
+  hub share a workspace, and `go` stops at both until the old hub's
+  tab closes.
+- `gather` moves every hub's workspace into one block at the top of
+  the sidebar, through Herdr's socket, since the `herdr` command
+  cannot reorder workspaces. Herdr keeps the order.
+- `go` and `gather` work on this machine only and refuse `--machine`.
 
 Exit codes are 0 when the command did its work, 1 when a `herdr` or
 `card` call failed, with its message on standard error, and 2 when

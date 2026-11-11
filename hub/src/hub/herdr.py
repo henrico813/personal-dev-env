@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
+from pathlib import Path
 
 # Herdr takes a prompt only in these states.
 FREE_STATES = ("idle", "done")
 NEEDS_YOU = "needs you"
+# Herdr's own socket when HERDR_SOCKET_PATH is not set.
+DEFAULT_SOCKET = Path.home() / ".config" / "herdr" / "herdr.sock"
+SOCKET_TIMEOUT_SECONDS = 10
 
 
 class HerdrError(Exception):
@@ -108,3 +113,43 @@ def call_herdr(machine: str | None, *args: str) -> str:
         message = result.stderr.strip() or f"herdr exited {result.returncode}"
         code = ""
     raise HerdrError(message, code)
+
+
+def call_socket(method: str, params: dict) -> dict:
+    """Send one request to this machine's Herdr server and return its result.
+
+    Use it only for calls the herdr command lacks, such as
+    ``workspace.move_block``. Herdr sets ``HERDR_SOCKET_PATH`` in its
+    panes and key commands.
+
+    Args:
+        method: The socket API method, such as ``workspace.move_block``.
+        params: The method's parameters.
+
+    Returns:
+        The ``result`` of Herdr's answer.
+
+    Raises:
+        HerdrError: The socket could not be reached, Herdr refused the
+            request, or Herdr gave no usable answer. The message is
+            Herdr's own when it gave one.
+    """
+    path = os.environ.get("HERDR_SOCKET_PATH") or str(DEFAULT_SOCKET)
+    request = {"id": "hub", "method": method, "params": params}
+    try:
+        with socket.socket(socket.AF_UNIX) as connection:
+            connection.settimeout(SOCKET_TIMEOUT_SECONDS)
+            connection.connect(path)
+            connection.sendall(json.dumps(request).encode() + b"\n")
+            with connection.makefile("rb") as reader:
+                answer = reader.readline()
+    except OSError as error:
+        raise HerdrError(f"cannot reach Herdr at {path}: {error}") from error
+    try:
+        reply = json.loads(answer)
+        if "error" in reply:
+            refusal = reply["error"]
+            raise HerdrError(refusal["message"], refusal.get("code", ""))
+        return reply["result"]
+    except (ValueError, KeyError, TypeError) as error:
+        raise HerdrError(f"Herdr gave no usable answer: {answer!r}") from error

@@ -1,8 +1,7 @@
-//! This module runs step 2, which fails a branch that rewords an approved
-//! comment, removes one whose code stays, or breaks a style rule on a changed
-//! line, and writes no file. Each language's differences live in
-//! `language_rules`, reached only through `comments`. Read the
-//! `check_comments(dir, base)` function to understand the module.
+//! This module runs step 2, which writes no file and fails a branch that
+//! rewords an approved comment, removes one whose code stays, or breaks a style
+//! rule on a changed line. Read the `check_comments(dir, base)` function to
+//! understand the module.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -111,7 +110,6 @@ pub fn check_comments(
     })
 }
 
-/// Holds what step 2 found.
 #[derive(Debug, Serialize)]
 pub struct CheckResult {
     pub failures: Vec<Finding>,

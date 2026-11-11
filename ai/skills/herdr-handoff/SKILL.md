@@ -1,8 +1,8 @@
 ---
 name: herdr-handoff
 description: Hands part or all of a session's work to a new agent
-  session in a new Herdr workspace, or a tab of the hub's workspace
-  when a hub runs. A handoff file carries everything
+  session in a new Herdr tab or workspace.
+  A handoff file carries everything
   the new session needs, since it starts with no earlier context. Use
   when the user asks to hand work off to a new session, to start a new
   session in a new Herdr workspace, or to move work out because it is
@@ -17,8 +17,8 @@ metadata:
 
 Herdr is a terminal workspace manager with workspaces, tabs and panes,
 and a `herdr` CLI that starts and watches coding agents. This skill
-covers handing work to a new agent session in a new Herdr workspace,
-or in a new tab of the hub's workspace when a hub runs. The new
+covers handing work to a new agent session in a new Herdr tab or
+workspace. The new
 session remembers nothing of this one, so a handoff file
 gives it everything it needs.
 
@@ -133,18 +133,28 @@ model can run the loop from them.
    list `herdr agent start --help` prints, ask the user which kind to
    start.
 3. Create the new session's place, and read its pane from
-   `.result.root_pane.pane_id`. When a hub runs, make a tab in the
-   hub's workspace. The hub reads it from `$HERDR_WORKSPACE_ID`, and
-   another session from `.result.agent.workspace_id` of
-   `herdr agent get <hub>`.
-   Give the tab and the agent the same short name, `<run>-<role>`,
-   such as `docs-p2`. The hub keeps tab 1.
+   `.result.root_pane.pane_id`. `--no-focus` keeps the user's screen
+   where it was, so the new pane is not focused.
 
-       herdr tab create --no-focus --workspace <hub workspace> \
+   When a hub runs, make the place as Sidebar names of
+   [herdr-hub](../herdr-hub/SKILL.md) says. Work with no card gets a
+   tab in the hub's workspace. The hub reads its workspace from
+   `$HERDR_WORKSPACE_ID`, and another session from
+   `.result.agent.workspace_id` of `herdr agent get <hub>`. The hub
+   keeps tab 1.
+
+   Without a hub, when this session keeps nothing, make a tab on this
+   machine in this session's workspace, read from
+   `$HERDR_WORKSPACE_ID`, unless the user asks for a new workspace. A
+   tab here adds no workspace to the user's sidebar.
+
+   Give a tab and its agent the same short name, such as `docs-p2`:
+
+       herdr tab create --no-focus --workspace <workspace> \
          --label <name> --cwd <the folder the new session works in>
 
-   Without a hub, make a new workspace. `--no-focus` keeps the user's
-   screen where it was, so the new pane is not focused:
+   Otherwise, make a new workspace, such as for a card's worker or
+   when this session keeps working beside the new one:
 
        herdr workspace create --no-focus --label <label> \
          --cwd <the folder the new session works in>
@@ -201,7 +211,7 @@ To start the session on another saved machine, add
 file to the same path on that machine, since a remote session cannot
 read a local path. The remote `--cwd` must be an absolute path or
 start with `~/`. Read pane IDs from that machine's replies. A remote
-session cannot be a tab in a local hub's workspace, so make it a new
+session cannot be a tab in a local workspace, so make it a new
 workspace on that machine. An OpenCode session there without `--auto`
 may ask to access the handoff folder first. Tell the user so, since
 that approval is theirs to give. When the machine's data must stay on
@@ -240,7 +250,9 @@ Write the message by the `status-updates` skill. Give:
   in that session
 - what the new session does first, and what it waits on
 - what this session keeps. When the whole job moves, say this session
-  keeps nothing and stops, then stop.
+  keeps nothing and stops. In that case, when the new session is in a
+  tab of this workspace, also say the user can close this session's
+  tab. Then stop.
 
 [references/example.md](references/example.md) shows a real handoff,
 from the brief to the message. Read
@@ -262,6 +274,9 @@ or revising this skill.
   finishing.
 - The message to the user names the workspace or tab, the agent, the
   handoff file and the model.
+- Without a hub, when this session keeps nothing, the new session is
+  in a tab of this workspace, unless the user asked for a new one or
+  it runs on another machine.
 - When a hub runs, the handoff says the new session sends a merge or
   pull request edit request only after the hub says the user reviewed
   that pull request.

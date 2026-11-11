@@ -32,7 +32,7 @@ local function load_ansi(path)
           elseif byte and byte >= 0xC0 then cnt = 2 end
           if cur_hex ~= run_hex then
             if run_hex then
-              table.insert(hl, { "NeuroHL_" .. run_hex, run_start, col })
+              table.insert(hl, { "AlphaArtHL_" .. run_hex, run_start, col })
             end
             run_hex = cur_hex
             run_start = col
@@ -43,7 +43,7 @@ local function load_ansi(path)
         end
       end
       if run_hex then
-        table.insert(hl, { "NeuroHL_" .. run_hex, run_start, col })
+        table.insert(hl, { "AlphaArtHL_" .. run_hex, run_start, col })
       end
       table.insert(lines, { text = table.concat(text_buf), width = col, hl = hl })
     end
@@ -58,7 +58,7 @@ local function register_highlights(parsed)
       local name = spec[1]
       if not seen[name] then
         seen[name] = true
-        local hex = name:match("^NeuroHL_(%x+)$")
+        local hex = name:match("^AlphaArtHL_(%x+)$")
         if hex then vim.api.nvim_set_hl(0, name, { fg = "#" .. hex }) end
       end
     end

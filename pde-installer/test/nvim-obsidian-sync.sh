@@ -171,13 +171,13 @@ grep -q "^Sync failed: killed" "$tmp/notes" || fail "a killed nobs must fail"
 
 # The main vault's .gitignore skips every note, and a phone has no Alt-i to
 # show ignored files, so the pickers must list them anyway. .obsidian stays
-# out. The space in "work notes" checks that <leader>oo quotes each path.
+# out. The space in "second vault" checks that <leader>oo quotes each path.
 new_home pickers
-write_nobs_settings "$home/.config/nobs/config.json" main "work notes"
+write_nobs_settings "$home/.config/nobs/config.json" main "second vault"
 git init -q "$tmp/main"
 printf '*\n!*/\n!.gitignore\n' >"$tmp/main/.gitignore"
-mkdir -p "$tmp/main/.obsidian" "$tmp/work notes"
-touch "$tmp/main/plan.md" "$tmp/main/.obsidian/app.json" "$tmp/work notes/todo.md"
+mkdir -p "$tmp/main/.obsidian" "$tmp/second vault"
+touch "$tmp/main/plan.md" "$tmp/main/.obsidian/app.json" "$tmp/second vault/todo.md"
 KEYS="<leader>om <leader>oo" run_nvim
 picker_files 1 >"$tmp/main-files"
 grep -qxF "plan.md" "$tmp/main-files" || fail "<leader>om must list ignored notes"
@@ -186,6 +186,6 @@ if grep -qF "app.json" "$tmp/main-files"; then
 fi
 picker_files 2 >"$tmp/all-files"
 grep -qxF "$tmp/main/plan.md" "$tmp/all-files" || fail "<leader>oo must list the main vault"
-grep -qxF "$tmp/work notes/todo.md" "$tmp/all-files" || fail "<leader>oo must list the work vault"
+grep -qxF "$tmp/second vault/todo.md" "$tmp/all-files" || fail "<leader>oo must list the second vault"
 
 echo "nvim obsidian sync: ok"
