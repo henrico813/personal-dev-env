@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime};
 
 use hub::commands::next::{NextOptions, run_next};
 use hub::commands::send::{SendRequest, run_send};
-use hub::outside::herdr::{Agent, AgentStatus};
+use hub::external::herdr::{Agent, AgentStatus};
 use serde_json::json;
 
 use common::{OpenCodeRow, TestTools, make_agent, make_time, read_events, write_opencode_db};

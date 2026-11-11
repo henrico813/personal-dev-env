@@ -22,8 +22,8 @@ use serde::{Deserialize, Serialize};
 use super::events::{self, Event, EventKind, Via};
 use super::run_folder::{self, RunFolder};
 use super::{HubError, Tools};
-use crate::outside::cards::{CardKey, Cards};
-use crate::outside::herdr::{Agent, AgentKind, AgentStatus, Herdr, HerdrCode, HerdrError};
+use crate::external::cards::{CardKey, Cards};
+use crate::external::herdr::{Agent, AgentKind, AgentStatus, Herdr, HerdrCode, HerdrError};
 
 /// OpenCode's input line when it holds a long message it has not sent,
 /// such as `┃  [Pasted ~1 lines]`.

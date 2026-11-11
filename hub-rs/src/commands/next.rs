@@ -9,7 +9,7 @@ use jiff::Zoned;
 use serde_json::json;
 
 use super::Outcome;
-use crate::outside::herdr::{Agent, AgentStatus};
+use crate::external::herdr::{Agent, AgentStatus};
 use crate::shared::context::{HANDOFF_TOKENS, format_tokens};
 use crate::shared::events::{self, Event, EventKind, Memory};
 use crate::shared::facts::{self, HubLine};

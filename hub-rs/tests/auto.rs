@@ -5,7 +5,7 @@ use std::fs;
 use hub::commands::auto::{
     AutoApproval, run_auto_approve, run_auto_check, run_auto_now, run_auto_ready,
 };
-use hub::outside::cards::CardNote;
+use hub::external::cards::CardNote;
 use hub::shared::HubError;
 
 use common::{TestTools, make_time};

@@ -6,7 +6,7 @@ mod herdr_cli {
     use std::path::Path;
     use std::thread::{self, JoinHandle};
 
-    use hub::outside::herdr::{
+    use hub::external::herdr::{
         AgentStart, AgentStatus, Herdr, HerdrCli, HerdrCode, HerdrError, NewPlace,
     };
     use serde_json::{Value, json};
@@ -332,7 +332,7 @@ mod herdr_cli {
 }
 
 mod card_cli {
-    use hub::outside::cards::{CardCli, CardKey, Cards};
+    use hub::external::cards::{CardCli, CardKey, Cards};
 
     use super::common::{TempFolder, read_script_calls};
 

@@ -9,12 +9,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use hub::outside::cards::{BoardCounts, CardError, CardKey, CardNote, Cards};
-use hub::outside::herdr::{
+use hub::external::cards::{BoardCounts, CardError, CardKey, CardNote, Cards};
+use hub::external::herdr::{
     Agent, AgentKind, AgentStart, AgentStatus, Herdr, HerdrCode, HerdrError, NewPlace, PlaceIds,
     Workspace,
 };
-use hub::outside::opencode::OpenCodeDb;
+use hub::external::opencode::OpenCodeDb;
 use hub::shared::Tools;
 use hub::shared::run_folder::RunFolder;
 use jiff::Zoned;
@@ -301,7 +301,7 @@ impl Cards for InMemoryCards {
     }
 }
 
-/// Every outside system for a command test. It holds the doubles and a
+/// Every external system for a command test. It holds the doubles and a
 /// temporary folder that holds the run folder `run`, the state folder
 /// `state` and the OpenCode database `opencode.db`. A test that uses
 /// it must not make another `TempFolder`. Its own `TempFolder` already
