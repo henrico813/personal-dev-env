@@ -55,7 +55,9 @@ fn write_parked_record(test_tools: &TestTools, name: &str, card: &str) {
 /// keeps it open. A message a killed process left half sent shows as
 /// unsure. The hub named in the last handoff closes. A parked record
 /// shows with its time. A worker whose card is not on the board stays
-/// kept, since no rule can tell whether its work is done.
+/// kept, since no rule can tell whether its work is done. A review
+/// card's open needs-you note shows its worker as `you`, or the tidy
+/// pass parks a worker whose question the user has not answered.
 #[test]
 fn run_status_rows_cover_sessions_not_hub() {
     // The hub's own pane, the old hub it took over from, a working
@@ -76,11 +78,17 @@ fn run_status_rows_cover_sessions_not_hub() {
         },
         make_agent("docs-fix", AgentStatus::Idle),
         Agent {
+            session_id: Some("ses_005".to_owned()),
+            folders: vec![plain_folder.clone()],
+            ..make_agent("demo-kb-005-impl", AgentStatus::Idle)
+        },
+        Agent {
             folders: vec![plain_folder],
             ..make_agent("demo-kb-012-impl", AgentStatus::Idle)
         },
     ];
     test_tools.cards.stages = [
+        ("DEMO-KB-005".to_owned(), Stage::Review),
         ("DEMO-KB-007".to_owned(), Stage::Review),
         ("DEMO-KB-009".to_owned(), Stage::Active),
         ("DEMO-KB-081".to_owned(), Stage::Review),
@@ -92,6 +100,13 @@ fn run_status_rows_cover_sessions_not_hub() {
             .card_notes
             .insert(key.to_owned(), CardNote::default());
     }
+    test_tools.cards.card_notes.insert(
+        "DEMO-KB-005".to_owned(),
+        CardNote {
+            needs_you_open: true,
+            ..CardNote::default()
+        },
+    );
     let run_path = test_tools.run_path();
     fs::write(
         run_path.join("report-demo-kb-007-impl.2214.read"),
@@ -136,6 +151,11 @@ fn run_status_rows_cover_sessions_not_hub() {
                 "-".to_owned()
             ),
             ("docs-fix".to_owned(), "hub".to_owned(), "unsure".to_owned()),
+            (
+                "demo-kb-005-impl".to_owned(),
+                "you".to_owned(),
+                "needs-you note".to_owned(),
+            ),
             (
                 "demo-kb-007-impl".to_owned(),
                 "kept".to_owned(),

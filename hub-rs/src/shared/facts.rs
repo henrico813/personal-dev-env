@@ -144,7 +144,7 @@ pub(crate) fn collect_session_facts(
             })
         };
         let key = find_session_card(&agent.name, session_id, &notes);
-        let own_card = key.as_ref().and_then(&read_card_facts);
+        let own_card = key.as_ref().and_then(read_card_facts);
         let reported_keys = report_keys.get(&agent.name);
         let reported_card = reported_keys
             .and_then(Option::as_ref)
