@@ -1,12 +1,16 @@
 """Tests for the one-package-per-line Dockerfile check."""
 
-import contextlib
-import io
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 
-import check_dockerfile_packages
+CHECK = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "check_dockerfile_packages.py",
+)
 
 
 class TestCheckDockerfilePackages(unittest.TestCase):
@@ -18,10 +22,12 @@ class TestCheckDockerfilePackages(unittest.TestCase):
             path = os.path.join(folder, "Dockerfile")
             with open(path, "w", encoding="utf-8") as dockerfile:
                 dockerfile.write(dockerfile_text)
-            output = io.StringIO()
-            with contextlib.redirect_stdout(output):
-                exit_code = check_dockerfile_packages.main([path])
-        return exit_code, output.getvalue()
+            result = subprocess.run(
+                [sys.executable, CHECK, path],
+                capture_output=True,
+                text=True,
+            )
+        return result.returncode, result.stdout
 
     def test_check_fails_on_crowded_install_line(self):
         """Fails and names the file line holding several packages.

@@ -169,9 +169,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: test the check
-        run: python3 -m unittest discover -s scripts
+        run: python3 -m unittest discover -s ci/test
       - name: check Dockerfiles
-        run: python3 scripts/check_dockerfile_packages.py
+        run: python3 ci/check_dockerfile_packages.py
 
   vibe:
     runs-on: ubuntu-latest
