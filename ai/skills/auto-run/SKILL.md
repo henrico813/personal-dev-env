@@ -140,6 +140,15 @@ the same way, since running sessions keep the old text.
 The auto hub writes to your run folder only its end brief, as
 `report-auto-hub-<N>.md`, or a blocker that stops the whole run.
 
+## After the end brief (front hub)
+
+When the user gives feedback on one of the run's pull requests, write
+it as a list in `<auto run folder>/feedback.md`. Have a fresh agent
+check every other open pull request of the run against that list, and
+send what it finds to the auto hub with `hub send`. The auto hub has
+each card's worker fix it through a fresh planner and fresh reviews
+before the user reviews that pull request.
+
 ## The auto hub
 
 1. Run `hub auto now --run "<run folder>"`. When it exits 2, the run
@@ -189,13 +198,17 @@ The auto hub writes to your run folder only its end brief, as
    why something failed takes more than two commands, hand the
    search to a subagent and read only its report.
 8. When every card has stopped, tell each worker with a finished
-   branch to send its pull request create request, in merge order,
-   one at a time and at least a minute apart, since Moshi refuses
-   pushes that come too fast. Add each pull request to
-   `<run folder>/reviews.md` with its approval ID. Then
+   branch to send its pull request create request in merge order.
+   A branch at the bottom of its stack sends its comment review
+   right after; a stacked branch's review waits, as the worker limits
+   say. Requests go one at a time and at least a
+   minute apart, since Moshi refuses pushes that come too fast. Add
+   each pull request to `<run folder>/reviews.md` with its approval
+   ID. Then
    write the end brief by `status-updates` to the front hub's
    `report-auto-hub-<N>.md`: per card, its project, the problem it
-   solves, the result and the checks run and not run; then the output
+   solves, the result, whether a comment review waits, and the checks
+   run and not run; then the output
    of `hub brief --run "<run folder>"`; then what went wrong in the
    run. A request expires four hours after it is filed, so the brief
    says when; the worker's rerun of the same `pde-gh-write` command
