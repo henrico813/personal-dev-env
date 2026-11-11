@@ -70,6 +70,8 @@ steps' defaults.
    Rerun the identical command later only to read its result.
    `already ran <id>, exit N` (followed by the captured `gh` output),
    `declined <id>` (exit 4), and `interrupted <id>` (exit 6) are final.
+   After `already ran` with N not 0, fix the cause, then ask again by
+   putting `--retry` before `pr` in the same command.
    Never answer approval requests, run `pde-pr-approve`, or set `PDE_GH_WRITE`.
 
 ## Update

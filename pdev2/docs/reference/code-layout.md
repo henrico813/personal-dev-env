@@ -41,6 +41,7 @@ calls to those programs.
 | How the inbox checks other Herdr machines | `internal/cmd/machines.go` |
 | The popup that shows other machines | `internal/terminal/others.go` |
 | How `gh` is found and run | `internal/cmd/gh.go` |
+| How a merge or a new PR keeps a stack in order, and the merge of a PR in a GitHub stack | `internal/cmd/stack.go` |
 | The wait, rerun results, and exit codes | `internal/cmd/writecmd.go` and `internal/cmd/cmd.go` |
 | An option that a new `gh` adds to a `gh pr` command | `targetFlags` in `internal/approval/request.go`, with whether it takes a value; title, body, body file, and repository options are in `valueFlags` |
 
@@ -74,7 +75,13 @@ Each approval promise, and the tests that fail when it breaks:
 | A dismissed request comes back when the agent asks again, and Esc or Up never closes the popup | `TestRerunShowsDismissedRequestAgain`, `TestPopupIgnoresEscKey` |
 | gh runs at most once per approval | `TestRerunReportsResultWithoutRunningAgain`, `TestConcurrentRunsCallGHOnce`, `TestRerunSurvivesFailedRepoLookup` |
 | An approval expires four hours after its last change | `TestExpiredApprovalNeedsNewAnswer` |
+| Only a failed run can be asked again, and the rerun says how | `TestRetryAsksAgainOnlyAfterFailure`, `TestFailedRunRerunNamesRetryOption` |
 | Restarting the runner or phone question keeps the request's age | `TestRunnerRestartKeepsRequestAge`, `TestMoshiRerunRestartsDeadAsk` |
 | An approval given after the agent stops waiting still runs | `TestRunnerSavesApprovedOutputForRerun`, `TestApprovalRestartsDeadRunner` |
 | Only the real gh runs, never one in the checkout | `TestRealGHIgnoresEmptyPATHEntry` |
 | Ctrl+b a opens the popup or logs why it cannot | `TestInboxFindsHerdrBesideItself`, `TestMainPicksEntryMode` |
+| One approval merges one PR of a stack, never the PRs below it | `TestMergeRefusesMidStackPR` |
+| A PR in a GitHub stack merges through GitHub's merge API for stacks | `TestStackedMergeUsesMergeAsyncAPI` |
+| After a merge, PRs based on its branch move to its base, unless GitHub moves them | `TestMergeMovesUnstackedDependentsToBase`, `TestMergeStackedFailureReportedWithoutMoves` |
+| A plain merge says the PR merged, unless `--auto` only queued it | `TestMergePlainReportsMergeUnlessAuto` |
+| A new PR's base branch is the default branch or has an open PR | `TestCreateRefusesBaseWithoutOpenPR` |

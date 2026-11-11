@@ -90,7 +90,7 @@ func TestRunnerRestartKeepsRequestAge(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	state, err := loadOrCreate(approval.Request{ID: rec.ID, Args: []string{"pr", "comment", "12"}}, "")
+	state, err := loadOrCreate(approval.Request{ID: rec.ID, Args: []string{"pr", "comment", "12"}}, "", false)
 
 	if err != nil || state != approval.StatePending {
 		t.Fatalf("rerun state %q, err %v", state, err)
@@ -129,7 +129,7 @@ func TestRequestSavesRunnerAndPhonePIDs(t *testing.T) {
 	approvaltest.Replace(t, &moshiProgram, func() (string, error) { return ask, nil })
 	discardStderr(t)
 
-	_, err := loadOrCreate(approval.Request{ID: "new", Args: []string{"pr", "comment", "12"}}, "")
+	_, err := loadOrCreate(approval.Request{ID: "new", Args: []string{"pr", "comment", "12"}}, "", false)
 
 	if err != nil {
 		t.Fatal(err)

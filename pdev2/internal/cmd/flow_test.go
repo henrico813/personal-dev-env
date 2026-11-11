@@ -191,6 +191,53 @@ func TestExpiredApprovalNeedsNewAnswer(t *testing.T) {
 	}
 }
 
+// A merge refused by GitHub could not be asked again, because each rerun read
+// the saved refusal. A retry must ask again after a failure, but never repost
+// a write that worked.
+func TestRetryAsksAgainOnlyAfterFailure(t *testing.T) {
+	cases := []struct {
+		name    string
+		tail    string
+		code    int
+		waiting int
+	}{
+		{name: "failed", tail: "exit 1", code: exitWaiting, waiting: 1},
+		{name: "succeeded", tail: "", code: 0, waiting: 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := setupFlow(t, tc.tail)
+			args := []string{"pr", "ready", "12"}
+			requestAndAnswer(t, args, approval.StateApproved)
+			requestWrite(args)
+
+			code := requestWrite(append([]string{retryOption}, args...))
+
+			if code != tc.code || len(approval.Queued()) != tc.waiting {
+				t.Errorf("retry returned %d with %d waiting, want %d and %d", code, len(approval.Queued()), tc.code, tc.waiting)
+			}
+			if calls := countCalls(t, env.calls); calls != 1 {
+				t.Errorf("gh ran %d times, want 1", calls)
+			}
+		})
+	}
+}
+
+// An agent whose write failed reruns the command and sees only the old
+// failure. The rerun must say how to ask again.
+func TestFailedRunRerunNamesRetryOption(t *testing.T) {
+	env := setupFlow(t, "exit 1")
+	args := []string{"pr", "ready", "12"}
+	requestAndAnswer(t, args, approval.StateApproved)
+	requestWrite(args)
+
+	requestWrite(args)
+
+	if !strings.Contains(env.output.String(), "with "+retryOption+" before pr") {
+		t.Errorf("rerun output does not name %s:\n%s", retryOption, env.output)
+	}
+}
+
 // An Esc meant for the agent dismissed a request in the Herdr popup. The
 // owner asked the agent to send it again, but the rerun only kept waiting,
 // and the request sat unseen for half an hour. A rerun must put it back in

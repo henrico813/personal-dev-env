@@ -13,7 +13,16 @@ import (
 // Agent commands are killed after about two minutes, so the wait must end first.
 var answerTimeout = 90 * time.Second
 
+// Placed before pr, this option asks for approval again when a request's gh
+// run failed. It is left out of the request ID, so a rerun without it reads
+// the new result.
+const retryOption = "--retry"
+
 func requestWrite(args []string) int {
+	retry := len(args) > 0 && args[0] == retryOption
+	if retry {
+		args = args[1:]
+	}
 	req, err := approval.Parse(args, os.Stdin)
 	if err != nil {
 		fmt.Fprintf(stderr, "pde-gh-write: %v\n", err)
@@ -24,7 +33,12 @@ func requestWrite(args []string) int {
 		return printError(errors.New("cannot find the real gh executable"))
 	}
 	req = scopeRequest(req)
-	state, err := loadOrCreate(req, gh)
+	state, err := loadOrCreate(req, gh, retry)
+	var refused refusedError
+	if errors.As(err, &refused) {
+		fmt.Fprintf(stderr, "pde-gh-write: %v\n", err)
+		return exitRejected
+	}
 	if err != nil {
 		return printError(err)
 	}
@@ -39,7 +53,7 @@ func requestWrite(args []string) int {
 // also starts the Herdr notification, the phone question, and the runner; a
 // pending one restarts a phone question or runner that died, and opens the
 // popup again if it was dismissed.
-func loadOrCreate(req approval.Request, gh string) (string, error) {
+func loadOrCreate(req approval.Request, gh string, retry bool) (string, error) {
 	lockFile, err := approval.Lock(req.ID)
 	if err != nil {
 		return "", err
@@ -48,7 +62,8 @@ func loadOrCreate(req approval.Request, gh string) (string, error) {
 	rec, err := approval.Load(req.ID)
 	// An expired record of any state is replaced, so after four hours the same
 	// command needs a new approval and may run again.
-	if err == nil && !approval.Expired(rec) {
+	replace := err == nil && (approval.Expired(rec) || retry && hasFailedRun(rec))
+	if err == nil && !replace {
 		if rec.State == approval.StatePending {
 			// The owner asks the agent to send a dismissed request again, and a
 			// rerun is all the agent can do. Saved here, because startMoshi and
@@ -78,6 +93,9 @@ func loadOrCreate(req approval.Request, gh string) (string, error) {
 		// still finds the same request.
 		req.Repo = ghLookup(gh, req.Directory, "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner")
 	}
+	if err := checkStackOrder(gh, req); err != nil {
+		return "", err
+	}
 	text, fetchedTitle, err := approvalText(gh, req)
 	if err != nil {
 		return "", err
@@ -100,6 +118,12 @@ func loadOrCreate(req approval.Request, gh string) (string, error) {
 	rec = startMoshi(rec)
 	runnerStart(rec)
 	return approval.StatePending, nil
+}
+
+// Reports whether gh exited with a failure. A run cut off partway does not
+// count, since gh may already have posted.
+func hasFailedRun(rec approval.Record) bool {
+	return rec.State == approval.StateRan && rec.Exit != 0
 }
 
 // The same command in another directory is a different request, so an
@@ -144,6 +168,9 @@ func reportOrRunOutput(id, gh string, output io.Writer) int {
 		return runGH(rec, gh, output)
 	case approval.StateRan:
 		fmt.Fprintf(stderr, "pde-gh-write: already ran %s, exit %d\n", id, rec.Exit)
+		if hasFailedRun(rec) {
+			fmt.Fprintf(stderr, "pde-gh-write: to ask for approval again, rerun this exact command with %s before pr\n", retryOption)
+		}
 		fmt.Fprint(output, rec.Output)
 		return rec.Exit
 	case approval.StateDeclined:

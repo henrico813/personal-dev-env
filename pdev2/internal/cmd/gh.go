@@ -170,26 +170,12 @@ func runGH(rec approval.Record, gh string, output io.Writer) int {
 		return printError(err)
 	}
 	capture := &limitedBuffer{}
-	cmd := exec.Command(gh, rec.Args...)
-	cmd.Dir = rec.Directory
-	cmd.Stdout, cmd.Stderr = capture, capture
-	if rec.BodyFile {
-		cmd.Stdin = strings.NewReader(rec.Body)
+	if len(rec.Args) > 1 && rec.Args[1] == "merge" {
+		rec.Exit = runMerge(rec, gh, capture)
+	} else {
+		rec.Exit = runApproved(rec, gh, capture)
 	}
-	// Lets this one approved command through the gh guard.
-	cmd.Env = append(os.Environ(), "PDE_GH_WRITE=1")
-	rec.Exit = 0
-	err := cmd.Run()
 	rec.Output = capture.String()
-	if err != nil {
-		var exitErr *exec.ExitError
-		rec.Exit = 1
-		if errors.As(err, &exitErr) {
-			rec.Exit = exitErr.ExitCode()
-		} else {
-			rec.Output += fmt.Sprintf("pde-gh-write: %v\n", err)
-		}
-	}
 	rec.State = approval.StateRan
 	if err := approval.Save(rec); err != nil {
 		// The record stays running, so reruns report interrupted and never rerun.
@@ -197,4 +183,27 @@ func runGH(rec approval.Record, gh string, output io.Writer) int {
 	}
 	fmt.Fprint(output, rec.Output)
 	return rec.Exit
+}
+
+// Runs the approved command as the agent gave it and returns gh's exit
+// code, or 1 when gh could not start.
+func runApproved(rec approval.Record, gh string, output io.Writer) int {
+	cmd := exec.Command(gh, rec.Args...)
+	cmd.Dir = rec.Directory
+	cmd.Stdout, cmd.Stderr = output, output
+	if rec.BodyFile {
+		cmd.Stdin = strings.NewReader(rec.Body)
+	}
+	// Lets this one approved command through the gh guard.
+	cmd.Env = append(os.Environ(), "PDE_GH_WRITE=1")
+	err := cmd.Run()
+	var exitErr *exec.ExitError
+	switch {
+	case err == nil:
+		return 0
+	case errors.As(err, &exitErr):
+		return exitErr.ExitCode()
+	}
+	fmt.Fprintf(output, "pde-gh-write: %v\n", err)
+	return 1
 }

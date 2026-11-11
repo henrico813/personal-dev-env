@@ -5,6 +5,7 @@
 | Command | Behavior |
 |---|---|
 | `pde-gh-write pr OPERATION [ARGS]` | Record the request, wait for an answer, run `gh` once |
+| `pde-gh-write --retry pr OPERATION [ARGS]` | The same, but a request whose `gh` run failed is asked again as a new request; any other request is handled as without `--retry` |
 | `pde-pr-approve REQUEST_ID` | Show a pending request in `less` and ask for `yes` or `no` |
 | `pde-pr-approve --herdr-popup` | Run by Herdr to draw the popup, starting with the request in `PDE_REQUEST_ID` |
 | `pde-pr-approve --herdr-inbox` | Open the popup on the oldest pending request, dismissed or not; with none, on [other machines](#other-herdr-machines) when one is saved; or say why it cannot |
@@ -24,6 +25,23 @@ posts:
   `gh` may take it as that option's value.
 - `--` and everything after it.
 
+Refused to keep a stack of PRs in order, one approval per PR:
+
+- `pr create --base BRANCH` when `BRANCH` is not the default branch
+  and has no open PR. Open that branch's PR first.
+- `pr merge` of a PR in a GitHub stack while open PRs sit below it,
+  since GitHub would merge them too. Merge the lowest one first.
+- `pr merge` of a PR in a GitHub stack without `--squash`, `--merge`,
+  or `--rebase`, or with an option GitHub's merge API for stacks lacks,
+  such as `--auto` or `--delete-branch`.
+
+A PR in a GitHub stack merges through that API instead of `gh pr merge`,
+which GitHub refuses for it; `pde-gh-write` waits up to 25 seconds for
+the result. After a merge succeeds without `--auto`, it moves the open
+PRs based on the merged branch to the merged PR's base, except PRs in a
+GitHub stack, which GitHub moves itself. If it cannot look up the PR, it
+runs `gh pr merge` as given and moves nothing.
+
 ## States
 
 | State | Set by | Meaning |
@@ -39,7 +57,7 @@ posts:
 | Code | Meaning |
 |---|---|
 | `0` | `gh` succeeded, now or in an earlier run |
-| `1` | This program failed, such as no real `gh` or an unreadable record |
+| `1` | This program failed, such as no real `gh` or an unreadable record, or GitHub failed or had not finished a stack merge |
 | `2` | The command or its arguments were refused |
 | `3` | No answer within 90 seconds; the runner runs `gh` once approved, so rerun only to read the result |
 | `4` | The request was declined |
@@ -61,6 +79,7 @@ Status lines on standard error:
 | `pde-gh-write: still waiting for approval of ID` | No answer within 90 seconds; exit 3 |
 | `pde-gh-write: the phone question failed` | After `still waiting`, when `moshi_error` is set; the line holds the reason |
 | `pde-gh-write: already ran ID, exit N` | A rerun of a request that ran; the saved `gh` output follows |
+| `pde-gh-write: to ask for approval again` | After `already ran` when `N` is not 0; rerun with `--retry` before `pr` to ask again |
 | `pde-gh-write: declined ID` | A rerun of a declined request; exit 4 |
 | `pde-gh-write: interrupted ID` | A rerun of an interrupted request; exit 6 |
 

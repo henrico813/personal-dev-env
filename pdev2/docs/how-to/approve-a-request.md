@@ -80,4 +80,6 @@ Exit 3 means no one answered within 90 seconds. The request still waits:
 answer it as above, and `gh` runs within a second of your approval. When
 the agent runs the same command again, it prints
 `pde-gh-write: already ran ID, exit N`, where `N` is the exit code of
-`gh`, and what `gh` printed, such as the new PR's address.
+`gh`, and what `gh` printed, such as the new PR's address. When `N` is
+not 0, the agent can ask again by putting `--retry` before `pr`, and
+you see the request as a new one.
