@@ -41,7 +41,7 @@ apt_groups:
 # The manifest tags every item with the tier that installs it.
 profiles:
   # Installs the shell, tmux and command-line tools for headless
-  # homelab VMs.
+  # server VMs.
   terminal: {apt: [base], tiers: [terminal]}
   # Installs Neovim, OpenCode, herdr and fonts for a laptop that
   # compiles nothing. It leaves out Go, Rust, the approval tools and

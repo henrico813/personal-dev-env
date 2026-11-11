@@ -71,4 +71,4 @@ installation does not configure one for OpenCode.
 The `promote-memory` skill turns an explicitly requested learning into a
 reviewed source change. It targets this repository by default from any
 checkout, writes the skill under `skills/`; it needs no install entry, and
-opens a pull request with Git author email `henryco4388@gmail.com`.
+opens a pull request whose commits use a GitHub noreply author email.
