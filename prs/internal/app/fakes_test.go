@@ -42,12 +42,34 @@ const listReply = `{"data": {"search": {"nodes": [{"number": 12, "title": "Fix l
   "state": "OPEN", "author": {"login": "alice"}, "repository": {"nameWithOwner": "example/repo"},
   "updatedAt": "2026-10-31T10:00:00Z", "labels": {"nodes": []}, "commits": {"nodes": []}}]}}}`
 
+// Three open pull requests as gh's GraphQL reply for one repository has
+// them. The draft #20 starts a stack that #22 is based on, with a failed
+// check, and #21 stands alone.
+const statusReply = `{"data": {"repository": {"pullRequests": {"nodes": [
+  {"number": 20, "title": "Retry logins", "isDraft": true, "repository": {"nameWithOwner": "example/repo"},
+   "baseRefName": "main", "headRefName": "retry-logins",
+   "body": "## Overview\n\nLogins time out on slow networks. Now they retry.",
+   "labels": {"nodes": []}, "commits": {"nodes": []}},
+  {"number": 21, "title": "Fix typo", "repository": {"nameWithOwner": "example/repo"},
+   "baseRefName": "main", "headRefName": "fix-typo", "body": "",
+   "labels": {"nodes": []}, "commits": {"nodes": [{"commit": {"statusCheckRollup": {"contexts": {"nodes": [
+     {"__typename": "CheckRun", "name": "lint", "status": "COMPLETED", "conclusion": "SUCCESS"}]}}}}]}},
+  {"number": 22, "title": "Log retries", "repository": {"nameWithOwner": "example/repo"},
+   "baseRefName": "retry-logins", "headRefName": "log-retries",
+   "body": "Retries leave\nno trace. This logs them.",
+   "labels": {"nodes": []}, "commits": {"nodes": [{"commit": {"statusCheckRollup": {"contexts": {"nodes": [
+     {"__typename": "CheckRun", "name": "lint", "status": "COMPLETED", "conclusion": "FAILURE"},
+     {"__typename": "CheckRun", "name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}]}}}}]}}
+]}}}}`
+
 // Answers as gh does when GitHub works, lists nothing, refuses with its
-// reason, fails, or is slow, as GH_ANSWER says. It logs each call as list or
-// fetch to GH_LOG when that is set.
+// reason, fails, or is slow, as GH_ANSWER says. It logs each call as list,
+// status or fetch to GH_LOG when that is set, and gives example/repo as the
+// current folder's repository.
 const fakeGH = `#!/bin/sh
 case "$*" in
 *"search("*) call=list ;;
+*"pullRequests("*) call=status ;;
 *) call=fetch ;;
 esac
 if [ -n "$GH_LOG" ]; then
@@ -79,9 +101,11 @@ slow-fetch)
     exec sleep 30
   fi ;;
 esac
-case "$1" in
-api) echo '` + listReply + `' ;;
-pr) printf 'diff --git a/a.go b/a.go\n+a\ndiff --git a/b.go b/b.go\n+b\ndiff --git a/c.go b/c.go\n+c\n' ;;
+case "$1$call" in
+apistatus) printf '%s\n' '` + statusReply + `' ;;
+api*) echo '` + listReply + `' ;;
+repo*) echo example/repo ;;
+pr*) printf 'diff --git a/a.go b/a.go\n+a\ndiff --git a/b.go b/b.go\n+b\ndiff --git a/c.go b/c.go\n+c\n' ;;
 esac
 `
 

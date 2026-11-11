@@ -94,6 +94,11 @@ prs 123
 prs OWNER/REPO 123
 ```
 
+To get a status update of every open pull request in the current folder's
+repository, run `prs status`. It prints a Markdown list in merge order,
+with each pull request's problem, checks and blockers, and the first one
+to review in bold.
+
 Check out a pull request when review requires repository search or tests. Use
 the merge base to isolate changes introduced by its branch:
 

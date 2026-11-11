@@ -107,6 +107,15 @@ type Thread struct {
 	Comments     []Comment `json:"comments"`
 }
 
+// Holds one open pull request of a repository, which prs status lists.
+type OpenPullRequest struct {
+	PullRequest
+	Body string
+	// True when the head branch is in a fork, whose branch names can match
+	// this repository's.
+	IsCrossRepository bool
+}
+
 // Returns pass, fail or pending.
 func (c Check) Result() string {
 	outcome := c.Conclusion
@@ -173,6 +182,15 @@ query {
   }
 }` + detailsFragment
 
+const openQuery = `
+query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(states: OPEN, first: 50, orderBy: {field: CREATED_AT, direction: ASC}) {
+      nodes { ...details body isCrossRepository }
+    }
+  }
+}` + detailsFragment
+
 const extrasQuery = `
 query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) { pullRequest(number: $number) { ...extras } }
@@ -200,8 +218,9 @@ type pullRequestNode struct {
 			} `json:"commit"`
 		} `json:"nodes"`
 	} `json:"commits"`
-	Body  string `json:"body"`
-	Files struct {
+	Body              string `json:"body"`
+	IsCrossRepository bool   `json:"isCrossRepository"`
+	Files             struct {
 		Nodes []ChangedFile `json:"nodes"`
 	} `json:"files"`
 	Comments struct {
@@ -276,6 +295,49 @@ func ListPullRequests(ctx context.Context) (
 		prs = append(
 			prs,
 			node.toPullRequest(),
+		)
+	}
+	return prs, err
+}
+
+// Returns the oldest 50 open pull requests of repo, oldest first, with
+// their details and descriptions. A repository with more shows only those.
+func ListOpenPullRequests(
+	ctx context.Context,
+	repo string,
+) (
+	[]OpenPullRequest,
+	error,
+) {
+	var reply struct {
+		Data struct {
+			Repository struct {
+				PullRequests struct {
+					Nodes []pullRequestNode `json:"nodes"`
+				} `json:"pullRequests"`
+			} `json:"repository"`
+		} `json:"data"`
+	}
+	owner, name, _ := strings.Cut(
+		repo,
+		"/",
+	)
+	err := runGraphQL(
+		ctx,
+		&reply,
+		openQuery,
+		"--field=owner="+owner,
+		"--field=name="+name,
+	)
+	var prs []OpenPullRequest
+	for _, node := range reply.Data.Repository.PullRequests.Nodes {
+		prs = append(
+			prs,
+			OpenPullRequest{
+				PullRequest:       node.toPullRequest(),
+				Body:              node.Body,
+				IsCrossRepository: node.IsCrossRepository,
+			},
 		)
 	}
 	return prs, err
