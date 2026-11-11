@@ -1,6 +1,7 @@
-//! Finds Go's `//` and `/* */` comments. Each `//` comment's text matches
-//! what approvals saved earlier hold, except next to a tool line, so approved
-//! comments do not look changed.
+//! This module finds Go's `//` and `/* */` comments. Each `//` comment's text
+//! matches what approvals saved earlier hold, except next to a tool line, so
+//! approved comments do not look changed. Read the `GoRules::classify_node(node, source)`
+//! and `GoRules::name_code_below(code, source)` functions to understand the module.
 
 use std::path::Path;
 use std::sync::LazyLock;

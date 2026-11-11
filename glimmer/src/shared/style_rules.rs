@@ -1,7 +1,6 @@
-//! This module finds the style issues on a branch's changed lines and in the
-//! agent's rewords, by the rules of the `code-documentation` skill. Each
-//! language lists its own rules, so this file never checks which language a
-//! file is in. Read the `StyleCheck::new(approvals, at_base)`,
+//! This module checks a branch's changed comments and the agent's rewords
+//! against the `code-documentation` skill's rules, and leaves the choice of
+//! rules to each language. Read the `StyleCheck::new(approvals, at_base)`,
 //! `StyleCheck::find_file_style_issues(now, changed)`, and
 //! `StyleCheck::find_reword_style_issues(now, reworded)` functions to
 //! understand the module.
@@ -222,8 +221,8 @@ impl<'a> StyleCheck<'a> {
             };
             match &docstring.text {
                 None if docstring.is_required => {
-                    // Every line of a moved file counts as changed, so a function a deleted
-                    // changed file held at `base` is old.
+                    // Every line of a moved file counts as changed, so a function from a
+                    // changed file the branch deleted counts as old.
                     let is_moved = !self.at_base.has_file(&now.file)
                         && self.at_base.has_gone_name(&now.file, &definition.name);
                     let outcome = if is_moved {
@@ -785,8 +784,8 @@ fn build_avoided_word_patterns(avoid: &BTreeMap<String, String>) -> Vec<(Regex, 
 
 #[cfg(test)]
 mod tests {
-    //! Tests the style rules on source text, with no Git clone. The tests that
-    //! need Git's diff or a branch sit in `tests/check_comments.rs`.
+    //! This module tests the style rules on source text, with no Git clone, and
+    //! `tests/check_comments.rs` holds the tests that need Git's diff or a branch.
 
     use std::fs;
     use std::path::Path;
@@ -798,16 +797,16 @@ mod tests {
     use crate::shared::approvals::{self, Approvals};
     use crate::shared::git::{FileVersion, ON_DISK};
 
-    /// Names the Go file `find_in_changed_store` reads.
+    /// Names the Go sample file `find_in_changed_store` reads.
     const STORE: &str = "review_store.go";
-    /// Holds the comment above `SaveAnswer` in the store file at `base`.
+    /// Holds the old comment above the Go sample's function, as it was at `base`.
     const BASE_COMMENT: &str = "// Saves the answer under the lock.\n";
     /// Holds an avoid list with one word, which the avoided-word rows break.
     const AVOID_BLOB: &str = r#"{"approved": [], "avoid": {"blob": "say file"}}"#;
     /// Numbers the temporary folders, so tests that run at once never share one.
     static NEXT_FOLDER: AtomicUsize = AtomicUsize::new(0);
 
-    /// Returns Go source with `comment` above a `SaveAnswer` function whose body is `body`.
+    /// Returns the Go sample with `comment` above its one function, whose body is `body`.
     fn store_source(comment: &str, body: &str) -> String {
         format!("package review\n\n{comment}func SaveAnswer() {{{body}}}\n")
     }
@@ -860,7 +859,7 @@ mod tests {
         list_rules(check.find_file_style_issues(&read_source(file, source), &changed))
     }
 
-    /// Returns the findings, failures first, when the store file changes from `before` to `now`.
+    /// Returns the findings, failures first, when the Go sample changes from `before` to `now`.
     fn find_in_changed_store(
         approvals: &Approvals,
         before: &str,

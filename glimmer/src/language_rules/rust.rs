@@ -1,7 +1,6 @@
 //! This module finds Rust's line comments, block comments and `#[doc]`, names
 //! the code each describes, and lists the code examples rustdoc reads as Rust
-//! code. Rust's tools read attributes, so no Rust comment is a tool line. Read
-//! the `RustRules::classify_node(node, source)`,
+//! code. Read the `RustRules::classify_node(node, source)`,
 //! `RustRules::name_code_below(code, source)` and `RustRules::list_doc_tests(text)`
 //! functions to understand the module.
 
