@@ -1,0 +1,22 @@
+//! Holds one module per hub command. Each runs one command and
+//! returns an `Outcome` or a `HubError`, and never prints, so tests
+//! read plain values.
+
+pub mod cli;
+pub mod flag;
+pub mod sidebar;
+
+/// The lines a command prints on standard output when it did its
+/// work. The program then exits 0.
+#[derive(Debug)]
+pub struct Outcome {
+    pub lines: Vec<String>,
+}
+
+impl Outcome {
+    pub(crate) fn line(text: impl Into<String>) -> Outcome {
+        Outcome {
+            lines: vec![text.into()],
+        }
+    }
+}

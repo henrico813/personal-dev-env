@@ -126,6 +126,7 @@ func TestEachProfileAddsRecordedItems(t *testing.T) {
 				"vibe",
 				"blink.cmp",
 				"glimmer",
+				"hub-next",
 				"prs",
 				"go",
 				"rust",
