@@ -8,6 +8,7 @@ import (
 
 	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
+	"pde-installer/internal/testfile"
 )
 
 func TestValidateRejectsInvalidProfile(t *testing.T) {
@@ -142,8 +143,8 @@ func fixtureManager(t *testing.T, installed map[string]string, dryRun bool) (Man
 		cases.WriteString(name + ") printf '%s' '" + status + "' ;;\n")
 	}
 	dpkg := "#!/bin/sh\ncase \"$3\" in\n" + cases.String() + "*) exit 1 ;;\nesac\n"
-	writeFixture(t, filepath.Join(bin, "dpkg-query"), dpkg, 0o755)
-	writeFixture(t, filepath.Join(bin, "sudo"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \""+log+"\"\n", 0o755)
+	testfile.WriteExecutable(t, filepath.Join(bin, "dpkg-query"), dpkg)
+	testfile.WriteExecutable(t, filepath.Join(bin, "sudo"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \""+log+"\"\n")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	release := filepath.Join(root, "os-release")
 	writeFixture(t, release, "ID=ubuntu\nVERSION_ID=24.04\n", 0o644)
