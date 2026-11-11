@@ -28,18 +28,18 @@ even when the user has nothing to do.
 - Open with the project's name and what it does, in a few words.
 - Say what each thing does for the user before its label. Write "the
   approvals-file pull request (P4, #383)", not "P4". Explain every
-  term, such as "batch 2", in every message.
-- Say which repository or project each plan, card or pull request
-  belongs to, even when the whole update is about one project,
-  because the user works on several. For each, describe the user's
-  problem it solves, even if you explained it earlier that day.
-- Describe an approval request by its effect, such as opening or
-  merging a given pull request in a given repository, and say where
-  the user approves it. Never use its ID, which the user cannot see.
-- When you explain work, start with the concrete task and a small
-  example. Give each rule's real-world consequence in one plain
-  sentence, say where the rule lives in the source, and say what the
-  evidence does and does not prove.
+  term, such as "batch 2", in every message, even if you explained it
+  earlier that day.
+- Say which repository or project each plan, card and pull request
+  is in. Say it even when the update covers only one project, because
+  the user works on several.
+- Say what an approval request does, such as merging the valve-alert
+  pull request in the fernwood repository, and where the user
+  approves it. Never name it by its ID, which means nothing to the
+  user.
+- When an update explains how something works, open with a small
+  example of the task. For each rule the change adds, say in one
+  sentence what it means for the user and which file holds it.
 - Keep private details you read in notes out of updates.
 
 ## Order
@@ -49,23 +49,26 @@ even when the user has nothing to do.
 3. Detail, only as much as the user needs.
 
 Each thing the user must open comes with its link, branch, worktree
-path or command. A file comes with a command that opens precisely
-that file, tried before you send it; opening something nearby, like
-the task's card, does not count. Give each deadline as the
-time left, worked out from what you know, such as "expires in about
-two hours". Add a clock time only when you know the current time.
+path or command. Give each deadline as the time left, worked out from
+what you know, such as "expires in about two hours". Add a clock time
+only when you know the current time.
+
+Point to a file with a command that opens the file itself. Run the
+command once before you send. Opening a nearby item, like the task's
+card, does not count.
 
 A question says what it asks, the choices, what each choice leads
 to, and your recommendation, as item 2 of the recap below does. Until
-the user answers, every update carries the whole question again,
-choices and recommendation included, not just its name.
+the user answers, repeat the whole question in each update. Give the
+choices and your recommendation each time, not just the question's
+name.
 
 ## Pull requests to review
 
-Order the list as the pull requests will merge, numbered. For each,
-give its repository, a line on the user's problem it fixes, how its
-checks went and anything blocking it. Put the first one to review in
-bold.
+Number the pull requests waiting for review in the order they will
+merge. For each, name its repository and add one line on what it
+fixes for the user, how its checks went and anything blocking it. Put
+the first to review in bold.
 
 ## Real results
 
@@ -74,9 +77,10 @@ bold.
 - A claim you did not check is not a result. Leave it out or mark
   it unchecked. Never make up a number, link or time the facts do not
   give, such as a pull request number for work not yet opened.
-- Recheck the current state of anything you would list as waiting
-  on the user, pending or open; never reuse an old status. When it
-  has since been approved, finished or merged, report that.
+- Look up each open, pending or waiting item again before you list
+  it. Do not copy a status from an earlier message. If it was
+  approved, finished or merged since, say so and take it off the
+  list.
 - Correct a wrong earlier claim in its own line: "Correction:
   yesterday I said the tests cover Windows paths. They do not; only
   Linux paths ran."
@@ -94,9 +98,10 @@ Follow the filler list in
   lines.
 - Keep each command under about 35 characters, one per code block,
   and say where to run it. Wrap a long one in a short script first.
-- When the user must change a login, token or setting, give them a
-  script that makes the change and then prints ok or missing, so they
-  can see it worked before saying done.
+- When the user has to update a login, a token or a setting, write
+  them a script that applies the change and then checks it. The
+  script ends by printing `ok` or naming what is missing, so the user
+  can confirm it worked before replying.
 - Bold only what the user must act on.
 
 ## Restraint
@@ -127,11 +132,12 @@ In progress
   it. Not tried on the real valve controller yet.
 
 Waiting on you
-1. Approve fernwood #9, which texts you when a valve sticks, in the
-   approval app. The request expires in about three hours.
+1. Approve merging fernwood #9, which texts you when a valve sticks,
+   in the approval app. The request expires in about three hours.
 2. Should a bed with no plants be skipped or watered at half time?
    Skipping saves water; half time keeps new seeds damp. I recommend
-   skipping. fernwood #8 finishes within a day either way.
+   skipping. The bed schedule (fernwood #8) finishes within a day
+   either way.
 ```
 
 For a progress update rewritten from an agent's shorthand, read
@@ -155,8 +161,8 @@ no earlier message, and fix it before you send it:
    - Every number was checked, and unchecked things are named.
    - No side item that an earlier message raised.
    - Nothing from the filler list in `plain-direct-english` is left.
-   - Each plan, card and pull request names its repository, and each
-     open question is there in full.
+   - Each plan, card and pull request names its repository.
+   - Each open question appears in full, choices included.
    - It fits a phone screen without a wall of text.
 3. Read the fixed draft once more. Send it only when every check
    passes.
