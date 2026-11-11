@@ -1,63 +1,163 @@
 //! Runs one hub command and exits with its code. This is the one file
 //! that reads environment variables, so tests pass in every value
-//! instead. Read `main` to see every command in one place.
+//! instead. Read `run_command` to see every command in one place.
 
 use std::env;
-use std::path::PathBuf;
+use std::fs;
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::time::Duration;
 
-use hub::commands::cli::{self, Command};
-use hub::commands::{flag, sidebar};
+use hub::commands::cli::{self, Cli, Command, RunArg};
+use hub::commands::reports::{CardChoice, ReadRequest};
+use hub::commands::{Outcome, alive, brief, flag, handoff, reports, sidebar};
+use hub::outside::cards::CardCli;
 use hub::outside::herdr::HerdrCli;
+use hub::outside::opencode::OpenCodeDb;
 use hub::shared::{HubError, Tools};
+use jiff::Zoned;
 
-/// Parses the command line, builds the outside systems, runs the
-/// command, prints its lines or its error, and returns its exit code.
+/// How often `hub handoff` checks for the next hub's first reply when
+/// `HUB_POLL_SECONDS` is not set.
+const DEFAULT_POLL: Duration = Duration::from_secs(5);
+
+/// Parses the command line, runs the command, prints its lines or its
+/// error, and returns its exit code.
 fn main() -> ExitCode {
-    let cli = match cli::parse_command() {
-        Ok(cli) => cli,
-        Err(error) => return report_error(&error),
-    };
-    if cli.machine.is_some() && !cli::takes_machine(&cli.command) {
-        let name = cli.command.name();
-        return report_error(&HubError::Usage(format!(
-            "{name} works on this machine only"
-        )));
-    }
-    let herdr = HerdrCli::new(PathBuf::from("herdr"), cli.machine, find_socket());
-    let tools = Tools { herdr: &herdr };
-    let result = match &cli.command {
-        Command::Flag { name } => flag::run_flag(&tools, name),
-        Command::Unflag { name } => flag::run_unflag(&tools, name),
-        Command::Go => sidebar::run_go(&tools),
-        Command::Gather => sidebar::run_gather(&tools),
-    };
-    match result {
+    match cli::parse_command().and_then(|cli| run_command(&cli)) {
         Ok(outcome) => {
             for line in outcome.lines {
                 println!("{line}");
             }
             ExitCode::SUCCESS
         }
-        Err(error) => report_error(&error),
+        Err(error) => {
+            eprintln!("hub: {error}");
+            ExitCode::from(error.exit_code())
+        }
+    }
+}
+
+/// Checks `--machine`, builds the outside systems and runs the
+/// command. A command finds its run folder before it reads anything
+/// else, so a missing folder is reported first.
+fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
+    if cli.machine.is_some() && !cli::takes_machine(&cli.command) {
+        let name = cli.command.name();
+        return Err(HubError::Usage(format!(
+            "{name} works on this machine only"
+        )));
+    }
+    let home = PathBuf::from(env::var_os("HOME").unwrap_or_default());
+    let herdr = HerdrCli::new(
+        PathBuf::from("herdr"),
+        cli.machine.clone(),
+        find_socket(&home),
+    );
+    let cards = CardCli::new(PathBuf::from("card"));
+    let opencode = OpenCodeDb::new(home.join(".local/share/opencode/opencode.db"));
+    let own_pane = env::var("HERDR_PANE_ID").ok();
+    let state_folder = home.join(".local/state/pde");
+    let tools = Tools {
+        herdr: &herdr,
+        cards: &cards,
+        opencode: &opencode,
+        own_pane: own_pane.as_deref(),
+        state_folder: &state_folder,
+    };
+    let hub_run = env::var_os("HUB_RUN");
+    let find_run = |run: &RunArg| cli::find_run_folder(run.run.as_deref(), hub_run.as_deref());
+    let now = Zoned::now();
+    match &cli.command {
+        Command::Read {
+            run,
+            name,
+            note,
+            card,
+        } => {
+            let run = find_run(run)?;
+            let request = ReadRequest {
+                name: name.clone(),
+                note: note.clone(),
+                card: match card {
+                    None => CardChoice::NoCard,
+                    Some(None) => CardChoice::FromName,
+                    Some(Some(key)) => CardChoice::Given(key.clone()),
+                },
+            };
+            reports::run_read(&tools, &run, &request, &now)
+        }
+        Command::Report { run, name, file } => {
+            let run = find_run(run)?;
+            let text = read_report_text(file.as_deref())?;
+            reports::run_report(&run, name, &text)
+        }
+        Command::Note { run, text } => reports::run_note(&find_run(run)?, text, &now),
+        Command::Brief { run } => brief::run_brief(&tools, &find_run(run)?),
+        Command::Handoff { run, name, handoff } => {
+            let run = find_run(run)?;
+            let poll = read_poll_interval()?;
+            let cwd = env::current_dir().map_err(|source| HubError::File {
+                path: PathBuf::from("."),
+                source,
+            })?;
+            handoff::run_handoff(&tools, &run, name, handoff, &cwd, &now, poll)
+        }
+        Command::Flag { name } => flag::run_flag(&tools, name),
+        Command::Unflag { name } => flag::run_unflag(&tools, name),
+        Command::Alive { session } => alive::run_alive(&tools, session, &now),
+        Command::Go => sidebar::run_go(&tools),
+        Command::Gather => sidebar::run_gather(&tools),
     }
 }
 
 /// Returns Herdr's socket from `HERDR_SOCKET_PATH`, which Herdr sets in
 /// its panes and in commands its key bindings run, else Herdr's own
 /// default path.
-fn find_socket() -> PathBuf {
+fn find_socket(home: &Path) -> PathBuf {
     match env::var_os("HERDR_SOCKET_PATH") {
         Some(socket) => PathBuf::from(socket),
-        None => {
-            PathBuf::from(env::var_os("HOME").unwrap_or_default()).join(".config/herdr/herdr.sock")
+        None => home.join(".config/herdr/herdr.sock"),
+    }
+}
+
+/// Returns the report text from FILE, or from standard input when FILE
+/// is `-` or left out.
+fn read_report_text(file: Option<&Path>) -> Result<String, HubError> {
+    match file {
+        Some(path) if path != Path::new("-") => {
+            fs::read_to_string(path).map_err(|source| HubError::File {
+                path: path.to_owned(),
+                source,
+            })
+        }
+        _ => {
+            let mut text = String::new();
+            io::stdin()
+                .read_to_string(&mut text)
+                .map_err(|source| HubError::File {
+                    path: PathBuf::from("standard input"),
+                    source,
+                })?;
+            Ok(text)
         }
     }
 }
 
-/// Prints the error after `hub: ` on standard error and returns its
-/// exit code.
-fn report_error(error: &HubError) -> ExitCode {
-    eprintln!("hub: {error}");
-    ExitCode::from(error.exit_code())
+/// Returns `HUB_POLL_SECONDS` as a duration, such as `0.5` for half a
+/// second, else five seconds.
+fn read_poll_interval() -> Result<Duration, HubError> {
+    let Some(text) = env::var_os("HUB_POLL_SECONDS") else {
+        return Ok(DEFAULT_POLL);
+    };
+    let text = text.to_string_lossy();
+    text.parse::<f64>()
+        .ok()
+        .and_then(|seconds| Duration::try_from_secs_f64(seconds).ok())
+        .ok_or_else(|| {
+            HubError::Usage(format!(
+                "HUB_POLL_SECONDS is {text}, not a number of seconds"
+            ))
+        })
 }

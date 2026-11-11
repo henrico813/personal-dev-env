@@ -7,7 +7,8 @@ use until this program replaces it.
 
 pde-installer builds this folder on the Development tier and installs
 it as `~/.local/bin/hub-next`, so you can try it beside the Python
-`hub`. So far it has `flag`, `unflag`, `go` and `gather`.
+`hub`. So far it has `read`, `report`, `note`, `brief`, `handoff`,
+`flag`, `unflag`, `alive`, `go` and `gather`.
 
 ```bash
 make build   # target/release/hub
@@ -28,3 +29,27 @@ its reason.
 - `hub-next flag` on a working session marks it on idle and done, so
   "needs you" shows once it stops. The Python hub marked the working
   state, which showed "needs you" while the session still worked.
+- `read`, `report`, `note`, `brief` and `handoff` take the run folder
+  from `--run DIR`, else from `HUB_RUN`. With neither, or with a folder
+  that does not exist, they exit 2.
+- `read` exits 3, not 2, when the session has no unread report.
+  `read --note TEXT --card [KEY]` also adds the note to the card's Log,
+  with the key in the session's name or the KEY given. If a step
+  after the archive fails, such as `card note`, the error starts with
+  `archived report-NAME.HHMM.read, but`. The exit code is that failed
+  step's own code.
+- `read --note` and `note` add a `## YYYY-MM-DD` heading before the
+  first line of each day.
+- `report NAME [FILE]` and `note TEXT` are new. `report` writes
+  `report-NAME.md` whole, from FILE or standard input.
+- `read` and `handoff` add a line to `events.jsonl` in the run folder.
+- `handoff` exits 3, not 2, when it stops, and starts the next hub's
+  tab with `HUB_RUN` set. When the prompt to the next hub stalls, it
+  does not press Enter to send pasted text, as the Python hub did.
+- `brief` exits 3, not 2, for an incomplete decision entry. Its first
+  line is `board 24/8, review 19; 4 decisions`, or `board: REASON`
+  when `card` fails. When nothing else waits, the board line is
+  followed by `Nothing waits on the user.`, the same line the Python
+  hub printed.
+- `hub-next --machine LABEL alive` exits 2 with
+  `alive works on this machine only`, the same words as `go`.

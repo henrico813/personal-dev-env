@@ -13,6 +13,9 @@ use serde_json::{Value, json};
 
 const LABEL_SOURCE: &str = "pde-hub";
 const NEEDS_YOU: &str = "needs you";
+const PROMPT_TIME_LIMIT_MS: &str = "30000";
+/// Long enough for OpenCode to load the folder and open the session.
+const START_TIME_LIMIT_MS: &str = "90000";
 /// Keeps a stuck Herdr from holding `hub gather` forever.
 const SOCKET_TIME_LIMIT: Duration = Duration::from_secs(10);
 
@@ -23,12 +26,19 @@ pub trait Herdr {
     fn list_agents(&self) -> Result<Vec<Agent>, HerdrError>;
     /// Returns one agent by name or pane ID.
     fn get_agent(&self, target: &str) -> Result<Agent, HerdrError>;
+    /// Submits text and waits up to 30 seconds until the agent works
+    /// or blocks.
+    fn prompt(&self, name: &str, text: &str) -> Result<(), HerdrError>;
     /// Shows "needs you" in place of each given state in the sidebar.
     fn mark_needs_you(&self, pane_id: &str, states: &[AgentStatus]) -> Result<(), HerdrError>;
     /// Removes the hub's state labels from a pane.
     fn clear_marks(&self, pane_id: &str) -> Result<(), HerdrError>;
     /// Returns workspaces in sidebar order, top first.
     fn list_workspaces(&self) -> Result<Vec<Workspace>, HerdrError>;
+    /// Makes an unfocused tab in a workspace and returns its root pane.
+    fn create_tab(&self, workspace_id: &str, place: &NewPlace) -> Result<PlaceIds, HerdrError>;
+    /// Starts an OpenCode agent at a pane's shell prompt.
+    fn start_agent(&self, start: &AgentStart) -> Result<(), HerdrError>;
     /// Shows the agent's pane in every terminal attached to Herdr.
     fn focus_agent(&self, name: &str) -> Result<(), HerdrError>;
     /// Moves workspaces into one block before another, through
@@ -105,6 +115,23 @@ impl Herdr for HerdrCli {
         parse_agent(&read_result(&printed)?["agent"])
     }
 
+    fn prompt(&self, name: &str, text: &str) -> Result<(), HerdrError> {
+        let args = [
+            "agent",
+            "prompt",
+            name,
+            text,
+            "--wait",
+            "--until",
+            "working",
+            "--until",
+            "blocked",
+            "--timeout",
+            PROMPT_TIME_LIMIT_MS,
+        ];
+        self.run_herdr(&args).map(drop)
+    }
+
     fn mark_needs_you(&self, pane_id: &str, states: &[AgentStatus]) -> Result<(), HerdrError> {
         let labels: Vec<String> = states
             .iter()
@@ -138,6 +165,52 @@ impl Herdr for HerdrCli {
             .collect()
     }
 
+    fn create_tab(&self, workspace_id: &str, place: &NewPlace) -> Result<PlaceIds, HerdrError> {
+        let cwd = place.cwd.to_string_lossy();
+        let env: Vec<String> = place
+            .env
+            .iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect();
+        let mut args = vec![
+            "tab",
+            "create",
+            "--no-focus",
+            "--workspace",
+            workspace_id,
+            "--label",
+            place.label.as_str(),
+            "--cwd",
+            cwd.as_ref(),
+        ];
+        for pair in &env {
+            args.push("--env");
+            args.push(pair);
+        }
+        let printed = self.run_herdr(&args)?;
+        let result = read_result(&printed)?;
+        Ok(PlaceIds {
+            root_pane_id: read_text(&result["root_pane"], "pane_id")?,
+        })
+    }
+
+    fn start_agent(&self, start: &AgentStart) -> Result<(), HerdrError> {
+        let mut args = vec![
+            "agent",
+            "start",
+            start.name.as_str(),
+            "--kind",
+            "opencode",
+            "--pane",
+            start.pane_id.as_str(),
+            "--timeout",
+            START_TIME_LIMIT_MS,
+            "--",
+        ];
+        args.extend(start.args.iter().map(String::as_str));
+        self.run_herdr(&args).map(drop)
+    }
+
     fn focus_agent(&self, name: &str) -> Result<(), HerdrError> {
         self.run_herdr(&["agent", "focus", name]).map(drop)
     }
@@ -155,7 +228,10 @@ impl Herdr for HerdrCli {
 pub struct Agent {
     pub name: String,
     pub status: AgentStatus,
+    /// The OpenCode or Claude Code session ID, once Herdr has seen it.
+    pub session_id: Option<String>,
     pub pane_id: String,
+    pub tab_id: String,
     pub workspace_id: String,
     pub focused: bool,
 }
@@ -188,6 +264,30 @@ impl AgentStatus {
 #[derive(Clone, Debug)]
 pub struct Workspace {
     pub workspace_id: String,
+}
+
+/// A new tab to make.
+#[derive(Clone, Debug)]
+pub struct NewPlace {
+    pub label: String,
+    pub cwd: PathBuf,
+    /// Set in the pane's environment, such as `HUB_RUN`.
+    pub env: Vec<(String, String)>,
+}
+
+/// The IDs Herdr gives a new tab.
+#[derive(Clone, Debug)]
+pub struct PlaceIds {
+    pub root_pane_id: String,
+}
+
+/// An OpenCode agent to start in a pane.
+#[derive(Clone, Debug)]
+pub struct AgentStart {
+    pub name: String,
+    pub pane_id: String,
+    /// The agent's own arguments, after `--`.
+    pub args: Vec<String>,
 }
 
 /// A Herdr call that failed. Each variant holds the words `main` prints
@@ -253,7 +353,9 @@ fn parse_agent(raw: &Value) -> Result<Agent, HerdrError> {
     Ok(Agent {
         name: read_text(raw, "name")?,
         status,
+        session_id: raw["agent_session"]["value"].as_str().map(str::to_owned),
         pane_id: read_text(raw, "pane_id")?,
+        tab_id: read_text(raw, "tab_id")?,
         workspace_id: read_text(raw, "workspace_id")?,
         focused: raw["focused"]
             .as_bool()
@@ -319,7 +421,8 @@ mod tests {
 
     /// Every command reads agents through this parser. A field Herdr
     /// renamed, or one read from the wrong key, breaks every command
-    /// at once.
+    /// at once. `hub handoff` names the old hub's session and tab from
+    /// it, so a misread one sends the session review to the wrong place.
     #[test]
     fn parse_agent_reads_herdr_fields() {
         let answer: Value = serde_json::from_str(AGENT_LIST).unwrap();
@@ -328,7 +431,9 @@ mod tests {
 
         assert_eq!(agent.name, "demo-kb-007-impl");
         assert_eq!(agent.status, AgentStatus::Idle);
+        assert_eq!(agent.session_id.as_deref(), Some("ses_0a1b2c3d4e5f"));
         assert_eq!(agent.pane_id, "w1:p7");
+        assert_eq!(agent.tab_id, "w1:t3");
         assert_eq!(agent.workspace_id, "w1");
         assert!(!agent.focused);
     }
