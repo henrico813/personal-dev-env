@@ -60,6 +60,7 @@ func TestTerminalInventory(t *testing.T) {
 				"yq",
 				"yazi",
 				"ya",
+				"gitleaks",
 			},
 		},
 		{owner: Chezmoi, names: []string{"repository-config", "antidote", "tpm", "ohmyzsh", "powerlevel10k", "zsh-z", "zsh-autosuggestions", "zsh-completions", "zsh-syntax-highlighting", "zsh-history-substring-search", "tmux-sensible", "tmux-resurrect"}},
