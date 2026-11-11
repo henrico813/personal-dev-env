@@ -86,10 +86,10 @@ It makes diff application repeatable. It does not make it authorized or correct.
 ## Where the base commit is recorded
 
 The create-plan and implement-plan prompts record the full base commit in the
-first line of `### Current State`. `planner check` reads that line when
-`--base-commit` is not supplied. `planner inspect` and `planner patch` require
-the caller to pass the full commit ID with `--base-commit`. Planner never uses
-`HEAD` as a default.
+first line of `### Current State`. `planner inspect`, `patch`, `check`, and
+`export` read that line when `--base-commit` is not supplied, so the recorded
+commit is used even after `HEAD` moves. Planner never uses `HEAD` as a
+default.
 
 ## Who this matters to
 
