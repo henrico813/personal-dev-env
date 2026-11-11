@@ -235,6 +235,15 @@ you make any card.
 
 ## Sidebar names
 
+- At the start, check that your agent's name ends in `-hub-<n>`,
+  such as `kanban-hub-13`: a word for the run, then a number, 1 for
+  the run's first hub. `hub go` and `hub gather` find hubs by this
+  name. If yours does not, rename your agent and its tab as the bullet
+  on adopted sessions below shows.
+- Then run `hub gather`, which takes no `--run`. It moves every hub's
+  workspace on this machine into one block at the top of the sidebar.
+  The user presses `ctrl+b shift+h`, or runs `hub go`, to show the
+  next hub in sidebar order, wrapping to the first.
 - A card's worker gets its own workspace, named
   `<card key> <one word>`, such as `demo-kb-007 approvals`. Cards that
   belong together share one workspace, named `<project> <topic>`, such
@@ -339,6 +348,9 @@ When you hand the hub to a new session, write its handoff with
 `herdr-handoff`, holding only the run's state, then start it with:
 
     hub handoff --run "<run folder>" <name> <handoff file>
+
+Name it as Sidebar names says, with `<n>` one higher than yours, such
+as `kanban-hub-14` after `kanban-hub-13`.
 
 It starts `<name>` in a tab of your workspace on the model of the last
 `--model '...'` line in `rules.md`, so keep the hub start command there

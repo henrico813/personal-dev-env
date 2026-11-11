@@ -3,9 +3,11 @@
 import json
 import os
 import re
+import socket
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -70,6 +72,12 @@ elif args[:2] in (
     print(json.dumps({"result": {}}))
 elif args[:2] == ["tab", "create"]:
     print(json.dumps({"result": {"root_pane": {"pane_id": "w1:new"}}}))
+elif args[:2] == ["agent", "focus"]:
+    print(json.dumps({"result": {}}))
+elif args[:2] == ["workspace", "list"]:
+    ids = json.loads((fake / "workspaces.json").read_text())
+    workspaces = [{"workspace_id": id_} for id_ in ids]
+    print(json.dumps({"result": {"workspaces": workspaces}}))
 else:
     print(f"unknown command {args}", file=sys.stderr)
     sys.exit(2)
@@ -183,7 +191,9 @@ def hub(packed: Path, fake_tools: Path) -> Run:
 
     The hub's own pane is ``w1:kanban-hub``, and checks run every
     hundredth of a second so ``hub next`` tests end quickly. HOME is
-    the fakes' folder, so no test reads the real OpenCode database.
+    the fakes' folder, so no test reads the real OpenCode database. The
+    Herdr socket is a file there too, so no test reaches the user's
+    real Herdr.
 
     Args:
         packed: The packed hub.
@@ -207,6 +217,7 @@ def hub(packed: Path, fake_tools: Path) -> Run:
             "PATH": f"{fake_tools / 'bin'}{os.pathsep}{os.environ['PATH']}",
             "HERDR_PANE_ID": "w1:kanban-hub",
             "HOME": str(fake_tools),
+            "HERDR_SOCKET_PATH": str(fake_tools / "herdr.sock"),
             "HUB_POLL_SECONDS": "0.01",
         }
         return subprocess.run(
@@ -247,6 +258,48 @@ def set_agents(fake_tools: Path, *lists: list[dict]) -> None:
         *lists: One agent list per call. The last repeats.
     """
     (fake_tools / "agents.json").write_text(json.dumps(list(lists)))
+
+
+def set_workspaces(fake_tools: Path, *workspace_ids: str) -> None:
+    """Make the fake herdr list these workspaces, top of the sidebar first.
+
+    Args:
+        fake_tools: The fake herdr's folder.
+        *workspace_ids: The workspace IDs in sidebar order.
+    """
+    (fake_tools / "workspaces.json").write_text(json.dumps(workspace_ids))
+
+
+def answer_one_request(
+    fake_tools: Path, answer: dict
+) -> tuple[threading.Thread, list[dict]]:
+    """Answer one request on the fake Herdr socket, in the background.
+
+    Args:
+        fake_tools: The fakes' folder, which holds the socket.
+        answer: The reply without its ``id``, such as ``{"result": {}}``.
+
+    Returns:
+        The thread, to join once hub ends, and a list that holds the
+        request once it arrives.
+    """
+    server = socket.socket(socket.AF_UNIX)
+    server.bind(str(fake_tools / "herdr.sock"))
+    server.listen(1)
+    server.settimeout(30)
+    requests: list[dict] = []
+
+    def serve() -> None:
+        """Read one request line and send ``answer`` back with its id."""
+        with server, server.accept()[0] as connection:
+            request = json.loads(connection.makefile("rb").readline())
+            requests.append(request)
+            reply = {"id": request["id"], **answer}
+            connection.sendall(json.dumps(reply).encode() + b"\n")
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    return thread, requests
 
 
 def read_calls(fake_tools: Path) -> list[list[str]]:
@@ -1385,7 +1438,7 @@ class TestAuto:
         [
             pytest.param("2", "go", id="go"),
             pytest.param("2", "approve run 3", id="other-phrase"),
-            pytest.param("2", "approve run 2 without 001", id="edit"),
+            pytest.param("2", "approve run 2 without DEMO-KB-001", id="edit"),
             pytest.param("3", "approve run 3", id="other-run"),
         ],
     )
@@ -1433,6 +1486,66 @@ class TestAuto:
         assert result.returncode == 0
         assert "The user's words: Approve run 2.\n" in approved
         assert approved.endswith((run_folder / "run.md").read_text())
+
+    @pytest.mark.parametrize(
+        "words",
+        [
+            pytest.param("go ahead with DEMO-KB-001", id="card-missing"),
+            pytest.param(
+                "run DEMO-KB-001, DEMO-KB-002 and DEMO-KB-003",
+                id="extra-card",
+            ),
+            pytest.param("you have my approval", id="no-card"),
+        ],
+    )
+    def test_approve_given_refuses_other_card_set(
+        self, hub: Run, fake_tools: Path, run_folder: Path, words: str
+    ) -> None:
+        """Words that do not name exactly the run's cards approve nothing.
+
+        Words the user gave before the briefing are checked only by
+        the cards they name. A card they did not name must not run,
+        and a card they named but the list leaves out means the list
+        is not what they approved.
+        """
+        for key in ("DEMO-KB-001", "DEMO-KB-002", "DEMO-KB-003"):
+            write_run_card(fake_tools, key)
+        write_run_list(
+            run_folder,
+            "- DEMO-KB-001 demo: retry\n- DEMO-KB-002 demo: resume",
+            "\n## Needs your hands\n- DEMO-KB-003 demo: plug in a disk\n",
+        )
+
+        result = hub(
+            "auto", "approve", "--run", str(run_folder), "--given", "2", words
+        )
+
+        assert result.returncode == 2
+        assert not (run_folder / "approved.md").exists()
+
+    def test_approve_given_saves_users_own_words(
+        self, hub: Run, fake_tools: Path, run_folder: Path
+    ) -> None:
+        """Own words that name exactly the run's cards approve it.
+
+        A user who approves a run before its briefing exists does so in
+        their own words, and the hub records them rather than writing
+        approved.md by hand. Keys count in lower case too.
+        """
+        write_run_card(fake_tools, "DEMO-KB-001")
+        write_run_card(fake_tools, "DEMO-KB-002")
+        write_run_list(
+            run_folder, "- DEMO-KB-001 demo: retry\n- DEMO-KB-002 demo: resume"
+        )
+        words = "Run demo-kb-001 and DEMO-KB-002 while I am away."
+
+        result = hub(
+            "auto", "approve", "--run", str(run_folder), "--given", "2", words
+        )
+
+        approved = (run_folder / "approved.md").read_text()
+        assert result.returncode == 0
+        assert f"The user's words: {words}\n" in approved
 
     def test_now_writes_line_per_run_card(
         self, hub: Run, run_folder: Path
@@ -1487,6 +1600,121 @@ class TestAuto:
 
         assert result.returncode == 2
         assert not (run_folder / "brief-now.md").exists()
+
+
+class TestGo:
+    """``hub go``, the jump to a hub that ctrl+b shift+h runs."""
+
+    @pytest.mark.parametrize(
+        ("focused", "shown"),
+        [
+            pytest.param(
+                "demo-kb-001-impl", "kanban-hub-13", id="not-on-a-hub"
+            ),
+            pytest.param("kanban-hub-13", "auto-hub-1", id="next-hub"),
+            pytest.param("auto-hub-1", "kanban-hub-13", id="wraps-to-first"),
+        ],
+    )
+    def test_go_shows_hub_after_focused_one(
+        self, hub: Run, fake_tools: Path, focused: str, shown: str
+    ) -> None:
+        """Each press shows the next hub in sidebar order, then wraps.
+
+        The user presses one key to move between hubs, so a wrong order
+        or a missing wrap would leave a hub they cannot reach by
+        pressing again. Name order differs from sidebar order here, so
+        a sort by name fails.
+        """
+        set_workspaces(fake_tools, "w1", "w2", "w3")
+        set_agents(
+            fake_tools,
+            [
+                make_agent(
+                    name,
+                    "idle",
+                    workspace_id=workspace_id,
+                    focused=name == focused,
+                )
+                for name, workspace_id in (
+                    ("auto-hub-1", "w3"),
+                    ("demo-kb-001-impl", "w1"),
+                    ("kanban-hub-13", "w2"),
+                )
+            ],
+        )
+
+        result = hub("go")
+
+        assert result.returncode == 0
+        focus = [call for call in read_calls(fake_tools) if "focus" in call]
+        assert focus == [["agent", "focus", shown]]
+
+
+class TestGather:
+    """``hub gather``, which puts every hub at the top of the sidebar."""
+
+    def test_gather_moves_hub_workspaces_to_top(
+        self, hub: Run, fake_tools: Path
+    ) -> None:
+        """Every hub workspace moves once, ahead of the first other one.
+
+        The hub runs gather from its own pane at each start, so its own
+        workspace must move too. Herdr refuses a move that names a
+        workspace twice or anchors on a hub, which would leave the hubs
+        down the sidebar.
+        """
+        set_workspaces(fake_tools, "w1", "w2", "w3")
+        set_agents(
+            fake_tools,
+            [
+                make_agent("auto-hub-1", "done", workspace_id="w3"),
+                make_agent("auto-hub-2", "done", workspace_id="w3"),
+                make_agent("demo-kb-001-impl", "idle", workspace_id="w2"),
+                make_agent(
+                    "kanban-hub-13",
+                    "working",
+                    workspace_id="w1",
+                    pane_id="w1:kanban-hub",
+                ),
+            ],
+        )
+        thread, requests = answer_one_request(fake_tools, {"result": {}})
+
+        result = hub("gather")
+        thread.join(timeout=5)
+
+        assert result.returncode == 0
+        assert requests == [
+            {
+                "id": "hub",
+                "method": "workspace.move_block",
+                "params": {
+                    "workspace_ids": ["w1", "w3"],
+                    "before_workspace_id": "w2",
+                },
+            }
+        ]
+
+    def test_gather_exits_with_herdr_refusal(
+        self, hub: Run, fake_tools: Path
+    ) -> None:
+        """A refused move exits 1 with Herdr's own message.
+
+        The hub trusts the exit code, so a 0 here would tell it the
+        hubs sit at the top when they do not.
+        """
+        set_workspaces(fake_tools, "w1", "w2")
+        set_agents(
+            fake_tools, [make_agent("auto-hub-1", "done", workspace_id="w2")]
+        )
+        refusal = {"code": "invalid_params", "message": "bad block"}
+        thread, _ = answer_one_request(fake_tools, {"error": refusal})
+
+        result = hub("gather")
+        thread.join(timeout=5)
+
+        assert result.returncode == 1
+        assert result.stderr == "hub: bad block\n"
 
 
 # A finished step that ran the shell tool, logged before the newest one.

@@ -1,6 +1,6 @@
-//! Tells the agent what the review waits on and which step to run next. An
-//! agent can call it at any time. Read the `show_status(dir)` function to
-//! understand the module.
+//! This module tells the agent, at any time, what the review waits on and which
+//! step to run next. Read the `show_status(dir)` function to understand the
+//! module.
 
 use std::collections::BTreeMap;
 use std::path::Path;

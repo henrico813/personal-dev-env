@@ -1,8 +1,8 @@
 # Limits for auto run workers
 
-The auto hub copies this file to `<run folder>/common.md` and fills
-in `<auto hub>`, `<run folder>` and `<models>`. Each worker's handoff
-points to it.
+The auto hub copies this file to the run folder as `common.md`, with
+the auto hub's name, the run folder and the models that answered
+filled in. Each worker's handoff points to it.
 
 ## What an auto run is
 
@@ -30,8 +30,19 @@ through your report file.
   with a quick test, before you send it to the planner. Drop a false
   one and write why in the plan's notes. When reviewers disagree,
   pick one and tell the planner which and why.
+- Check the plan against your card yourself, after each review and
+  each revision: its problem, its acceptance criteria and each note
+  it links. Send each difference to the planner as a fix, or record
+  it in the plan's notes as an `orchestrator-proposed` choice. A
+  difference in what the user sees is a question for the hub. When
+  the card links a design, also follow the "Design check" section of
+  `~/.agents/skills/roadmap-run/SKILL.md`, with your report to the
+  hub in place of its roadmap page.
 - Delete a test only when a reviewer names it and the test that
-  still covers its behavior.
+  still covers its behavior. Before you build, write a script that
+  puts the deleted test's bug back in a scratch clone, runs the named
+  test, and records in its summary that the test failed. Have the
+  local model run it as a job.
 - A plan that changes one of the user's rules, such as
   `ai/AGENTS.md` or a line of the hub's `rules.md`, or what the user
   sees daily, stops before build and reports to the hub, even though
@@ -39,6 +50,10 @@ through your report file.
 - New names: if your plan adds a command, flag or label the user
   types or reads, stop before build. Report the name question with 2
   or 3 choices and your recommendation, then end your turn.
+- Wording or a format the user's rules already fix, such as the
+  lines of a review list, is not a new choice and stops no worker,
+  even in what the user sees daily. Follow the rule and cite it in
+  the plan's notes.
 - Code review after the build, each by a fresh agent: one for
   `review-plan` and the language skills, one for
   `behavior-focused-testing` and one for `code-documentation`. A
@@ -65,9 +80,19 @@ through your report file.
   it. Then report and stop. Send the create request only when the
   hub tells you to, through `pde-gh-write` by `pull-request`, and
   report its approval ID.
-- After you send the create request, every change is a new commit;
-  never amend or squash. Never deploy or hand on a commit you have
-  not pushed.
+- Prepare the comment review by `comment-review` before you report:
+  run its steps up to the list with your Agent Suggestions, and save
+  the list as `<run folder>/comments-<your agent name>.json`. Name
+  that file in your report, or say the branch changes no Go, Python
+  or Rust comment. Send it with `glimmer send-agent-suggestions`
+  right after the create request. A branch stacked on another run
+  branch sends its list only when the hub says the user answered the
+  lower branch's review, since that review can change comments yours
+  rely on.
+- Once another branch is stacked on yours, or after you send the
+  create request, every change is a new commit; never amend, squash
+  or force-push. Before either, `pull-request` may squash your branch.
+  Never deploy or hand on a commit you have not pushed.
 - Send a merge or pull request edit request only after the hub tells
   you the user reviewed that pull request. Never run
   `pde-pr-approve` or set `PDE_GH_WRITE`. Never answer an approval
@@ -90,8 +115,29 @@ through your report file.
 
 - Models: planners run on `claude-code/claude-opus-5-5[1m]`.
   Reviews run on `claude-code/claude-sonnet-5#medium`, except the
-  data safety review of a risky change, which runs on Opus. The auto
-  hub checked which answer: `<models>`.
+  data safety review of a risky change, which runs on Opus. Jobs a
+  script checks run on the local model, `goog/qwen3.8`. The auto hub
+  checked which answer: `<models>`.
+- A local model runs only a job a script checks: your test and lint
+  commands once per plan version, the deleted-test check above, and
+  the merge checks before a merge request, with
+  `~/.agents/skills/herdr-hub/scripts/merge-worker.sh` as the
+  script. Plans, reviews, pull request text and decisions stay on
+  cloud models. Write each job as one script that sends long output
+  to a log and writes a summary file whose last line is `done`. Give
+  the model only this brief:
+
+      Run this one command: `bash <script>`. Then print <summary file>
+      exactly. Touch no other file and run nothing else. Never answer
+      an approval request.
+
+  Read the summary file yourself. The job counts only when its last
+  line is `done`, never by the model's own words. Give each plan and
+  code reviewer the latest test summary, so it runs at most the one
+  test a finding needs.
+- When `<run folder>/feedback.md` exists, every planner and reviewer
+  brief names it. It lists the user's feedback on the run's pull
+  requests.
 - Every brief says: work only in folders from `mktemp -d`, and never
   remove a fixed `/tmp` path or another agent's folder; read large
   files and plans with `rg` and `sed -n` ranges, never whole; send
@@ -117,7 +163,9 @@ through your report file.
 - When a model fails with a limit or a login error, write the error
   and the time in your status file and do not retry in a loop. For a
   review, try another model that answered. A planner has no other
-  model. When no model is left, report a blocker.
+  model. Only a job a script checks may move to the local model, and
+  when the local model fails, run its script yourself. When no model
+  is left, report a blocker.
 
 ## Skills
 
@@ -126,6 +174,7 @@ before you build, the language skill of each language you change,
 `behavior-focused-testing` before you write tests,
 `code-documentation` before you change source, `git-messages` before
 each commit, `pull-request` before you write the pull request text,
+`comment-review` before you prepare the comment review,
 `status-updates` before you write a report, and each skill you name
 on a subagent's `Applicable skills:` line, such as `review-plan`.
 After your context is summarized, load the skills of your current
@@ -139,13 +188,16 @@ step again.
   line is one sentence on where the card stands, such as "Plan
   reviewed ready; building step 2 of 3." The user reads that line
   on "status update". Add a `card note` at each milestone, one
-  `card` call per shell call.
+  `card` call per shell call, since each writes to the vault on the
+  network drive and can be slow.
 - Write a question, a blocker or finished work to
   `<run folder>/report-<your agent name>.md`, replacing its old
-  text, then end your turn. Never prompt the hub, and never use an
-  interactive question tool. A question gives 2 or 3 choices, what
-  each leads to, and your recommendation. Finished work gives the
-  checks run, with results, and the checks not run.
+  text, then end your turn at once. Update your status file and card
+  before the report, never after: a message the hub sends while you
+  still work waits, and blocks its next one. Never prompt the hub,
+  and never use an interactive question tool. A question gives 2 or
+  3 choices, what each leads to, and your recommendation. Finished
+  work gives the checks run, with results, and the checks not run.
 - Edit only your card through `card`, your plan note, your worktree
   and branch, and your own files in the run folder.
 - Near 150K context, write a handoff by `herdr-handoff` and report it

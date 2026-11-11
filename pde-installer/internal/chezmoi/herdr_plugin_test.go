@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"text/template"
+
+	"pde-installer/internal/testfile"
 )
 
 // The script runs after every apply, so it must link each deployed plugin
@@ -171,13 +173,13 @@ func runHerdrSetup(
 	// Put the fake herdr on PATH or only in the home's .local/bin.
 	switch herdrIn {
 	case "path":
-		writeExecutable(
+		testfile.WriteExecutable(
 			t,
 			filepath.Join(bin, "herdr"),
 			fakeHerdr,
 		)
 	case "home":
-		writeExecutable(
+		testfile.WriteExecutable(
 			t,
 			filepath.Join(home, ".local", "bin", "herdr"),
 			fakeHerdr,
