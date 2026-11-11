@@ -6,7 +6,7 @@
       "terms": [
         "check-message"
       ],
-      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "commit": "b27956eab764acd73e31f51642622a433aaa38fb",
       "expected": [
         "ai/skills/git-messages/SKILL.md",
         "ai/skills/git-messages/scripts/check-message.test.sh",
@@ -14,14 +14,14 @@
         "chezmoi/dot_config/git/template/hooks/executable_commit-msg"
       ],
       "kind": "literal",
-      "derivation": "git grep -l check-message 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+      "derivation": "git grep -l check-message b27956eab764acd73e31f51642622a433aaa38fb --"
     },
     {
       "question": "Which files contain the text `pde-workflow`?",
       "terms": [
         "pde-workflow"
       ],
-      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "commit": "b27956eab764acd73e31f51642622a433aaa38fb",
       "expected": [
         "ai/skills/cleanup-plan/SKILL.md",
         "ai/skills/create-plan/SKILL.md",
@@ -35,7 +35,7 @@
         "vibe/src/adapters/runtime.rs"
       ],
       "kind": "literal",
-      "derivation": "git grep -l pde-workflow 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+      "derivation": "git grep -l pde-workflow b27956eab764acd73e31f51642622a433aaa38fb --"
     },
     {
       "kind": "code",
@@ -43,60 +43,60 @@
       "terms": [
         "BASE_COMMIT_REQUIRED"
       ],
-      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "commit": "b27956eab764acd73e31f51642622a433aaa38fb",
       "expected": [
         "planner/internal/guarded.go",
         "planner/internal/guarded_cli.go",
         "planner/internal/guarded_cli_test.go",
         "planner/internal/root_test.go"
       ],
-      "derivation": "git grep -n codeBaseCommitRequired 24b63d427ac76aeb049bdd8da60681752ffd9780 -- planner; inspect guarded.go:32, guarded.go:503, and guarded_cli.go:139."
+      "derivation": "git grep -n codeBaseCommitRequired b27956eab764acd73e31f51642622a433aaa38fb -- planner; inspect guarded.go:32, guarded.go:503, and guarded_cli.go:139."
     },
     {
       "question": "Which files contain the text `RANKED_FILE_LIMIT`?",
       "terms": [
         "RANKED_FILE_LIMIT"
       ],
-      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "commit": "b27956eab764acd73e31f51642622a433aaa38fb",
       "expected": [
         "src/research.rs",
         "src/research/rank.rs"
       ],
       "kind": "literal",
-      "derivation": "git grep -l RANKED_FILE_LIMIT 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+      "derivation": "git grep -l RANKED_FILE_LIMIT b27956eab764acd73e31f51642622a433aaa38fb --"
     },
     {
       "question": "Which files contain the text `local_ai`?",
       "terms": [
         "local_ai"
       ],
-      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "commit": "b27956eab764acd73e31f51642622a433aaa38fb",
       "expected": [
         ".github/workflows/ci.yml",
         "ai/pyproject.toml",
         "ai/tests/test_agent_loads_skills.py"
       ],
       "kind": "literal",
-      "derivation": "git grep -l local_ai 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+      "derivation": "git grep -l local_ai b27956eab764acd73e31f51642622a433aaa38fb --"
     },
     {
       "question": "Which files contain the text `INDEX_FORMAT_VERSION`?",
       "terms": [
         "INDEX_FORMAT_VERSION"
       ],
-      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "commit": "b27956eab764acd73e31f51642622a433aaa38fb",
       "expected": [
         "src/index.rs"
       ],
       "kind": "literal",
-      "derivation": "git grep -l INDEX_FORMAT_VERSION 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+      "derivation": "git grep -l INDEX_FORMAT_VERSION b27956eab764acd73e31f51642622a433aaa38fb --"
     },
     {
       "question": "Which files contain the text `retired-tool.v7`?",
       "terms": [
         "retired-tool.v7"
       ],
-      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "commit": "b27956eab764acd73e31f51642622a433aaa38fb",
       "expected": [
         "README.md",
         "src/merge/tests/load_reports.rs",
@@ -110,14 +110,14 @@
         "tests/fixtures/merge/unknown-field-report.json"
       ],
       "kind": "literal",
-      "derivation": "git grep -l retired-tool.v7 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+      "derivation": "git grep -l retired-tool.v7 b27956eab764acd73e31f51642622a433aaa38fb --"
     },
     {
       "question": "Which files contain the text `explicit_files`?",
       "terms": [
         "explicit_files"
       ],
-      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "commit": "b27956eab764acd73e31f51642622a433aaa38fb",
       "expected": [
         "README.md",
         "src/cli.rs",
@@ -132,14 +132,14 @@
         "tests/cli.rs"
       ],
       "kind": "literal",
-      "derivation": "git grep -l explicit_files 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+      "derivation": "git grep -l explicit_files b27956eab764acd73e31f51642622a433aaa38fb --"
     },
     {
       "question": "Which files contain the text `XDG_STATE_HOME`?",
       "terms": [
         "XDG_STATE_HOME"
       ],
-      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "commit": "b27956eab764acd73e31f51642622a433aaa38fb",
       "expected": [
         "pde-installer/docs/reference/platforms-and-paths.md",
         "pde-installer/internal/chezmoi/apply.go",
@@ -148,20 +148,20 @@
         "tests/cli.rs"
       ],
       "kind": "literal",
-      "derivation": "git grep -l XDG_STATE_HOME 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+      "derivation": "git grep -l XDG_STATE_HOME b27956eab764acd73e31f51642622a433aaa38fb --"
     },
     {
       "question": "Which files contain the text `create_managed_task`?",
       "terms": [
         "create_managed_task"
       ],
-      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "commit": "b27956eab764acd73e31f51642622a433aaa38fb",
       "expected": [
         "src/cli.rs",
         "src/taskfile.rs"
       ],
       "kind": "literal",
-      "derivation": "git grep -l create_managed_task 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+      "derivation": "git grep -l create_managed_task b27956eab764acd73e31f51642622a433aaa38fb --"
     },
     {
       "kind": "code",
@@ -170,7 +170,7 @@
         "create-plan",
         "create_plan"
       ],
-      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "commit": "b27956eab764acd73e31f51642622a433aaa38fb",
       "expected": [
         "README.md",
         "ai/README.md",
@@ -191,7 +191,7 @@
         "planner/docs/explanation/applying-diffs-to-the-base-commit.md",
         "planner/internal/guarded_cli_test.go"
       ],
-      "derivation": "git grep -F -l -e create-plan -e create_plan 24b63d427ac76aeb049bdd8da60681752ffd9780 --; the deterministic test runs key_command and compares its paths with expected.",
+      "derivation": "git grep -F -l -e create-plan -e create_plan b27956eab764acd73e31f51642622a433aaa38fb --; the deterministic test runs key_command and compares its paths with expected.",
       "key_command": [
         "grep",
         "-F",
@@ -200,7 +200,7 @@
         "create-plan",
         "-e",
         "create_plan",
-        "24b63d427ac76aeb049bdd8da60681752ffd9780",
+        "b27956eab764acd73e31f51642622a433aaa38fb",
         "--"
       ]
     },
@@ -210,13 +210,13 @@
       "terms": [
         "state_dir"
       ],
-      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "commit": "b27956eab764acd73e31f51642622a433aaa38fb",
       "expected": [
         "vibe/src/ledger.rs",
         "vibe/src/observe.rs",
         "vibe/src/worktree.rs"
       ],
-      "derivation": "Pinned commit 24b63d427ac76aeb049bdd8da60681752ffd9780. Command output:\n24b63d427ac76aeb049bdd8da60681752ffd9780:vibe/src/ledger.rs:146:    target.state_dir(home).join(RUNS_INDEX_FILE)\n24b63d427ac76aeb049bdd8da60681752ffd9780:vibe/src/ledger.rs:510:    let runs_dir = target.state_dir(home).join(\"runs\");\n24b63d427ac76aeb049bdd8da60681752ffd9780:vibe/src/observe.rs:29:    let dir = target.state_dir(home).join(\"runs\").join(run_id);\n24b63d427ac76aeb049bdd8da60681752ffd9780:vibe/src/observe.rs:30:    let key_dir = target.state_dir(home);\n24b63d427ac76aeb049bdd8da60681752ffd9780:vibe/src/target.rs:79:    pub(crate) fn state_dir(&self, home: &Path) -> PathBuf {\n24b63d427ac76aeb049bdd8da60681752ffd9780:vibe/src/worktree.rs:51:    let state_dir = target.state_dir(home);\nDefinition lines at target.rs:79-83: home.join(\".local/state/vibe\").join(&self.repo_id).join(&self.slug). Production call sites are ledger.rs:146,510; observe.rs:29-30; worktree.rs:51. Test-only calls are excluded."
+      "derivation": "Pinned commit b27956eab764acd73e31f51642622a433aaa38fb. Command output:\nb27956eab764acd73e31f51642622a433aaa38fb:vibe/src/ledger.rs:146:    target.state_dir(home).join(RUNS_INDEX_FILE)\nb27956eab764acd73e31f51642622a433aaa38fb:vibe/src/ledger.rs:510:    let runs_dir = target.state_dir(home).join(\"runs\");\nb27956eab764acd73e31f51642622a433aaa38fb:vibe/src/observe.rs:29:    let dir = target.state_dir(home).join(\"runs\").join(run_id);\nb27956eab764acd73e31f51642622a433aaa38fb:vibe/src/observe.rs:30:    let key_dir = target.state_dir(home);\nb27956eab764acd73e31f51642622a433aaa38fb:vibe/src/target.rs:79:    pub(crate) fn state_dir(&self, home: &Path) -> PathBuf {\nb27956eab764acd73e31f51642622a433aaa38fb:vibe/src/worktree.rs:51:    let state_dir = target.state_dir(home);\nDefinition lines at target.rs:79-83: home.join(\".local/state/vibe\").join(&self.repo_id).join(&self.slug). Production call sites are ledger.rs:146,510; observe.rs:29-30; worktree.rs:51. Test-only calls are excluded."
     },
     {
       "kind": "code",
@@ -225,12 +225,12 @@
         "checkBaseCommit",
         "codeBaseCommitRequired"
       ],
-      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "commit": "b27956eab764acd73e31f51642622a433aaa38fb",
       "expected": [
         "planner/internal/guarded.go",
         "planner/internal/guarded_cli.go"
       ],
-      "derivation": "git grep -n checkBaseCommit 24b63d427ac76aeb049bdd8da60681752ffd9780 -- planner; inspect guarded.go:503-518 for validation and guarded_cli.go:226-246 for the check entry point."
+      "derivation": "git grep -n checkBaseCommit b27956eab764acd73e31f51642622a433aaa38fb -- planner; inspect guarded.go:503-518 for validation and guarded_cli.go:226-246 for the check entry point."
     }
   ]
 }
