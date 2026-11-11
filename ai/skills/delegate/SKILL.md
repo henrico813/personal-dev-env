@@ -11,8 +11,8 @@ metadata:
 # Delegate
 
 Have a subagent do the task. Review its work at every stop, send fixes
-back to the same agent, or to a fresh planner for a plan, and repeat
-until it passes your review. Then bring it to the user.
+back, and repeat until it passes your review. Then bring it to the
+user.
 
 ## Steps
 
@@ -25,18 +25,22 @@ until it passes your review. Then bring it to the user.
    and check its claims against the real files, tests and systems
    before trusting them.
 3. Review the work. Send required fixes back to the same agent, and
-   review again. Repeat until it passes. Plan fixes are the
-   exception: give a new planner the plan's path and what the
-   reviewers found, and never resume the old one, whose context grows
+   review again. Repeat until it passes.
+
+   When the task is writing a plan, start a new planner agent for each
+   round of fixes instead. Give it the plan's path and what the review
+   found. Never resume the old planner, because its context grows with
    every round.
 
-   For implementation, any review another skill requires from a fresh
-   subagent, for example the test review in `behavior-focused-testing`
-   and the code-only check in `code-documentation`, gets a new agent
-   that sees only the inputs that skill lists. An agent that read the
-   plan cannot do it. Comparing the commit with the plan diff that
-   was reviewed is no code review either, so review the commit as
-   deeply as `review-plan` asks.
+   When the task is implementation, some skills require a review of
+   their own. Examples are the test review in
+   `behavior-focused-testing` and the check in `code-documentation` of
+   whether terms make sense from the code and tests alone. Start a new
+   agent for each of these reviews, and give it only the inputs that
+   skill lists. An agent that has read the plan cannot do them.
+
+   Also review the commit as deeply as `review-plan` asks. Checking
+   only that the commit matches the plan's diff is not enough.
 4. Give the user a short summary: what was done, the evidence, and any
    decisions they need to make, with your recommendation.
 
