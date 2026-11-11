@@ -2,8 +2,12 @@
 //! returns an `Outcome` or a `HubError`, and never prints, so tests
 //! read plain values.
 
+pub mod alive;
+pub mod brief;
 pub mod cli;
 pub mod flag;
+pub mod handoff;
+pub mod reports;
 pub mod sidebar;
 
 /// The lines a command prints on standard output when it did its

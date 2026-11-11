@@ -6,7 +6,7 @@ mod herdr_cli {
     use std::path::Path;
     use std::thread::{self, JoinHandle};
 
-    use hub::external::herdr::{AgentStatus, Herdr, HerdrCli};
+    use hub::external::herdr::{AgentStart, AgentStatus, Herdr, HerdrCli, NewPlace};
     use serde_json::{Value, json};
 
     use super::common::{TempFolder, read_script_calls};
@@ -70,7 +70,7 @@ mod herdr_cli {
         let folder = TempFolder::new();
         let answer = r#"{"result":{"agents":[],"workspaces":[],"agent":{
             "name":"docs-fix","agent_status":"idle","pane_id":"w4:p2",
-            "workspace_id":"w4","focused":false}}}"#;
+            "workspace_id":"w4","tab_id":"w4:t2","focused":false}}}"#;
         let script = folder.write_script("herdr", answer, "", 0);
         let herdr = HerdrCli::new(
             script.clone(),
@@ -90,6 +90,94 @@ mod herdr_cli {
                 vec!["--machine", "laptop", "agent", "get", "docs-fix"],
                 vec!["--machine", "laptop", "workspace", "list"],
                 vec!["--machine", "laptop", "agent", "focus", "kanban-hub-1"],
+            ]
+        );
+    }
+
+    /// A message with spaces, quotes and a newline must reach the agent
+    /// word for word. The wait flags make `hub handoff` wait until the
+    /// next hub has taken the message.
+    #[test]
+    fn herdr_cli_passes_prompt_as_one_argument() {
+        let folder = TempFolder::new();
+        let script = folder.write_script("herdr", OK_ANSWER, "", 0);
+        let herdr = HerdrCli::new(script.clone(), None, folder.path().join("herdr.sock"));
+        let text = "Read the \"handoff\" at /tmp/a b.md\nand follow it.";
+
+        herdr.prompt("kanban-hub-2", text).unwrap();
+
+        assert_eq!(
+            read_script_calls(&script),
+            [[
+                "agent",
+                "prompt",
+                "kanban-hub-2",
+                text,
+                "--wait",
+                "--until",
+                "working",
+                "--until",
+                "blocked",
+                "--timeout",
+                "30000",
+            ]]
+        );
+    }
+
+    /// `hub handoff` makes a tab with `HUB_RUN` set and starts the next
+    /// hub in that tab's pane. A pane ID read from the wrong field, or
+    /// the model passed before `--`, starts nothing or the wrong model.
+    #[test]
+    fn herdr_cli_creates_tab_then_starts_agent() {
+        let folder = TempFolder::new();
+        let tab_answer = r#"{"result":{"type":"tab_created","root_pane":{"pane_id":"w1:p9"},"tab":{"tab_id":"w1:t9"}}}"#;
+        let script = folder.write_script("herdr", tab_answer, "", 0);
+        let herdr = HerdrCli::new(script.clone(), None, folder.path().join("herdr.sock"));
+        let place = NewPlace {
+            label: "kanban-hub-2".to_owned(),
+            cwd: "/home/u/notes".into(),
+            env: vec![("HUB_RUN".to_owned(), "/home/u/run".to_owned())],
+        };
+
+        let ids = herdr.create_tab("w1", &place).unwrap();
+        herdr
+            .start_agent(&AgentStart {
+                name: "kanban-hub-2".to_owned(),
+                pane_id: ids.root_pane_id,
+                args: vec!["--model".to_owned(), "m#medium".to_owned()],
+            })
+            .unwrap();
+
+        assert_eq!(
+            read_script_calls(&script),
+            [
+                vec![
+                    "tab",
+                    "create",
+                    "--no-focus",
+                    "--workspace",
+                    "w1",
+                    "--label",
+                    "kanban-hub-2",
+                    "--cwd",
+                    "/home/u/notes",
+                    "--env",
+                    "HUB_RUN=/home/u/run",
+                ],
+                vec![
+                    "agent",
+                    "start",
+                    "kanban-hub-2",
+                    "--kind",
+                    "opencode",
+                    "--pane",
+                    "w1:p9",
+                    "--timeout",
+                    "90000",
+                    "--",
+                    "--model",
+                    "m#medium",
+                ],
             ]
         );
     }
@@ -147,5 +235,43 @@ mod herdr_cli {
         server.join().unwrap();
 
         assert_eq!(error.to_string(), "bad block");
+    }
+}
+
+mod card_cli {
+    use hub::external::cards::{CardCli, Cards};
+
+    use super::common::{TempFolder, read_script_calls};
+
+    /// `hub read --card` adds the note to the card named first. Key and
+    /// text swapped would put the note on no card, or fail. The `--`
+    /// keeps a note such as `-h` from being read as an option of `card`.
+    #[test]
+    fn card_cli_passes_note_key_then_text() {
+        let folder = TempFolder::new();
+        let script = folder.write_script("card", "", "", 0);
+        let cards = CardCli::new(script.clone());
+
+        cards
+            .add_note(&"DEMO-KB-007".parse().unwrap(), "merged #9")
+            .unwrap();
+
+        assert_eq!(
+            read_script_calls(&script),
+            [["note", "--", "DEMO-KB-007", "merged #9"]]
+        );
+    }
+
+    /// `hub brief` shows card's own reason on its board line, such as a
+    /// vault it cannot find, so the user can fix it.
+    #[test]
+    fn card_cli_error_keeps_card_stderr() {
+        let folder = TempFolder::new();
+        let script = folder.write_script("card", "", "card: no default vault\n", 1);
+        let cards = CardCli::new(script);
+
+        let error = cards.read_board().unwrap_err();
+
+        assert_eq!(error.to_string(), "card: no default vault");
     }
 }
