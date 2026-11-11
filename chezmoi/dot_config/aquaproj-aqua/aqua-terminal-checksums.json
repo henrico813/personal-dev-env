@@ -146,6 +146,31 @@
       "algorithm": "sha256"
     },
     {
+      "id": "github_release/github.com/gitleaks/gitleaks/v8.30.1/gitleaks_8.30.1_darwin_arm64.tar.gz",
+      "checksum": "B40AB0AE55C505963E365F271A8D3846EFBC170AA17F2607F13DF610A9AEB6A5",
+      "algorithm": "sha256"
+    },
+    {
+      "id": "github_release/github.com/gitleaks/gitleaks/v8.30.1/gitleaks_8.30.1_darwin_x64.tar.gz",
+      "checksum": "DFE101A4DB2255FC85120AC7F3D25E4342C3C20CF749F2C20A18081AF1952709",
+      "algorithm": "sha256"
+    },
+    {
+      "id": "github_release/github.com/gitleaks/gitleaks/v8.30.1/gitleaks_8.30.1_linux_arm64.tar.gz",
+      "checksum": "E4A487EE7CCD7D3A7F7EC08657610AA3606637DAB924210B3AEE62570FB4B080",
+      "algorithm": "sha256"
+    },
+    {
+      "id": "github_release/github.com/gitleaks/gitleaks/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz",
+      "checksum": "551F6FC83EA457D62A0D98237CBAD105AF8D557003051F41F3E7CA7B3F2470EB",
+      "algorithm": "sha256"
+    },
+    {
+      "id": "github_release/github.com/gitleaks/gitleaks/v8.30.1/gitleaks_8.30.1_windows_x64.zip",
+      "checksum": "D29144DEFF3A68AA93CED33DDDF84B7FDC26070ADD4AA0F4513094C8332AFC4E",
+      "algorithm": "sha256"
+    },
+    {
       "id": "github_release/github.com/jqlang/jq/jq-1.7.1/jq-linux-amd64",
       "checksum": "5942C9B0934E510EE61EB3E30273F1B3FE2590DF93933A93D7C58B81D19C8FF5",
       "algorithm": "sha256"

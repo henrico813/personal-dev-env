@@ -94,6 +94,11 @@ prs 123
 prs OWNER/REPO 123
 ```
 
+To get a status update of every open pull request in the current folder's
+repository, run `prs status`. It prints a Markdown list in merge order,
+with each pull request's problem, checks and blockers, and the first one
+to review in bold.
+
 Check out a pull request when review requires repository search or tests. Use
 the merge base to isolate changes introduced by its branch:
 
@@ -199,7 +204,7 @@ user-owned state.
 
 Use `Ctrl-A` for tmux and `Ctrl-B` for Herdr. Herdr uses its mobile status header
 and full-screen machine switcher at 100 columns and below. Machine labels
-distinguish Local and ***REMOVED*** agents. The managed config is validated with Herdr
+distinguish Local and Office agents. The managed config is validated with Herdr
 0.9.1, so run `herdr config check` after upgrades.
 
 See the [maintenance guide](../pde-installer/docs/how-to/update-chezmoi-content.md).
