@@ -1,7 +1,10 @@
 FROM node:22-bookworm-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends bash git ripgrep \
+    && apt-get install -y --no-install-recommends \
+        bash \
+        git \
+        ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g @earendil-works/pi-coding-agent@0.85.1 \

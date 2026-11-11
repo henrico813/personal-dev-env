@@ -7,3 +7,8 @@ repos:
         language: system
         files: ^planner/.*\.go$
         pass_filenames: false
+      - id: dockerfile-packages
+        name: one package per line in Dockerfiles
+        entry: python3 scripts/check_dockerfile_packages.py
+        language: system
+        files: (^|/)Dockerfile(\.[^/]*)?$
