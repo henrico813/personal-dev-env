@@ -158,7 +158,7 @@ func ValidationRules() []string {
 		fmt.Sprintf("title must be at most %d characters", MaxTitleLength),
 		fmt.Sprintf("overview must be at most %d characters", MaxOverviewLength),
 		fmt.Sprintf("definition_of_done.narrative must be at most %d characters", MaxDoDNarrativeLength),
-		fmt.Sprintf("definition_of_done.current_state must be at most %d characters", MaxCurrentStateLength),
+		fmt.Sprintf("definition_of_done.current_state must be at most %d characters, not counting a first \"Base commit:\" line", MaxCurrentStateLength),
 		fmt.Sprintf("each line of definition_of_done.module_shape before its first ### heading must be at most %d characters", MaxModuleShapeLineLength),
 		fmt.Sprintf("each implementation step title must be at most %d characters", MaxStepTitleLength),
 		fmt.Sprintf("each implementation step summary must be at most %d characters", MaxStepSummaryLength),
