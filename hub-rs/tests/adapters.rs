@@ -6,7 +6,7 @@ mod herdr_cli {
     use std::path::Path;
     use std::thread::{self, JoinHandle};
 
-    use hub::outside::herdr::{AgentStatus, Herdr, HerdrCli};
+    use hub::external::herdr::{AgentStatus, Herdr, HerdrCli};
     use serde_json::{Value, json};
 
     use super::common::{TempFolder, read_script_calls};

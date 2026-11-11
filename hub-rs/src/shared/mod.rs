@@ -1,11 +1,11 @@
 //! Holds what every command shares. `HubError` is the one error type
-//! a command returns, `Tools` is the bundle of outside systems, and
+//! a command returns, `Tools` is the bundle of external systems, and
 //! `AgentName` is a checked session name.
 
 use std::fmt;
 use std::str::FromStr;
 
-use crate::outside::herdr::{Herdr, HerdrError};
+use crate::external::herdr::{Herdr, HerdrError};
 
 /// A command that stopped, with the exit code `main` gives it. Tests
 /// match the variant, never the message.
@@ -22,7 +22,7 @@ pub enum HubError {
 }
 
 impl HubError {
-    /// Returns 1 for an outside failure, 2 for wrong usage and 3 for
+    /// Returns 1 for an external failure, 2 for wrong usage and 3 for
     /// work not done.
     pub fn exit_code(&self) -> u8 {
         match self {
@@ -89,7 +89,7 @@ impl AgentName {
     }
 }
 
-/// The outside systems one command may call, built once by `main`.
+/// The external systems one command may call, built once by `main`.
 /// Tests build the doubles first and lend them here, so they can read
 /// what each double recorded after the call.
 pub struct Tools<'a> {

@@ -8,10 +8,10 @@ use std::process::ExitCode;
 
 use hub::commands::cli::{self, Command};
 use hub::commands::{flag, sidebar};
-use hub::outside::herdr::HerdrCli;
+use hub::external::herdr::HerdrCli;
 use hub::shared::{HubError, Tools};
 
-/// Parses the command line, builds the outside systems, runs the
+/// Parses the command line, builds the external systems, runs the
 /// command, prints its lines or its error, and returns its exit code.
 fn main() -> ExitCode {
     let cli = match cli::parse_command() {

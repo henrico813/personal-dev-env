@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use hub::outside::herdr::{Agent, AgentStatus, Herdr, HerdrError, Workspace};
+use hub::external::herdr::{Agent, AgentStatus, Herdr, HerdrError, Workspace};
 
 /// Herdr, as the `Herdr` trait, with its agents and workspaces in
 /// memory. It records each mark, clear, focus and workspace move it

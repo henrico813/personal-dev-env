@@ -1,4 +1,4 @@
-//! Holds one module per outside system the hub calls. No other folder
+//! Holds one module per external system the hub calls. No other folder
 //! runs a program or opens a socket, so each system's calls and
 //! failures are in one place.
 
