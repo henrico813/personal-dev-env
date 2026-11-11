@@ -111,9 +111,12 @@ code.
   saves a record in `~/.local/state/pde/hub/parked/`, adds the
   session to its card, and closes its tab. It exits 3 with
   `NAME stays: REASON` otherwise.
-- `board` is new. For now it only checks that its mouse reports
-  leave Herdr working in a pane. Keys 0 to 4 switch the mouse mode,
-  and q quits.
+- `board` is new. It shows what waits on the user and on the hub,
+  sized for a 40x16 phone screen, and reads again every 10 seconds or
+  when r is pressed. j, k, the arrow and page keys, the wheel or a
+  tap choose a row, whose full text shows below the list. q quits.
+  `board --print` prints one screen as text, 40x16 unless `--size`
+  says otherwise.
 - `send` to a parked session opens a new tab and resumes its OpenCode
   session there. It holds the message until the session starts.
 - `status` shows each session's lifecycle state in its STATE column,

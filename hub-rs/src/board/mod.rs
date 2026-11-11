@@ -1,35 +1,79 @@
-//! Runs `hub board`, which for now only checks that the board's
-//! mouse reports leave Herdr working. The user switches between the
-//! mouse modes with keys 0 to 4 and tries Herdr's wheel and taps in
-//! other panes. Read `run_board` first.
+//! Runs `hub board`, a full-screen list of what waits on the user and
+//! on the hub, sized for a phone first. Read `run_board` and
+//! `print_board` first.
+//!
+//! A second thread reads the hub's state every 10 seconds, or at once
+//! when the user presses r. A read calls Herdr, `card` and OpenCode
+//! and takes about a second, so the keys and the mouse would freeze if
+//! the drawing thread waited for it.
 
+mod queue;
 mod terminal;
+mod view;
 
 use std::io::{self, IsTerminal};
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
+use std::thread;
 use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+use crossterm::event;
+use jiff::tz::TimeZone;
 use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
 
 use crate::commands::Outcome;
-use crate::shared::HubError;
-use terminal::{MouseMode, Screen};
+use crate::shared::run_folder::RunFolder;
+use crate::shared::{HubError, OwnedTools, Tools};
+use queue::{Queue, read_queue};
+use terminal::Screen;
+use view::{Board, Step};
 
 /// How long the board waits for input before it checks for a stop
-/// signal again.
+/// signal or a new read again.
 const POLL: Duration = Duration::from_millis(200);
 
-/// Shows the mouse check until the user quits or a signal stops it,
-/// then returns one line with the counts.
+/// How long the reader waits between reads when nobody presses r.
+const REFRESH: Duration = Duration::from_secs(10);
+
+/// The size `--print` draws, given as `40x16`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ScreenSize {
+    pub columns: u16,
+    pub rows: u16,
+}
+
+/// Reads `COLSxROWS`, such as `40x16`, with neither number zero.
+impl FromStr for ScreenSize {
+    type Err = String;
+
+    fn from_str(text: &str) -> Result<ScreenSize, String> {
+        let parsed = text
+            .split_once('x')
+            .and_then(|(columns, rows)| Some((columns.parse().ok()?, rows.parse().ok()?)));
+        match parsed {
+            Some((columns, rows)) if columns > 0 && rows > 0 => Ok(ScreenSize { columns, rows }),
+            _ => Err(format!("{text} is not a size such as 40x16")),
+        }
+    }
+}
+
+/// Shows the board until the user quits or a signal stops it. The
+/// reader thread owns `tools` and `run`.
 ///
 /// # Errors
 ///
 /// `HubError::Usage` when standard input or output is not a terminal.
 /// `HubError::File` when the terminal cannot be read or drawn on.
-pub fn run_board() -> Result<Outcome, HubError> {
+/// `HubError::NotDone` when the reader thread stops, which only a
+/// panic in it causes.
+pub fn run_board(
+    tools: OwnedTools,
+    run: RunFolder,
+    time_zone: TimeZone,
+) -> Result<Outcome, HubError> {
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         return Err(HubError::Usage("board needs a terminal".to_owned()));
     }
@@ -39,130 +83,95 @@ pub fn run_board() -> Result<Outcome, HubError> {
     for signal in [SIGTERM, SIGHUP, SIGINT] {
         signal_hook::flag::register(signal, Arc::clone(&stop)).map_err(terminal_error)?;
     }
-    let mut check = MouseCheck::new(MouseMode::Taps);
-    let mut screen = Screen::start(check.mode).map_err(terminal_error)?;
-    screen.draw(&check.describe()).map_err(terminal_error)?;
+    let (reading_sender, readings) = mpsc::channel();
+    let (wake, wake_receiver) = mpsc::channel();
+    // The thread is never joined, so q quits at once even while a read
+    // runs. The thread ends at its next send or wait after the
+    // channels close, or with the process.
+    thread::spawn(move || {
+        read_until_closed(&tools, &run, &time_zone, &reading_sender, &wake_receiver);
+    });
+
+    let mut board = Board::new();
+    let mut screen = Screen::start().map_err(terminal_error)?;
+    screen.draw(&mut board).map_err(terminal_error)?;
     while !stop.load(Ordering::Relaxed) {
-        if !event::poll(POLL).map_err(terminal_error)? {
-            continue;
+        let mut changed = false;
+        loop {
+            match readings.try_recv() {
+                Ok(reading) => {
+                    board.show_reading(reading);
+                    changed = true;
+                }
+                Err(TryRecvError::Empty) => break,
+                // The panic hook already put the terminal back, so
+                // drawing on would write over the shell.
+                Err(TryRecvError::Disconnected) => {
+                    return Err(HubError::NotDone("the board's reader stopped".to_owned()));
+                }
+            }
         }
-        let old_mode = check.mode;
-        let input = event::read().map_err(terminal_error)?;
-        if check.handle_input(&input) == Step::Quit {
-            break;
+        if event::poll(POLL).map_err(terminal_error)? {
+            let input = event::read().map_err(terminal_error)?;
+            match board.handle_input(&input) {
+                Step::Quit => break,
+                Step::Refresh => {
+                    board.note_reading();
+                    // A send fails only when the reader has stopped.
+                    let _ = wake.send(());
+                }
+                Step::Stay => {}
+            }
+            changed = true;
         }
-        if check.mode != old_mode {
-            screen.set_mouse_mode(check.mode).map_err(terminal_error)?;
+        if changed {
+            screen.draw(&mut board).map_err(terminal_error)?;
         }
-        screen.draw(&check.describe()).map_err(terminal_error)?;
     }
     drop(screen);
-    Ok(Outcome::line(check.summary()))
+    Ok(Outcome { lines: Vec::new() })
 }
 
-/// What the board does after one input.
-#[derive(Debug, PartialEq, Eq)]
-enum Step {
-    Stay,
-    Quit,
+/// Reads the hub's state once and returns the board's first screen as
+/// text, `size` large, with no terminal needed.
+///
+/// # Errors
+///
+/// `HubError::Herdr` when Herdr cannot list the agents, and
+/// `HubError::File` when a run folder file cannot be read.
+pub fn print_board(
+    tools: &Tools<'_>,
+    run: &RunFolder,
+    time_zone: &TimeZone,
+    size: ScreenSize,
+) -> Result<Outcome, HubError> {
+    let mut board = Board::new();
+    board.show_reading(Ok(read_queue(tools, run, time_zone)?));
+    Ok(Outcome {
+        lines: board.render_lines(size.columns, size.rows),
+    })
 }
 
-/// The mouse mode and what the terminal has sent in it so far.
-struct MouseCheck {
-    mode: MouseMode,
-    taps: u32,
-    /// Counts drags as well as plain moves.
-    moves: u32,
-    wheel_turns: u32,
-    /// Words for the newest input, such as `tap at 12,5` or `key x`.
-    last: String,
-}
-
-impl MouseCheck {
-    /// Returns a check in `mode` that has seen no input yet.
-    fn new(mode: MouseMode) -> MouseCheck {
-        MouseCheck {
-            mode,
-            taps: 0,
-            moves: 0,
-            wheel_turns: 0,
-            last: "nothing yet".to_owned(),
+/// Sends a read, then waits for a wake or `REFRESH`, until the board
+/// stops listening.
+fn read_until_closed(
+    tools: &OwnedTools,
+    run: &RunFolder,
+    time_zone: &TimeZone,
+    readings: &Sender<Result<Queue, String>>,
+    wake: &Receiver<()>,
+) {
+    loop {
+        let reading = read_queue(&tools.lend(), run, time_zone).map_err(|error| error.to_string());
+        if readings.send(reading).is_err() {
+            return;
         }
-    }
-
-    /// Counts a mouse report or acts on a key. Raw mode turns Ctrl-C
-    /// into a key, so Ctrl-C quits here, as q and Esc do.
-    fn handle_input(&mut self, input: &Event) -> Step {
-        match input {
-            Event::Key(key) => self.handle_key(key),
-            Event::Mouse(mouse) => {
-                self.count_mouse(mouse);
-                Step::Stay
-            }
-            _ => Step::Stay,
+        // Presses of r during the read ask for the read just sent.
+        while wake.try_recv().is_ok() {}
+        match wake.recv_timeout(REFRESH) {
+            Ok(()) | Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => return,
         }
-    }
-
-    /// Quits, switches the mouse mode, or only notes the key.
-    fn handle_key(&mut self, key: &KeyEvent) -> Step {
-        let ctrl_c =
-            key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL);
-        if ctrl_c || key.code == KeyCode::Char('q') || key.code == KeyCode::Esc {
-            return Step::Quit;
-        }
-        if let KeyCode::Char(typed) = key.code
-            && let Some(mode) = MouseMode::from_key(typed)
-        {
-            self.mode = mode;
-        }
-        self.last = format!("key {}", key.code);
-        Step::Stay
-    }
-
-    /// Adds a mouse report to its count. A button release counts as
-    /// nothing, since its tap already counted.
-    fn count_mouse(&mut self, mouse: &MouseEvent) {
-        let (count, what) = match mouse.kind {
-            MouseEventKind::Down(_) => (&mut self.taps, "tap"),
-            MouseEventKind::Moved | MouseEventKind::Drag(_) => (&mut self.moves, "move"),
-            MouseEventKind::ScrollUp
-            | MouseEventKind::ScrollDown
-            | MouseEventKind::ScrollLeft
-            | MouseEventKind::ScrollRight => (&mut self.wheel_turns, "wheel"),
-            MouseEventKind::Up(_) => return,
-        };
-        *count = count.saturating_add(1);
-        self.last = format!("{what} at {},{}", mouse.column, mouse.row);
-    }
-
-    /// Returns the screen's lines, each at most 40 columns wide so they
-    /// fit a phone.
-    fn describe(&self) -> Vec<String> {
-        vec![
-            "hub board mouse check, q quits".to_owned(),
-            format!("now: {}", self.mode.label()),
-            "1 taps only   2 taps and drags".to_owned(),
-            "3 every move  4 every move, pixels".to_owned(),
-            "0 no mouse".to_owned(),
-            format!("taps {}", self.taps),
-            format!("moves {}", self.moves),
-            format!("wheel {}", self.wheel_turns),
-            format!("last: {}", self.last),
-            String::new(),
-            "Scroll and click in another pane.".to_owned(),
-            "Does Herdr still work?".to_owned(),
-        ]
-    }
-
-    /// Returns the line `hub board` prints once the screen closes.
-    fn summary(&self) -> String {
-        format!(
-            "taps {}, moves {}, wheel {}, last mode {}",
-            self.taps,
-            self.moves,
-            self.wheel_turns,
-            self.mode.label()
-        )
     }
 }
 
@@ -171,62 +180,5 @@ fn terminal_error(source: io::Error) -> HubError {
     HubError::File {
         path: PathBuf::from("the terminal"),
         source,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use crossterm::event::{KeyEventKind, KeyEventState};
-
-    /// Raw mode turns Ctrl-C into a key, so a board that misses one
-    /// of these keys leaves the user no way out but closing the pane.
-    #[test]
-    fn handle_input_quits_on_exit_keys() {
-        let cases = [
-            ("q", KeyCode::Char('q'), KeyModifiers::NONE),
-            ("escape", KeyCode::Esc, KeyModifiers::NONE),
-            ("ctrl-c", KeyCode::Char('c'), KeyModifiers::CONTROL),
-        ];
-
-        for (case_name, code, modifiers) in cases {
-            let mut check = MouseCheck::new(MouseMode::Taps);
-            let key = KeyEvent {
-                code,
-                modifiers,
-                kind: KeyEventKind::Press,
-                state: KeyEventState::NONE,
-            };
-
-            let step = check.handle_input(&Event::Key(key));
-
-            assert_eq!(step, Step::Quit, "{case_name}");
-        }
-    }
-
-    /// The user tries the board on a phone 40 columns wide. A longer
-    /// line wraps and pushes the instructions off the screen.
-    #[test]
-    fn describe_fits_forty_columns() {
-        for key in ['0', '1', '2', '3', '4'] {
-            let mut check = MouseCheck::new(MouseMode::from_key(key).unwrap());
-            check.taps = u32::MAX;
-            check.moves = u32::MAX;
-            check.wheel_turns = u32::MAX - 1;
-            let wheel = MouseEvent {
-                kind: MouseEventKind::ScrollDown,
-                column: 199,
-                row: 59,
-                modifiers: KeyModifiers::NONE,
-            };
-            check.handle_input(&Event::Mouse(wheel));
-
-            let lines = check.describe();
-
-            for line in lines {
-                assert!(line.chars().count() <= 40, "{key}: {line}");
-            }
-        }
     }
 }
