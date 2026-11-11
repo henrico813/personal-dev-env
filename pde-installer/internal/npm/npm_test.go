@@ -10,6 +10,7 @@ import (
 
 	"pde-installer/internal/manifest"
 	"pde-installer/internal/run"
+	"pde-installer/internal/testfile"
 )
 
 // npm must install the versions assigned by the manifest.
@@ -132,7 +133,7 @@ func writeNPMFixture(t *testing.T, path, logPath string) {
 		fmt.Fprintf(&script, "mkdir -p %q\nprintf '%%s\\n' '{\"version\":\"%s\"}' > %q\n", filepath.Dir(metadata), spec.Version, metadata)
 		fmt.Fprintf(&script, "printf '%%s\\n' '#!/bin/sh' 'printf \"%%s\\\\n\" \"%s\"' > %q\nchmod +x %q\n", spec.Version, binary, binary)
 	}
-	writeNPMFile(t, path, script.String(), 0o755)
+	testfile.WriteExecutable(t, path, script.String())
 }
 
 func assertNPMInstall(t *testing.T, manager Manager) {

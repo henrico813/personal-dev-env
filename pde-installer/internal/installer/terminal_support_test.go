@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"pde-installer/internal/colorprofile"
+	"pde-installer/internal/testfile"
 )
 
 func writeInvalidFullMetadata(t *testing.T, cfg config) {
@@ -90,9 +91,7 @@ func terminalProbeBin(t *testing.T, missing string) string {
 		} else {
 			contents += "exit 0\n"
 		}
-		if err := os.WriteFile(filepath.Join(bin, name), []byte(contents), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		testfile.WriteExecutable(t, filepath.Join(bin, name), contents)
 	}
 	return bin
 }

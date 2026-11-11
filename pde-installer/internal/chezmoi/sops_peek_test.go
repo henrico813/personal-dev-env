@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"pde-installer/internal/testfile"
 )
 
 // Split, so OpenCode's redaction leaves these lines readable to agents.
@@ -122,7 +124,7 @@ func runSopsPeek(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 	dir := t.TempDir()
 	writeApplyFile(t, filepath.Join(dir, "plain.json"), peekPlainJSON)
-	writeExecutable(t, filepath.Join(dir, "sops"), `#!/bin/sh
+	testfile.WriteExecutable(t, filepath.Join(dir, "sops"), `#!/bin/sh
 echo "$@" >"$FAKE_SOPS_DIR/args"
 cat "$FAKE_SOPS_DIR/plain.json"
 `)

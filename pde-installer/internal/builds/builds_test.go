@@ -17,6 +17,7 @@ import (
 
 	"pde-installer/internal/fsutil"
 	"pde-installer/internal/run"
+	"pde-installer/internal/testfile"
 )
 
 // A blocked binary path is broken rather than missing.
@@ -167,7 +168,7 @@ func TestReconcileReplacesLinkedSkillLessons(t *testing.T) {
 	manager, _, _ := newCommittedManager(t)
 	tool := filepath.Join(manager.Home, ".local", "bin", "skill-lessons")
 	uvCopy := filepath.Join(t.TempDir(), "skill-lessons")
-	writeBuildFixture(t, uvCopy, "#!/bin/sh\nexit 0\n# installed by uv\n")
+	testfile.WriteExecutable(t, uvCopy, "#!/bin/sh\nexit 0\n# installed by uv\n")
 	if err := os.Remove(tool); err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +239,7 @@ func TestBrokenSkillLessonsRevertsEveryTool(t *testing.T) {
 	home, repoRoot := t.TempDir(), t.TempDir()
 	writeBuildSources(t, repoRoot)
 	manager := newFixtureManager(t, home, repoRoot, filepath.Join(t.TempDir(), "build.log"))
-	writeBuildFixture(t, manager.python, "#!/bin/sh\nprintf '%s\\n' '#!/bin/sh' 'exit 1' > \"$3\"\nchmod +x \"$3\"\n")
+	testfile.WriteExecutable(t, manager.python, "#!/bin/sh\nprintf '%s\\n' '#!/bin/sh' 'exit 1' > \"$3\"\nchmod +x \"$3\"\n")
 	names := []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "glimmer", "skill-lessons",
 		"hub", "prs",
@@ -372,10 +373,10 @@ func writeBuildSources(t *testing.T, repoRoot string) {
 
 func newFixtureManager(t *testing.T, home, repoRoot, logPath string) Manager {
 	t.Helper()
-	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "go"), goFixture(logPath))
-	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "cargo"), cargoFixture(logPath))
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "go"), goFixture(logPath))
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "cargo"), cargoFixture(logPath))
 	python := filepath.Join(t.TempDir(), "python3")
-	writeBuildFixture(t, python, pythonFixture(logPath))
+	testfile.WriteExecutable(t, python, pythonFixture(logPath))
 	manager := New(home, repoRoot, run.Runner{})
 	manager.python = python
 	return manager
@@ -541,8 +542,8 @@ func TestBlinkCleanupPreservesRollback(t *testing.T) {
 	}))
 	defer server.Close()
 
-	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "cargo"), blinkCargoFixture())
-	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "nvim"), "#!/bin/sh\nexit 0\n")
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "cargo"), blinkCargoFixture())
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "nvim"), "#!/bin/sh\nexit 0\n")
 	writeBuildFile(t, filepath.Join(destination, "old"), "old plugin\n", 0o644)
 
 	manager := New(home, repoRoot, run.Runner{})
@@ -569,7 +570,7 @@ func TestMpvpaperInstallsHolderAndRollsBack(t *testing.T) {
 	home := t.TempDir()
 	bin := filepath.Join(home, ".local", "bin")
 	manager, _ := newPlayerManager(t, home)
-	writeBuildFixture(t, filepath.Join(bin, "mpvpaper"), "#!/bin/sh\nexit 0\n# old\n")
+	testfile.WriteExecutable(t, filepath.Join(bin, "mpvpaper"), "#!/bin/sh\nexit 0\n# old\n")
 
 	journal, err := manager.BuildWallpaperPlayer("sway")
 	if err != nil {
@@ -611,7 +612,7 @@ func TestMpvpaperRebuildsOnlyWhenCheckFails(t *testing.T) {
 		t.Fatalf("downloads after an unchanged rerun = %d, want 1", got)
 	}
 	// A player that no longer starts, as after an apt update removes its libmpv.
-	writeBuildFixture(t, player, "#!/bin/sh\nexit 1\n")
+	testfile.WriteExecutable(t, player, "#!/bin/sh\nexit 1\n")
 	build()
 
 	if got := downloads.Load(); got != 2 {
@@ -634,8 +635,8 @@ func newPlayerManager(t *testing.T, home string) (Manager, *atomic.Int32) {
 	}))
 	t.Cleanup(server.Close)
 	tools := t.TempDir()
-	writeBuildFixture(t, filepath.Join(tools, "meson"), "#!/bin/sh\nmkdir -p build\n")
-	writeBuildFixture(t, filepath.Join(tools, "ninja"), `#!/bin/sh
+	testfile.WriteExecutable(t, filepath.Join(tools, "meson"), "#!/bin/sh\nmkdir -p build\n")
+	testfile.WriteExecutable(t, filepath.Join(tools, "ninja"), `#!/bin/sh
 set -eu
 for name in mpvpaper mpvpaper-holder; do
   printf '%s\n' '#!/bin/sh' 'exit 0' '# built by ninja' > "build/$name"
@@ -678,11 +679,6 @@ chmod +x "$output"
 
 func shellQuote(value string) string {
 	return "'" + value + "'"
-}
-
-func writeBuildFixture(t *testing.T, path, content string) {
-	t.Helper()
-	writeBuildFile(t, path, content, 0o755)
 }
 
 func writeBuildFile(t *testing.T, path, content string, mode os.FileMode) {

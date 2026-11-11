@@ -10,6 +10,7 @@ import (
 
 	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
+	"pde-installer/internal/testfile"
 	"pde-installer/internal/ubuntu"
 )
 
@@ -345,9 +346,7 @@ func writeMissingPackagesBin(t *testing.T) string {
 		"sudo":       "#!/bin/sh\nexit 0\n",
 		"dpkg-query": "#!/bin/sh\nexit 1\n",
 	} {
-		if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		testfile.WriteExecutable(t, filepath.Join(bin, name), script)
 	}
 	return bin
 }

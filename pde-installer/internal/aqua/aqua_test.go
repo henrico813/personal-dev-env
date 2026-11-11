@@ -12,6 +12,7 @@ import (
 	"pde-installer/internal/manifest"
 	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
+	"pde-installer/internal/testfile"
 )
 
 // A broken executable needs repair instead of another installation.
@@ -19,43 +20,13 @@ func TestAquaProbeReturnsCommandErrors(t *testing.T) {
 	t.Parallel()
 	home := t.TempDir()
 	binary := filepath.Join(home, ".local", "share", "aquaproj-aqua", "bin", "aqua")
-	if err := os.MkdirAll(filepath.Dir(binary), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeExecutable(t, binary, "#!/bin/sh\nexit 9\n")
+	testfile.WriteExecutable(t, binary, "#!/bin/sh\nexit 9\n")
 	_, status, err := New(home, t.TempDir(), "full", run.Runner{}).Probe()
 	if err == nil || status != "" || !strings.Contains(err.Error(), "exit status 9") {
 		t.Fatalf("Probe() = _, %q, %v", status, err)
 	}
 	if _, status := New(home, t.TempDir(), "full", run.Runner{}).Status(); status != "error" {
 		t.Fatalf("Status() state = %q", status)
-	}
-}
-
-// writeExecutable avoids ETXTBSY by atomically publishing a closed fixture.
-func writeExecutable(t *testing.T, path, content string) {
-	t.Helper()
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".executable-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	temporaryName := temporary.Name()
-	defer func() {
-		if err := os.Remove(temporaryName); err != nil && !os.IsNotExist(err) {
-			t.Fatal(err)
-		}
-	}()
-	if _, err := temporary.WriteString(content); err != nil {
-		t.Fatal(err)
-	}
-	if err := temporary.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(temporaryName, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(temporaryName, path); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -235,11 +206,8 @@ func TestToolProbeUsesPackageBinaries(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			home := t.TempDir()
 			binary := filepath.Join(home, ".local", "share", "aquaproj-aqua", "pkgs", filepath.FromSlash(test.path))
-			if err := os.MkdirAll(filepath.Dir(binary), 0o755); err != nil {
-				t.Fatal(err)
-			}
 			script := "#!/bin/sh\n[ \"$1\" = \"" + test.argument + "\" ] || exit 9\nprintf '%s\\n' '" + test.output + "'\n"
-			writeExecutable(t, binary, script)
+			testfile.WriteExecutable(t, binary, script)
 			installed, status, err := New(home, t.TempDir(), "full", run.Runner{}).ToolProbe(test.name, test.version)
 			if err != nil || status != "current" || !strings.Contains(installed, test.output) {
 				t.Fatalf("ToolProbe() = %q, %q, %v", installed, status, err)

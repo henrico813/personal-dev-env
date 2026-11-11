@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"pde-installer/internal/run"
+	"pde-installer/internal/testfile"
 )
 
 // Installing skills resets their Lessons sections, so a skipped render hides
@@ -73,10 +74,7 @@ func newHomeWithLocalBinOffPath(t *testing.T, script string) string {
 	t.Setenv("PATH", "/usr/bin:/bin")
 	if script != "" {
 		binary := filepath.Join(home, ".local", "bin", "skill-lessons")
-		writeCommandTestFile(t, binary, script)
-		if err := os.Chmod(binary, 0o755); err != nil {
-			t.Fatal(err)
-		}
+		testfile.WriteExecutable(t, binary, script)
 	}
 	return home
 }

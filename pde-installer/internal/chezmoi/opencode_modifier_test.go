@@ -12,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"pde-installer/internal/testfile"
 )
 
 func TestModifierReplacesManagedPlugins(t *testing.T) {
@@ -309,7 +311,7 @@ cat >"$HOME/fake-curl-stdin"
 [ -f "$HOME/fake-curl-response" ] && cat "$HOME/fake-curl-response"
 exit "${FAKE_CURL_EXIT:-0}"
 `
-	writeExecutable(t, filepath.Join(bin, "curl"), fakeCurl)
+	testfile.WriteExecutable(t, filepath.Join(bin, "curl"), fakeCurl)
 	root := filepath.Join("..", "..", "..")
 	command := exec.Command("sh", filepath.Join(root, "chezmoi", "dot_config", "opencode", "modify_opencode.json"))
 	command.Env = append(command.Environ(),
@@ -334,7 +336,7 @@ cat >"$HOME/fake-curl-stdin"
 [ -f "$HOME/fake-curl-response" ] && cat "$HOME/fake-curl-response"
 exit "${FAKE_CURL_EXIT:-0}"
 `
-	writeExecutable(t, filepath.Join(bin, "curl"), fakeCurl)
+	testfile.WriteExecutable(t, filepath.Join(bin, "curl"), fakeCurl)
 	root := filepath.Join("..", "..", "..")
 	command := exec.Command("sh", filepath.Join(root, "chezmoi", "dot_config", "opencode", "modify_opencode.json"))
 	command.Env = append(command.Environ(),
