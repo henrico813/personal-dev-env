@@ -44,8 +44,9 @@ Git runs. The message names the selector and file; fill that change with
 check on earlier changes. If you patch the PLACEHOLDER change itself with an
 unedited file, the error is `after-file is identical to the --before file from inspect; edit it first`.
 
-`planner check` reports `BASE_COMMIT_REQUIRED` when the plan has no `Base
-commit:` line and the command has no `--base-commit` override.
+`planner inspect`, `patch`, `check`, and `export` report `BASE_COMMIT_REQUIRED`
+when the plan has no `Base commit:` line and the command has no `--base-commit`
+override.
 
 ## What to do next
 
