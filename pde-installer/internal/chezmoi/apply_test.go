@@ -10,6 +10,7 @@ import (
 	"pde-installer/internal/colorprofile"
 	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
+	"pde-installer/internal/testfile"
 )
 
 // A committed apply must keep changes and remove backups.
@@ -158,7 +159,7 @@ func TestFullApplyPreservesTerminalFiles(t *testing.T) {
 	}
 	fullTarget := filepath.Join(fixture.manager.Home, ".config", "full-only")
 	writeApplyFile(t, filepath.Join(fixture.manager.Source(), "test-profile"), "full\n")
-	writeExecutable(t, filepath.Join(fixture.manager.AquaRoot, "bin", "chezmoi"), `#!/bin/sh
+	testfile.WriteExecutable(t, filepath.Join(fixture.manager.AquaRoot, "bin", "chezmoi"), `#!/bin/sh
 set -eu
 source_dir=
 destination=
@@ -376,7 +377,7 @@ func newApplyFixtureForProfile(t *testing.T, mode string, selected profile.Profi
 	writeApplyFile(t, filepath.Join(source, "test-mode"), mode+"\n")
 	writeApplyFile(t, filepath.Join(source, "test-profile"), string(selected)+"\n")
 	writeApplyFile(t, filepath.Join(source, "test-color-profile"), string(colorprofile.TokyoNight)+"\n")
-	writeExecutable(t, binary, `#!/bin/sh
+	testfile.WriteExecutable(t, binary, `#!/bin/sh
 set -eu
 source_dir=
 destination=
@@ -451,14 +452,6 @@ func writeApplyFile(t *testing.T, path, content string) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func writeExecutable(t *testing.T, path, content string) {
-	t.Helper()
-	writeApplyFile(t, path, content)
-	if err := os.Chmod(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
 }

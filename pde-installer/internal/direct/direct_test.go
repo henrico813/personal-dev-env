@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"pde-installer/internal/run"
+	"pde-installer/internal/testfile"
 )
 
 // A blocked font path is broken rather than missing.
@@ -184,7 +185,7 @@ func TestLatestToolKeepsSelfUpdatedBinary(t *testing.T) {
 	}
 	// moshi-hook update renames a new binary over the real file.
 	updated := filepath.Join(manager.ToolsRoot(), "moshi-hook", "bin", "moshi-hook")
-	writeDirectFile(t, updated+".new", "#!/bin/sh\nprintf 'moshi-hook 10.0.0\\n'\n", 0o755)
+	testfile.WriteExecutable(t, updated+".new", "#!/bin/sh\nprintf 'moshi-hook 10.0.0\\n'\n")
 	if err := os.Rename(updated+".new", updated); err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +225,7 @@ func TestLatestToolReplacesBrokenBinary(t *testing.T) {
 	if _, err := manager.reconcileTools([]Tool{tool}); err != nil {
 		t.Fatalf("first reconcileTools() error = %v", err)
 	}
-	writeDirectFile(t, filepath.Join(manager.ToolsRoot(), "moshi-hook", "bin", "moshi-hook"), "#!/bin/sh\nexit 1\n", 0o755)
+	testfile.WriteExecutable(t, filepath.Join(manager.ToolsRoot(), "moshi-hook", "bin", "moshi-hook"), "#!/bin/sh\nexit 1\n")
 
 	_, err := manager.reconcileTools([]Tool{tool})
 
