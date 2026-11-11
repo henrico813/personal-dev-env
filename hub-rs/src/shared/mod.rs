@@ -2,9 +2,14 @@
 //! a command returns, `Tools` is the bundle of external systems, and
 //! `AgentName` is a checked session name.
 
+pub(crate) mod context;
 pub(crate) mod decisions;
 pub(crate) mod events;
+pub(crate) mod facts;
+pub(crate) mod messages;
 pub mod run_folder;
+#[cfg(test)]
+pub(crate) mod test_values;
 
 use std::fmt;
 use std::io;
@@ -25,6 +30,15 @@ pub enum HubError {
     Usage(String),
     /// The command did not do its work, for the reason given. Exit 3.
     NotDone(String),
+    /// Herdr turned a message down before taking it. Exit 1.
+    NotSent { name: String, reason: String },
+    /// A message may have arrived. `file` is its `.sending` file.
+    /// Exit 1.
+    Unsure {
+        name: String,
+        reason: String,
+        file: PathBuf,
+    },
     /// Exit 1.
     Herdr(HerdrError),
     /// Exit 1.
@@ -45,7 +59,9 @@ impl HubError {
     /// work not done.
     pub fn exit_code(&self) -> u8 {
         match self {
-            HubError::Herdr(_)
+            HubError::NotSent { .. }
+            | HubError::Unsure { .. }
+            | HubError::Herdr(_)
             | HubError::Card(_)
             | HubError::OpenCode(_)
             | HubError::File { .. } => 1,
@@ -61,6 +77,11 @@ impl fmt::Display for HubError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             HubError::Usage(message) | HubError::NotDone(message) => formatter.write_str(message),
+            HubError::NotSent { name, reason } => write!(formatter, "not sent {name}: {reason}"),
+            HubError::Unsure { name, reason, file } => {
+                let file_name = file.file_name().unwrap_or_default().to_string_lossy();
+                write!(formatter, "unsure {name}: {reason}; see sends/{file_name}")
+            }
             HubError::Herdr(error) => write!(formatter, "{error}"),
             HubError::Card(error) => write!(formatter, "{error}"),
             HubError::OpenCode(error) => write!(formatter, "{error}"),
@@ -79,7 +100,10 @@ impl std::error::Error for HubError {
             HubError::OpenCode(error) => Some(error),
             HubError::File { source, .. } => Some(source),
             HubError::PartlyDone { error, .. } => Some(error.as_ref()),
-            HubError::Usage(_) | HubError::NotDone(_) => None,
+            HubError::Usage(_)
+            | HubError::NotDone(_)
+            | HubError::NotSent { .. }
+            | HubError::Unsure { .. } => None,
         }
     }
 }

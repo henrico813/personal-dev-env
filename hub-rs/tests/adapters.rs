@@ -6,7 +6,9 @@ mod herdr_cli {
     use std::path::Path;
     use std::thread::{self, JoinHandle};
 
-    use hub::external::herdr::{AgentStart, AgentStatus, Herdr, HerdrCli, NewPlace};
+    use hub::external::herdr::{
+        AgentStart, AgentStatus, Herdr, HerdrCli, HerdrCode, HerdrError, NewPlace,
+    };
     use serde_json::{Value, json};
 
     use super::common::{TempFolder, read_script_calls};
@@ -69,8 +71,9 @@ mod herdr_cli {
     fn herdr_cli_sends_each_command_to_machine() {
         let folder = TempFolder::new();
         let answer = r#"{"result":{"agents":[],"workspaces":[],"agent":{
-            "name":"docs-fix","agent_status":"idle","pane_id":"w4:p2",
-            "workspace_id":"w4","tab_id":"w4:t2","focused":false}}}"#;
+            "name":"docs-fix","agent":"opencode","agent_status":"idle",
+            "pane_id":"w4:p2","workspace_id":"w4","tab_id":"w4:t2",
+            "focused":false,"state_change_seq":1288}}}"#;
         let script = folder.write_script("herdr", answer, "", 0);
         let herdr = HerdrCli::new(
             script.clone(),
@@ -195,6 +198,97 @@ mod herdr_cli {
         assert_eq!(error.to_string(), "herdr: no server at /run/herdr.sock");
     }
 
+    /// Whether a failed message is unsure or not sent comes from Herdr's
+    /// error code, which Herdr prints on stderr with stdout empty. A
+    /// code misread turns a message that may have arrived into one the
+    /// hub sends again, or the reverse.
+    #[test]
+    fn herdr_cli_reads_refusal_code() {
+        let cases = [
+            (
+                "stalled",
+                "agent_prompt_stalled",
+                HerdrCode::AgentPromptStalled,
+            ),
+            ("timeout", "timeout", HerdrCode::Timeout),
+            ("not-found", "agent_not_found", HerdrCode::AgentNotFound),
+            (
+                "blocked",
+                "agent_blocked",
+                HerdrCode::Other("agent_blocked".to_owned()),
+            ),
+        ];
+
+        let folder = TempFolder::new();
+        for (case_name, code, expected) in cases {
+            let answer = format!(r#"{{"error":{{"code":"{code}","message":"Herdr said no"}}}}"#);
+            let script = folder.write_script(&format!("herdr-{case_name}"), "", &answer, 1);
+            let herdr = HerdrCli::new(script, None, folder.path().join("herdr.sock"));
+
+            let error = herdr.prompt("docs-fix", "Rebase on main.").unwrap_err();
+
+            let HerdrError::Refused { code, message } = error else {
+                panic!("{case_name}: {error:?}");
+            };
+            assert_eq!(code, expected, "{case_name}");
+            assert_eq!(message, "Herdr said no", "{case_name}");
+        }
+    }
+
+    /// `hub next` sends a message held with `--machine` through that
+    /// machine's Herdr, including the screen read, Enter press and wait
+    /// after a stall. A call without `--machine LABEL` first reaches a
+    /// session on this machine instead.
+    #[test]
+    fn herdr_cli_sends_paste_steps_to_machine() {
+        let folder = TempFolder::new();
+        let screen = "  ┃  [Pasted ~1 lines]\n";
+        let script = folder.write_script("herdr", screen, "", 0);
+        let herdr = HerdrCli::new(script.clone(), None, folder.path().join("herdr.sock"));
+        let laptop = herdr.on_machine("laptop");
+
+        let shown = laptop.read_screen("docs-fix").unwrap();
+        laptop.press_enter("docs-fix").unwrap();
+        laptop.wait_until_started("docs-fix").unwrap();
+
+        assert_eq!(shown, screen);
+        assert_eq!(
+            read_script_calls(&script),
+            [
+                vec![
+                    "--machine",
+                    "laptop",
+                    "agent",
+                    "read",
+                    "docs-fix",
+                    "--source",
+                    "visible",
+                ],
+                vec![
+                    "--machine",
+                    "laptop",
+                    "agent",
+                    "send-keys",
+                    "docs-fix",
+                    "Enter",
+                ],
+                vec![
+                    "--machine",
+                    "laptop",
+                    "agent",
+                    "wait",
+                    "docs-fix",
+                    "--until",
+                    "working",
+                    "--until",
+                    "blocked",
+                    "--timeout",
+                    "30000",
+                ],
+            ]
+        );
+    }
+
     /// `hub gather` reorders the sidebar through Herdr's socket, which
     /// refuses a request whose method or field names are wrong.
     #[test]
@@ -260,6 +354,32 @@ mod card_cli {
             read_script_calls(&script),
             [["note", "--", "DEMO-KB-007", "merged #9"]]
         );
+    }
+
+    /// A message to a worker that handed off goes to the newest live
+    /// session in its card's `sessions` list. A list misread sends it to
+    /// an older session or to none.
+    #[test]
+    fn card_cli_reads_sessions_from_card_show() {
+        let folder = TempFolder::new();
+        let card_show = "---\n\
+                         stage: active\n\
+                         sessions:\n  \
+                           - \"opencode ses_0a1b2c3d4e5f\"\n  \
+                           - \"opencode ses_9f8e7d6c5b4a\"\n\
+                         project: DevEnv\n\
+                         ---\n\
+                         \n\
+                         # DEMO-KB-007 Retry failed uploads\n\
+                         \n\
+                         - opencode ses_not_a_session\n";
+        let script = folder.write_script("card", card_show, "", 0);
+        let cards = CardCli::new(script.clone());
+
+        let note = cards.read_card(&"DEMO-KB-007".parse().unwrap()).unwrap();
+
+        assert_eq!(note.sessions, ["ses_0a1b2c3d4e5f", "ses_9f8e7d6c5b4a"]);
+        assert_eq!(read_script_calls(&script), [["show", "DEMO-KB-007"]]);
     }
 
     /// `hub brief` shows card's own reason on its board line, such as a

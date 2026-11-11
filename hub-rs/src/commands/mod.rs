@@ -7,7 +7,9 @@ pub mod brief;
 pub mod cli;
 pub mod flag;
 pub mod handoff;
+pub mod next;
 pub mod reports;
+pub mod send;
 pub mod sidebar;
 
 /// The lines a command prints on standard output when it did its

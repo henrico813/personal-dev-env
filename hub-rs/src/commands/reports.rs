@@ -82,12 +82,13 @@ pub fn run_read(
             source,
         })
     })?;
-    let others = run.list_reports().map_err(archived_but)?;
+    let others = run.list_reports(now).map_err(archived_but)?;
     let mut lines: Vec<String> = text.lines().map(str::to_owned).collect();
     lines.push(if others.is_empty() {
         "unread: -".to_owned()
     } else {
-        format!("unread: {}", others.join(" "))
+        let names: Vec<&str> = others.iter().map(|report| report.name.as_str()).collect();
+        format!("unread: {}", names.join(" "))
     });
     // clap lets `--card` through only with `--note`.
     if let (Some(key), Some(note)) = (card_key, &request.note) {
