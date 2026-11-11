@@ -39,8 +39,11 @@ variable holds the subagent's own ID, so pass the parent's ID with
 
 The script prints totals, user messages and model steps, the peak
 context, compactions, each skill with the step that first loaded it,
-subagent tokens by model with the five largest subagents, and
-commands run more than once with the same text. The peak is
+subagent tokens by model with the five largest subagents, commands
+run more than once with the same text, and carry by tool with the
+five largest carried outputs. An output's carry is its tokens times
+the later steps that read it again, so it shows which outputs cost
+the most. The peak is
 approximate, because the claude-code provider logs some steps with
 zero tokens and adds them to the next step; the script leaves that
 next step out.
