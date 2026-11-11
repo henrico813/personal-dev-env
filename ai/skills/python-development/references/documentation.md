@@ -13,14 +13,17 @@ covers Python docstring format and executable examples only.
 ## Follow the repository's format
 
 Use the established Google, NumPy, Sphinx, plain reStructuredText, or other
-docstring style. Do not mix formats in one project or add parameter sections that
-repeat an annotated signature. Keep public behavior, important side effects,
-failures, resource ownership, and non-obvious limits discoverable where callers
-look.
+docstring style. Do not mix formats in one project. In Google style,
+keep the `Args:`, `Returns:` and `Raises:` sections even when they
+repeat an annotated signature, and reject a request to cut them.
+Outside Google style, do not add parameter sections that repeat an
+annotated signature. Keep public behavior, important side effects,
+failures, resource ownership, and non-obvious limits discoverable
+where callers look.
 
-For tests, let names, visible inputs, and assertions explain the behavior. Add a
-docstring or comment only when a supported reason, boundary, or regression is
-still unclear.
+For tests, let names, visible inputs, and assertions explain the
+behavior. Give every test a short docstring, as `code-documentation`
+says.
 
 ## PEP 257 docstring conventions
 
