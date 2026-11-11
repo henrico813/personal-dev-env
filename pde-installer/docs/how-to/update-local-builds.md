@@ -2,13 +2,15 @@
 
 The local backend builds repository applications: `planner`,
 `opencode-inline-shim`, `vibe`, `pde-gh-write` (also linked as
-`pde-pr-approve`), `glimmer`, `skill-lessons`, `hub` and `prs`.
+`pde-pr-approve`), `glimmer`, `hub-next`, `skill-lessons`, `hub` and `prs`.
 `skill-lessons` and `hub` each have a `build.py` that packs them into one file
 run by `/usr/bin/python3`. Client builds only `skill-lessons` and `hub`, and
 terminal builds no local applications.
 
 The installer builds `glimmer` from the Rust source in `glimmer/`
-with Cargo and checks it with `help` after activation.
+with Cargo and checks it with `help` after activation. It builds
+`hub-next`, the Rust hub, from `hub-rs/` the same way and checks it
+with `--version`.
 A failed check restores the previous tools through the installer's journal.
 
 1. Change the application source in its repository directory.
@@ -26,7 +28,7 @@ A failed check restores the previous tools through the installer's journal.
 The installer hashes regular source files, excluding `.git` and `target`
 directories. For `skill-lessons` and `hub` it hashes only `build.py` and the
 regular `.py` files under `src/`, so caches and tests do not count. It rebuilds
-all eight applications when inputs or managed Go and Rust toolchain versions
+all nine applications when inputs or managed Go and Rust toolchain versions
 change. A Python upgrade does not trigger a rebuild or a check; after upgrading
 `/usr/bin/python3`, run `skill-lessons --version` and `hub --version` yourself.
 If one fails, the code needs a fix for

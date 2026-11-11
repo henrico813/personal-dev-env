@@ -1,0 +1,63 @@
+{
+  "id": "cli:agent.list",
+  "result": {
+    "type": "agent_list",
+    "agents": [
+      {
+        "terminal_id": "term_7",
+        "name": "demo-kb-007-impl",
+        "agent": "opencode",
+        "display_agent": "opencode",
+        "agent_status": "idle",
+        "agent_session": {
+          "source": "opencode",
+          "agent": "opencode",
+          "kind": "id",
+          "value": "ses_0a1b2c3d4e5f"
+        },
+        "pane_id": "w1:p7",
+        "tab_id": "w1:t3",
+        "workspace_id": "w1",
+        "focused": false,
+        "revision": 41,
+        "state_change_seq": 12,
+        "state_labels": {
+          "idle": "needs you"
+        },
+        "cwd": "/home/u/wt/demo-kb-007",
+        "foreground_cwd": "/home/u/wt/demo-kb-007",
+        "interactive_ready": true,
+        "launch_pending": false,
+        "screen_detection_skipped": false,
+        "title": null,
+        "terminal_title": "OpenCode",
+        "terminal_title_stripped": "OpenCode",
+        "tokens": {}
+      },
+      {
+        "terminal_id": "term_9",
+        "name": null,
+        "agent": "claude",
+        "display_agent": "claude",
+        "agent_status": "working",
+        "agent_session": null,
+        "pane_id": "w2:p1",
+        "tab_id": "w2:t1",
+        "workspace_id": "w2",
+        "focused": true,
+        "revision": 7,
+        "state_change_seq": 3,
+        "state_labels": {},
+        "cwd": "/home/u/notes",
+        "foreground_cwd": "/home/u/notes",
+        "interactive_ready": true,
+        "launch_pending": false,
+        "screen_detection_skipped": false,
+        "title": null,
+        "terminal_title": "Claude Code",
+        "terminal_title_stripped": "Claude Code",
+        "tokens": {}
+      }
+    ]
+  }
+}

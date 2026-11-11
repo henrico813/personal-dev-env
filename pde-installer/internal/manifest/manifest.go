@@ -124,6 +124,7 @@ func Items() []Item {
 		{Name: "planner", Owner: Local, Tier: profile.Development}, {Name: "pde-gh-write", Owner: Local, Tier: profile.Development}, {Name: "opencode-inline-shim", Owner: Local, Tier: profile.Development},
 		{Name: "vibe", Owner: Local, Tier: profile.Development}, {Name: "blink.cmp", Owner: Local, Tier: profile.Development},
 		{Name: "glimmer", Owner: Local, Tier: profile.Development},
+		{Name: "hub-next", Owner: Local, Tier: profile.Development},
 		{
 			Name:  "skill-lessons",
 			Owner: Local,

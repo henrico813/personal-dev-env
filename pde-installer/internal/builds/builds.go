@@ -146,8 +146,9 @@ func (m Manager) Reconcile(selected profile.Profile) (*fsutil.Journal, error) {
 		}
 	}()
 	cargoTargets := map[string]string{
-		"vibe":    filepath.Join(stageRoot, "vibe-target"),
-		"glimmer": filepath.Join(stageRoot, "glimmer-target"),
+		"vibe":     filepath.Join(stageRoot, "vibe-target"),
+		"glimmer":  filepath.Join(stageRoot, "glimmer-target"),
+		"hub-next": filepath.Join(stageRoot, "hub-target"),
 	}
 	for _, spec := range specs {
 		if err := fsutil.GuardHome(m.Home, stageRoot); err != nil {
@@ -669,6 +670,21 @@ func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []bu
 				Dir: filepath.Join(m.RepoRoot, "glimmer"), Env: environment,
 			},
 			verifyArg: "help",
+		},
+		{
+			// The Rust hub, installed beside the Python hub until it replaces it.
+			name:   "hub-next",
+			source: filepath.Join(m.RepoRoot, "hub-rs"),
+			output: filepath.Join(stageRoot, "hub-target", "release", "hub"),
+			command: run.Command{
+				Name: cargo,
+				Args: []string{
+					"build", "--locked", "--release", "--bin", "hub",
+					"--target-dir", filepath.Join(stageRoot, "hub-target"),
+				},
+				Dir: filepath.Join(m.RepoRoot, "hub-rs"), Env: environment,
+			},
+			verifyArg: "--version",
 		},
 		{
 			name:   "skill-lessons",
