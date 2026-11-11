@@ -1,6 +1,6 @@
 //! Sets `HUB_BUILD_VERSION`, the version `hub --version` prints. It is
-//! `HUB_VERSION` when set, as the release job sets it. Else it comes
-//! from the newest `hub-v` tag, else from Cargo.toml.
+//! `RELEASE_VERSION` when set, as the release workflow sets it. Else it
+//! comes from the newest `hub-v` tag, else from Cargo.toml.
 
 #[path = "build/version.rs"]
 mod version;
@@ -9,11 +9,11 @@ use std::env;
 use std::process::Command;
 
 fn main() {
-    // Cargo reruns this script only when `HUB_VERSION` or the script
+    // Cargo reruns this script only when `RELEASE_VERSION` or the script
     // changes. A kept `target/` folder still prints the tag it saw at its
     // last run.
-    println!("cargo::rerun-if-env-changed=HUB_VERSION");
-    let version = env::var("HUB_VERSION")
+    println!("cargo::rerun-if-env-changed=RELEASE_VERSION");
+    let version = env::var("RELEASE_VERSION")
         .ok()
         .filter(|given| !given.is_empty())
         .or_else(describe_hub_tag)

@@ -20,7 +20,8 @@ use crate::shared::{AgentName, HubError};
 #[derive(Parser)]
 #[command(
     name = "hub",
-    // `build.rs` sets this from `HUB_VERSION` or the newest `hub-v` tag.
+    // `build.rs` sets this from `RELEASE_VERSION`, the newest `hub-v` tag
+    // or Cargo.toml.
     version = env!("HUB_BUILD_VERSION"),
     override_usage = "hub [--machine LABEL] COMMAND ...",
     // clap cannot mark the commands that take a run folder, so this

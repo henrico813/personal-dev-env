@@ -1,7 +1,8 @@
-# Tells git-cliff, which the hub release workflow runs, how to pick the
-# next hub version and write the release notes. Only feat, fix and perf
-# commits and breaking changes count. Docs, tests, refactors and the rest
-# release nothing and stay out of the notes.
+# Tells git-cliff, which .github/workflows/release.yml runs for each
+# tool, how to pick the tool's next version and write its release notes.
+# The workflow passes the tool's folder and tag pattern. Only feat, fix
+# and perf commits and breaking changes count. Docs, tests, refactors and
+# the rest release nothing and stay out of the notes.
 
 [changelog]
 # One line per commit, its subject as merged.
@@ -19,7 +20,6 @@ commit_parsers = [
 ]
 # Keeps a breaking refactor or docs change, which the last parser would skip.
 protect_breaking_commits = true
-tag_pattern = "^hub-v[0-9]+\\.[0-9]+\\.[0-9]+$"
 
 [bump]
 # Below 1.0 a feature and a breaking change both bump the minor number.
