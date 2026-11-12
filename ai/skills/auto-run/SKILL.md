@@ -46,9 +46,9 @@ The user's rules for every run:
 
        hub auto ready --run "<run folder>"
 
-3. Sort them with Strata, the local model:
+3. Sort them with the cheap model, as `model-routing` picks:
 
-       opencode run --standalone -m goog/qwen3.8 \
+       opencode run --standalone -m <model> \
          "$(cat <run folder>/ready.md)
 
        Sort each card into one group, one line per card as
@@ -57,9 +57,10 @@ The user's rules for every run:
        device, a login, a purchase or a choice before work can
        start), alone (the rest)."
 
-   When it fails or gives no line for a card, sort the cards yourself
-   by the same rule. Read each line against the card before you use
-   it.
+   When the model does not answer, pick the next one as
+   `model-routing` says. When none is left, or a card gets no line,
+   sort the cards yourself by the same rule. Read each line against
+   the card before you use it.
 4. Write `<run folder>/run.md`. Put under `## Run` the `alone` cards
    you pick, and every other ready card under `## Needs your hands`,
    `## Work PC` or `## Left out`, with a reason. Each line is the key,
@@ -161,10 +162,10 @@ before the user reviews that pull request.
 2. Check with `command -v` that `hub`, `card`, `herdr`, `wt`,
    `planner` and `pde-gh-write` are on `PATH`; never run
    `pde-gh-write pr` to test it, since any `pr` command files a
-   request. Send each model that worker-limits.md names a one-line
-   job, `opencode run --standalone -m <model> "reply OK"`. When a
-   tool is missing or the planner model does not answer, write a
-   blocker to the front hub and end your turn.
+   request. Check each model the workers will use, as
+   `model-routing` says. When a tool is missing or no strongest model
+   answers for the planners and workers, write a blocker to the front
+   hub and end your turn.
 3. Copy [references/worker-limits.md](references/worker-limits.md)
    to `<run folder>/common.md`, with your name, the run folder and
    the models that answered as `<models>`. Each worker's handoff points
@@ -176,9 +177,12 @@ before the user reviews that pull request.
    call that times out is the only one in doubt.
 5. Start one worker per card by `herdr-handoff`, as agent
    `<key in lower case>-auto`, in its own workspace named as
-   `herdr-hub`'s Sidebar names say. `hub auto now` reads its status
-   file by the agent name. After a restart, check `hub status` first
-   and start no second worker for a card.
+   `herdr-hub`'s Sidebar names say. Each worker directs other agents,
+   so it is an orchestrator. Start it on the model and reasoning
+   level that `model-routing` gives an orchestrator.
+   `hub auto now` reads its status file by the agent name. After a
+   restart, check `hub status` first and start no second worker for a
+   card.
 
    Before you start them, compare the files each card will change, from
    its card and the code. Cards that share a file run one after another:

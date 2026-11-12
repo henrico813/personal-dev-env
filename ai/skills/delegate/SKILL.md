@@ -16,16 +16,19 @@ bring it to the user.
 
 ## Steps
 
-1. Brief a subagent. Use the model the user names, or the one their
-   notes give for that kind of work. Give it the goal, the inputs,
-   what to leave alone, which instructions it must load, and the report
-   it must return. When the report counts things, give the count you
-   expect, such as "expect 2 clones".
+1. Pick the subagent's model. Use the model the user names, or the
+   one `model-routing` picks for the job. Brief the subagent: give it
+   the goal, the inputs, what to leave alone, which instructions it
+   must load, and the report it must return. When the report counts
+   things, give the count you expect, such as "expect 2 clones". For
+   a local job, brief the subagent as `model-routing` says instead.
 2. When it reports, check that it loaded the instructions you named,
    and check its claims against the real files, tests and systems
    before trusting them.
 3. Review the work. Send required fixes back to the same agent, and
-   review again. Repeat until it passes.
+   review again. Repeat until it passes. When a local job fails its
+   check, retry and step up as `model-routing` says for a failed
+   check, instead of sending fixes back.
 4. Give the user a short summary: what was done, the evidence, and any
    decisions they need to make, with your recommendation.
 

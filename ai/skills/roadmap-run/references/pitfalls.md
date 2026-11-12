@@ -58,8 +58,6 @@ summarized, the skills you loaded are gone from context. Load them
 again before the next step.
 
 **A cloud model hits a limit or a login error.** Write the error and
-the time in the PR's `status.txt`, and do not retry in a loop. Use the
-first that works: the role's cloud model; a cheaper cloud model the
-run's rules file names, for reviews only; a local model, for
-script-checked jobs only, as prompts.md's Local model says. When none
-works, pause and tell the user.
+the time in the PR's `status.txt`, and do not retry in a loop. Pick
+the next model as `model-routing` says. When it leaves no model,
+pause and tell the user.

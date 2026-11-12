@@ -12,7 +12,8 @@ every answer the same way, so two reviews' pass rates can be compared.
     python3 ~/.agents/skills/session-review/scripts/trials.py
 
 It runs every case in `~/.local/state/pde/session-reviews/trials/`
-three times on `goog/qwen3.8` and prints one line per case:
+three times on the local model by default, and prints one line per
+case:
 
     stale-ask 2/3 rules 4f1c2a9e0b7d - missed pass /recheck/
 
@@ -28,9 +29,9 @@ fails with "tool call instead of answer". Options:
 - `--model` and `--variant` choose the model and its effort.
 - `--timeout` sets the seconds each run may take; the default is 600.
 
-Run the same cases with `--model` set to the cheapest cloud model
-that might do the job, such as `openai/gpt-6-luna`, and compare the
-pass rates before picking a model for the job.
+Run the same cases with `--model` set to the cheap model, as
+`model-routing` picks. Compare the pass rates before you choose a
+model for the job.
 
 Each answer is saved in `answers/<time>-<random suffix>/`, and each run
 adds a line to `results.jsonl`, both in the trials folder. A line names
@@ -82,6 +83,6 @@ Never copy a secret from a run folder's notes into a case. Describe
 the situation without it.
 
 A bad file or a missing rules file stops the script before any model
-runs. Try a new case first on the cheapest cloud model that might do
-the job. If that model fails it, check the prompt and the patterns
+runs. Try a new case first on the cheap model, as `model-routing`
+picks. If that model fails it, check the prompt and the patterns
 before you try other models.
