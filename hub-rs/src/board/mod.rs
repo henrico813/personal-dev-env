@@ -3,11 +3,14 @@
 //! `print_board` first.
 //!
 //! A second thread reads the hub's state every 10 seconds, or at once
-//! when the user presses r. A read calls Herdr, `card` and OpenCode
-//! and takes about a second, so the keys and the mouse would freeze if
-//! the drawing thread waited for it.
+//! when the user presses r. A read calls Herdr, `card` once per card
+//! shown, and OpenCode, and takes a few seconds, so the keys and the
+//! mouse would freeze if the drawing thread waited for it.
 
+mod draw;
+mod list;
 mod queue;
+mod sections;
 mod terminal;
 mod view;
 
@@ -92,7 +95,10 @@ pub fn run_board(
         read_until_closed(&tools, &run, &time_zone, &reading_sender, &wake_receiver);
     });
 
-    let mut board = Board::new();
+    // NO_COLOR set to any value but empty turns colors off, as
+    // https://no-color.org asks.
+    let color = std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty());
+    let mut board = Board::new(color);
     let mut screen = Screen::start().map_err(terminal_error)?;
     screen.draw(&mut board).map_err(terminal_error)?;
     while !stop.load(Ordering::Relaxed) {
@@ -145,7 +151,8 @@ pub fn print_board(
     time_zone: &TimeZone,
     size: ScreenSize,
 ) -> Result<Outcome, HubError> {
-    let mut board = Board::new();
+    // Text output carries no colors.
+    let mut board = Board::new(false);
     board.show_reading(Ok(read_queue(tools, run, time_zone)?));
     Ok(Outcome {
         lines: board.render_lines(size.columns, size.rows),

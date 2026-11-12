@@ -230,6 +230,13 @@ pub struct CardNote {
     pub needs_you_open: bool,
     /// The bullets of Context and Acceptance Criteria, in note order.
     pub criteria: Vec<String>,
+    /// The front matter's plan notes, such as `DEMO-12 Retry uploads`.
+    pub plans: Vec<String>,
+    /// The front matter's pull request links.
+    pub prs: Vec<String>,
+    /// The newest Log line that starts `next: `, such as `review PR
+    /// #498`, which the hub writes when it moves the card to review.
+    pub next_step: Option<String>,
 }
 
 /// What `card board` gives.
@@ -279,22 +286,33 @@ fn parse_card_list(text: &str) -> Vec<(CardKey, Stage)> {
 }
 
 /// Reads `card show` text. The `sessions:` items of the front matter
-/// look like `- "opencode ses_0a1b2c3d4e5f"` with the ID last, and the
-/// title is the first `# KEY ...` heading after it. Log lines look
-/// like `- 2026-11-10 needs-you: which bucket?`.
+/// look like `- "opencode ses_0a1b2c3d4e5f"` with the ID last, and
+/// `plans:` items are links like `- "[[DEMO-12 Retry uploads]]"`. The
+/// title is the first `# KEY ...` heading after the front matter. Log
+/// lines look like `- 2026-11-10 needs-you: which bucket?`.
 fn parse_card_note(key: &CardKey, text: &str) -> CardNote {
     let mut note = CardNote::default();
     let mut lines = text.lines().skip(1);
-    let mut in_sessions = false;
+    // The list a `- ` line belongs to, such as `sessions`.
+    let mut list = "";
     // The front matter ends at the second `---` line.
     for line in lines.by_ref().take_while(|line| line.trim() != "---") {
-        if line.trim() == "sessions:" {
-            in_sessions = true;
-        } else if let Some(item) = line.trim().strip_prefix("- ").filter(|_| in_sessions) {
-            let id = item.trim_matches('"').split_whitespace().last();
-            note.sessions.extend(id.map(str::to_owned));
+        if let Some(item) = line.trim().strip_prefix("- ") {
+            let item = item.trim_matches('"');
+            match list {
+                "sessions" => note
+                    .sessions
+                    .extend(item.split_whitespace().last().map(str::to_owned)),
+                "plans" => note.plans.push(
+                    item.trim_start_matches("[[")
+                        .trim_end_matches("]]")
+                        .to_owned(),
+                ),
+                "prs" => note.prs.push(item.to_owned()),
+                _ => {}
+            }
         } else {
-            in_sessions = false;
+            list = line.trim().strip_suffix(':').unwrap_or("");
             if let Some(project) = line.strip_prefix("project:") {
                 note.project = project.trim().to_owned();
             }
@@ -323,6 +341,13 @@ fn parse_card_note(key: &CardKey, text: &str) -> CardNote {
                 note.needs_you_open = true;
             } else if words.starts_with("answered: ") {
                 note.needs_you_open = false;
+            }
+            // A `card note` line reads `note (who): next: ...`.
+            let text = words.split_once("): ").map_or(words, |(_, text)| text);
+            if section == "Log"
+                && let Some(step) = text.strip_prefix("next: ")
+            {
+                note.next_step = Some(step.trim().to_owned());
             }
         }
     }
@@ -434,8 +459,40 @@ mod tests {
                     "- Uploads fail on a slow link.".to_owned(),
                     "- [ ] A failed upload retries.".to_owned(),
                 ],
+                ..CardNote::default()
             }
         );
+    }
+
+    /// `hub board` tells the user what to do next on each card in
+    /// review from these links and Log lines. A link read from the
+    /// wrong list, or an older `next:` line winning, sends the user to
+    /// the wrong plan or PR.
+    #[test]
+    fn parse_card_note_reads_plans_prs_next() {
+        let card_show = "---\n\
+                         plans:\n  \
+                           - \"[[DEMO-12 Retry failed uploads]]\"\n\
+                         prs:\n  \
+                           - \"https://github.com/demo/app/pull/498\"\n\
+                         sessions:\n  \
+                           - \"opencode ses_1\"\n\
+                         ---\n\
+                         \n\
+                         # DEMO-KB-001 Retry failed uploads\n\
+                         ---\n\
+                         \n\
+                         ## Log\n\
+                         ---\n\
+                         \n\
+                         - 2026-11-10 note (hub): next: read plan DEMO-12\n\
+                         - 2026-11-11 note (hub): next: review PR #498\n";
+
+        let note = parse_card_note(&"DEMO-KB-001".parse().unwrap(), card_show);
+
+        assert_eq!(note.plans, ["DEMO-12 Retry failed uploads"]);
+        assert_eq!(note.prs, ["https://github.com/demo/app/pull/498"]);
+        assert_eq!(note.next_step.as_deref(), Some("review PR #498"));
     }
 
     /// Every session's lifecycle starts from its card's stage, read

@@ -1,28 +1,30 @@
-//! Turns a `Queue` into the board's rows and draws them, and moves the
-//! chosen row on keys, wheel turns and taps. Nothing here touches the
-//! terminal, so `--print` and the tests draw the same frame the user
-//! sees. Read `Board::show_reading`, `Board::handle_input` and
-//! `Board::render` first.
+//! Holds what the board shows and acts on keys, wheel turns and taps.
+//! Nothing here touches the terminal, so `--print` and the tests draw
+//! the same frame the user sees. Read `Board::show_reading`,
+//! `Board::handle_input` and `Board::render` first.
+//!
+//! The screen fits a phone first. The top line counts what waits. The
+//! list keeps the current section's heading on its first line. A tap on
+//! a heading folds or opens it, and a second tap on an item opens its
+//! details over the whole screen. The bottom line pages up and down,
+//! and its middle opens a menu of sections that ends with the help.
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseEventKind};
+use jiff::Zoned;
 use ratatui::Frame;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
-use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
-use ratatui::text::Line;
-use ratatui::widgets::{
-    Block, Borders, HighlightSpacing, List, ListItem, ListState, Paragraph, Wrap,
+use ratatui::layout::{Position, Rect};
+
+use super::draw::{
+    BottomTap, ListLayout, draw_details, draw_help, draw_list_screen, draw_menu, help_scroll_limit,
+    menu_row_at, top_line,
 };
+use super::list::{Row, SectionList};
+use super::queue::Queue;
+use super::sections::{Counts, build_sections, read_failure_item};
 
-use super::queue::{Queue, SessionLine};
-use crate::shared::lifecycle::Lifecycle;
-
-/// The rows under the list that show the chosen row's full text, its
-/// top border included.
-const DETAIL_HEIGHT: u16 = 4;
-
-/// How many items one wheel turn moves the choice.
+/// How many rows one wheel turn scrolls.
 const WHEEL_STEP: isize = 3;
 
 /// What the board does after one input.
@@ -34,85 +36,84 @@ pub(crate) enum Step {
     Quit,
 }
 
-/// One line of the list. Only items can be chosen.
-#[derive(Debug)]
-struct Row {
-    is_heading: bool,
-    text: String,
-    /// The full text the detail lines show when the row is chosen.
-    detail: String,
+/// The screen the board shows. Every page but the list fills the whole
+/// screen and goes back to the list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Page {
+    List,
+    /// The chosen row's full text, scrolled down this many lines.
+    Details(u16),
+    /// The keys and taps, scrolled down this many lines.
+    Help(u16),
+    /// The menu of sections with this row marked. The row after the
+    /// last section opens the help.
+    Menu(usize),
 }
 
-/// What the screen shows, and which row is chosen.
+/// What the screen shows, which row is chosen, and where taps land.
 pub(crate) struct Board {
-    top_line: String,
-    rows: Vec<Row>,
-    list: ListState,
-    /// The title of the detail lines, such as `read 10:42`.
-    note: String,
-    /// Where the list was last drawn, so a tap finds its row.
-    list_area: Rect,
+    color: bool,
+    counts: Counts,
+    list: SectionList,
+    page: Page,
+    read_at: Option<Zoned>,
+    reading: bool,
+    /// The screen at the last draw, so a tap finds what it hit.
+    area: Rect,
 }
 
 impl Board {
-    /// Returns a board that has read nothing yet.
-    pub(crate) fn new() -> Board {
+    /// Returns a board that has read nothing yet. With `color` false,
+    /// headings keep bold and capitals but get no color.
+    pub(crate) fn new(color: bool) -> Board {
         Board {
-            top_line: "hub board".to_owned(),
-            rows: Vec::new(),
-            list: ListState::default(),
-            note: "reading".to_owned(),
-            list_area: Rect::default(),
+            color,
+            counts: Counts::default(),
+            list: SectionList::new(),
+            page: Page::List,
+            read_at: None,
+            reading: true,
+            area: Rect::default(),
         }
     }
 
-    /// Shows a new read, keeping the chosen row when it is still
-    /// there. A failed read keeps the old rows and shows the reason.
+    /// Shows a new read, keeping the chosen row when it is still there
+    /// and its place otherwise. A failed read keeps the old rows and
+    /// adds the reason under PROBLEMS.
     pub(crate) fn show_reading(&mut self, reading: Result<Queue, String>) {
-        let queue = match reading {
-            Ok(queue) => queue,
-            Err(reason) => {
-                self.note = format!("read failed: {reason}");
-                return;
+        self.reading = false;
+        match reading {
+            Ok(queue) => {
+                let sections = build_sections(&queue);
+                self.counts = Counts::new(&sections, queue.card_counts.as_ref());
+                self.read_at = Some(queue.read_at);
+                self.list.show_sections(sections);
             }
-        };
-        let chosen_text = self
-            .list
-            .selected()
-            .and_then(|index| self.rows.get(index))
-            .map(|row| row.text.clone());
-        self.top_line = count_line(&queue);
-        self.rows = build_rows(&queue);
-        self.note = format!("read {}  r reads again", queue.read_at);
-        let same_row = chosen_text.and_then(|text| {
-            self.rows
-                .iter()
-                .position(|row| !row.is_heading && row.text == text)
-        });
-        match same_row {
-            Some(index) => self.list.select(Some(index)),
-            None => {
-                self.list.select(None);
-                self.move_choice(0);
-            }
+            Err(reason) => self.list.add_problem(read_failure_item(&reason)),
+        }
+        // A read can drop sections, so keep the marked row on the menu.
+        if let Page::Menu(marked) = &mut self.page {
+            *marked = (*marked).min(self.list.sections().len());
         }
     }
 
     /// Marks the board as reading, until the next `show_reading`.
     pub(crate) fn note_reading(&mut self) {
-        self.note = "reading".to_owned();
+        self.reading = true;
     }
 
-    /// Moves the choice or quits. Raw mode turns Ctrl-C into a key, so
-    /// Ctrl-C quits here, as q and Esc do.
+    /// Moves the choice, folds a section, opens or closes a page, or
+    /// quits. Raw mode turns Ctrl-C into a key, so Ctrl-C quits here, as
+    /// q does. Esc only goes back, since a phone user presses it to
+    /// leave a screen, not the board.
     pub(crate) fn handle_input(&mut self, input: &Event) -> Step {
         match input {
             Event::Key(key) => self.handle_key(key),
             Event::Mouse(mouse) => {
                 match mouse.kind {
-                    MouseEventKind::ScrollDown => self.move_choice(WHEEL_STEP),
-                    MouseEventKind::ScrollUp => self.move_choice(-WHEEL_STEP),
-                    MouseEventKind::Down(_) => self.choose_at(mouse.column, mouse.row),
+                    MouseEventKind::ScrollDown => self.scroll_by(WHEEL_STEP),
+                    MouseEventKind::ScrollUp => self.scroll_by(-WHEEL_STEP),
+                    MouseEventKind::Down(_) => self.tap(Position::new(mouse.column, mouse.row)),
                     _ => {}
                 }
                 Step::Stay
@@ -121,40 +122,15 @@ impl Board {
         }
     }
 
-    /// Draws the count line, the list and the chosen row's full text.
+    /// Draws the open page, and remembers the screen for taps.
     pub(crate) fn render(&mut self, frame: &mut Frame) {
-        let [top_area, list_area, detail_area] = split_screen(frame.area());
-        self.list_area = list_area;
-        frame.render_widget(Line::from(self.top_line.as_str()), top_area);
-        let items: Vec<ListItem> = self
-            .rows
-            .iter()
-            .map(|row| {
-                let style = if row.is_heading {
-                    Style::new().add_modifier(Modifier::BOLD)
-                } else {
-                    Style::new()
-                };
-                ListItem::new(Line::styled(row.text.as_str(), style))
-            })
-            .collect();
-        let list = List::new(items)
-            .highlight_symbol(">")
-            .highlight_spacing(HighlightSpacing::Always)
-            .highlight_style(Style::new().add_modifier(Modifier::REVERSED));
-        frame.render_stateful_widget(list, list_area, &mut self.list);
-        let detail = self
-            .list
-            .selected()
-            .and_then(|index| self.rows.get(index))
-            .map_or("Nothing to show.", |row| row.detail.as_str());
-        let detail_block = Block::new().borders(Borders::TOP).title(self.note.as_str());
-        frame.render_widget(
-            Paragraph::new(detail)
-                .wrap(Wrap { trim: true })
-                .block(detail_block),
-            detail_area,
-        );
+        self.area = frame.area();
+        match self.page {
+            Page::List => self.render_list(frame),
+            Page::Details(scroll) => draw_details(frame, &self.list, scroll),
+            Page::Help(scroll) => draw_help(frame, scroll),
+            Page::Menu(marked) => draw_menu(frame, &self.list, marked, self.color),
+        }
     }
 
     /// Returns the frame as text lines, each with its end trimmed.
@@ -171,217 +147,174 @@ impl Board {
             .collect()
     }
 
-    /// Quits, asks for a read, or moves the choice.
+    /// Draws the list screen and places its rows.
+    fn render_list(&mut self, frame: &mut Frame) {
+        let layout = ListLayout::split(frame.area());
+        self.list.place(
+            usize::from(layout.list.height),
+            usize::from(layout.list.width),
+        );
+        let when = match (&self.read_at, self.reading) {
+            (_, true) => "reading".to_owned(),
+            (Some(read_at), false) => read_at.strftime("%H:%M").to_string(),
+            (None, false) => String::new(),
+        };
+        let top = top_line(&self.counts, &when, self.color);
+        draw_list_screen(frame, &layout, top, &self.list, self.color);
+    }
+
+    /// Quits, asks for a read, or hands the key to the open page.
     fn handle_key(&mut self, key: &KeyEvent) -> Step {
         let ctrl_c =
             key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL);
-        if ctrl_c || key.code == KeyCode::Char('q') || key.code == KeyCode::Esc {
+        if ctrl_c || key.code == KeyCode::Char('q') {
             return Step::Quit;
         }
-        let page = isize::try_from(self.list_area.height).unwrap_or(1).max(1);
-        match key.code {
-            KeyCode::Char('r') => return Step::Refresh,
-            KeyCode::Char('j') | KeyCode::Down => self.move_choice(1),
-            KeyCode::Char('k') | KeyCode::Up => self.move_choice(-1),
-            KeyCode::PageDown => self.move_choice(page),
-            KeyCode::PageUp => self.move_choice(-page),
-            _ => {}
+        if key.code == KeyCode::Char('r') {
+            return Step::Refresh;
+        }
+        match self.page {
+            Page::List => self.handle_list_key(key.code),
+            Page::Details(_) | Page::Help(_) => self.handle_page_key(key.code),
+            Page::Menu(marked) => self.handle_menu_key(key.code, marked),
         }
         Step::Stay
     }
 
-    /// Moves the choice `steps` items down, or up when negative,
-    /// skipping headings and stopping at the first and last item.
-    fn move_choice(&mut self, steps: isize) {
-        let items: Vec<usize> = (0..self.rows.len())
-            .filter(|&index| !self.rows[index].is_heading)
-            .collect();
-        let Some(last) = items.len().checked_sub(1) else {
-            self.list.select(None);
+    /// Moves the choice, folds or opens, or opens the menu or the help.
+    fn handle_list_key(&mut self, code: KeyCode) {
+        let page_size = self.list.page_size();
+        match code {
+            KeyCode::Char('j') | KeyCode::Down => self.list.move_choice(1),
+            KeyCode::Char('k') | KeyCode::Up => self.list.move_choice(-1),
+            KeyCode::PageDown => self.list.move_choice(page_size),
+            KeyCode::PageUp => self.list.move_choice(-page_size),
+            KeyCode::Char('g') | KeyCode::Home => self.list.move_choice(isize::MIN),
+            KeyCode::Char('G') | KeyCode::End => self.list.move_choice(isize::MAX),
+            KeyCode::Char('n' | ']') => self.list.choose_next_heading(),
+            KeyCode::Char('N' | '[') => self.list.choose_previous_heading(),
+            KeyCode::Enter | KeyCode::Char('i') => self.open_chosen(),
+            KeyCode::Char('s') => self.open_menu(),
+            KeyCode::Char('?') => self.page = Page::Help(0),
+            _ => {}
+        }
+    }
+
+    /// Scrolls the details or the help, or goes back to the list.
+    fn handle_page_key(&mut self, code: KeyCode) {
+        let page_size = self.list.page_size();
+        match code {
+            KeyCode::Esc | KeyCode::Enter | KeyCode::Char('i' | '?') => self.page = Page::List,
+            KeyCode::Char('j') | KeyCode::Down => self.scroll_by(1),
+            KeyCode::Char('k') | KeyCode::Up => self.scroll_by(-1),
+            KeyCode::PageDown => self.scroll_by(page_size),
+            KeyCode::PageUp => self.scroll_by(-page_size),
+            _ => {}
+        }
+    }
+
+    /// Moves the menu's mark, goes to the marked row, opens the help,
+    /// or goes back to the list.
+    fn handle_menu_key(&mut self, code: KeyCode, marked: usize) {
+        let last = self.list.sections().len();
+        match code {
+            KeyCode::Char('j') | KeyCode::Down => self.page = Page::Menu((marked + 1).min(last)),
+            KeyCode::Char('k') | KeyCode::Up => self.page = Page::Menu(marked.saturating_sub(1)),
+            KeyCode::Enter => self.open_menu_row(marked),
+            KeyCode::Esc | KeyCode::Char('s') => self.page = Page::List,
+            KeyCode::Char('?') => self.page = Page::Help(0),
+            _ => {}
+        }
+    }
+
+    /// Acts on a tap. On the details or the help any tap goes back. On
+    /// the menu a tap on a row opens it, and any other tap goes back. In
+    /// the list a tap on a heading folds or opens it, a tap on an item
+    /// chooses it, and a tap on the chosen item opens its details. The
+    /// bottom line's thirds page up, open the menu, and page down.
+    fn tap(&mut self, at: Position) {
+        match self.page {
+            Page::List => self.tap_list(at),
+            Page::Details(_) | Page::Help(_) => self.page = Page::List,
+            Page::Menu(_) => match menu_row_at(self.area, at) {
+                Some(row) => self.open_menu_row(row),
+                None => self.page = Page::List,
+            },
+        }
+    }
+
+    /// Acts on a tap on the list screen.
+    fn tap_list(&mut self, at: Position) {
+        let layout = ListLayout::split(self.area);
+        if layout.list.contains(at) {
+            let Some(index) = self.list.row_on_line(usize::from(at.y - layout.list.y)) else {
+                return;
+            };
+            let was_chosen = self.list.chosen() == Some(index);
+            self.list.choose(index);
+            match self.list.chosen_row() {
+                Some(Row::Heading { .. }) => self.list.toggle_chosen_fold(),
+                // Rows move between reads, so the first tap on an item
+                // only chooses it and the user sees what a second tap opens.
+                Some(Row::Item { .. }) if was_chosen => self.page = Page::Details(0),
+                _ => {}
+            }
             return;
-        };
-        let current = self
-            .list
-            .selected()
-            .and_then(|chosen| items.iter().position(|&index| index == chosen))
-            .unwrap_or(0);
-        let target = current.saturating_add_signed(steps).min(last);
-        self.list.select(Some(items[target]));
-        // The first item's heading scrolls back into view with it.
-        if target == 0 {
-            *self.list.offset_mut() = 0;
+        }
+        let page_size = self.list.page_size();
+        match layout.bottom_tap(at) {
+            Some(BottomTap::PageUp) => self.list.move_choice(-page_size),
+            Some(BottomTap::Menu) => self.open_menu(),
+            Some(BottomTap::PageDown) => self.list.move_choice(page_size),
+            None => {}
         }
     }
 
-    /// Chooses the item drawn at screen position `column`, `row`. A tap
-    /// outside the list or on a heading changes nothing.
-    fn choose_at(&mut self, column: u16, row: u16) {
-        let area = self.list_area;
-        let inside =
-            (area.x..area.right()).contains(&column) && (area.y..area.bottom()).contains(&row);
-        if !inside {
-            return;
-        }
-        let index = self.list.offset() + usize::from(row - area.y);
-        if self.rows.get(index).is_some_and(|row| !row.is_heading) {
-            self.list.select(Some(index));
+    /// Opens the menu with the chosen row's section marked.
+    fn open_menu(&mut self) {
+        self.page = Page::Menu(self.list.chosen_section().unwrap_or(0));
+    }
+
+    /// Goes to the section on menu row `row`, or opens the help on the
+    /// row after the last section. Any other row goes back to the list.
+    fn open_menu_row(&mut self, row: usize) {
+        let help_row = self.list.sections().len();
+        match self.list.sections().get(row).map(|section| section.id) {
+            Some(id) => {
+                self.list.go_to_section(id);
+                self.page = Page::List;
+            }
+            None if row == help_row => self.page = Page::Help(0),
+            None => self.page = Page::List,
         }
     }
-}
 
-/// Returns the count line, the list's area and the detail area.
-fn split_screen(area: Rect) -> [Rect; 3] {
-    Layout::vertical([
-        Constraint::Length(1),
-        Constraint::Min(1),
-        Constraint::Length(DETAIL_HEIGHT),
-    ])
-    .areas(area)
-}
-
-/// Returns the line of counts, such as `you 3  prs 6  hub 2  cards 5/8`.
-/// The Working section shows its own count, so the line leaves it out
-/// to fit 40 columns.
-fn count_line(queue: &Queue) -> String {
-    let count_state = |state: Lifecycle| {
-        queue
-            .sessions
-            .iter()
-            .filter(|session| session.state == state)
-            .count()
-    };
-    let you = queue.questions.len() + count_state(Lifecycle::WaitsOnUser);
-    let hub = count_state(Lifecycle::WaitsOnHub) + unread_not_listed_for_hub(queue).count();
-    let mut line = format!("you {you}  prs {}  hub {hub}", queue.reviews.len());
-    if let Some(cards) = &queue.card_counts {
-        line.push_str(&format!("  cards {cards}"));
-    }
-    line
-}
-
-/// Returns the list in its sections, what needs the user first. A
-/// section with nothing in it is left out.
-fn build_rows(queue: &Queue) -> Vec<Row> {
-    let sessions_in = |wanted: fn(Lifecycle) -> bool| -> Vec<Row> {
-        queue
-            .sessions
-            .iter()
-            .filter(|session| wanted(session.state))
-            .map(session_row)
-            .collect()
-    };
-
-    let mut for_you: Vec<Row> = queue
-        .questions
-        .iter()
-        .map(|question| Row {
-            is_heading: false,
-            text: format!("? {}", question.title),
-            detail: format!("{}: {}", question.title, question.text),
-        })
-        .collect();
-    for_you.extend(sessions_in(|state| state == Lifecycle::WaitsOnUser));
-    let reviews = queue
-        .reviews
-        .iter()
-        .map(|review| Row {
-            is_heading: false,
-            text: review.clone(),
-            detail: review.clone(),
-        })
-        .collect();
-    let mut for_hub = sessions_in(|state| state == Lifecycle::WaitsOnHub);
-    for_hub.extend(unread_not_listed_for_hub(queue).map(|name| Row {
-        is_heading: false,
-        text: format!("report from {name}"),
-        detail: format!("{name} wrote a report the hub has not read."),
-    }));
-    let cards = queue
-        .cards_without_session
-        .iter()
-        .map(|card| Row {
-            is_heading: false,
-            text: card.clone(),
-            detail: format!("Card {card} has no session."),
-        })
-        .collect();
-    let problems = queue
-        .problems
-        .iter()
-        .map(|problem| Row {
-            is_heading: false,
-            text: problem.clone(),
-            detail: problem.clone(),
-        })
-        .collect();
-
-    let sections = [
-        ("Needs you", for_you),
-        ("Pull requests to review", reviews),
-        ("Waiting on the hub", for_hub),
-        ("Cards with no session", cards),
-        ("Working", sessions_in(|state| state == Lifecycle::Working)),
-        (
-            "Parked",
-            sessions_in(|state| matches!(state, Lifecycle::ToPark | Lifecycle::Parked)),
-        ),
-        (
-            "Safe to close",
-            sessions_in(|state| state == Lifecycle::ToClose),
-        ),
-        (
-            "Kept",
-            sessions_in(|state| matches!(state, Lifecycle::Kept(_))),
-        ),
-        ("Could not read", problems),
-    ];
-    let mut rows = Vec::new();
-    for (title, items) in sections {
-        if items.is_empty() {
-            continue;
+    /// Scrolls the details or the help when one is open, else the list.
+    fn scroll_by(&mut self, steps: isize) {
+        match &mut self.page {
+            Page::Details(scroll) => {
+                let steps = i16::try_from(steps).unwrap_or(i16::MAX);
+                *scroll = scroll.saturating_add_signed(steps);
+            }
+            Page::Help(scroll) => {
+                let steps = i16::try_from(steps).unwrap_or(i16::MAX);
+                *scroll = scroll
+                    .saturating_add_signed(steps)
+                    .min(help_scroll_limit(self.area));
+            }
+            Page::List => self.list.scroll_by(steps),
+            Page::Menu(_) => {}
         }
-        rows.push(Row {
-            is_heading: true,
-            text: format!("{title} ({})", items.len()),
-            detail: title.to_owned(),
-        });
-        rows.extend(items);
     }
-    rows
-}
 
-/// Returns the names with an unread report whose session is not
-/// already under "Waiting on the hub", such as a closed worker's. An
-/// unread report makes an idle session wait on the hub, so its row
-/// already says so.
-fn unread_not_listed_for_hub(queue: &Queue) -> impl Iterator<Item = &String> {
-    queue.unread.iter().filter(|name| {
-        !queue
-            .sessions
-            .iter()
-            .any(|session| &session.name == *name && session.state == Lifecycle::WaitsOnHub)
-    })
-}
-
-/// Returns a session's row, such as `docs-fix  unread report`. A why
-/// of `-` says nothing, so the row shows the name alone.
-fn session_row(session: &SessionLine) -> Row {
-    let why = (session.why != "-").then_some(session.why.as_str());
-    let card = session
-        .card
-        .as_ref()
-        .map_or(String::new(), |card| format!(", card {card}"));
-    let state = session.state.word();
-    Row {
-        is_heading: false,
-        text: match why {
-            Some(why) => format!("{}  {why}", session.name),
-            None => session.name.clone(),
-        },
-        detail: match why {
-            Some(why) => format!("{} is {state}: {why}{card}", session.name),
-            None => format!("{} is {state}{card}", session.name),
-        },
+    /// Folds or opens a chosen heading, or opens a chosen item's
+    /// details.
+    fn open_chosen(&mut self) {
+        match self.list.chosen_row() {
+            Some(Row::Heading { .. }) => self.list.toggle_chosen_fold(),
+            Some(Row::Item { .. }) => self.page = Page::Details(0),
+            None => {}
+        }
     }
 }
 
@@ -391,149 +324,448 @@ mod tests {
 
     use crossterm::event::{KeyEventKind, KeyEventState, MouseButton, MouseEvent};
 
-    use crate::board::queue::Question;
+    use jiff::civil::DateTime;
 
-    /// A queue with one or two items in each section the user acts on.
+    use crate::board::queue::{CardLine, PullRequest, Question, SessionLine, Urgency};
+    use crate::external::cards::{BoardCounts, Stage};
+    use crate::shared::lifecycle::{KeptReason, Lifecycle};
+
+    /// A queue with an item in most sections and four cards, read at
+    /// `10:42`.
     fn sample_queue() -> Queue {
+        let tonight: DateTime = jiff::civil::date(2026, 11, 11).at(20, 0, 0, 0);
         let session = |name: &str, state, why: &str, card: Option<&str>| SessionLine {
             name: name.to_owned(),
             state,
             why: why.to_owned(),
             card: card.map(str::to_owned),
         };
+        let card = |key: &str, stage, title: &str, next_step: &str, workers: &[&str]| CardLine {
+            key: key.parse().unwrap(),
+            stage,
+            project: "Demo".to_owned(),
+            title: title.to_owned(),
+            next_step: next_step.to_owned(),
+            workers: workers.iter().map(|name| (*name).to_owned()).collect(),
+        };
+        let question = |title: &str, urgency| Question {
+            title: title.to_owned(),
+            lines: vec![format!("{title}?"), "Recommended: A.".to_owned()],
+            urgency,
+        };
         Queue {
-            read_at: "10:42".to_owned(),
+            read_at: "2026-11-11T10:42[UTC]".parse().unwrap(),
             sessions: vec![
                 session("docs-fix", Lifecycle::WaitsOnHub, "unread report", None),
-                session("blocked-fix", Lifecycle::WaitsOnUser, "needs you", None),
+                session("blocked-fix", Lifecycle::WaitsOnUser, "blocked", None),
                 session(
                     "api-build",
                     Lifecycle::Working,
                     "-",
                     Some("DEMO-KB-012 active"),
                 ),
+                session(
+                    "ship-docs",
+                    Lifecycle::Kept(KeptReason::ApprovalWaits),
+                    "approval waits",
+                    None,
+                ),
+                session("old-plan", Lifecycle::Parked, "-", None),
             ],
             unread: vec!["docs-fix".to_owned(), "old-worker".to_owned()],
-            cards_without_session: vec!["DEMO-KB-016 active".to_owned()],
-            questions: vec![Question {
-                title: "Deploy tonight?".to_owned(),
-                text: "Deploy the new model tonight?".to_owned(),
-            }],
-            reviews: vec![
-                "#301  uploads: retry a failed upload twice, then show the error".to_owned(),
+            cards: vec![
+                card(
+                    "DEMO-KB-010",
+                    Stage::Review,
+                    "Retry a failed upload twice",
+                    "review PR #301",
+                    &[],
+                ),
+                card(
+                    "DEMO-KB-012",
+                    Stage::Active,
+                    "Faster search",
+                    "open the card",
+                    &["api-build"],
+                ),
+                card(
+                    "DEMO-KB-016",
+                    Stage::Active,
+                    "Free up disk space",
+                    "open the card",
+                    &[],
+                ),
+                card(
+                    "DEMO-KB-018",
+                    Stage::Draft,
+                    "Board for the phone",
+                    "open the card",
+                    &["docs-fix"],
+                ),
             ],
-            card_counts: Some("5/8".to_owned()),
+            questions: vec![
+                question("Deploy tonight", Urgency::Now),
+                question("Demo: name the app", Urgency::Later(tonight)),
+                question("Session review picks", Urgency::Optional),
+            ],
+            pull_requests: vec![PullRequest {
+                number: "#301".to_owned(),
+                what: "uploads: retry a failed upload twice, then show the error".to_owned(),
+                cells: vec!["#301".to_owned(), "uploads: retry".to_owned()],
+            }],
+            review_notes: vec!["Merge in order 301, 302.".to_owned()],
+            card_counts: Some(BoardCounts {
+                active: 5,
+                review: 4,
+                busy: 9,
+                limit: 8,
+            }),
             problems: Vec::new(),
         }
     }
 
-    /// The user reads the board on a phone, 40 by 16. What needs them
-    /// must come first, each section must show with its count, and a
-    /// session must show once, or an item that needs them goes unseen.
+    /// Returns a key press with no modifier.
+    fn press(code: KeyCode) -> Event {
+        Event::Key(KeyEvent::new(code, KeyModifiers::NONE))
+    }
+
+    /// Returns one turn of the wheel toward the list's end.
+    fn wheel_down() -> Event {
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 10,
+            row: 5,
+            modifiers: KeyModifiers::NONE,
+        })
+    }
+
+    /// Returns a tap at screen column `column`, row `row`.
+    fn tap_at(column: u16, row: u16) -> Event {
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        })
+    }
+
+    /// Returns a tap on the first screen line that holds `text`.
+    fn tap_on(lines: &[String], text: &str) -> Event {
+        tap_at(10, screen_row(lines, text))
+    }
+
+    /// Returns the first screen line that holds `text`.
+    fn screen_row(lines: &[String], text: &str) -> u16 {
+        let found = lines.iter().position(|line| line.contains(text));
+        let row = found.unwrap_or_else(|| panic!("no line holds {text:?} in {lines:#?}"));
+        u16::try_from(row).unwrap()
+    }
+
+    /// The user reads the board on a phone, 40 by 16, with no color or
+    /// bold. The top line must count what waits, and headings must read
+    /// as headings from their rules and capitals. What needs the user
+    /// must come first with approvals on top. The cards in review and
+    /// the cards worked on come next, each with its key and its step or
+    /// worker, so the first screen says what is in review and what is
+    /// worked on. A long row wraps rather than losing its end.
     #[test]
-    fn render_lines_orders_sections_lists_sessions_once() {
-        let mut board = Board::new();
+    fn render_lines_draws_phone_screen_needs_first() {
+        let mut board = Board::new(false);
         board.show_reading(Ok(sample_queue()));
 
         let lines = board.render_lines(40, 16);
 
         let expected = [
-            "you 2  prs 1  hub 2  cards 5/8",
-            " Needs you (2)",
-            ">? Deploy tonight?",
-            " blocked-fix  needs you",
-            " Pull requests to review (1)",
-            " #301  uploads: retry a failed upload tw",
-            " Waiting on the hub (2)",
-            " docs-fix  unread report",
-            " report from old-worker",
-            " Cards with no session (1)",
-            " DEMO-KB-016 active",
-            " Working (1)",
-            "read 10:42  r reads again───────────────",
-            "Deploy tonight?: Deploy the new model",
-            "tonight?",
-            "",
+            "YOU 3+2  PR 1  HUB 2  busy 9/8!  10:42",
+            "── NEEDS YOU 3 ─────────────────────────",
+            ">A ship-docs  approval waits",
+            " B blocked-fix  blocked",
+            " ? Deploy tonight",
+            "── IN REVIEW 1 ─────────────────────────",
+            " V Demo: Retry a failed upload twice",
+            "   DEMO-KB-010  review PR #301",
+            "── WORKING ON NOW 3 ────────────────────",
+            " ! Demo: Board for the phone",
+            "   DEMO-KB-018  in draft, by docs-fix",
+            " * Demo: Faster search",
+            "   DEMO-KB-012  by api-build",
+            " - Demo: Free up disk space",
+            "   DEMO-KB-016  no worker",
+            "^ up           2/23 menu          down v",
         ];
         assert_eq!(lines, expected);
     }
 
-    /// Raw mode turns Ctrl-C into a key, so a board that misses one
-    /// of these keys leaves the user no way out but closing the pane.
+    /// Raw mode turns Ctrl-C into a key, so a board that misses q or
+    /// Ctrl-C leaves the user no way out but closing the pane. A phone
+    /// user presses Esc to leave a screen, so Esc must close the
+    /// details and never drop them to the shell.
     #[test]
-    fn handle_input_quits_on_exit_keys() {
-        let cases = [
-            ("q", KeyCode::Char('q'), KeyModifiers::NONE),
-            ("escape", KeyCode::Esc, KeyModifiers::NONE),
-            ("ctrl-c", KeyCode::Char('c'), KeyModifiers::CONTROL),
-        ];
+    fn handle_input_esc_closes_quit_keys_quit() {
+        let mut board = Board::new(false);
+        board.show_reading(Ok(sample_queue()));
+        board.handle_input(&press(KeyCode::Enter));
+        let details = board.render_lines(40, 16);
+        let ctrl_c = Event::Key(KeyEvent {
+            code: KeyCode::Char('c'),
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        });
 
-        for (case_name, code, modifiers) in cases {
-            let mut board = Board::new();
-            let key = KeyEvent {
-                code,
-                modifiers,
-                kind: KeyEventKind::Press,
-                state: KeyEventState::NONE,
-            };
+        let escape_in_details = board.handle_input(&press(KeyCode::Esc));
+        let lines = board.render_lines(40, 16);
+        let escape_in_list = board.handle_input(&press(KeyCode::Esc));
 
-            let step = board.handle_input(&Event::Key(key));
-
-            assert_eq!(step, Step::Quit, "{case_name}");
-        }
+        assert_eq!(details[0], "NEEDS YOU 3");
+        assert_eq!(escape_in_details, Step::Stay);
+        assert!(lines[0].starts_with("YOU"), "details still open");
+        assert_eq!(escape_in_list, Step::Stay);
+        assert_eq!(board.handle_input(&press(KeyCode::Char('q'))), Step::Quit);
+        assert_eq!(board.handle_input(&ctrl_c), Step::Quit);
     }
 
-    /// On a phone the user taps a row instead of using arrow keys,
-    /// often after scrolling. A tap must choose the row drawn under the
-    /// finger, and the list cuts long rows, so its full text must show
-    /// in the detail lines below.
+    /// Rows move when the board reads again, so a single tap must only
+    /// choose. A second tap on the chosen row opens its whole text over
+    /// the screen, and any tap goes back, since a phone has no Esc key
+    /// in reach. A tap on any line of a wrapped row counts as a tap on
+    /// that row.
     #[test]
-    fn handle_input_tap_shows_row_in_full() {
-        let mut board = Board::new();
+    fn handle_input_wrapped_row_taps_toggle_details() {
+        let mut board = Board::new(false);
+        board.show_reading(Ok(sample_queue()));
+        let lines = board.render_lines(40, 16);
+        let card_first_line = usize::from(screen_row(&lines, "Retry a failed upload"));
+        let tap = tap_on(&lines, "DEMO-KB-010  review");
+
+        board.handle_input(&tap);
+        let after_one_tap = board.render_lines(40, 16);
+        board.handle_input(&tap);
+        let after_two_taps = board.render_lines(40, 16);
+        board.handle_input(&tap);
+        let after_three_taps = board.render_lines(40, 16);
+
+        let row = card_first_line;
+        assert_eq!(after_one_tap[row], ">V Demo: Retry a failed upload twice");
+        assert_eq!(after_two_taps[0], "IN REVIEW 1");
+        assert_eq!(after_two_taps[1], "DEMO-KB-010 Retry a failed upload twice");
+        assert_eq!(after_three_taps[row], after_one_tap[row]);
+    }
+
+    /// The board reads again every 10 seconds, and a row's text can
+    /// change between reads. A read that moved the choice back to the
+    /// top would pull the row away while the user reads it. When the
+    /// chosen card is gone, the card now in its place must be chosen
+    /// from its first line, or no row shows chosen while Enter still
+    /// opens one.
+    #[test]
+    fn show_reading_keeps_choice_or_its_place() {
+        let mut board = Board::new(false);
+        board.show_reading(Ok(sample_queue()));
+        let lines = board.render_lines(40, 16);
+        board.handle_input(&tap_on(&lines, "Faster search"));
+        let mut answered = sample_queue();
+        answered.questions.remove(0);
+        answered.cards[1].title = "Faster search on the docs".to_owned();
+        // Dropping a row above and the chosen card puts the old row
+        // number on the second line of the next card.
+        let mut moved = sample_queue();
+        moved.questions.remove(0);
+        moved
+            .sessions
+            .retain(|session| session.name != "blocked-fix");
+        moved.cards.remove(1);
+
+        board.show_reading(Ok(answered));
+        let kept = board.render_lines(40, 16);
+        board.show_reading(Ok(moved));
+        let replaced = board.render_lines(40, 16);
+
+        let search = usize::from(screen_row(&kept, "Faster search"));
+        assert_eq!(kept[search], ">* Demo: Faster search on the docs");
+        let disk = usize::from(screen_row(&replaced, "Free up disk space"));
+        assert_eq!(replaced[disk], ">- Demo: Free up disk space");
+    }
+
+    /// A phone sends a burst of wheel turns for one flick. If the wheel
+    /// moved the choice, a flick would race it far down the list, so
+    /// the wheel scrolls the list and the choice stays put. The list
+    /// stops at its last row, so a flick never leaves an empty screen.
+    #[test]
+    fn handle_input_wheel_stops_at_end() {
+        let mut board = Board::new(false);
+        let mut queue = sample_queue();
+        queue.sessions.retain(|session| session.name != "old-plan");
+        queue.cards.clear();
+        board.show_reading(Ok(queue));
+        board.render_lines(40, 11);
+
+        for _ in 0..3 {
+            board.handle_input(&wheel_down());
+        }
+        let lines = board.render_lines(40, 11);
+
+        // The list stops where its last row, the folded sessions, is drawn.
+        assert_eq!(lines[1], "── PULL REQUESTS 1 ─────────────────────");
+        assert_eq!(lines[8], "+─ WORKING SESSIONS 1 ──────────────────");
+        assert_eq!(lines[10], "^ up           2/12 menu          down v");
+    }
+
+    /// When the list starts inside a section, that section's heading
+    /// must stay on the list's first line. Without it, a user who
+    /// scrolled cannot tell which section the rows on screen belong to.
+    #[test]
+    fn render_lines_pins_heading_of_scrolled_section() {
+        let mut board = Board::new(false);
         board.show_reading(Ok(sample_queue()));
         board.render_lines(40, 16);
-        // Choose the last item, so the next draw scrolls the list by one.
-        let page_down = KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE);
-        board.handle_input(&Event::Key(page_down));
-        board.render_lines(40, 16);
-        // The pull request's row is now drawn on screen row 4.
-        let tap = MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: 10,
-            row: 4,
-            modifiers: KeyModifiers::NONE,
-        };
 
-        board.handle_input(&Event::Mouse(tap));
+        board.handle_input(&wheel_down());
         let lines = board.render_lines(40, 16);
 
-        assert_eq!(lines[4], ">#301  uploads: retry a failed upload tw");
-        assert!(
-            lines[13..]
-                .join(" ")
-                .trim_end()
-                .ends_with("then show the error")
+        assert_eq!(lines[1], "── NEEDS YOU 3 ─────────────────────────");
+        assert_eq!(lines[2], " ? Deploy tonight");
+    }
+
+    /// The bottom line is how a phone user moves far. At 40 columns the
+    /// side thirds are 13 wide, so column 13 starts the middle third,
+    /// which opens the menu of sections, and column 27 starts the right
+    /// third, which pages down. A wrong edge sends the user the wrong
+    /// way.
+    #[test]
+    fn handle_input_bottom_thirds_menu_and_page() {
+        let mut board = Board::new(false);
+        board.show_reading(Ok(sample_queue()));
+        board.render_lines(40, 16);
+
+        board.handle_input(&tap_at(13, 15));
+        let menu = board.render_lines(40, 16);
+        board.handle_input(&press(KeyCode::Esc));
+        board.render_lines(40, 16);
+        board.handle_input(&tap_at(27, 15));
+        let after_page = board.render_lines(40, 16);
+
+        assert_eq!(menu[0], "GO TO A SECTION");
+        assert_eq!(after_page[15], "^ up           15/23 menu         down v");
+    }
+
+    /// The menu is how a phone user moves between sections and finds
+    /// the help without docs. One tap on a folded section must open it
+    /// with its items on screen, or the user lands on a folded line and
+    /// has to look for the rows. The last row must open the help.
+    #[test]
+    fn handle_input_menu_opens_section_or_help() {
+        let mut board = Board::new(false);
+        board.show_reading(Ok(sample_queue()));
+        board.render_lines(40, 16);
+        board.handle_input(&press(KeyCode::Char('s')));
+        let menu = board.render_lines(40, 16);
+
+        board.handle_input(&tap_on(&menu, "LATER"));
+        let list = board.render_lines(40, 16);
+        board.handle_input(&press(KeyCode::Char('s')));
+        board.handle_input(&tap_on(&menu, "? keys and taps"));
+        let help = board.render_lines(40, 16);
+
+        let later = usize::from(screen_row(&list, "LATER"));
+        assert_eq!(list[later], "── LATER 1 from 20:00 ──────────────────");
+        assert_eq!(list[later + 1], " ? 20:00 Demo: name the app");
+        assert_eq!(help[0], "KEYS AND TAPS");
+    }
+
+    /// The board reads every 10 seconds, and a tap can arrive before the
+    /// next draw. After a read with fewer rows, the list must fill the
+    /// screen again and a tap must land on the row drawn under it.
+    /// Otherwise the user sees a blank screen, chooses a row they never
+    /// saw, or the board crashes.
+    #[test]
+    fn show_reading_shrunk_list_stays_tappable() {
+        let mut board = Board::new(false);
+        board.show_reading(Ok(sample_queue()));
+        board.render_lines(40, 10);
+        for _ in 0..3 {
+            board.handle_input(&wheel_down());
+        }
+        board.render_lines(40, 10);
+        let mut shrunk = sample_queue();
+        shrunk
+            .sessions
+            .retain(|session| session.name == "blocked-fix");
+        shrunk.unread.clear();
+        shrunk.cards.clear();
+
+        board.show_reading(Ok(shrunk));
+        // The question is drawn on screen row 2 after the read, under
+        // the pinned heading.
+        board.handle_input(&tap_at(10, 2));
+        let lines = board.render_lines(40, 10);
+
+        assert_eq!(lines[1], "── NEEDS YOU 2 ─────────────────────────");
+        assert_eq!(lines[2], ">? Deploy tonight");
+    }
+
+    /// Side groups start folded, and the user opens one with a tap on
+    /// its heading near the bottom of the screen. The heading must move
+    /// to the top so its rows show, and a read every 10 seconds must
+    /// not fold it again under the user.
+    #[test]
+    fn handle_input_opened_heading_stays_on_top() {
+        let mut board = Board::new(false);
+        let mut queue = sample_queue();
+        queue.cards.clear();
+        board.show_reading(Ok(queue));
+        let lines = board.render_lines(40, 10);
+        let later_heading = tap_on(&lines, "LATER");
+
+        board.handle_input(&later_heading);
+        let mut queue = sample_queue();
+        queue.cards.clear();
+        board.show_reading(Ok(queue));
+        let lines = board.render_lines(40, 10);
+
+        assert_eq!(lines[1], "── LATER 1 from 20:00 ──────────────────");
+        assert_eq!(lines[2], " ? 20:00 Demo: name the app");
+    }
+
+    /// Card rows wrap onto two lines on a phone. A key press must step
+    /// over the second line to the next row, or j sticks on the first
+    /// wrapped card and the user cannot reach the rows below by key.
+    /// The list must scroll until the chosen card's last line shows, or
+    /// its key and next step stay below the screen.
+    #[test]
+    fn handle_input_j_shows_whole_next_card() {
+        let mut board = Board::new(false);
+        board.show_reading(Ok(sample_queue()));
+        let lines = board.render_lines(40, 9);
+        board.handle_input(&tap_on(&lines, "Retry a failed upload"));
+
+        board.handle_input(&press(KeyCode::Char('j')));
+        board.handle_input(&press(KeyCode::Char('j')));
+        let lines = board.render_lines(40, 9);
+
+        let next_card = usize::from(screen_row(&lines, "Board for the phone"));
+        assert_eq!(lines[next_card], ">! Demo: Board for the phone");
+        assert_eq!(
+            lines[next_card + 1],
+            "   DEMO-KB-018  in draft, by docs-fix"
         );
     }
 
-    /// The board reads again every 10 seconds. A read that moved the
-    /// choice back to the top would pull the row away while the user
-    /// reads it.
+    /// The help is longer than a phone screen, and one flick sends many
+    /// wheel turns. The help must stop with its last line at the bottom,
+    /// or a flick leaves the user on an empty page.
     #[test]
-    fn show_reading_keeps_the_chosen_row() {
-        let mut board = Board::new();
+    fn handle_input_help_scroll_stops_at_end() {
+        let mut board = Board::new(false);
         board.show_reading(Ok(sample_queue()));
-        let down = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
-        board.handle_input(&Event::Key(down));
-        board.handle_input(&Event::Key(down));
-        let answered = Queue {
-            questions: Vec::new(),
-            ..sample_queue()
-        };
+        board.handle_input(&press(KeyCode::Char('?')));
+        board.render_lines(40, 16);
 
-        board.show_reading(Ok(answered));
+        for _ in 0..10 {
+            board.handle_input(&wheel_down());
+        }
         let lines = board.render_lines(40, 16);
 
-        assert_eq!(lines[4], ">#301  uploads: retry a failed upload tw");
+        assert_eq!(lines[14], " P parked  C safe to close  K kept");
     }
 }

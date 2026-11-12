@@ -115,10 +115,42 @@ code.
   saves a record in `~/.local/state/pde/hub/parked/`, adds the
   session to its card, and closes its tab. It exits 3 with
   `NAME stays: REASON` otherwise.
-- `board` is new. It shows what waits on the user and on the hub,
-  sized for a 40x16 phone screen, and reads again every 10 seconds or
-  when r is pressed. j, k, the arrow and page keys, the wheel or a
-  tap choose a row, whose full text shows below the list. q quits.
+- `board` is new. It shows what waits on the user, which cards are in
+  review and which cards are worked on now, sized for a 40x16 phone
+  screen. It reads again every 10 seconds or when r is pressed. The
+  top line counts what waits, such as
+  `YOU 3+2  PR 1  HUB 2  busy 9/8!  10:42`. Sections follow in this
+  order: problems, needs you, in review, working on now, pull
+  requests, later, optional, PR notes, waiting on the hub, working
+  sessions, parked, safe to close and kept. Needs you, in review,
+  working on now and pull requests start open. The session sections
+  and the other side sections start folded.
+  In review (mark `V`) shows each card's project and title, then its
+  key and the one step the user takes next. That step is the card's
+  newest Log line that starts `next: `, such as
+  `next: review PR #498`, else `review PR #N` from its newest PR
+  link, else `read plan KEY` from its first plan, else
+  `open the card`. Working on now lists first, marked `!`, a draft or
+  ready card that a session works on, since its stage is out of date.
+  Active cards follow, `*` with the sessions that work on them and
+  `-` with no worker. Approval waits come
+  first under needs you. A `decisions.md` entry with a
+  `Not before: 2026-11-11 20:00` line waits under later until that
+  local time, and one with `Priority: optional` waits under optional.
+  Only a `reviews.md` table row whose first cell is a PR number, such
+  as `| #510 | install on WSL | worker |`, counts as a pull request,
+  in file order. Other rows and paragraphs go to PR notes.
+  Rows wider than the screen wrap onto more lines. One tap on a
+  heading folds or opens it, and an opened heading moves to the top.
+  One tap chooses an item and a second tap opens its full text. Any
+  tap leaves the details or the help. The wheel or a swipe scrolls
+  the list. The bottom
+  line's thirds page up, open the menu of sections and page down. A
+  tap on a section in the menu opens it at the top of the list, and
+  the menu's last row opens a page of keys and taps. Keys are j, k,
+  the arrows, the page keys, g and G, n and N for sections, Enter or
+  i to open, s for the menu, ? for the help, Esc to go back and q to
+  quit. `NO_COLOR` turns colors off.
   `board --print` prints one screen as text, 40x16 unless `--size`
   says otherwise.
 - `send` to a parked session opens a new tab and resumes its OpenCode
