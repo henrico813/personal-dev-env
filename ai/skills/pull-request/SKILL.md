@@ -92,6 +92,16 @@ steps' defaults.
 
 ## Merge
 
+For a pull request the user reviewed, the `herdr-hub` skill's merge
+worker script runs these steps. It sends step 5's request itself, and
+the approval popup shows the squash message. For the script, the try
+recorded in Testing when the pull request was opened or last updated
+counts as Guardrail 4. The script merges the head it tests. When the
+branch is behind, that head is a new commit that merges the base in.
+Without such a try in Testing, a cloud session started by
+`herdr-handoff` follows Merge from step 1 instead, on the cheapest
+cloud model that does it well.
+
 1. Run the merge checks from the repository, with each test command
    as one argument:
 
