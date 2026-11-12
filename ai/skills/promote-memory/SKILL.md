@@ -19,43 +19,14 @@ change. A memory write never authorizes this work on its own.
   `wt switch --create <branch> --no-cd --format=json`, and work in the
   `path` it prints; never commit directly to `main`.
 
-## Destinations
-
-Choose the narrowest one:
-
-- Update an existing `ai/skills/<name>/SKILL.md` when the learning overlaps an
-  existing skill.
-- Create a new `ai/skills/<name>/SKILL.md` for a reusable conditional
-  behavior. Use lowercase kebab-case directories and matching frontmatter
-  names.
-- Add one short routing pointer in `ai/AGENTS.md`. Keep detailed procedures in
-  the skill; `ai/AGENTS.md` is loaded every session and must stay small.
-
 ## Workflow
 
 1. Restate the learning as one concise, future-facing rule.
-2. Search `ai/skills/` for overlap before creating a package.
-3. Write the skill under `ai/skills/<name>/` and add its files to
-   Git. The installer copies every file in it that Git tracks, so it
-   needs no install entry.
-4. Document the skill in the `README.md` installed-layout table and
-   `ai/README.md`.
-5. Run `(cd pde-installer && go test ./... && go vet ./...)` and
+2. Place the rule and make the change as the
+   `skill-development` skill says, including its reviews.
+3. Run `(cd pde-installer && go test ./... && go vet ./...)` and
    `git diff --check`.
-6. Before committing, verify that `git config user.email` ends
+4. Before committing, verify that `git config user.email` ends
    in `@users.noreply.github.com`. Stop and report a mismatch.
-7. Load and follow `git-messages`, commit, push to `github`, and open a PR.
-
-## Example
-
-Learning: "Do not use nested bullets in responses."
-
-`ai/AGENTS.md`:
-
-    - Follow the `response-formatting` skill for list formatting.
-
-`ai/skills/response-formatting/SKILL.md`:
-
-    # Response Formatting
-
-    Use flat lists. Do not nest bullets.
+5. Load and follow `git-messages`, commit, push to `github`, and open
+   a PR.
