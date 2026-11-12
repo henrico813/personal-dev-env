@@ -25,6 +25,10 @@ AGENT_FILE_NAMES = {
 }
 AGENT_FOLDERS = {"agents", "prompts", "skills"}
 SUFFIX_RE = re.compile(r" \(#\d+\)$")
+# A code span opens and closes with the same run of backticks.
+CODE_SPAN_RE = re.compile(r"(?<!`)(`+)(?!`).+?(?<!`)\1(?!`)")
+# Stands in for each space inside a code span while textwrap runs.
+KEPT_SPACE = "\x00"
 SECTIONS = ("## Overview", "## Changes", "## Testing")
 PREFIXED_FORMAT_ERROR = (
     "line 1: title must match [<msg.titlePrefix>]<type>[(scope)][!]: <summary>"
@@ -138,6 +142,50 @@ def find_docs_type_error(title: str, changed_paths: list[str]) -> str | None:
     )
 
 
+def hide_code_span_spaces(text: str) -> str:
+    """Replace each space inside a code span with ``KEPT_SPACE``.
+
+    textwrap then sees a span such as `hub board` as one word, so it
+    never breaks a line inside it.
+
+    Args:
+        text: One paragraph or list item, joined onto one line.
+
+    Returns:
+        The text with only the spaces inside code spans replaced.
+    """
+    return CODE_SPAN_RE.sub(
+        lambda span: span[0].replace(" ", KEPT_SPACE), text
+    )
+
+
+def has_open_code_span(line: str) -> bool:
+    """Return whether a line opens a code span that it does not close.
+
+    Args:
+        line: One message line outside a code fence.
+
+    Returns:
+        True when a backtick on the line is not part of a closed code
+        span, as in "such as `hub".
+    """
+    return "`" in CODE_SPAN_RE.sub("", line)
+
+
+def is_unbreakable(line: str) -> bool:
+    """Return whether fmt cannot break a line any further.
+
+    Args:
+        line: One message line outside a code fence.
+
+    Returns:
+        True when the line, after any indent and list marker, is one word,
+        such as a long URL or a long code span with its punctuation.
+    """
+    text = re.sub(r"^\s*(?:[-*+] |\d+\. )", "", line).strip()
+    return bool(text) and " " not in hide_code_span_spaces(text)
+
+
 def lint(
     lines: list[str],
     pull_request: bool,
@@ -190,7 +238,7 @@ def lint(
             if line.startswith("```"):
                 fenced = not fenced
                 continue
-            if line.startswith("#") or fenced or (" " not in line and line):
+            if line.startswith("#") or fenced or is_unbreakable(line):
                 continue
             if len(line) > MAX_BODY:
                 errors.append(
@@ -217,7 +265,11 @@ def lint(
         if line.startswith("```"):
             fenced = not fenced
             continue
-        if fenced or (" " not in line and line):
+        if fenced:
+            continue
+        if has_open_code_span(line):
+            errors.append(f"line {number}: code span not closed on this line")
+        if is_unbreakable(line):
             continue
         count = len(line)
         if count > MAX_BODY:
@@ -232,7 +284,11 @@ def lint(
 
 
 def wrap_lines(lines: list[str]) -> list[str]:
-    """Wrap prose and list items without changing headings or code."""
+    """Wrap prose and list items without changing headings or code.
+
+    A code span always stays on one line, even when it is longer than
+    the limit.
+    """
     output: list[str] = []
     fenced = False
     paragraph: list[str] = []
@@ -255,9 +311,10 @@ def wrap_lines(lines: list[str]) -> list[str]:
         else:
             width = MAX_BODY - len(prefix)
             wrapped = textwrap.wrap(
-                joined, width=width, break_long_words=False,
-                break_on_hyphens=False,
+                hide_code_span_spaces(joined), width=width,
+                break_long_words=False, break_on_hyphens=False,
             )
+            wrapped = [item.replace(KEPT_SPACE, " ") for item in wrapped]
             output.extend(
                 [prefix + wrapped[0]]
                 + [" " * len(prefix) + item for item in wrapped[1:]]
