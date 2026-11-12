@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use clap::Parser;
 use clap::error::ErrorKind;
 
+use crate::board::ScreenSize;
 use crate::external::cards::CardKey;
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{AgentName, HubError};
@@ -229,9 +230,23 @@ pub enum Command {
     /// Make the user's workspace
     #[command(after_help = "Example: hub desk")]
     Desk,
-    /// Check the mouse in a Herdr pane
-    #[command(after_help = "Example: hub board")]
-    Board,
+    /// Show what waits on you and the hub
+    #[command(after_help = "Example: hub board --print --size 40x16")]
+    Board {
+        #[command(flatten)]
+        run: RunArg,
+        /// Print one screen as text and exit
+        #[arg(long)]
+        print: bool,
+        /// The printed screen's size
+        #[arg(
+            long,
+            value_name = "COLSxROWS",
+            default_value = "40x16",
+            requires = "print"
+        )]
+        size: ScreenSize,
+    },
 }
 
 // The steps run in the order the `auto-run` skill gives.
@@ -294,7 +309,7 @@ impl Command {
             Command::Go => "go",
             Command::Gather => "gather",
             Command::Desk => "desk",
-            Command::Board => "board",
+            Command::Board { .. } => "board",
         }
     }
 }
@@ -361,7 +376,7 @@ pub fn takes_machine(command: &Command) -> bool {
         | Command::Go
         | Command::Gather
         | Command::Desk
-        | Command::Board => false,
+        | Command::Board { .. } => false,
     }
 }
 

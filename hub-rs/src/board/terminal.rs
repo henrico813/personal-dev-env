@@ -1,67 +1,25 @@
 //! Takes the terminal for the board and gives it back. `Screen::start`
-//! turns on raw mode, the alternate screen and one kind of mouse
-//! report. Dropping the `Screen`, or a panic, puts the terminal back as
-//! the shell had it, so Herdr gets its mouse back when the board ends.
+//! turns on raw mode, the alternate screen and tap reports. Dropping
+//! the `Screen`, or a panic, puts the terminal back as the shell had
+//! it, so Herdr gets its mouse back when the board ends.
 
 use std::io::{self, Write};
 use std::panic;
 
-use crossterm::cursor::{Hide, MoveTo, Show};
-use crossterm::terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen};
-use crossterm::{execute, queue};
+use crossterm::cursor::{Hide, Show};
+use crossterm::execute;
+use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
+use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
 
-/// Which mouse reports the terminal sends to the board. Herdr passes
-/// the mouse to the board only in the modes the board asked for, so
-/// each mode can change what Herdr itself does with the mouse.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum MouseMode {
-    Off,
-    Taps,
-    TapsAndDrags,
-    EveryMove,
-    EveryMoveInPixels,
-}
+use super::view::Board;
 
-impl MouseMode {
-    /// Returns the mode for keys `0` to `4`, such as `Taps` for `1`.
-    pub(crate) fn from_key(key: char) -> Option<MouseMode> {
-        match key {
-            '0' => Some(MouseMode::Off),
-            '1' => Some(MouseMode::Taps),
-            '2' => Some(MouseMode::TapsAndDrags),
-            '3' => Some(MouseMode::EveryMove),
-            '4' => Some(MouseMode::EveryMoveInPixels),
-            _ => None,
-        }
-    }
-
-    /// Returns the key and the words the screen shows for the mode.
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            MouseMode::Off => "0 no mouse",
-            MouseMode::Taps => "1 taps only",
-            MouseMode::TapsAndDrags => "2 taps and drags",
-            MouseMode::EveryMove => "3 every move",
-            MouseMode::EveryMoveInPixels => "4 every move, pixels",
-        }
-    }
-
-    /// Returns the codes that turn the mode on. 1006 sends positions as
-    /// text, such as `\x1b[<0;12;5M`, so a column past 223 still fits.
-    fn turn_on_codes(self) -> &'static str {
-        match self {
-            MouseMode::Off => "",
-            MouseMode::Taps => "\x1b[?1000h\x1b[?1006h",
-            MouseMode::TapsAndDrags => "\x1b[?1002h\x1b[?1006h",
-            // Textual 8, which drew the Python dashboard, sends these.
-            MouseMode::EveryMove => "\x1b[?1000h\x1b[?1003h\x1b[?1015h\x1b[?1006h",
-            // Textual adds 1016 when the terminal supports it.
-            MouseMode::EveryMoveInPixels => {
-                "\x1b[?1000h\x1b[?1003h\x1b[?1015h\x1b[?1006h\x1b[?1016h"
-            }
-        }
-    }
-}
+/// Turns on reports of button presses and releases only (1000), with
+/// positions sent as text (1006), such as `\x1b[<0;12;5M`, so a column
+/// past 223 still fits. The user found that this mode leaves Herdr's
+/// own wheel and taps working. Move reports, focus events, resize
+/// reports and the kitty keyboard protocol stay off.
+const TAPS_ON: &str = "\x1b[?1000h\x1b[?1006h";
 
 /// Turns off every mouse mode Herdr turns off for its own terminal,
 /// in the same order.
@@ -71,32 +29,31 @@ const ALL_MOUSE_OFF: &str =
 /// Owns the terminal while the board shows. Dropping it puts the
 /// terminal back.
 pub(crate) struct Screen {
-    out: io::Stdout,
+    terminal: Terminal<CrosstermBackend<io::Stdout>>,
 }
 
 impl Screen {
-    /// Turns on raw mode, the alternate screen and `mode`.
-    pub(crate) fn start(mode: MouseMode) -> io::Result<Screen> {
+    /// Turns on raw mode, the alternate screen and tap reports.
+    pub(crate) fn start() -> io::Result<Screen> {
         install_panic_restore();
+        let mut screen = Screen {
+            terminal: Terminal::new(CrosstermBackend::new(io::stdout()))?,
+        };
+        // From here a failed step drops `screen`, which puts the
+        // terminal back.
         terminal::enable_raw_mode()?;
-        // From here on a failed step returns early and drops the
-        // screen, which turns raw mode off again.
-        let mut screen = Screen { out: io::stdout() };
-        execute!(screen.out, EnterAlternateScreen, Hide)?;
-        screen.set_mouse_mode(mode)?;
+        let out = screen.terminal.backend_mut();
+        execute!(out, EnterAlternateScreen, Hide)?;
+        out.write_all(ALL_MOUSE_OFF.as_bytes())?;
+        out.write_all(TAPS_ON.as_bytes())?;
+        out.flush()?;
         Ok(screen)
     }
 
-    /// Switches the terminal to `mode`.
-    pub(crate) fn set_mouse_mode(&mut self, mode: MouseMode) -> io::Result<()> {
-        write_mouse_mode(&mut self.out, mode)
-    }
-
-    /// Draws `lines` over the whole screen.
-    pub(crate) fn draw(&mut self, lines: &[String]) -> io::Result<()> {
-        queue!(self.out, MoveTo(0, 0), Clear(ClearType::All))?;
-        self.out.write_all(lines.join("\r\n").as_bytes())?;
-        self.out.flush()
+    /// Draws `board` over the whole screen.
+    pub(crate) fn draw(&mut self, board: &mut Board) -> io::Result<()> {
+        self.terminal.draw(|frame| board.render(frame))?;
+        Ok(())
     }
 }
 
@@ -104,14 +61,6 @@ impl Drop for Screen {
     fn drop(&mut self) {
         restore_terminal();
     }
-}
-
-/// Writes the codes that switch the terminal to `mode`. The old reports
-/// go off first, since encodings such as 1016 stay on until turned off.
-fn write_mouse_mode(out: &mut impl Write, mode: MouseMode) -> io::Result<()> {
-    out.write_all(ALL_MOUSE_OFF.as_bytes())?;
-    out.write_all(mode.turn_on_codes().as_bytes())?;
-    out.flush()
 }
 
 /// Writes the codes that turn off mouse reports, show the cursor and
@@ -142,41 +91,19 @@ fn install_panic_restore() {
 mod tests {
     use super::*;
 
-    /// Encodings such as 1016 stay on until turned off. Without the
-    /// off codes, a switch from 4 to 1 still sends pixel positions, and
-    /// the user tests the wrong mode.
-    #[test]
-    fn write_mouse_mode_clears_old_reports_first() {
-        let cases = [
-            ("taps", MouseMode::Taps, "\x1b[?1000h\x1b[?1006h"),
-            ("no-mouse", MouseMode::Off, ""),
-        ];
-
-        for (case_name, mode, turn_on) in cases {
-            let mut out = Vec::new();
-            write_mouse_mode(&mut out, mode).unwrap();
-
-            let expected = format!("{ALL_MOUSE_OFF}{turn_on}");
-            assert_eq!(String::from_utf8(out).unwrap(), expected, "{case_name}");
-        }
-    }
-
     /// The board's exit must hand the mouse back to Herdr. A mode left
     /// on after exit keeps sending mouse reports to the shell as text,
     /// and Herdr keeps routing the pane's wheel and taps to it.
     #[test]
-    fn write_restore_codes_turns_off_every_mode() {
+    fn write_restore_codes_turns_off_tap_reports() {
         let mut out = Vec::new();
         write_restore_codes(&mut out).unwrap();
         let restore = String::from_utf8(out).unwrap();
 
-        for key in ['0', '1', '2', '3', '4'] {
-            let mode = MouseMode::from_key(key).unwrap();
-            for code in mode.turn_on_codes().split("\x1b[?").skip(1) {
-                let number = code.strip_suffix('h').unwrap();
-                let turn_off = format!("\x1b[?{number}l");
-                assert!(restore.contains(&turn_off), "{mode:?} leaves {number} on");
-            }
+        for code in TAPS_ON.split("\x1b[?").skip(1) {
+            let number = code.strip_suffix('h').unwrap();
+            let turn_off = format!("\x1b[?{number}l");
+            assert!(restore.contains(&turn_off), "leaves {number} on");
         }
     }
 }

@@ -292,7 +292,11 @@ fn format_status_json(view: &StatusView) -> String {
 /// Returns the short WHY cell, such as `unread report` or `1 held`,
 /// with `hand off` added at `HANDOFF_TOKENS` or more, or `-` when
 /// nothing needs saying.
-fn describe_why(facts: &SessionFacts, verdict: &Verdict, time_zone: &TimeZone) -> String {
+pub(crate) fn describe_why(
+    facts: &SessionFacts,
+    verdict: &Verdict,
+    time_zone: &TimeZone,
+) -> String {
     let mut parts = Vec::new();
     if !verdict.why.is_empty() {
         parts.push(verdict.why.clone());

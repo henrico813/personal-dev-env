@@ -20,8 +20,8 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
 
-use crate::external::cards::{CardError, Cards};
-use crate::external::herdr::{Herdr, HerdrError};
+use crate::external::cards::{CardCli, CardError, Cards};
+use crate::external::herdr::{Herdr, HerdrCli, HerdrError};
 use crate::external::opencode::{OpenCodeDb, OpenCodeError};
 use crate::external::requests::RequestFolder;
 use parking::ParkedFolder;
@@ -182,6 +182,36 @@ pub struct Tools<'a> {
     /// second outside tests. Herdr learns the ID only after OpenCode
     /// starts.
     pub reopen_poll: Duration,
+}
+
+/// The external systems a `Tools` lends, owned. `hub board` moves them
+/// into the thread that reads the hub's state, since a new thread
+/// cannot borrow from the one that started it.
+pub struct OwnedTools {
+    pub herdr: HerdrCli,
+    pub cards: CardCli,
+    pub opencode: OpenCodeDb,
+    pub requests: RequestFolder,
+    pub parked: ParkedFolder,
+    pub own_pane: Option<String>,
+    pub state_folder: PathBuf,
+    pub reopen_poll: Duration,
+}
+
+impl OwnedTools {
+    /// Returns a `Tools` that borrows each system from `self`.
+    pub fn lend(&self) -> Tools<'_> {
+        Tools {
+            herdr: &self.herdr,
+            cards: &self.cards,
+            opencode: &self.opencode,
+            requests: &self.requests,
+            parked: &self.parked,
+            own_pane: self.own_pane.as_deref(),
+            state_folder: &self.state_folder,
+            reopen_poll: self.reopen_poll,
+        }
+    }
 }
 
 #[cfg(test)]
