@@ -157,14 +157,27 @@ it in these ways.
   could not read. `board --print` prints one screen as text, 40x16
   unless `--size` says otherwise.
 - `board --dump` prints the screen's elements as one line of JSON.
-  `board --control` reads one step per line from standard input:
-  `tap ID`, `tap COLUMN ROW`, `press KEY` (such as `q`, `r`, `j`,
-  `enter`, `esc`, `space`, `pagedown` or `ctrl-c`), or `wheel up` and
-  `wheel down`. It prints one JSON line for the first screen and one
-  after each step, with the step in `step`. After a step that quits,
-  `page` is `quit` and it stops. A step it cannot follow, such as a
-  tap on an id the screen does not show, exits 2 with
-  `line N: REASON`.
+  The flags below take steps: `tap ID`, `tap COLUMN ROW`, `press KEY`,
+  `wheel up` and `wheel down`. KEY is `enter`, `esc`, `space`, `up`,
+  `down`, `pageup`, `pagedown`, `ctrl-c` or one character, such as
+  `q`, `r`, `j` or `k`.
+- `board --listen` shows the live board and also takes steps from
+  `board.sock` in the run folder. `board --send 'STEP'`, from another
+  terminal, sends one step to it. The user sees the step happen, and
+  `--send` prints the screen that follows as one JSON line, at the
+  live terminal's size, with the step in `step`. After a step that
+  quits, `page` is `quit` and the board ends. A step the board cannot
+  follow changes nothing and exits 2 with the reason. With no board
+  listening, `--send` exits 3. The socket works on Linux and macOS,
+  not Windows, where both flags exit 2. The steps reach the board
+  through the same element lookup as the user's own taps, so an
+  agent can check the board in tmux, over ssh or in any terminal.
+  A step that reads, such as `press r` or a tap that opens a card,
+  replies before the read ends.
+- `board --control`, hidden from help and kept for tests, reads one
+  step per line from standard input. It prints one JSON line for the
+  first screen and one after each step, and waits for each read. A
+  step it cannot follow exits 2 with `line N: REASON`.
 - `send` to a parked session opens a new tab and resumes its OpenCode
   session there. It holds the message until the session starts.
 - `status` shows each session's lifecycle state in its STATE column,
@@ -189,10 +202,11 @@ these rules, so an agent sees and taps exactly what the user does.
   scroll and area it drew. Each has an id that stays the same across
   reads, such as `card:DEMO-KB-007`, a kind, its text, its column and
   row, its width and what a tap on it does.
-- A tap finds the element under it in that list. The live screen and
-  `--control` use the same lookup.
-- The screen offers `--dump`, which prints the list as JSON once, and
-  `--control`, which reads taps and key presses and prints the list
-  and the screen's text after each.
+- A tap finds the element under it in that list. The live screen,
+  `--send` and `--control` use the same lookup.
+- The screen offers `--dump`, which prints the list as JSON once,
+  `--listen` and `--send`, which let an agent tap the screen the user
+  watches and print the list and the screen's text after each step,
+  and `--control`, which does the same without a terminal for tests.
 - Marks and labels a tap can hit are plain ASCII, so each takes one
   column in every terminal and a tap's column is exact.

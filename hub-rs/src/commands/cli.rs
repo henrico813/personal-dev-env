@@ -356,19 +356,53 @@ pub enum Command {
     /// set up the workspace you watch from a phone.
     #[command(after_help = "Example: hub desk")]
     Desk,
+    // `verbatim_doc_comment` keeps the step list's columns, so every
+    // line below is wrapped by hand at 40 columns.
     /// Cards by stage, for a phone
     ///
-    /// Shows your cards in groups that fit a 40x16 phone screen. The
-    /// top line counts the cards in progress, in review and waiting on
-    /// you. Below it, five groups hold the cards in progress, in
-    /// review, waiting on you, ready and draft. It reads again every 10
-    /// seconds, or when you press r. Tap a count to jump to its group,
-    /// a group to fold it, + N more to see the rest, or a row to see
-    /// the card in full. j, k and Enter choose a row too, and Esc goes
-    /// back from a card. q quits. --print prints one screen as text,
-    /// --dump prints its elements as JSON, and --control reads taps and
-    /// keys from an agent.
-    #[command(after_help = "Example: hub board --print --size 40x16")]
+    /// Shows your cards in groups that fit a
+    /// 40x16 phone screen. The top line counts
+    /// the cards in progress, in review and
+    /// waiting on you. Below it, five groups
+    /// hold the cards in progress, in review,
+    /// waiting on you, ready and draft. It
+    /// reads again every 10 seconds, or when
+    /// you press r. Tap a count to jump to its
+    /// group, a group to fold it, + N more to
+    /// see the rest, or a row to see the card
+    /// in full. j, k and Enter choose a row
+    /// too, and Esc goes back from a card. q
+    /// quits. --print prints one screen as
+    /// text, and --dump prints its elements
+    /// as JSON.
+    ///
+    /// To let an agent drive the board you
+    /// watch, start it with --listen. Then
+    /// hub board --send STEP, from another
+    /// terminal on the same run folder, does
+    /// one step on your screen and prints the
+    /// screen that follows as JSON. They talk
+    /// through board.sock in the run folder,
+    /// which works on Linux and macOS but not
+    /// Windows. Tests use the hidden --control,
+    /// which reads the same steps, one per
+    /// line.
+    ///
+    /// A step is one of these:
+    ///   tap ID       tap an element by the id
+    ///                --send prints for it
+    ///   tap COL ROW  tap a place; 0 0 is the
+    ///                top left
+    ///   press KEY    press a key
+    ///   wheel up     scroll up
+    ///   wheel down   scroll down
+    /// KEY is enter, esc, space, up, down,
+    /// pageup, pagedown, ctrl-c, or one
+    /// character, such as q, r, j or k.
+    #[command(verbatim_doc_comment)]
+    #[command(after_help = "\
+Example: hub board --listen
+Then: hub board --send 'press j'")]
     #[command(group(ArgGroup::new("output").args(["print", "dump", "control"])))]
     Board {
         #[command(flatten)]
@@ -379,9 +413,19 @@ pub enum Command {
         /// Print one screen's elements as JSON and exit
         #[arg(long)]
         dump: bool,
-        /// Read taps and keys, one per line, and print JSON after each
-        #[arg(long)]
+        /// Read steps, one per line, and print JSON after each
+        #[arg(long, hide = true)]
         control: bool,
+        /// Also take steps from --send
+        #[arg(long, conflicts_with = "output")]
+        listen: bool,
+        /// Do one step on the board that listens, and print its screen as JSON
+        #[arg(
+            long,
+            value_name = "STEP",
+            conflicts_with_all = ["output", "listen"]
+        )]
+        send: Option<String>,
         /// The size of the screen printed
         #[arg(
             long,

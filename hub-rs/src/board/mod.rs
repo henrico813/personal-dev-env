@@ -1,7 +1,8 @@
 //! Runs `hub board`, a full-screen list of the user's cards grouped by
 //! stage, with what waits on the user, sized for a phone first. Read
-//! `run_board` and `print_board` first, and `control.rs` for the JSON
-//! that agents read.
+//! `run_board` and `print_board` first, `control.rs` for the JSON that
+//! agents read, and `listen.rs` for the socket an agent drives the live
+//! board through.
 //!
 //! A second thread reads the hub's state every 10 seconds, or at once
 //! when the user presses r. A read calls Herdr, `card` and OpenCode
@@ -13,6 +14,7 @@ mod control;
 mod draw;
 mod elements;
 mod groups;
+mod listen;
 mod queue;
 mod terminal;
 mod view;
@@ -34,11 +36,13 @@ use crate::commands::Outcome;
 use crate::external::cards::{CardCli, CardKey, CardNote, Cards};
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{HubError, OwnedTools, Tools};
+use listen::StepListener;
 use queue::{Queue, read_queue};
 use terminal::Screen;
 use view::{Board, Step};
 
 pub use control::{control_board, dump_board};
+pub use listen::send_step;
 
 /// How long the board waits for input before it checks for a stop
 /// signal or a new read again.
@@ -70,22 +74,31 @@ impl FromStr for ScreenSize {
 }
 
 /// Shows the board until the user quits or a signal stops it. The
-/// reader thread owns `tools` and `run`.
+/// reader thread owns `tools` and `run`. With `listen`, it also follows
+/// the steps `send_step` sends, as if the user tapped or pressed them.
 ///
 /// # Errors
 ///
-/// `HubError::Usage` when standard input or output is not a terminal.
-/// `HubError::File` when the terminal cannot be read or drawn on.
-/// `HubError::NotDone` when the reader thread stops, which only a
-/// panic in it causes.
+/// `HubError::Usage` when standard input or output is not a terminal,
+/// or with `listen` when another board listens in `run`.
+/// `HubError::File` when the terminal cannot be read or drawn on, or
+/// the socket cannot be made. `HubError::NotDone` when the reader
+/// thread stops, which only a panic in it causes.
 pub fn run_board(
     tools: OwnedTools,
     run: RunFolder,
     time_zone: TimeZone,
+    listen: bool,
 ) -> Result<Outcome, HubError> {
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         return Err(HubError::Usage("board needs a terminal".to_owned()));
     }
+    // Dropping the listener when the board ends removes its socket.
+    let listener = if listen {
+        Some(StepListener::start(&run)?)
+    } else {
+        None
+    };
     // A signal only sets the flag, so the loop ends and dropping the
     // screen puts the terminal back.
     let stop = Arc::new(AtomicBool::new(false));
@@ -109,7 +122,7 @@ pub fn run_board(
     let mut board = Board::new(color);
     let mut screen = Screen::start().map_err(terminal_error)?;
     screen.draw(&mut board).map_err(terminal_error)?;
-    while !stop.load(Ordering::Relaxed) {
+    'board: while !stop.load(Ordering::Relaxed) {
         let mut changed = false;
         while let Ok((key, note)) = notes.try_recv() {
             board.show_card_note(&key, note);
@@ -131,17 +144,28 @@ pub fn run_board(
         }
         if event::poll(POLL).map_err(terminal_error)? {
             let input = event::read().map_err(terminal_error)?;
-            match board.handle_input(&input) {
-                Step::Quit => break,
-                Step::Refresh => {
-                    board.note_reading();
-                    // A send fails only when the reader has stopped.
-                    let _ = wake.send(());
-                }
-                Step::ReadCard(key) => read_card_aside(&cards, key, &note_sender),
-                Step::Stay => {}
+            let step = board.handle_input(&input);
+            if !follow_step(step, &mut board, &wake, &cards, &note_sender) {
+                break;
             }
             changed = true;
+        }
+        if let Some((_, steps)) = &listener {
+            for sent in steps.try_iter() {
+                let (going, reply) =
+                    control::answer_sent_step(&mut board, &sent.text, |board, step| {
+                        let going = follow_step(step, board, &wake, &cards, &note_sender);
+                        if going {
+                            screen.draw(board).map_err(terminal_error)?;
+                        }
+                        Ok(going)
+                    })?;
+                // A send fails only when the agent stopped waiting.
+                let _ = sent.reply.send(reply);
+                if !going {
+                    break 'board;
+                }
+            }
         }
         if changed {
             screen.draw(&mut board).map_err(terminal_error)?;
@@ -170,6 +194,28 @@ pub fn print_board(
     Ok(Outcome {
         lines: board.render_lines(size.columns, size.rows),
     })
+}
+
+/// Does what `step` asks beyond the board itself, such as a read, and
+/// returns false when the board quits.
+fn follow_step(
+    step: Step,
+    board: &mut Board,
+    wake: &Sender<()>,
+    cards: &CardCli,
+    notes: &Sender<(CardKey, Result<CardNote, String>)>,
+) -> bool {
+    match step {
+        Step::Quit => return false,
+        Step::Refresh => {
+            board.note_reading();
+            // A send fails only when the reader has stopped.
+            let _ = wake.send(());
+        }
+        Step::ReadCard(key) => read_card_aside(cards, key, notes),
+        Step::Stay => {}
+    }
+    true
 }
 
 /// Sends a read, then waits for a wake or `REFRESH`, until the board

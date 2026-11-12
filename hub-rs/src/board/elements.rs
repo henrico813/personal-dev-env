@@ -1,7 +1,7 @@
 //! The board's screen as a list of elements, each with its id, text,
 //! place and what a tap on it does. A tap on the live screen finds its
-//! element here, and `hub board --dump` and `--control` print the same
-//! list, so an agent taps what the user taps.
+//! element here, and `hub board --dump`, `--send` and `--control` print
+//! the same list, so an agent taps what the user taps.
 
 use serde::Serialize;
 
@@ -57,12 +57,11 @@ pub(super) enum Action {
     Back,
 }
 
-/// What `--dump` and `--control` print for one screen, as one JSON
-/// line.
+/// What `--dump`, `--send` and `--control` print for one screen, as one
+/// JSON line.
 #[derive(Debug, Serialize)]
 pub(crate) struct ScreenDump {
-    /// The `--control` line that led here, or nothing for the first
-    /// screen.
+    /// The step that led here, or nothing for the first screen.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub step: Option<String>,
     /// `list`, `details`, or `quit` once the board has quit.

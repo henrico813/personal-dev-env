@@ -231,6 +231,12 @@ impl Board {
         }
     }
 
+    /// Returns the frame at the size last drawn, as `dump` does, so an
+    /// agent driving the live board reads the screen the user sees.
+    pub(crate) fn dump_drawn(&mut self, step: Option<String>) -> ScreenDump {
+        self.dump(self.area.width, self.area.height, step)
+    }
+
     /// Returns the frame as text lines, each with its end trimmed.
     pub(crate) fn render_lines(&mut self, columns: u16, rows: u16) -> Vec<String> {
         // A `TestBackend` never fails, so both results are always `Ok`.
@@ -454,7 +460,7 @@ impl Board {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
 
     use std::time::Duration;
@@ -529,7 +535,7 @@ mod tests {
     }
 
     /// Returns a board that shows `sample_queue`, drawn once at 40x16.
-    fn sample_board() -> Board {
+    pub(crate) fn sample_board() -> Board {
         let mut board = Board::new(false);
         board.show_reading(Ok(sample_queue()));
         board.render_lines(40, 16);

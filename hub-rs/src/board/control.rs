@@ -1,8 +1,9 @@
 //! Runs `hub board --dump` and `hub board --control`, which show the
 //! board to an agent as JSON. `--control` reads one step per line, such
 //! as `tap card:DEMO-KB-007` or `press esc`, and prints the screen after
-//! each, so an agent can tap what the user taps without a phone. Read
-//! `control_board` first.
+//! each, so an agent can tap what the user taps without a phone. Tests
+//! use it, and an agent drives the board the user watches through
+//! `answer_sent_step`. Read `control_board` first.
 
 use std::io::{self, BufRead, ErrorKind, Write};
 use std::path::PathBuf;
@@ -80,12 +81,7 @@ pub fn control_board(
         let event = parse_step(step, &board)
             .map_err(|reason| HubError::Usage(format!("line {}: {reason}", number + 1)))?;
         let dump = match board.handle_input(&event) {
-            Step::Quit => ScreenDump {
-                step: Some(step.to_owned()),
-                page: "quit",
-                elements: Vec::new(),
-                lines: Vec::new(),
-            },
+            Step::Quit => quit_dump(step),
             Step::Refresh => {
                 let reading = read_queue(tools, run, time_zone).map_err(|error| error.to_string());
                 board.show_reading(reading);
@@ -106,6 +102,39 @@ pub fn control_board(
         }
     }
     Ok(done)
+}
+
+/// Follows a step an agent sent to the live board, as the user's own
+/// tap or key, and returns false once the board quits, with the reply
+/// line. `follow` does the rest of the step, such as a read, draws the
+/// screen and returns false on a quit, so the reply shows what the user
+/// sees. A step the board cannot follow changes nothing, and its reply
+/// holds the reason as `error`.
+///
+/// # Errors
+///
+/// Any error `follow` returns, and `HubError::File` when the screen
+/// cannot be written as JSON.
+pub(super) fn answer_sent_step(
+    board: &mut Board,
+    step: &str,
+    follow: impl FnOnce(&mut Board, Step) -> Result<bool, HubError>,
+) -> Result<(bool, String), HubError> {
+    let event = match parse_step(step, board) {
+        Ok(event) => event,
+        Err(reason) => {
+            let reply = serde_json::json!({ "step": step, "error": reason });
+            return Ok((true, reply.to_string()));
+        }
+    };
+    let next = board.handle_input(&event);
+    let going = follow(board, next)?;
+    let dump = if going {
+        board.dump_drawn(Some(step.to_owned()))
+    } else {
+        quit_dump(step)
+    };
+    Ok((going, to_json(&dump)?))
 }
 
 /// Turns one `--control` line into the input it stands for. `tap ID`
@@ -174,6 +203,16 @@ fn parse_key(name: &str) -> Option<KeyEvent> {
         }
     };
     Some(KeyEvent::new(code, KeyModifiers::NONE))
+}
+
+/// Returns the screen after `step` quit the board.
+fn quit_dump(step: &str) -> ScreenDump {
+    ScreenDump {
+        step: Some(step.to_owned()),
+        page: "quit",
+        elements: Vec::new(),
+        lines: Vec::new(),
+    }
 }
 
 /// Writes `dump` as one line and returns false when the reader closed
