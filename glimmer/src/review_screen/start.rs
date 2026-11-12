@@ -16,6 +16,7 @@ use super::herdr::{
 };
 use super::picker::{Waiting, WaitingReview, find_waiting_reviews};
 use super::result::ReviewResult;
+use super::stale_reviews::{GH_COMMAND, drop_stale_reviews};
 use super::{RawTerminal, StartFailure, pick_review, show_picked_review, show_review_screen};
 use crate::commands::cli::ScreenKind;
 use crate::shared::git;
@@ -40,9 +41,11 @@ pub fn run_screen_command(kind: ScreenKind) -> Result<(), StartFailure> {
     };
     if env::var_os("HERDR_PLUGIN_ACTION_ID").is_some() {
         // Herdr keeps an action's errors out of sight, so the user gets a notification.
-        let waiting = find_waiting_reviews_or_say_why().inspect_err(|StartFailure(message)| {
-            let _ = herdr.show_notification(message);
-        })?;
+        let waiting = find_waiting_reviews_or_say_why(Some(GH_COMMAND)).inspect_err(
+            |StartFailure(message)| {
+                let _ = herdr.show_notification(message);
+            },
+        )?;
         return open_from_herdr(&herdr, kind, waiting.len())
             .map_err(|error| StartFailure(format!("Herdr did not open the screen. {error}")));
     }
@@ -56,7 +59,7 @@ pub fn run_screen_command(kind: ScreenKind) -> Result<(), StartFailure> {
     match kind {
         ScreenKind::Popup => show_in_review_popup(),
         ScreenKind::Tab => {
-            let shown = show_waiting_review(|_| {});
+            let shown = show_waiting_review(None, |_| {});
             if let Err(StartFailure(message)) = &shown {
                 wait_for_enter(message);
             }
@@ -80,7 +83,7 @@ pub fn run_screen_command(kind: ScreenKind) -> Result<(), StartFailure> {
 /// cannot be read, or when the terminal cannot be read or drawn on.
 pub fn run_open_command(branch: Option<&str>) -> Result<(), StartFailure> {
     let Some(branch) = branch else {
-        return show_waiting_review(|_| {});
+        return show_waiting_review(Some(GH_COMMAND), |_| {});
     };
     let here = env::current_dir().map_err(|error| StartFailure(error.to_string()))?;
     // A damaged waiting list must not stop Git from finding the branch.
@@ -106,7 +109,7 @@ fn show_in_review_popup() -> Result<(), StartFailure> {
         // The record helps the PR approval tool, so the popup opens without it.
         let _ = save_popup_record(path, workspace_id, "Comment review");
     }
-    let shown = show_waiting_review(|picked| {
+    let shown = show_waiting_review(None, |picked| {
         if let (
             Some((path, workspace_id)),
             Waiting::Review { origin, .. } | Waiting::WriteNotFinished { origin },
@@ -122,9 +125,14 @@ fn show_in_review_popup() -> Result<(), StartFailure> {
 }
 
 /// Shows the only waiting Review Session, or the one the user picks. `on_pick`
-/// runs with the chosen one before it shows.
-fn show_waiting_review(on_pick: impl FnOnce(&WaitingReview)) -> Result<(), StartFailure> {
-    pick_and_show_review(find_waiting_reviews_or_say_why()?, on_pick)
+/// runs with the chosen one before it shows. The Review Popup and Review Tab
+/// pass no `gh`, because the Ctrl+b e action that opened them already asked
+/// GitHub.
+fn show_waiting_review(
+    gh: Option<&[&str]>,
+    on_pick: impl FnOnce(&WaitingReview),
+) -> Result<(), StartFailure> {
+    pick_and_show_review(find_waiting_reviews_or_say_why(gh)?, on_pick)
 }
 
 /// Shows the only one of `reviews`, or the one the user picks in the Review
@@ -145,11 +153,14 @@ fn pick_and_show_review(
     show_picked_review(&mut terminal, picked).map_err(terminal_failure)
 }
 
-/// Returns the waiting reviews, or why the waiting list could not be read.
-fn find_waiting_reviews_or_say_why() -> Result<Vec<WaitingReview>, StartFailure> {
+/// Returns the waiting reviews once stale ones are dropped, or why the waiting
+/// list could not be read. Asks `gh` about pull requests only when given it.
+fn find_waiting_reviews_or_say_why(
+    gh: Option<&[&str]>,
+) -> Result<Vec<WaitingReview>, StartFailure> {
     let here = env::current_dir().unwrap_or_default();
     let worktrees = read_waiting_list().map_err(|error| explain(&here, &error))?;
-    Ok(find_waiting_reviews(worktrees))
+    Ok(drop_stale_reviews(worktrees, gh))
 }
 
 /// Returns every worktree on the waiting list with `branch` checked out, or
