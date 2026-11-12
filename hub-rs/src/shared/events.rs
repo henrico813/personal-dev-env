@@ -34,6 +34,10 @@ pub(crate) enum EventKind {
     /// `hub next` printed the version of NAME's report modified at
     /// `mtime_ns`.
     Announced { name: String, mtime_ns: u64 },
+    /// `hub watch` found that the version of NAME's report modified at
+    /// `mtime_ns` waited 10 minutes with no `hub next` line, while the
+    /// run's hub ran. The next `hub next` prints it as a missed report.
+    ReportMissed { name: String, mtime_ns: u64 },
     /// `hub read` archived NAME's report as `archive`.
     Read { name: String, archive: String },
     /// A message waits in `sends/` until NAME can take it.
@@ -133,6 +137,9 @@ pub(crate) enum Via {
 pub(crate) struct Memory {
     /// The `mtime_ns` of each name's last announced report.
     pub announced: BTreeMap<String, u64>,
+    /// The `mtime_ns` of each name's last report `hub watch` found
+    /// missed.
+    pub missed: BTreeMap<String, u64>,
     /// The `state_seq` of each name's last printed blocked state.
     pub blocked_seen: BTreeMap<String, u64>,
     /// Hub session IDs told to hand off.
@@ -167,12 +174,19 @@ pub(crate) struct Memory {
 /// when the file does not end in one, so a cut-off line never joins
 /// the next.
 pub(crate) fn append_event(run: &RunFolder, event: &Event) -> Result<(), HubError> {
+    append_json_line(run, event)
+}
+
+/// Adds any value as one JSON line to the log, as `append_event` does.
+/// `hub watch` writes its own kinds of event with it, which
+/// `load_memory` skips.
+pub(crate) fn append_json_line(run: &RunFolder, value: &impl Serialize) -> Result<(), HubError> {
     let log = run.path().join("events.jsonl");
     let file_error = |source: io::Error| HubError::File {
         path: log.clone(),
         source,
     };
-    let mut line = serde_json::to_string(event).map_err(|error| file_error(error.into()))?;
+    let mut line = serde_json::to_string(value).map_err(|error| file_error(error.into()))?;
     line.push('\n');
     let ends_cut_off = match fs::read(&log) {
         Ok(existing) => existing.last().is_some_and(|last| *last != b'\n'),
@@ -209,6 +223,9 @@ fn fold_events(events: impl IntoIterator<Item = Event>) -> Memory {
         match event.kind {
             EventKind::Announced { name, mtime_ns } => {
                 memory.announced.insert(name, mtime_ns);
+            }
+            EventKind::ReportMissed { name, mtime_ns } => {
+                memory.missed.insert(name, mtime_ns);
             }
             EventKind::BlockedSeen { name, state_seq } => {
                 memory.blocked_seen.insert(name, state_seq);

@@ -50,10 +50,12 @@ one used last.
 
   status*  Each session and its state
   next*    Wait for news, print one line
+  watch    Catch stalled workers
   send*    Deliver, or hold until free
   read*    Print and archive a report
   report*  Write your report (workers)
   inbox*   Print held messages (workers)
+  wait*    Wake me after a job (workers)
   note*    Add a timed line to notes.md
   brief*   What waits on the user
   handoff* Start the next hub
@@ -142,6 +144,18 @@ pub enum Command {
         #[arg(long)]
         start_reviews: bool,
     },
+    /// Catch stalled workers
+    ///
+    /// One watch per machine prods a worker idle 10 minutes that owes a
+    /// report and marks a blocked worker "needs you". A report that
+    /// waits 10 minutes reaches the next hub next as missed report, or
+    /// the phone when the hub is gone. A hub runs hub watch start once.
+    /// hub report restarts a dead watch.
+    #[command(after_help = "Example: hub watch start")]
+    Watch {
+        #[command(subcommand)]
+        step: WatchStep,
+    },
     /// Deliver, or hold until free
     ///
     /// Sends a message to a session at once when it can take it.
@@ -209,6 +223,28 @@ pub enum Command {
         run: RunArg,
         /// Your agent name
         name: AgentName,
+    },
+    /// Wake me after a job (workers)
+    ///
+    /// A worker runs it before it ends its turn to wait on a long job.
+    /// hub watch prods the worker once PID ends, FILE changes or the
+    /// deadline passes. It returns at once. A new wait replaces the
+    /// old one.
+    #[command(after_help = "Example: hub wait docs-fix \\\n  --pid 4242 --deadline 30")]
+    Wait {
+        #[command(flatten)]
+        run: RunArg,
+        /// Your agent name
+        name: AgentName,
+        /// The job's process ID
+        #[arg(long, required_unless_present = "file", conflicts_with = "file")]
+        pid: Option<u32>,
+        /// A file the job writes when it ends
+        #[arg(long, value_name = "PATH")]
+        file: Option<PathBuf>,
+        /// Prod me after this many minutes anyway
+        #[arg(long, value_name = "MINUTES", value_parser = clap::value_parser!(u32).range(1..))]
+        deadline: u32,
     },
     /// Add a timed line to notes.md
     ///
@@ -474,6 +510,24 @@ Then: hub board --send 'press j'")]
     },
 }
 
+#[derive(clap::Subcommand)]
+pub enum WatchStep {
+    /// Name this hub and start the watch
+    ///
+    /// Names the hub in this pane as the run's hub, so the watch serves
+    /// the run, and starts the watch when none runs on this machine.
+    /// Run it once when the hub starts.
+    #[command(after_help = "Example: hub watch start")]
+    Start {
+        #[command(flatten)]
+        run: RunArg,
+    },
+    // The loop that systemd and `hub watch start` run, never typed by
+    // hand.
+    #[command(hide = true)]
+    Run,
+}
+
 // The steps run in the order the `auto-run` skill gives.
 #[derive(clap::Subcommand)]
 pub enum AutoStep {
@@ -535,10 +589,12 @@ impl Command {
         match self {
             Command::Status { .. } => "status",
             Command::Next { .. } => "next",
+            Command::Watch { .. } => "watch",
             Command::Send { .. } => "send",
             Command::Read { .. } => "read",
             Command::Report { .. } => "report",
             Command::Inbox { .. } => "inbox",
+            Command::Wait { .. } => "wait",
             Command::Note { .. } => "note",
             Command::Brief { .. } => "brief",
             Command::Handoff { .. } => "handoff",
@@ -723,6 +779,8 @@ pub fn takes_machine(command: &Command) -> bool {
         | Command::Flag { .. }
         | Command::Unflag { .. } => true,
         Command::Next { .. }
+        | Command::Watch { .. }
+        | Command::Wait { .. }
         | Command::Read { .. }
         | Command::Report { .. }
         | Command::Inbox { .. }
