@@ -1,8 +1,9 @@
 # Build on a local model
 
-On this path the plan's own diffs become the commits, so the local
-model `goog/qwen3.8` never writes code. It runs one script per step,
-and the script commits the step's planned files and runs the checks.
+On a local-model build, the plan's own diffs become the commits, so
+the local model `goog/qwen3.8` never writes code. It runs one script
+per step, and the script commits the step's planned files and runs
+the checks.
 You run the plan checks, write the commit messages, handle steps that
 fail and review the final diff.
 
@@ -21,7 +22,7 @@ fail and review the final diff.
 2. Make the worktree as SKILL.md's non-Vibe execution says, with
    `--base <base commit>`, and make a run folder with `mktemp -d`.
    Below, `$D` stands for the run folder and `$W` for the worktree.
-   Write their real paths into every file and brief.
+   Write their real paths into every file you write for the build.
 3. Write the check command once, from the plan's Automated
    Verification: the tests and linters, run from `$W`, as one string
    such as `cd ai && uv run pytest -q`.
@@ -79,8 +80,9 @@ Never trust the model's own words about the result.
 3. When the code must change, the subagent corrects the plan's diff
    as SKILL.md's Plan Updates says. When the step's commit is already
    on the branch, it writes a fix message at `$D/MSGfix<n>` by
-   `git-messages` and runs the step's `local-step.sh` command itself
-   with that message in place of `$D/MSG<n>`. Otherwise it reruns
+   `git-messages`. Then it reruns the step's `local-step.sh` command
+   itself, with every argument the same except `$D/MSGfix<n>` in place
+   of `$D/MSG<n>`. When the step has no commit yet, it reruns
    `bash $D/step<n>.sh`. The script commits the corrected tree, so
    the plan and branch stay the same. With a fix message, that step
    has a second commit on the branch, the fix.

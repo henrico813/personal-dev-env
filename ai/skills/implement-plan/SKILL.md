@@ -49,8 +49,9 @@ If no plan reference is provided, ask for one and stop.
 - Build on a local model instead of Vibe when the user or your prompt
   asks for one. Then read
   [references/local-model.md](references/local-model.md), which
-  replaces the Execution section for that build. Asking for it
-  allows the build's commits, since the plan's diffs become them.
+  replaces the Execution section for that build. A request for a
+  local-model build is that separate request, so the script may
+  commit the plan's diffs as steps.
 - Pushing, opening a pull request, or merging always requires explicit user
   instruction.
 
