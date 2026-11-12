@@ -8,8 +8,8 @@ pde-installer builds this folder on the Development tier and installs
 it as `~/.local/bin/hub`, so full machines get it and client laptops,
 which compile nothing, do not. It has `status`, `next`, `send`,
 `read`, `report`, `inbox`, `note`, `brief`, `handoff`, `adopt`,
-`clean`, `park`, `auto`, `flag`, `unflag`, `alive`, `go`, `gather` and
-`desk`.
+`clean`, `park`, `auto`, `flag`, `unflag`, `alive`, `go`, `gather`,
+`desk` and `board`.
 
 ```bash
 make build   # target/release/hub
@@ -133,6 +133,9 @@ it in these ways.
   saves a record in `~/.local/state/pde/hub/parked/`, adds the
   session to its card, and closes its tab. It exits 3 with
   `NAME stays: REASON` otherwise.
+- `board` is new. For now it only checks that its mouse reports
+  leave Herdr working in a pane. Keys 0 to 4 switch the mouse mode,
+  and q quits.
 - `send` to a parked session opens a new tab and resumes its OpenCode
   session there. It holds the message until the session starts.
 - `status` shows each session's lifecycle state in its STATE column,
