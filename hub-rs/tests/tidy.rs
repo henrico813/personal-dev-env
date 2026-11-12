@@ -262,6 +262,44 @@ fn run_clean_keeps_tab_of_new_agent() {
     assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
 }
 
+/// `hub status` and `hub next` call a session `to-close` whose tab a
+/// busy shell keeps, such as an editor beside an old hub. Without a line
+/// saying why, `hub clean` prints only `nothing to close`, and the user
+/// cannot tell why the tab stays open.
+#[test]
+fn run_clean_names_session_kept_by_shell() {
+    let mut test_tools = TestTools::new();
+    add_finished_worker(
+        &mut test_tools,
+        "demo-kb-001-impl",
+        "DEMO-KB-001",
+        Stage::Accepted,
+    );
+    // The editor pane is left out of `quiet_shells`, so it runs something.
+    test_tools.herdr.on_list_panes = Some(Box::new(|| {
+        vec![Pane {
+            pane_id: "w1:p-editor".to_owned(),
+            tab_id: "w1:t-demo-kb-001-impl".to_owned(),
+            focused: false,
+            has_agent: false,
+        }]
+    }));
+
+    for dry_run in [true, false] {
+        let outcome = clean(&test_tools, dry_run);
+
+        assert_eq!(
+            outcome.lines,
+            [
+                "kept demo-kb-001-impl: its tab holds other work",
+                "nothing to close",
+            ],
+            "dry_run {dry_run}"
+        );
+    }
+    assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
+}
+
 /// A park that fails after saving its record leaves that record beside
 /// the live session. The next pass must delete the old record before it
 /// parks again, or it deletes the new one and the parked session can
