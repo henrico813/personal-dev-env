@@ -2,15 +2,14 @@
 //! and `hub brief`, into plain values the screen draws. Read
 //! `read_queue` first.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use jiff::civil::DateTime;
 use jiff::tz::TimeZone;
 use jiff::{Timestamp, Zoned};
 
 use crate::commands::status::describe_why;
 use crate::external::cards::{BoardCounts, CardKey, CardNote, Stage};
-use crate::shared::decisions::{self, DecisionEntry};
+use crate::shared::decisions::{self, DecisionEntry, Urgency};
 use crate::shared::lifecycle::{self, Lifecycle};
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{HubError, Tools, events, facts};
@@ -27,6 +26,10 @@ pub(crate) struct Queue {
     /// Active and review cards, and draft or ready cards that a live
     /// session works on, in key order.
     pub cards: Vec<CardLine>,
+    /// The `Project: title` line of each card a session or a question
+    /// waiting now names, and of each card in `cards`, such as
+    /// `Demo: Faster search`. A card with no title has none.
+    pub titles: BTreeMap<CardKey, String>,
     /// The entries of `decisions.md`, oldest first.
     pub questions: Vec<Question>,
     /// The table rows of `reviews.md` that name a pull request, in the
@@ -48,8 +51,9 @@ pub(crate) struct SessionLine {
     /// The same words as the WHY cell of `hub status`, such as
     /// `unread report`, or `-`.
     pub why: String,
-    /// The card and its stage, such as `DEMO-KB-001 active`.
-    pub card: Option<String>,
+    /// `None` when the session has no card or its card could not be
+    /// read.
+    pub card: Option<(CardKey, Stage)>,
 }
 
 /// One card and who works on it.
@@ -75,18 +79,9 @@ pub(crate) struct Question {
     /// Every line of the entry, for the details screen.
     pub lines: Vec<String>,
     pub urgency: Urgency,
-}
-
-/// Whether a question waits on the user now, from its `Not before:`
-/// and `Priority:` lines.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Urgency {
-    Now,
-    /// Not before this local time, which is still ahead. It wins over
-    /// `Priority: optional`.
-    Later(DateTime),
-    /// The hub marked it `Priority: optional`.
-    Optional,
+    /// The card the entry names, when it names exactly one card on the
+    /// board.
+    pub card: Option<CardKey>,
 }
 
 /// One table row of `reviews.md`, such as `| #301 | uploads: retry |`.
@@ -132,9 +127,7 @@ pub(crate) fn read_queue(
             SessionLine {
                 why: describe_why(&facts, &verdict, time_zone),
                 state: verdict.state,
-                card: facts
-                    .card
-                    .map(|card| format!("{} {}", card.key.as_str(), card.stage.as_str())),
+                card: facts.card.map(|card| (card.key, card.stage)),
                 name: facts.name,
             }
         })
@@ -151,17 +144,32 @@ pub(crate) fn read_queue(
         }
     };
     let now = Timestamp::now().to_zoned(time_zone.clone());
-    let questions = decisions::read_decisions(&run.read_optional_file("decisions.md")?)
-        .iter()
-        .map(|entry| Question::from_entry(entry, &now))
-        .collect();
+    // `collect_session_facts` already reports a failed card list.
+    let stages = tools.cards.list_stages().unwrap_or_default();
+    let questions: Vec<Question> =
+        decisions::read_decisions(&run.read_optional_file("decisions.md")?)
+            .iter()
+            .map(|entry| Question::from_entry(entry, &now, &stages))
+            .collect();
     let reviews = split_reviews(&run.read_optional_file("reviews.md")?);
-    let cards = read_cards(tools, workers, &mut problems);
+    let named = sessions
+        .iter()
+        .filter_map(|session| session.card.as_ref().map(|(key, _)| key))
+        .chain(
+            questions
+                .iter()
+                .filter(|question| question.urgency == Urgency::Now)
+                .filter_map(|question| question.card.as_ref()),
+        )
+        .cloned()
+        .collect();
+    let (cards, titles) = read_cards(tools, &stages, workers, &named, &mut problems);
     Ok(Queue {
         read_at: now,
         sessions,
         unread: collected.unread,
         cards,
+        titles,
         questions,
         pull_requests: reviews.pull_requests,
         review_notes: reviews.notes,
@@ -170,35 +178,53 @@ pub(crate) fn read_queue(
     })
 }
 
-/// Reads each card the board shows. A card that cannot be read still
+/// Reads each card the board shows, and the title of each card in
+/// `named`, one `card show` per card. A card that cannot be read still
 /// shows by its key, and its error goes to `problems`.
 fn read_cards(
     tools: &Tools<'_>,
+    stages: &BTreeMap<CardKey, Stage>,
     mut workers: BTreeMap<CardKey, Vec<String>>,
+    named: &BTreeSet<CardKey>,
     problems: &mut Vec<String>,
-) -> Vec<CardLine> {
-    // `collect_session_facts` already reports a failed card list.
-    let stages = tools.cards.list_stages().unwrap_or_default();
+) -> (Vec<CardLine>, BTreeMap<CardKey, String>) {
     let mut cards = Vec::new();
-    for (key, stage) in stages {
-        let card_workers = workers.remove(&key).unwrap_or_default();
-        if !is_followed(stage, !card_workers.is_empty()) {
+    let mut titles = BTreeMap::new();
+    for (key, &stage) in stages {
+        let card_workers = workers.remove(key).unwrap_or_default();
+        let is_shown = is_followed(stage, !card_workers.is_empty());
+        if !is_shown && !named.contains(key) {
             continue;
         }
-        let note = tools.cards.read_card(&key).unwrap_or_else(|error| {
+        let note = tools.cards.read_card(key).unwrap_or_else(|error| {
             problems.push(format!("cards: {error}"));
             CardNote::default()
         });
-        cards.push(CardLine {
-            next_step: next_step(&note),
-            project: note.project,
-            title: note.title,
-            key,
-            stage,
-            workers: card_workers,
-        });
+        if let Some(title) = format_card_title(&note.project, &note.title) {
+            titles.insert(key.clone(), title);
+        }
+        if is_shown {
+            cards.push(CardLine {
+                next_step: next_step(&note),
+                project: note.project,
+                title: note.title,
+                key: key.clone(),
+                stage,
+                workers: card_workers,
+            });
+        }
     }
-    cards
+    (cards, titles)
+}
+
+/// Returns a card's `Project: title` line, or the title alone when the
+/// card has no project. A card with no title gets `None`.
+pub(crate) fn format_card_title(project: &str, title: &str) -> Option<String> {
+    match (project, title) {
+        (_, "") => None,
+        ("", title) => Some(title.to_owned()),
+        (project, title) => Some(format!("{project}: {title}")),
+    }
 }
 
 /// Returns true when a session in `state` counts as working on its
@@ -244,31 +270,17 @@ fn next_step(note: &CardNote) -> String {
 }
 
 impl Question {
-    /// Returns the entry with its `Not before:` and `Priority:` marks
-    /// read. A `Not before:` time that cannot be read leaves the
-    /// question in view, so a typo never hides it.
-    fn from_entry(entry: &DecisionEntry, now: &Zoned) -> Question {
-        let field = |name: &str| {
-            entry
-                .lines
-                .iter()
-                .find_map(|line| line.strip_prefix(name))
-                .map(str::trim)
-        };
-        let later = field("Not before:")
-            .and_then(|when| DateTime::strptime("%Y-%m-%d %H:%M", when).ok())
-            .and_then(|when| when.to_zoned(now.time_zone().clone()).ok())
-            .filter(|when| when > now)
-            .map(|when| when.datetime());
-        let urgency = match later {
-            Some(when) => Urgency::Later(when),
-            None if field("Priority:") == Some("optional") => Urgency::Optional,
-            None => Urgency::Now,
-        };
+    /// Returns the entry with its urgency at `now` and its card.
+    fn from_entry(
+        entry: &DecisionEntry,
+        now: &Zoned,
+        stages: &BTreeMap<CardKey, Stage>,
+    ) -> Question {
         Question {
             title: entry.title.clone(),
             lines: entry.lines.clone(),
-            urgency,
+            urgency: entry.urgency(now, stages),
+            card: entry.find_card(stages).map(|(key, _)| key.clone()),
         }
     }
 }
@@ -358,8 +370,6 @@ fn table_cells(line: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use jiff::civil::date;
 
     use crate::shared::lifecycle::KeptReason;
 
@@ -472,36 +482,5 @@ Merge in order 471, 468:
                 "Merge in order 471, 468: #471 (docs), #468 (tests)."
             ]
         );
-    }
-
-    /// The hub marks a question it must not ask yet with `Not before:`
-    /// and a side item with `Priority: optional`. A question shown too
-    /// early breaks a promise to the user, and one hidden after its time
-    /// or by a mistyped time gets lost.
-    #[test]
-    fn from_entry_reads_not_before_and_priority() {
-        let now: Zoned = "2026-11-11T13:00[America/Los_Angeles]".parse().unwrap();
-        let tonight = date(2026, 11, 11).at(20, 0, 0, 0);
-        let cases = [
-            (
-                "ahead",
-                "Not before: 2026-11-11 20:00",
-                Urgency::Later(tonight),
-            ),
-            ("passed", "Not before: 2026-11-11 12:00", Urgency::Now),
-            ("mistyped", "Not before: tonight", Urgency::Now),
-            ("optional", "Priority: optional", Urgency::Optional),
-        ];
-
-        for (case_name, mark, urgency) in cases {
-            let entry = DecisionEntry {
-                title: "Demo: pick a name".to_owned(),
-                lines: vec!["Which name?".to_owned(), mark.to_owned()],
-            };
-
-            let question = Question::from_entry(&entry, &now);
-
-            assert_eq!(question.urgency, urgency, "{case_name}");
-        }
     }
 }

@@ -54,7 +54,9 @@ code.
   line is `board 24/8, review 19; 4 decisions`, or `board: REASON`
   when `card` fails. When nothing else waits, the board line is
   followed by `Nothing waits on the user.`, the same line the Python
-  hub printed.
+  hub printed. It also exits 3 when a `Not before:` line does not
+  read as `2026-11-11 20:00`, and when more than 5 entries wait on the
+  user now, so the hub holds new questions until the user answers one.
 - `auto check`, `auto approve` and `auto now` exit 3, not 2, when
   they stop, such as for a reply that approves nothing. Every `auto`
   step takes the run folder from `--run DIR`, else from `HUB_RUN`.
@@ -133,8 +135,13 @@ code.
   `open the card`. Working on now lists first, marked `!`, a draft or
   ready card that a session works on, since its stage is out of date.
   Active cards follow, `*` with the sessions that work on them and
-  `-` with no worker. Approval waits come
-  first under needs you. A `decisions.md` entry with a
+  `-` with no worker. Needs you shows one row per card, under the
+  card's title, such as `DEMO-KB-010  1 session, 2 questions`, with
+  approval waits first, and the top line's `YOU` counts these rows.
+  A question belongs to a card when it names one card key, and a
+  question whose card is accepted or dropped moves to optional.
+  Session rows show their card's title above the
+  session's name. A `decisions.md` entry with a
   `Not before: 2026-11-11 20:00` line waits under later until that
   local time, and one with `Priority: optional` waits under optional.
   Only a `reviews.md` table row whose first cell is a PR number, such
@@ -164,6 +171,11 @@ code.
   per state and the unread reports. Below it, one `no session:` line
   names active and review cards that no session works on. This line
   replaces the second table. `--json` prints the same facts as JSON.
+  A session that never reported waits on the hub. A "needs you" mark
+  or note stops counting once a newer session works on the card. An
+  approval request on an accepted or dropped card no longer waits on
+  the user, but its session stays `kept` with `open request` until
+  the request ends.
 - `status` looks for unsaved work only in linked worktrees. An agent
   that works in the main checkout gets no file check there, so its
   uncommitted files in the main checkout do not keep it.

@@ -160,7 +160,7 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
             reports::run_report(&run, name, &text)
         }
         Command::Note { run, text } => reports::run_note(&find_run(run)?, text, &now),
-        Command::Brief { run } => brief::run_brief(&tools, &find_run(run)?),
+        Command::Brief { run } => brief::run_brief(&tools, &find_run(run)?, &now),
         Command::Handoff { run, name, handoff } => {
             let run = find_run(run)?;
             let poll = read_poll_interval()?;

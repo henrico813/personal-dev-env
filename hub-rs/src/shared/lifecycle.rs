@@ -66,6 +66,7 @@ pub(crate) enum KeptReason {
     GitFailed,
     UserInPane,
     ApprovalWaits,
+    OpenRequest,
     RecentRequest,
     CannotReopen,
     AnotherHub,
@@ -84,6 +85,7 @@ impl KeptReason {
             KeptReason::GitFailed => "git failed",
             KeptReason::UserInPane => "user in pane",
             KeptReason::ApprovalWaits => "approval waits",
+            KeptReason::OpenRequest => "open request",
             KeptReason::RecentRequest => "request in the last hour",
             KeptReason::CannotReopen => "cannot reopen",
             KeptReason::AnotherHub => "another hub",
@@ -188,14 +190,20 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
             _ => make_kept(KeptReason::OtherMachine),
         };
     }
-    // Rule 3. Only the user can move these on.
+    // Rule 3. Only the user can move these on. A mark or note gives way
+    // once a newer session took over the card, so a handed-off session
+    // can close.
     if agent.status == AgentStatus::Blocked {
         return make_verdict(Lifecycle::WaitsOnUser, "blocked");
     }
-    if agent.marked {
+    let handed_off = facts
+        .card
+        .as_ref()
+        .is_some_and(|card| card.newer_session_live);
+    if agent.marked && !handed_off {
         return make_verdict(Lifecycle::WaitsOnUser, "needs you");
     }
-    if facts.card.as_ref().is_some_and(|card| card.needs_you_open) {
+    if facts.card.as_ref().is_some_and(|card| card.needs_you_open) && !handed_off {
         return make_verdict(Lifecycle::WaitsOnUser, "needs-you note");
     }
     // Rule 4. A session in an unknown state is never closed.
@@ -236,7 +244,9 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
             if card.newer_session_live {
                 make_close_unless_user_waits(facts, agent, "newer session")
             } else if !facts.reports.ever_reported {
-                make_verdict(Lifecycle::WaitsOnUser, "never reported")
+                // The hub brings a session it never heard from under its
+                // rules, so the user is not asked about it.
+                make_verdict(Lifecycle::WaitsOnHub, "never reported")
             } else if facts.reports.replied_since_report {
                 make_verdict(Lifecycle::WaitsOnHub, "idle after reply")
             } else {
@@ -316,7 +326,18 @@ fn find_focus_or_approval(facts: &SessionFacts, agent: &Agent) -> Option<Verdict
         return Some(make_kept(KeptReason::UserInPane));
     }
     if facts.approval_pending {
-        return Some(make_kept(KeptReason::ApprovalWaits));
+        // A done card's request no longer waits on the user, but `gh`
+        // may still be running it, so its tab stays.
+        let card_done = facts
+            .card
+            .as_ref()
+            .is_some_and(|card| matches!(card.stage, Stage::Accepted | Stage::Dropped));
+        let reason = if card_done {
+            KeptReason::OpenRequest
+        } else {
+            KeptReason::ApprovalWaits
+        };
+        return Some(make_kept(reason));
     }
     if facts.filed_request_recently {
         return Some(make_kept(KeptReason::RecentRequest));
@@ -438,6 +459,18 @@ mod tests {
                 expected: Lifecycle::WaitsOnUser,
             },
             Row {
+                id: "marked-note-handed-off",
+                facts: {
+                    let mut facts = with_stage(Stage::Active);
+                    facts.agent.as_mut().unwrap().marked = true;
+                    let card = facts.card.as_mut().unwrap();
+                    card.needs_you_open = true;
+                    card.newer_session_live = true;
+                    facts
+                },
+                expected: Lifecycle::ToClose,
+            },
+            Row {
                 id: "needs-you-note",
                 facts: {
                     let mut facts = make_facts(worker);
@@ -529,7 +562,7 @@ mod tests {
             Row {
                 id: "never-reported",
                 facts: active_with_reports(ReportFacts::default()),
-                expected: Lifecycle::WaitsOnUser,
+                expected: Lifecycle::WaitsOnHub,
             },
             Row {
                 id: "read-no-reply",
@@ -580,6 +613,14 @@ mod tests {
                     ..make_facts(worker)
                 },
                 expected: Lifecycle::Kept(KeptReason::ApprovalWaits),
+            },
+            Row {
+                id: "accepted-open-request",
+                facts: SessionFacts {
+                    approval_pending: true,
+                    ..with_stage(Stage::Accepted)
+                },
+                expected: Lifecycle::Kept(KeptReason::OpenRequest),
             },
             Row {
                 id: "accepted-recent-request",
@@ -651,7 +692,8 @@ mod tests {
     /// every `to-park` one. A rule out of order, or a check left out,
     /// can close a tab that holds unsaved work, a pending approval, or
     /// the user's own typing. A blocked session whose card was accepted must still
-    /// reach the user.
+    /// reach the user. A marked session must close once a newer one took
+    /// over its card, or `hub clean` leaves it open after every handoff.
     #[test]
     fn decide_lifecycle_matches_state_table() {
         for row in make_lifecycle_rows() {
@@ -674,6 +716,7 @@ mod tests {
             KeptReason::GitFailed,
             KeptReason::UserInPane,
             KeptReason::ApprovalWaits,
+            KeptReason::OpenRequest,
             KeptReason::RecentRequest,
             KeptReason::CannotReopen,
             KeptReason::AnotherHub,
@@ -702,6 +745,7 @@ mod tests {
                     | KeptReason::GitFailed
                     | KeptReason::UserInPane
                     | KeptReason::ApprovalWaits
+                    | KeptReason::OpenRequest
                     | KeptReason::RecentRequest
                     | KeptReason::CannotReopen
                     | KeptReason::AnotherHub

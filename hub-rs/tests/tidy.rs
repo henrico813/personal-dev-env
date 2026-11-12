@@ -379,6 +379,33 @@ fn run_clean_closes_nothing_while_requests_unreadable() {
     assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
 }
 
+/// A worker whose card was accepted can leave a pull request change
+/// that `gh` is still running. `hub clean` must keep its tab, or the
+/// change can stop midway. The session must show as `open request`,
+/// not `approval waits`, so it leaves the board's NEEDS YOU.
+#[test]
+fn run_clean_keeps_done_cards_running_request() {
+    let mut test_tools = TestTools::new();
+    add_finished_worker(
+        &mut test_tools,
+        "demo-kb-001-impl",
+        "DEMO-KB-001",
+        Stage::Accepted,
+    );
+    let requests = test_tools.state_folder().join("pr-write");
+    fs::create_dir_all(&requests).unwrap();
+    let request = json!({"state": "running", "pane_id": "w1:demo-kb-001-impl"});
+    fs::write(requests.join("a.json"), request.to_string()).unwrap();
+
+    let outcome = clean(&test_tools, false);
+
+    assert_eq!(
+        outcome.lines,
+        ["kept demo-kb-001-impl: open request", "nothing to close"]
+    );
+    assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
+}
+
 /// A worker whose card is accepted may still be merging another pull
 /// request. A request it filed in the last hour must keep its tab
 /// through `hub clean`, or the user approves a request whose session

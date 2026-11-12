@@ -2,10 +2,17 @@
 //! An entry in `decisions.md` holds a `## <title>`, the question, two
 //! or more `- ` choices, `Recommended:` and `If no reply:`.
 
+use jiff::Zoned;
+
 use super::Outcome;
-use crate::shared::decisions::{self, DecisionEntry};
+use crate::shared::decisions::{self, DecisionEntry, Urgency};
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{HubError, Tools};
+
+/// The most questions that may wait on the user at once. More bury the
+/// ones that matter, so the hub holds a new question until the user
+/// answers one.
+const QUESTION_LIMIT: usize = 5;
 
 /// Prints the board line, `reviews.md`, then every decision entry in
 /// full, so the user never has to ask what a numbered question was.
@@ -14,22 +21,39 @@ use crate::shared::{HubError, Tools};
 /// # Errors
 ///
 /// `HubError::NotDone`, printing nothing, when an entry lacks a part
-/// the user needs to decide.
-pub fn run_brief(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubError> {
+/// the user needs to decide, when its `Not before:` time does not read,
+/// or when more than `QUESTION_LIMIT` entries wait on the user at `now`.
+pub fn run_brief(tools: &Tools<'_>, run: &RunFolder, now: &Zoned) -> Result<Outcome, HubError> {
     let entries = decisions::read_decisions(&run.read_optional_file("decisions.md")?);
-    let problems: Vec<String> = entries
+    let mut problems = Vec::new();
+    for entry in &entries {
+        let missing = find_missing_parts(entry);
+        if !missing.is_empty() {
+            problems.push(format!(
+                "decisions.md entry '{}' lacks {}",
+                entry.title,
+                missing.join(", ")
+            ));
+        }
+        if let Err(when) = entry.read_not_before() {
+            problems.push(format!(
+                "decisions.md entry '{}' has Not before: {when}, not a time such as 2026-11-11 20:00",
+                entry.title
+            ));
+        }
+    }
+    // With no card list, no entry counts as done, so all of them count.
+    let stages = tools.cards.list_stages().unwrap_or_default();
+    let waiting = entries
         .iter()
-        .filter_map(|entry| {
-            let missing = find_missing_parts(entry);
-            (!missing.is_empty()).then(|| {
-                format!(
-                    "decisions.md entry '{}' lacks {}",
-                    entry.title,
-                    missing.join(", ")
-                )
-            })
-        })
-        .collect();
+        .filter(|entry| entry.urgency(now, &stages) == Urgency::Now)
+        .count();
+    if waiting > QUESTION_LIMIT {
+        problems.push(format!(
+            "{waiting} decisions.md entries wait on the user now, over the limit of \
+             {QUESTION_LIMIT}; hold new questions until the user answers one"
+        ));
+    }
     if !problems.is_empty() {
         return Err(HubError::NotDone(problems.join("\n")));
     }

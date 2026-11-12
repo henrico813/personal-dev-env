@@ -2,11 +2,14 @@
 //! reads them, and counts what waits for the top line. Read
 //! `build_sections` first.
 
+use std::collections::BTreeMap;
+
 use jiff::civil::{Date, DateTime};
 use ratatui::style::Color;
 
-use super::queue::{CardLine, PullRequest, Question, Queue, SessionLine, Urgency};
-use crate::external::cards::{BoardCounts, Stage};
+use super::queue::{CardLine, PullRequest, Question, Queue, SessionLine, format_card_title};
+use crate::external::cards::{BoardCounts, CardKey, Stage};
+use crate::shared::decisions::Urgency;
 use crate::shared::lifecycle::{KeptReason, Lifecycle};
 
 /// The board's sections, in the order they show.
@@ -218,17 +221,114 @@ pub(super) fn read_failure_item(reason: &str) -> Item {
     }
 }
 
-/// Returns approval waits first, since they expire, then blocked
-/// sessions, then questions in file order, oldest first.
+/// What one part of NEEDS YOU waits for, most urgent first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Need {
+    Approval,
+    /// A session that waits on the user, blocked, marked or with an
+    /// open needs-you note.
+    Session,
+    Question,
+}
+
+impl Need {
+    /// Returns the part's mark, such as `A` for an approval wait.
+    fn mark(self) -> char {
+        match self {
+            Need::Approval => 'A',
+            Need::Session => 'B',
+            Need::Question => '?',
+        }
+    }
+}
+
+/// One session or question in NEEDS YOU, and the card it belongs to.
+struct NeedPart<'a> {
+    need: Need,
+    card: Option<&'a CardKey>,
+    item: Item,
+}
+
+/// Returns one item per card, in the order of each card's most urgent
+/// part. Approval waits come first, since they expire, then sessions
+/// that wait on the user, then questions in file order, oldest first.
+/// A part with no card, or the only part of its card, keeps its own
+/// item.
 fn needs_you_items(queue: &Queue) -> Vec<Item> {
-    let mut items = session_items(queue, 'A', |state| {
-        state == Lifecycle::Kept(KeptReason::ApprovalWaits)
-    });
-    items.extend(session_items(queue, 'B', |state| {
-        state == Lifecycle::WaitsOnUser
-    }));
-    items.extend(questions_with(queue, Urgency::Now));
-    items
+    let mut parts = Vec::new();
+    for session in &queue.sessions {
+        let need = match session.state {
+            Lifecycle::Kept(KeptReason::ApprovalWaits) => Need::Approval,
+            Lifecycle::WaitsOnUser => Need::Session,
+            _ => continue,
+        };
+        parts.push(NeedPart {
+            need,
+            card: session.card.as_ref().map(|(key, _)| key),
+            item: session_item(session, need.mark(), &queue.titles),
+        });
+    }
+    // The sort is stable, so sessions keep the queue's order.
+    parts.sort_by_key(|part| part.need);
+    for question in &queue.questions {
+        if question.urgency == Urgency::Now {
+            parts.push(NeedPart {
+                need: Need::Question,
+                card: question.card.as_ref(),
+                item: question_item(question, String::new()),
+            });
+        }
+    }
+    let mut groups: Vec<Vec<NeedPart>> = Vec::new();
+    for part in parts {
+        let place = part
+            .card
+            .and_then(|key| groups.iter().position(|group| group[0].card == Some(key)));
+        match place {
+            Some(place) => groups[place].push(part),
+            None => groups.push(vec![part]),
+        }
+    }
+    groups
+        .into_iter()
+        .map(|mut group| match group[0].card {
+            Some(key) if group.len() > 1 => card_needs_item(queue, key, &group),
+            _ => group.remove(0).item,
+        })
+        .collect()
+}
+
+/// Returns the one item for a card with several parts, such as
+/// `DEMO-KB-010  1 session, 2 questions` under the card's title. Its
+/// mark is its most urgent part's, and its details show every part.
+fn card_needs_item(queue: &Queue, key: &CardKey, parts: &[NeedPart]) -> Item {
+    let count = |need: Need| parts.iter().filter(|part| part.need == need).count();
+    let summary: Vec<String> = [
+        (Need::Approval, "approval", "approvals"),
+        (Need::Session, "session", "sessions"),
+        (Need::Question, "question", "questions"),
+    ]
+    .into_iter()
+    .filter(|&(need, _, _)| count(need) > 0)
+    .map(|(need, one, many)| match count(need) {
+        1 => format!("1 {one}"),
+        several => format!("{several} {many}"),
+    })
+    .collect();
+    let title = queue.titles.get(key).map_or("", String::as_str);
+    let key = key.as_str();
+    let (about, heading) = if title.is_empty() {
+        (String::new(), key.to_owned())
+    } else {
+        (format!("{title}\n"), format!("{key} {title}"))
+    };
+    let details: Vec<&str> = parts.iter().map(|part| part.item.detail.as_str()).collect();
+    Item {
+        key: format!("needs {key}"),
+        mark: parts[0].need.mark(),
+        text: format!("{about}{key}  {}", summary.join(", ")),
+        detail: format!("{heading}\n\n{}", details.join("\n\n")),
+    }
 }
 
 /// Returns the cards in review, each with the one step the user takes
@@ -274,11 +374,8 @@ fn worked_card_items(queue: &Queue) -> Vec<Item> {
 /// #301`.
 fn card_item(card: &CardLine, mark: char, status: &str) -> Item {
     let key = card.key.as_str();
-    let about = match (card.project.as_str(), card.title.as_str()) {
-        (_, "") => String::new(),
-        ("", title) => format!("{title}\n"),
-        (project, title) => format!("{project}: {title}\n"),
-    };
+    let about = format_card_title(&card.project, &card.title)
+        .map_or(String::new(), |title| format!("{title}\n"));
     Item {
         key: format!("card {key}"),
         mark,
@@ -407,18 +504,23 @@ fn session_items(queue: &Queue, mark: char, wanted: impl Fn(Lifecycle) -> bool) 
         .sessions
         .iter()
         .filter(|session| wanted(session.state))
-        .map(|session| session_item(session, mark))
+        .map(|session| session_item(session, mark, &queue.titles))
         .collect()
 }
 
-/// Returns a session's item, such as `docs-fix  unread report`. A why
-/// of `-` says nothing, so the row shows the name alone.
-fn session_item(session: &SessionLine, mark: char) -> Item {
+/// Returns a session's item, such as `docs-fix  unread report`, under
+/// its card's line from `titles` when there is one. A why of `-` says
+/// nothing, so the row shows the name alone.
+fn session_item(session: &SessionLine, mark: char, titles: &BTreeMap<CardKey, String>) -> Item {
     let why = (session.why != "-").then_some(session.why.as_str());
-    let card = session
+    let card = session.card.as_ref().map_or(String::new(), |(key, stage)| {
+        format!(", card {} {}", key.as_str(), stage.as_str())
+    });
+    let about = session
         .card
         .as_ref()
-        .map_or(String::new(), |card| format!(", card {card}"));
+        .and_then(|(key, _)| titles.get(key))
+        .map_or(String::new(), |title| format!("{title}\n"));
     let state = match session.state {
         Lifecycle::Working => "is working",
         Lifecycle::WaitsOnHub => "waits on the hub",
@@ -432,8 +534,8 @@ fn session_item(session: &SessionLine, mark: char) -> Item {
         key: format!("session {}", session.name),
         mark,
         text: match why {
-            Some(why) => format!("{}  {why}", session.name),
-            None => session.name.clone(),
+            Some(why) => format!("{about}{}  {why}", session.name),
+            None => format!("{about}{}", session.name),
         },
         detail: match why {
             Some(why) => format!("{} {state}, {why}{card}", session.name),

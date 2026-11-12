@@ -326,19 +326,20 @@ mod tests {
 
     use jiff::civil::DateTime;
 
-    use crate::board::queue::{CardLine, PullRequest, Question, SessionLine, Urgency};
-    use crate::external::cards::{BoardCounts, Stage};
+    use crate::board::queue::{CardLine, PullRequest, Question, SessionLine};
+    use crate::external::cards::{BoardCounts, CardKey, Stage};
+    use crate::shared::decisions::Urgency;
     use crate::shared::lifecycle::{KeptReason, Lifecycle};
 
-    /// A queue with an item in most sections and four cards, read at
-    /// `10:42`.
+    /// A queue with an item in most sections and four cards with their
+    /// titles, read at `10:42`.
     fn sample_queue() -> Queue {
         let tonight: DateTime = jiff::civil::date(2026, 11, 11).at(20, 0, 0, 0);
         let session = |name: &str, state, why: &str, card: Option<&str>| SessionLine {
             name: name.to_owned(),
             state,
             why: why.to_owned(),
-            card: card.map(str::to_owned),
+            card: card.map(|key: &str| (key.parse().unwrap(), Stage::Active)),
         };
         let card = |key: &str, stage, title: &str, next_step: &str, workers: &[&str]| CardLine {
             key: key.parse().unwrap(),
@@ -352,18 +353,48 @@ mod tests {
             title: title.to_owned(),
             lines: vec![format!("{title}?"), "Recommended: A.".to_owned()],
             urgency,
+            card: None,
         };
+        let cards = vec![
+            card(
+                "DEMO-KB-010",
+                Stage::Review,
+                "Retry a failed upload twice",
+                "review PR #301",
+                &[],
+            ),
+            card(
+                "DEMO-KB-012",
+                Stage::Active,
+                "Faster search",
+                "open the card",
+                &["api-build"],
+            ),
+            card(
+                "DEMO-KB-016",
+                Stage::Active,
+                "Free up disk space",
+                "open the card",
+                &[],
+            ),
+            card(
+                "DEMO-KB-018",
+                Stage::Draft,
+                "Board for the phone",
+                "open the card",
+                &["docs-fix"],
+            ),
+        ];
+        let titles = cards
+            .iter()
+            .map(|card| (card.key.clone(), format!("Demo: {}", card.title)))
+            .collect();
         Queue {
             read_at: "2026-11-11T10:42[UTC]".parse().unwrap(),
             sessions: vec![
                 session("docs-fix", Lifecycle::WaitsOnHub, "unread report", None),
                 session("blocked-fix", Lifecycle::WaitsOnUser, "blocked", None),
-                session(
-                    "api-build",
-                    Lifecycle::Working,
-                    "-",
-                    Some("DEMO-KB-012 active"),
-                ),
+                session("api-build", Lifecycle::Working, "-", Some("DEMO-KB-012")),
                 session(
                     "ship-docs",
                     Lifecycle::Kept(KeptReason::ApprovalWaits),
@@ -373,36 +404,8 @@ mod tests {
                 session("old-plan", Lifecycle::Parked, "-", None),
             ],
             unread: vec!["docs-fix".to_owned(), "old-worker".to_owned()],
-            cards: vec![
-                card(
-                    "DEMO-KB-010",
-                    Stage::Review,
-                    "Retry a failed upload twice",
-                    "review PR #301",
-                    &[],
-                ),
-                card(
-                    "DEMO-KB-012",
-                    Stage::Active,
-                    "Faster search",
-                    "open the card",
-                    &["api-build"],
-                ),
-                card(
-                    "DEMO-KB-016",
-                    Stage::Active,
-                    "Free up disk space",
-                    "open the card",
-                    &[],
-                ),
-                card(
-                    "DEMO-KB-018",
-                    Stage::Draft,
-                    "Board for the phone",
-                    "open the card",
-                    &["docs-fix"],
-                ),
-            ],
+            cards,
+            titles,
             questions: vec![
                 question("Deploy tonight", Urgency::Now),
                 question("Demo: name the app", Urgency::Later(tonight)),
@@ -494,6 +497,77 @@ mod tests {
             "^ up           2/23 menu          down v",
         ];
         assert_eq!(lines, expected);
+    }
+
+    /// A card can wait on the user in several ways at once, such as a
+    /// blocked worker and two questions. One row per card keeps NEEDS
+    /// YOU short enough that the cards show on a phone. The row must take
+    /// the mark of its most urgent part, and its details must list every
+    /// part, or the user answers one question and misses the others. A
+    /// card with one question keeps that question's own row.
+    #[test]
+    fn render_lines_groups_needs_you_by_card() {
+        let mut board = Board::new(false);
+        let mut queue = sample_queue();
+        let upload_card: CardKey = "DEMO-KB-010".parse().unwrap();
+        for session in &mut queue.sessions {
+            if session.name == "blocked-fix" {
+                session.card = Some((upload_card.clone(), Stage::Review));
+            }
+        }
+        let search_card: CardKey = "DEMO-KB-012".parse().unwrap();
+        for (title, card) in [
+            ("DEMO-KB-010 merge order", &upload_card),
+            ("DEMO-KB-010 retry count", &upload_card),
+            ("DEMO-KB-012 index size", &search_card),
+        ] {
+            queue.questions.push(Question {
+                title: title.to_owned(),
+                lines: vec!["Which one?".to_owned()],
+                urgency: Urgency::Now,
+                card: Some(card.clone()),
+            });
+        }
+        board.show_reading(Ok(queue));
+
+        let lines = board.render_lines(40, 16);
+        board.handle_input(&press(KeyCode::Char('j')));
+        board.handle_input(&press(KeyCode::Enter));
+        let details = board.render_lines(40, 16).join("\n");
+
+        assert_eq!(
+            lines[1..7],
+            [
+                "── NEEDS YOU 4 ─────────────────────────",
+                ">A ship-docs  approval waits",
+                " B Demo: Retry a failed upload twice",
+                "   DEMO-KB-010  1 session, 2 questions",
+                " ? Deploy tonight",
+                " ? DEMO-KB-012 index size",
+            ]
+        );
+        for part in ["blocked-fix", "merge order", "retry count"] {
+            assert!(details.contains(part), "{part} missing from {details}");
+        }
+    }
+
+    /// Session names such as `demo-kb-012-impl` do not say what the
+    /// work is. A session row must show its card's title on top, with
+    /// the name below, so the user knows what each session works on.
+    #[test]
+    fn render_lines_session_rows_show_card_title() {
+        let mut board = Board::new(false);
+        board.show_reading(Ok(sample_queue()));
+        board.render_lines(40, 16);
+        board.handle_input(&press(KeyCode::Char('s')));
+        let menu = board.render_lines(40, 16);
+
+        board.handle_input(&tap_on(&menu, "WORKING SESSIONS"));
+        let lines = board.render_lines(40, 16);
+
+        let heading = usize::from(screen_row(&lines, "WORKING SESSIONS"));
+        assert_eq!(lines[heading + 1], " * Demo: Faster search");
+        assert_eq!(lines[heading + 2], "   api-build");
     }
 
     /// Raw mode turns Ctrl-C into a key, so a board that misses q or

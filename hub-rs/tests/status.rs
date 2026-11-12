@@ -278,7 +278,7 @@ fn run_status_bad_request_file_keeps_sessions() {
         [(
             "demo-kb-007-impl".to_owned(),
             "kept".to_owned(),
-            "approval waits".to_owned(),
+            "open request".to_owned(),
         )]
     );
     assert_eq!(

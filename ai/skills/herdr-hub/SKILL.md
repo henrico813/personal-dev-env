@@ -65,14 +65,15 @@ WAITS is `hub` when the session waits on you, and `you` when it waits
 on the user, even when it does not report to you. A session waits on
 the user when:
 
-- it is blocked, or marked "needs you"
-- its card has a needs-you note with no answer
-- it sits idle and has never reported to you
+- it is blocked
+- it is marked "needs you", or its card has a needs-you note with no
+  answer, and no newer session works on its card
 
 Run `hub status` at the start and on each turn. Tell the user once
-what each `you` session waits on. When such a session has never
-reported to you, bring it under the hub at once: send it the new
-rules that Rules gives for a worker the user hands you.
+what each `you` session waits on. A session that sits idle and has
+never reported to you shows `hub` with `never reported`. Bring it
+under the hub at once: send it the new rules that Rules gives for a
+worker the user hands you.
 
 Before you send a worker new build work, check its CTX in
 `hub status`. A worker near 150k writes its handoff first, and the
@@ -213,6 +214,9 @@ vault. A hub never reports to a hub on another machine.
   even when more work follows. When the user has answered or
   reviewed and more work follows, move it back to `active` with
   `--user`, since the user's review is the go-ahead.
+  When you move a card to `review`, add the user's one next step with
+  `card note KEY "next: <step>"`, such as `next: review PR #498`. The
+  board shows it under the card.
 - Only the user moves a card from `draft` to `ready`, adopts work
   already under way, or drops a card. Never release a card the user
   described in a sentence: it stays in `draft` until the user has
@@ -305,9 +309,21 @@ user everything that waits on them with:
 
     hub brief --run "<run folder>"
 
-It prints `reviews.md`, then every entry. It exits 2, naming the
+It prints `reviews.md`, then every entry. It exits 3, naming the
 entry, when one lacks its question, two choices, `Recommended:` or
-`If no reply:`. Fix the entry and run it again.
+`If no reply:`, or when its `Not before:` time does not read. Fix the
+entry and run it again.
+
+When the user puts a question off, add a line
+`Not before: YYYY-MM-DD HH:MM` to its entry, in the user's local time,
+such as `Not before: 2026-11-11 20:00`. The board hides the question
+until then. Add `Priority: optional` to a question the user may skip.
+A question that names one card moves to optional by itself once that
+card is accepted or dropped.
+
+At most 5 questions wait on the user at once. While 5 wait, hold a new
+question and add it once the user answers one. `hub brief` exits 3
+when more than 5 wait.
 
 ## Merges
 
