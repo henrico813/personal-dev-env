@@ -8,24 +8,37 @@ printed. Each snippet stops with `exit 1` on the first failure; never
 run the lines after a failed one by hand.
 
 The setup copies this skill's scripts into the run folder: `fns.sh`,
-`build.sh`, `ship.sh`, `plants.sh` and `suites.sh`. Run each as the
+`build.sh`, `ship.sh`, `plants.sh`, `suites.sh` and
+`deploy-check.sh`. Run each as the
 section below says. You need not read them: each prints a short
 result and logs the rest in the run folder.
 
 ## Contents
 
+- Send script-checked jobs to the local model
 - Write a design digest
+- Ask a digest a question
 - Set up a PR's run folder
 - Run the suites once per plan version
 - Build the PR
 - Apply a fix round
 - Put back the bugs
 - Ship
+- Check a deploy
 - Push a later round
 - Print a PR's status line
 - Base a child on an unbuilt parent
 - Move a PR's base
 - Carry a parent's commit to a child
+
+## Send script-checked jobs to the local model
+
+Writing a digest, running the suites, putting back the bugs and
+checking a deploy are script jobs, as `model-routing`'s Brief a local
+model describes. Send each one to the local model first, with the
+command and summary file its section below names. Move it to the
+cheap model only when the local job fails its check, as
+`model-routing`'s When the check fails says.
 
 ## Write a design digest
 
@@ -34,10 +47,15 @@ run's shared folder, beside `rules.md`. A script writes it, so it
 drops no passage that names a term. List every design note, the
 design-edits note among them, and each term the PR adds or changes,
 such as a file, type, function, command, flag or error code. Name
-each section to copy whole, such as the Dictionary:
+each section to copy whole, such as the Dictionary. Write the snippet
+below, filled in, to `<shared folder>/digest-<PR name>.sh`. Hand the
+job to the local model with the command
+`bash <shared folder>/digest-<PR name>.sh` and the summary file
+`<shared folder>/design-<PR name>.md.summary`:
 
 ```sh
 G='<shared folder>/design-<PR name>.md'
+rm -f "$G.summary" || exit 1
 E='<design-edits note, or the one design note>'
 set -- '<design note>' '<design note>'
 printf '%s\n' '<term>' '<term>' > "$G.terms" || exit 1
@@ -64,11 +82,33 @@ FNR == 1 { lvl = 0 }
 lvl { print FNR ":" $0 }
 ' "$G.sections" "$@" > "$G.whole" || exit 1
 cat "$G.whole" "$G.passages" > "$G" || exit 1
-wc -l "$G"
+printf '%s lines\ndone\n' "$(wc -l < "$G")" > "$G.summary" || exit 1
+cat "$G.summary"
 ```
 
 Each passage keeps its note and line number, so a reader can read
 around it with `sed -n`. To add a term, run the whole snippet again.
+
+## Ask a digest a question
+
+Planners and reviewers ask the local model about a digest instead of
+reading the whole digest. They read whole only the passages their
+work changes. The rules file names the local and cheap models:
+
+```sh
+python3 ~/.agents/skills/roadmap-run/scripts/digest_reader.py \
+  ask --model '<local model>' '<design digest>' '<question>'
+```
+
+It prints one JSON line with `answer`, `line` and `quote`. Before it
+prints, it checks that the quote starts on that line of the digest,
+so a printed quote is always the digest's own words. On a nonzero
+exit, ask once more, then once with the cheap model, as
+`model-routing`'s When the check fails says. When the cheap model
+fails too, read the passage yourself with `rg -n` and `sed -n`. You
+run on a stronger model than the cheap one. `model-routing`'s When the
+check fails lets a stronger model take the digest job over, which is
+why you read the passage instead of asking again.
 
 ## Set up a PR's run folder
 
@@ -232,7 +272,8 @@ version of the plan.
 - `text`: fix `$D/FILE`, then rerun.
 - `push`: follow the reason. A failed check is never minor. When the
   parent moved, run Carry a parent's commit to a child, then rerun.
-- The stop after `push`: deploy and try the pushed commit, add the
+- The stop after `push`: deploy and try the pushed commit with Check
+  a deploy, add the
   one-line result to Testing in `$D/FILE`, write the same line,
   starting with the full hash from `git -C "$W" rev-parse HEAD`,
   to `$D/tested`, then rerun.
@@ -255,6 +296,39 @@ after that files a fresh request. ship.sh keeps the request's first
 text, reruns the saved script while the request waits, and skips it
 once the PR is open, so a later round never files a second PR
 request.
+
+## Check a deploy
+
+Write each try a script can check as a `try` line in
+`<run folder>/deploy.checks`, and delete any old
+`<run folder>/deploy.txt`. Hand the job to the local model with
+the command `bash <run folder>/deploy-check.sh` and the summary file
+`<run folder>/deploy.txt`:
+
+```sh
+try '<name>' '<command>' '<text the output must hold>'
+```
+
+Each command runs with `sh` in one scratch folder that all the lines
+share, so a later line can use what an earlier one made. Name every
+other folder in full, as in `git -C <worktree>`. Leave out the text
+when the exit code is enough. Put longer setup, such as a fake
+program, in a file in the run folder, and run it from a `try` line.
+A try that needs judgment, such as an agent following a changed
+skill, gets its model from `model-routing` instead.
+
+`deploy.txt` starts with `folder: <scratch folder>`, then holds one
+`pass` or `FAIL` line per `try` line. The script stops at the first
+`FAIL`. It writes the last line, `done`, only after every line
+passed, so a failed try never ends in `done`. Each command's output
+is in `<run folder>/deploy.log`.
+
+- `done` last: write the one-line result from the `pass` lines.
+- A `FAIL` line last: the PR failed its try. That is the PR's result,
+  not a failed job, so do not move the job to the cheap model. Fix the
+  PR through the loop.
+- Anything else, such as no `deploy.txt`: the local job failed its
+  check.
 
 ## Push a later round
 
