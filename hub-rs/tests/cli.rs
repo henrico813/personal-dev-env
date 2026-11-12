@@ -347,23 +347,38 @@ fn find_run_folder_picks_running_else_newest() {
     }
 }
 
-/// During an auto run two hubs run, each with its own folder, and
-/// picking one could show the wrong run. So the search names both
-/// folders and asks for `--run`, rather than taking the folder used
-/// last.
+/// During an auto run the user's hub and the auto hub both run. The
+/// user's `hub board` must show their own hub, not stop with an error
+/// or show the auto run. Only the auto run's folder has `approved.md`.
 #[test]
-fn find_run_folder_rejects_two_running_hubs() {
+fn find_run_folder_skips_running_auto_run() {
+    let local_state = TempFolder::new();
+    let _auto = hold_watcher_lock(&local_state.path().join("herdr-hub.auto"));
+    fs::write(local_state.path().join("herdr-hub.auto/approved.md"), "").unwrap();
+    let _front = hold_watcher_lock(&local_state.path().join("herdr-hub.front"));
+
+    let found = find_run_folder(None, None, Some(local_state.path())).unwrap();
+
+    assert_eq!(found.path(), local_state.path().join("herdr-hub.front"));
+}
+
+/// Two running hubs that are not auto runs give no way to tell which
+/// one the user means, and picking one could show the wrong run. So
+/// the search names both folders and asks for `--run`, rather than
+/// taking the folder used last.
+#[test]
+fn find_run_folder_rejects_two_running_own_hubs() {
     let local_state = TempFolder::new();
     make_finished_run(&local_state.path().join("herdr-hub.last"), 60 * 60);
-    let _auto = hold_watcher_lock(&local_state.path().join("herdr-hub.auto"));
-    let _front = hold_watcher_lock(&local_state.path().join("herdr-hub.front"));
+    let _first = hold_watcher_lock(&local_state.path().join("herdr-hub.first"));
+    let _second = hold_watcher_lock(&local_state.path().join("herdr-hub.second"));
 
     let found = find_run_folder(None, None, Some(local_state.path()));
 
     match found {
         Err(HubError::Usage(message)) => {
-            assert!(message.contains("herdr-hub.auto"), "{message}");
-            assert!(message.contains("herdr-hub.front"), "{message}");
+            assert!(message.contains("herdr-hub.first"), "{message}");
+            assert!(message.contains("herdr-hub.second"), "{message}");
         }
         found => panic!("{:?}", found.map(|run| run.path().to_owned())),
     }
