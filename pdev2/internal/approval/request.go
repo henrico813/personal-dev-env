@@ -17,6 +17,7 @@ type Request struct {
 	Body      string
 	Repo      string // From --repo until loadOrCreate looks it up for display.
 	Target    string // PR number or branch, used to fetch current values for pr edit.
+	Base      string // From --base. pr create needs it to name a branch with an open PR.
 	Command   string // Quoted command shown to the approver and hashed into the ID.
 	ID        string
 	Args      []string
@@ -46,7 +47,7 @@ var writeOperations = []string{"create", "edit", "comment", "review", "merge", "
 // approved text.
 func Parse(args []string, stdin io.Reader) (Request, error) {
 	if len(args) < 2 || args[0] != "pr" {
-		return Request{}, fmt.Errorf("usage: pde-gh-write pr {%s} [gh arguments...]", strings.Join(writeOperations, "|"))
+		return Request{}, fmt.Errorf("usage: pde-gh-write [--retry] pr {%s} [gh arguments...]", strings.Join(writeOperations, "|"))
 	}
 	req := Request{Operation: args[1], Args: append([]string(nil), args...)}
 	if !slices.Contains(writeOperations, req.Operation) {
@@ -101,6 +102,9 @@ func Parse(args []string, stdin io.Reader) (Request, error) {
 				return Request{}, fmt.Errorf("%s requires a value", name)
 			}
 			value = args[index]
+		}
+		if name == "--base" || name == "-B" {
+			req.Base = value
 		}
 		switch kind {
 		case "title":
@@ -206,6 +210,11 @@ func findTarget(operation string, args []string) (target string, unknown bool) {
 		}
 	}
 	return "", false
+}
+
+// Returns the PR number or branch that Parse found in a saved command.
+func FindCommandTarget(args []string) (target string, unknown bool) {
+	return findTarget(args[1], args[2:])
 }
 
 func commandText(args []string) string {

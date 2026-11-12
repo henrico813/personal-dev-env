@@ -13,6 +13,16 @@ use serde_json::{Value, json};
 
 const LABEL_SOURCE: &str = "pde-hub";
 const NEEDS_YOU: &str = "needs you";
+/// The pane token that keeps the desk and the hubs at the top of the
+/// filtered agent list. Herdr sorts its values as text, so their numbers
+/// set the order. The user's Herdr lists the agents of every connected
+/// machine together, so each machine's kanban hub sorts beside the others.
+const GO_TO_TOKEN: &str = "go_to";
+const GO_TO_KANBAN_HUB: &str = "1-kanban-hub";
+const GO_TO_DESK: &str = "2-desk";
+const GO_TO_OTHER_HUB: &str = "3-hub";
+/// The pane token that keeps a flagged session in the agent filter.
+const NEEDS_YOU_TOKEN: &str = "needs_you";
 const PROMPT_TIME_LIMIT_MS: &str = "30000";
 /// Long enough for OpenCode to load the folder and open the session.
 const START_TIME_LIMIT_MS: &str = "90000";
@@ -36,9 +46,20 @@ pub trait Herdr {
     /// Waits up to 30 seconds for the agent to start working or block.
     fn wait_until_started(&self, name: &str) -> Result<(), HerdrError>;
     /// Shows "needs you" in place of each given state in the sidebar.
+    /// A mark on idle also keeps the session in the filtered agent list.
     fn mark_needs_you(&self, pane_id: &str, states: &[AgentStatus]) -> Result<(), HerdrError>;
-    /// Removes the hub's state labels from a pane.
+    /// Removes the hub's state labels and "needs you" token from a pane.
     fn clear_marks(&self, pane_id: &str) -> Result<(), HerdrError>;
+    /// Tags a hub's pane, so the filtered agent list keeps it in its
+    /// kind's place, and labels its row "hub busy" or "hub free".
+    fn tag_hub_pane(&self, pane_id: &str, kind: HubKind) -> Result<(), HerdrError>;
+    /// Reports the desk's first pane, where the board runs, as an agent
+    /// named `desk`, so the filtered agent list can show it first.
+    fn show_desk_as_agent(&self, workspace_id: &str) -> Result<(), HerdrError>;
+    /// Makes Herdr's agent list, headed "go to", show only the desk,
+    /// the hubs and the sessions that wait on the user, through
+    /// Herdr's socket.
+    fn filter_agent_list(&self) -> Result<(), HerdrError>;
     /// Returns every pane with its tab and focus, plain shells included.
     fn list_panes(&self) -> Result<Vec<Pane>, HerdrError>;
     /// Returns a pane's shell process and the process group in front.
@@ -49,6 +70,8 @@ pub trait Herdr {
     fn create_workspace(&self, place: &NewPlace) -> Result<PlaceIds, HerdrError>;
     /// Makes an unfocused tab in a workspace and returns its root pane.
     fn create_tab(&self, workspace_id: &str, place: &NewPlace) -> Result<PlaceIds, HerdrError>;
+    /// Runs a command line at a pane's shell prompt, as if typed.
+    fn run_in_pane(&self, pane_id: &str, command: &str) -> Result<(), HerdrError>;
     /// Starts an OpenCode agent at a pane's shell prompt.
     fn start_agent(&self, start: &AgentStart) -> Result<(), HerdrError>;
     /// Closes one tab and every pane in it.
@@ -93,8 +116,14 @@ impl HerdrCli {
         if output.status.success() {
             return Ok(output.stdout);
         }
-        let answer: Option<Value> = serde_json::from_slice(&output.stdout).ok();
-        if let Some(refusal) = answer.as_ref().and_then(read_refusal) {
+        // Herdr prints its JSON error on stderr, so both outputs are read.
+        let refusal = [&output.stdout, &output.stderr]
+            .into_iter()
+            .find_map(|printed| {
+                let answer: Value = serde_json::from_slice(printed).ok()?;
+                read_refusal(&answer)
+            });
+        if let Some(refusal) = refusal {
             return Err(refusal);
         }
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
@@ -135,6 +164,7 @@ impl HerdrCli {
         let result = read_result(&printed)?;
         Ok(PlaceIds {
             root_pane_id: read_text(&result["root_pane"], "pane_id")?,
+            workspace_id: read_text(&result["root_pane"], "workspace_id")?,
         })
     }
 }
@@ -202,11 +232,93 @@ impl Herdr for HerdrCli {
             options.push("--state-label");
             options.push(label.as_str());
         }
+        // The filter cannot read labels, and it keeps a blocked session
+        // by its state, so only a mark on idle needs the token.
+        let token = format!("{NEEDS_YOU_TOKEN}=yes");
+        if states.contains(&AgentStatus::Idle) {
+            options.extend(["--token", token.as_str()]);
+        }
         self.report_pane_labels(pane_id, &options)
     }
 
     fn clear_marks(&self, pane_id: &str) -> Result<(), HerdrError> {
-        self.report_pane_labels(pane_id, &["--clear-state-labels"])
+        let options = ["--clear-state-labels", "--clear-token", NEEDS_YOU_TOKEN];
+        self.report_pane_labels(pane_id, &options)
+    }
+
+    fn tag_hub_pane(&self, pane_id: &str, kind: HubKind) -> Result<(), HerdrError> {
+        let go_to = match kind {
+            HubKind::Kanban => GO_TO_KANBAN_HUB,
+            HubKind::Other => GO_TO_OTHER_HUB,
+        };
+        let token = format!("{GO_TO_TOKEN}={go_to}");
+        let options = [
+            "--token",
+            token.as_str(),
+            "--state-label",
+            "working=hub busy",
+            "--state-label",
+            "idle=hub free",
+            "--state-label",
+            "done=hub free",
+        ];
+        self.report_pane_labels(pane_id, &options)
+    }
+
+    fn show_desk_as_agent(&self, workspace_id: &str) -> Result<(), HerdrError> {
+        let printed = self.run_herdr(&["pane", "list", "--workspace", workspace_id])?;
+        // Herdr lists panes in tab order, so the first is the board's.
+        let panes = parse_pane_list(&read_result(&printed)?)?;
+        let board = panes
+            .first()
+            .ok_or_else(|| HerdrError::Failed("Herdr lists no pane in the desk".to_owned()))?;
+        let pane_id = board.pane_id.as_str();
+        let report = [
+            "pane",
+            "report-agent",
+            pane_id,
+            "--source",
+            LABEL_SOURCE,
+            "--agent",
+            "desk",
+            "--state",
+            "idle",
+        ];
+        self.run_herdr(&report)?;
+        let token = format!("{GO_TO_TOKEN}={GO_TO_DESK}");
+        let options = [
+            "--token",
+            token.as_str(),
+            "--state-label",
+            "idle=your desk",
+            "--state-label",
+            "done=your desk",
+        ];
+        self.report_pane_labels(pane_id, &options)
+    }
+
+    fn filter_agent_list(&self) -> Result<(), HerdrError> {
+        // Herdr's `done` is an idle agent the user has not looked at yet.
+        // A flagged session shows while idle or done, as its mark does.
+        // Panes without the token sort after the desk and the hubs.
+        let params = json!({
+            "source": LABEL_SOURCE,
+            "label": "go to",
+            "filter": {"op": "any", "filters": [
+                {"op": "exists", "field": {"token": GO_TO_TOKEN}},
+                {"op": "eq", "field": "status", "value": "blocked"},
+                {"op": "all", "filters": [
+                    {"op": "eq", "field": {"token": NEEDS_YOU_TOKEN}, "value": "yes"},
+                    {"op": "in", "field": "status", "values": ["idle", "done"]},
+                ]},
+            ]},
+            "sort": [
+                {"field": {"token": GO_TO_TOKEN}, "order": "asc"},
+                {"field": "attention", "order": "desc"},
+                {"field": "state_change_seq", "order": "desc"},
+            ],
+        });
+        call_socket(&self.socket, "agent.view.set", params)
     }
 
     fn list_panes(&self) -> Result<Vec<Pane>, HerdrError> {
@@ -255,6 +367,10 @@ impl Herdr for HerdrCli {
     fn create_tab(&self, workspace_id: &str, place: &NewPlace) -> Result<PlaceIds, HerdrError> {
         let command = ["tab", "create", "--no-focus", "--workspace", workspace_id];
         self.create_place(&command, place)
+    }
+
+    fn run_in_pane(&self, pane_id: &str, command: &str) -> Result<(), HerdrError> {
+        self.run_herdr(&["pane", "run", pane_id, command]).map(drop)
     }
 
     fn start_agent(&self, start: &AgentStart) -> Result<(), HerdrError> {
@@ -322,6 +438,15 @@ pub struct Agent {
     pub machine: Option<String>,
 }
 
+/// A hub's place in the filtered agent list, by what the hub does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HubKind {
+    /// A hub the user works the kanban board with, such as
+    /// `kanban-hub-13`. These come first.
+    Kanban,
+    Other,
+}
+
 /// Herdr's state for an agent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AgentStatus {
@@ -351,7 +476,8 @@ impl AgentStatus {
 pub enum AgentKind {
     OpenCode,
     Claude,
-    /// Any other, such as `codex`, by Herdr's name for it.
+    /// Any other, such as `codex`, by Herdr's name for it. Empty while
+    /// Herdr has not yet detected the program.
     Other(String),
 }
 
@@ -395,6 +521,7 @@ pub struct NewPlace {
 #[derive(Clone, Debug)]
 pub struct PlaceIds {
     pub root_pane_id: String,
+    pub workspace_id: String,
 }
 
 /// An OpenCode agent to start in a pane.
@@ -517,10 +644,18 @@ fn parse_agent(raw: &Value, machine: Option<&str>) -> Result<Agent, HerdrError> 
         Some(_) => AgentStatus::Unknown,
         None => return Err(make_missing_field_error("agent_status")),
     };
-    let kind = match read_text(raw, "agent")?.as_str() {
-        "opencode" => AgentKind::OpenCode,
-        "claude" => AgentKind::Claude,
-        other => AgentKind::Other(other.to_owned()),
+    // Herdr lists a starting agent with `"agent": null` until it detects
+    // the program. Its state is then unknown, so a message for it waits.
+    let (kind, status) = match raw.get("agent") {
+        Some(Value::Null) => (AgentKind::Other(String::new()), AgentStatus::Unknown),
+        _ => {
+            let kind = match read_text(raw, "agent")?.as_str() {
+                "opencode" => AgentKind::OpenCode,
+                "claude" => AgentKind::Claude,
+                other => AgentKind::Other(other.to_owned()),
+            };
+            (kind, status)
+        }
     };
     let status_word = raw["agent_status"].as_str().unwrap_or_default();
     let mut folders: Vec<PathBuf> = ["cwd", "foreground_cwd"]
@@ -679,6 +814,51 @@ mod tests {
 
         let names: Vec<&str> = agents.iter().map(|agent| agent.name.as_str()).collect();
         assert_eq!(names, ["demo-kb-007-impl"]);
+    }
+
+    /// Herdr lists a new agent by name before it detects which program
+    /// runs there. That entry must stay in the list with an unknown
+    /// state, whatever state Herdr gives, so a message for it waits.
+    /// Left out, the session looks gone, and its message is marked not
+    /// sent or moved to an older session of the card.
+    #[test]
+    fn parse_agent_list_keeps_undetected_agents_unknown() {
+        let result = json!({"agents": [
+            {
+                "name": "docs-fix",
+                "agent": null,
+                "agent_status": "idle",
+                "pane_id": "w4:p2",
+                "workspace_id": "w4",
+                "tab_id": "w4:t2",
+                "focused": false,
+                "state_change_seq": 1,
+            },
+            {
+                "name": "notes-fix",
+                "agent": "opencode",
+                "agent_status": "idle",
+                "pane_id": "w4:p3",
+                "workspace_id": "w4",
+                "tab_id": "w4:t3",
+                "focused": false,
+                "state_change_seq": 1288,
+            },
+        ]});
+
+        let agents = parse_agent_list(&result, None).unwrap();
+
+        let states: Vec<(&str, AgentStatus)> = agents
+            .iter()
+            .map(|agent| (agent.name.as_str(), agent.status))
+            .collect();
+        assert_eq!(
+            states,
+            [
+                ("docs-fix", AgentStatus::Unknown),
+                ("notes-fix", AgentStatus::Idle),
+            ]
+        );
     }
 
     /// The tidy pass closes a shell pane only with its finished agent's

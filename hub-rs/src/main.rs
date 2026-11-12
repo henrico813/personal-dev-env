@@ -203,6 +203,7 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         Command::Alive { session } => alive::run_alive(&tools, session, &now),
         Command::Go => sidebar::run_go(&tools),
         Command::Gather => sidebar::run_gather(&tools),
+        Command::Desk => sidebar::run_desk(&tools, &home),
         Command::Board => board::run_board(),
     }
 }

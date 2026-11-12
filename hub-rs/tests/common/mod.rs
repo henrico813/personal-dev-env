@@ -12,8 +12,8 @@ use std::time::Duration;
 
 use hub::external::cards::{BoardCounts, CardError, CardKey, CardNote, Cards, Stage};
 use hub::external::herdr::{
-    Agent, AgentKind, AgentStart, AgentStatus, Herdr, HerdrCode, HerdrError, NewPlace, Pane,
-    PlaceIds, ProcessInfo, Workspace,
+    Agent, AgentKind, AgentStart, AgentStatus, Herdr, HerdrCode, HerdrError, HubKind, NewPlace,
+    Pane, PlaceIds, ProcessInfo, Workspace,
 };
 use hub::external::opencode::OpenCodeDb;
 use hub::external::requests::RequestFolder;
@@ -25,11 +25,11 @@ use rusqlite::Connection;
 use serde_json::Value;
 
 /// Herdr, as the `Herdr` trait, with its agents and workspaces in
-/// memory. It records each prompt, Enter press, mark, clear, new
-/// workspace, new tab, started agent, closed tab, focus and workspace
-/// move it is asked for. Its panes are the agents' panes and those
-/// `on_list_panes` adds or changes, and an agent whose tab was closed
-/// is gone.
+/// memory. It records each prompt, Enter press, mark, clear, hub tag,
+/// desk agent, agent filter, new workspace, new tab, command run in a pane, started
+/// agent, closed tab, focus and workspace move it is asked for. Its
+/// panes are the agents' panes and those `on_list_panes` adds or
+/// changes, and an agent whose tab was closed is gone.
 #[derive(Default)]
 pub struct InMemoryHerdr {
     pub agents: Vec<Agent>,
@@ -64,6 +64,12 @@ pub struct InMemoryHerdr {
     pub marks: RefCell<Vec<(String, Vec<AgentStatus>)>>,
     /// The pane ID of each `clear_marks` call.
     pub cleared: RefCell<Vec<String>>,
+    /// Each `tag_hub_pane` call, as its pane ID and hub kind.
+    pub tagged_hubs: RefCell<Vec<(String, HubKind)>>,
+    /// The workspace ID of each `show_desk_as_agent` call.
+    pub desk_agents: RefCell<Vec<String>>,
+    /// How many times `filter_agent_list` was called.
+    pub agent_filters: Cell<usize>,
     /// The agent name of each `focus_agent` call.
     pub focused: RefCell<Vec<String>>,
     /// Each `move_workspaces` call, as the IDs moved and the ID they
@@ -78,6 +84,8 @@ pub struct InMemoryHerdr {
     pub created_workspaces: RefCell<Vec<NewPlace>>,
     /// Each `create_tab` call, as the workspace ID and the place.
     pub created_tabs: RefCell<Vec<(String, NewPlace)>>,
+    /// Each `run_in_pane` call, as the pane ID and the command.
+    pub ran_in_panes: RefCell<Vec<(String, String)>>,
     /// Each `start_agent` call.
     pub started: RefCell<Vec<AgentStart>>,
     /// The tab ID of each `close_tab` call.
@@ -192,6 +200,26 @@ impl Herdr for InMemoryHerdr {
         Ok(())
     }
 
+    fn tag_hub_pane(&self, pane_id: &str, kind: HubKind) -> Result<(), HerdrError> {
+        self.take_failure("tag_hub_pane")?;
+        self.tagged_hubs
+            .borrow_mut()
+            .push((pane_id.to_owned(), kind));
+        Ok(())
+    }
+
+    fn show_desk_as_agent(&self, workspace_id: &str) -> Result<(), HerdrError> {
+        self.take_failure("show_desk_as_agent")?;
+        self.desk_agents.borrow_mut().push(workspace_id.to_owned());
+        Ok(())
+    }
+
+    fn filter_agent_list(&self) -> Result<(), HerdrError> {
+        self.take_failure("filter_agent_list")?;
+        self.agent_filters.set(self.agent_filters.get() + 1);
+        Ok(())
+    }
+
     fn list_panes(&self) -> Result<Vec<Pane>, HerdrError> {
         self.take_failure("list_panes")?;
         let added = match &self.on_list_panes {
@@ -230,12 +258,13 @@ impl Herdr for InMemoryHerdr {
         Ok(self.workspaces.clone())
     }
 
-    /// Answers with root pane `new:p-<label>`.
+    /// Answers with workspace `new` and root pane `new:p-<label>`.
     fn create_workspace(&self, place: &NewPlace) -> Result<PlaceIds, HerdrError> {
         self.take_failure("create_workspace")?;
         self.created_workspaces.borrow_mut().push(place.clone());
         Ok(PlaceIds {
             root_pane_id: format!("new:p-{}", place.label),
+            workspace_id: "new".to_owned(),
         })
     }
 
@@ -247,7 +276,16 @@ impl Herdr for InMemoryHerdr {
             .push((workspace_id.to_owned(), place.clone()));
         Ok(PlaceIds {
             root_pane_id: format!("{workspace_id}:p-{}", place.label),
+            workspace_id: workspace_id.to_owned(),
         })
+    }
+
+    fn run_in_pane(&self, pane_id: &str, command: &str) -> Result<(), HerdrError> {
+        self.take_failure("run_in_pane")?;
+        self.ran_in_panes
+            .borrow_mut()
+            .push((pane_id.to_owned(), command.to_owned()));
+        Ok(())
     }
 
     fn start_agent(&self, start: &AgentStart) -> Result<(), HerdrError> {
@@ -322,6 +360,18 @@ impl Herdr for &InMemoryHerdr {
         (**self).clear_marks(pane_id)
     }
 
+    fn tag_hub_pane(&self, pane_id: &str, kind: HubKind) -> Result<(), HerdrError> {
+        (**self).tag_hub_pane(pane_id, kind)
+    }
+
+    fn show_desk_as_agent(&self, workspace_id: &str) -> Result<(), HerdrError> {
+        (**self).show_desk_as_agent(workspace_id)
+    }
+
+    fn filter_agent_list(&self) -> Result<(), HerdrError> {
+        (**self).filter_agent_list()
+    }
+
     fn list_panes(&self) -> Result<Vec<Pane>, HerdrError> {
         (**self).list_panes()
     }
@@ -340,6 +390,10 @@ impl Herdr for &InMemoryHerdr {
 
     fn create_tab(&self, workspace_id: &str, place: &NewPlace) -> Result<PlaceIds, HerdrError> {
         (**self).create_tab(workspace_id, place)
+    }
+
+    fn run_in_pane(&self, pane_id: &str, command: &str) -> Result<(), HerdrError> {
+        (**self).run_in_pane(pane_id, command)
     }
 
     fn start_agent(&self, start: &AgentStart) -> Result<(), HerdrError> {

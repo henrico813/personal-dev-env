@@ -346,6 +346,8 @@ pub(crate) fn decide_fresh_lifecycle(
         approval_pending: facts.approval_pending
             || open.bad_files > 0
             || match_open_request(&agent, &open.requests),
+        filed_request_recently: facts.filed_request_recently
+            || match_open_request(&agent, &open.recent),
         agent: Some(agent.clone()),
         ..facts.clone()
     };
