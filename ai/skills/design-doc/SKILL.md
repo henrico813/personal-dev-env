@@ -9,7 +9,10 @@ metadata:
 
 ## Overview
 
-A design doc is a deliberate pause before implementation. It forces you to identify leverage points, surface hidden complexity, and align technical vectors before writing code. The cheapest bug to fix is the one you designed out of existence.
+A design doc is a deliberate pause before implementation. It forces
+you to identify leverage points, surface hidden complexity, and agree
+on the direction the system should take before writing code. The
+cheapest bug to fix is the one you designed out of existence.
 
 ## When to use this skill
 
@@ -22,24 +25,38 @@ Use this skill to write a technical design document that reasons through the pro
 When another agent gave you this task, research directly instead of
 starting the parallel agents in Step 3. In Step 1, state your
 understanding of the problem in your report and continue instead of
-waiting for the user to confirm it. Write the doc to the path you were
-given, and do not start reviewers. Report only the open questions that
+waiting for the user to confirm it. Write the main page to the path
+you were given and each sub-page beside it, and do not start
+reviewers. Report only the open questions that
 pass the test in Step 2, each with its example and your
 recommendation.
 
 ## Writing for Humans
 
-The output of this process is a document for human readers. Humans do not process information taxonomically — they understand through narrative. Every section of the design doc should read as a story, not a classification scheme.
+The output of this process is a document for human readers. Humans
+do not process information as lists of categories — they understand
+through narrative. Where the design doc explains why, it should read
+as a story, not a classification scheme.
 
 **What this means in practice:**
 
 Tell the reader *how we got here*. A problem statement isn't a list of symptoms — it's the story of what users experience today, why the system works this way, and what changed to make the current approach insufficient. The reader should feel the problem before you propose fixing it.
 
-Show the reasoning, not just the conclusion. The Solution section must walk the reader through the decision-making process: what options existed, what tradeoffs each carried, why this one won. A reader who only sees the chosen approach can't evaluate whether it's the right one. A reader who sees the journey can spot where the logic breaks.
+Show the reasoning, not just the conclusion. Each page that settles a
+choice must walk the reader through the decision-making process: what
+options existed, what tradeoffs each carried, why this one won. A
+reader who only sees the chosen approach can't evaluate whether it's
+the right one. A reader who sees the journey can spot where the logic
+breaks.
 
 Connect past, present, and future. Every design exists in a history. How did the system arrive at its current state? How does this change fit into where the system is going? A design doc without historical context is a design doc that will be misunderstood by the next engineer who reads it in six months.
 
-Write prose, not bullet points. Bullet lists are for scanning; design docs are for understanding. When the doc needs to convey *why* — and it almost always does — use paragraphs. Reserve lists only for genuinely enumerable things (API fields, migration steps, config values).
+Write prose where the doc explains why, such as the Overview's
+problem story and each sub-page's account of its choices. The templates
+in Step 4 say which sections are lists or tables, such as the
+Dictionary, Decisions, rules and error codes. Keep those as lists and
+give each item its reason. Under a Decisions bullet, explain each
+option that lost in a nested bullet or a short paragraph.
 
 ## Initial Response
 
@@ -81,7 +98,8 @@ DO NOT proceed to Step 2 until you can articulate the problem in your own words 
 With context gathered, analyze before proposing solutions:
 
 - **Identify the real problem type.** Is this a hot spot fix, a best practice adoption, a leverage point investment, or a vector alignment effort? The answer determines the weight of the solution.
-- **Map the blast radius.** Which teams, services, and systems are affected? What's the rollback story?
+- **Map what a failure would reach.** Which teams, services, and
+  systems are affected? What's the rollback story?
 - **Surface competing timeframes.** What does "done by Friday" look like vs "done right for the next two years"? Name the tradeoff explicitly.
 - **Catalog existing patterns.** What conventions does the codebase already follow? A design doc that fights the codebase's grain needs strong justification.
 - **List open questions.** What do you still not know? What
@@ -92,12 +110,14 @@ With context gathered, analyze before proposing solutions:
   decision. For each question that passes, give a concrete example
   and your recommendation in the same message you ask it in.
 
-### Step 3: Spawn Parallel Agents for Comprehensive Research
+### Step 3: Research in Parallel with Subagents
 
 For non-trivial designs, dispatch subagents to research in parallel:
 
 **Agent 1 — Codebase Audit:**
-Search for all files, modules, and interfaces affected by this change. Produce a dependency map and identify hot files (changed in >50% of recent PRs).
+Search for all files, modules, and interfaces affected by this
+change. Produce a dependency map and identify the files that change
+most often, such as those changed in more than half of recent PRs.
 
 **Agent 2 — Prior Art & Patterns:**
 Search for existing patterns in the codebase that solve similar problems. Look for internal libraries, shared utilities, or conventions that should be reused rather than reinvented.
@@ -107,78 +127,106 @@ Identify failure modes, edge cases, data migration concerns, backwards compatibi
 
 Synthesize all agent outputs before proceeding. If agents surface contradictory information, resolve it before writing the doc.
 
-### Step 4: Create a Detailed Plan
+### Step 4: Write the design doc pages
 
-Write the design doc with this structure. Every section is required unless explicitly marked optional.
+Write the design doc as a main page and its sub-pages, in the
+project's vault folder. The main page is the index, and it calls each
+sub-page a part. Name the main page `DESIGN-<Title>.md` and each
+sub-page `DESIGN-<Title> - <Page name>.md`. Each page has a
+template in [references/](references/) that lists every heading of
+the page in order, with a line under each in `<...>` on what to write
+there. Keep each heading, its level and its order. Add no section,
+and drop, rename or reorder none. A heading whose line says "one
+heading per" repeats once for each item. Under each heading, write
+what its `<...>` line asks for, in prose where it explains why, then
+delete the line. Delete a `<...>` line that asks for nothing, such as
+a note on row order. Keep every line outside `<...>`. Fill in each
+placeholder in those lines and in the headings, such as `<Title>`.
+In a `<...>` line, "an X and Y table" means a table with columns X
+and Y.
 
----
+The pages, in the order the main page's index lists them:
 
-# [Feature/System Name]: Design Doc
+- The main page, which is the index:
+  [main-page.md](references/main-page.md)
+- Design Edits: [design-edits.md](references/design-edits.md)
+- UI: [ui.md](references/ui.md)
+- Skills: [skills.md](references/skills.md)
+- Interfaces: [interfaces.md](references/interfaces.md)
+- `<Kind> Rules`, the rules the program checks, such as Style Rules:
+  [style-rules.md](references/style-rules.md)
+- How Each Step Works:
+  [how-each-step-works.md](references/how-each-step-works.md)
+- `Types for <Module group>`, one page per group of source folders:
+  [types-for-module-group.md](references/types-for-module-group.md)
+- Tests and Samples:
+  [tests-and-samples.md](references/tests-and-samples.md)
+- Building It and Tickets:
+  [building-it-and-tickets.md](references/building-it-and-tickets.md)
 
-## Overview
+Every page is required, even for a small design. When a page or
+section has nothing for this design, such as UI for a tool with no
+screen or MCP for a tool with no MCP server, keep its headings. Under
+the section's own heading, write one line that says so and why. For a
+whole page, that is its first `##` heading, not the page's `#` title.
+A "one heading per" heading with no items stays once and gets the
+same note, such as `### No saved file interface design` for a tool
+that saves no file. Design Edits' `E<n>` heading is the one
+exception. Two pages differ from the rest:
 
-One paragraph that tells the story: what exists today, what's changing, and why. A busy engineer should understand the scope and motivation after reading this alone. This is the doc's thesis statement — write it last, after everything else is solid.
+- Design Edits starts with its opening rules and a blank Edits
+  section, with no `E<n>` heading and no note, because nothing has
+  changed yet.
+  An entry is added each time a pull request changes the design.
+- Split the signatures across Types pages by group of source folders,
+  and give each its own row in the index, so an agent reads only the
+  signatures its work touches.
 
-## Problem Statement
+An agent reads the index and only the parts its task needs, so write
+each part to stand alone. A part names each interface it uses and
+links to the part that defines it. A design check, such as Step 5,
+still reads every part.
 
-Tell the story of the problem. Start with the user's or system's experience today — what actually happens, concretely. Then explain how we got here: what design decisions or changing conditions created the current situation. Finally, describe the impact — not as a bullet list of affected parties, but as a narrative that makes the reader feel why this matters now and what happens if we do nothing.
+The templates set where each piece goes, not whether it is there.
+Before writing, read
+[what-every-doc-says.md](references/what-every-doc-says.md). It lists
+what every design doc must still say and which section holds each
+piece. Keep the doc short: most detail for the riskiest parts.
 
-Ground the narrative in concrete examples or data. A reader should finish this section understanding the problem well enough to propose their own solution.
-
-### Goals
-
-State what success looks like. Be specific and measurable:
-- **In scope** — exactly what this design covers
-- **Success criteria** — how we know this worked (metrics, behaviors, thresholds)
-
-## Solution
-
-This is the heart of the doc. Write it as a narrative that walks the reader through your reasoning.
-
-**Start by situating the decision on Larson's staircase.** Before proposing anything, name the type of problem you're solving. Is this a hot spot — a localized pain point we can fix directly? A best practice the team hasn't adopted yet? An investment in a leverage point (interface, stateful system, or data model) that will preserve quality as the system evolves? Or a vector alignment effort that changes how the organization builds software? The answer determines the appropriate weight of the solution. A hot spot fix that arrives as a platform redesign is over-engineered. A leverage point investment that arrives as a quick patch is under-designed.
-
-**Then present the landscape of alternatives.** Before the chosen approach, describe the options you evaluated. For each, explain what it would look like, what it gets right, and where it falls short. This isn't a formality — it's how the reader builds the mental model needed to evaluate your recommendation. Minimum two alternatives for any non-trivial decision. Explain why each was rejected in terms of the tradeoffs, not just "we preferred X."
-
-**Present the chosen approach as a design narrative.** Walk the reader through the decision: what it is, why it wins given the tradeoffs, and how it fits into the system's existing architecture and direction. The reader should understand not just *what* we're building but *why this and not that*.
-
-**Focus the technical detail on leverage points.** Larson identifies three places where extra investment preserves quality over time: interfaces, stateful systems, and data models. These are where the design doc earns its keep. For each that this change touches:
-
-*Interfaces:* What contracts are changing between systems or components? Are the new interfaces durable — do they expose the essential complexity while hiding the accidental? Have you tested the interface mentally against multiple real clients, not just the one that motivated this change?
-
-*Data models:* How does the data model change? Is the new model rigid (prevents invalid states) and tolerant of evolution (won't require another migration in six months)? Represent multiple real scenarios against the proposed model to verify it holds.
-
-*Stateful systems:* What state transitions change? State is the hardest thing to fix later and accumulates complexity faster than anything else. Describe the failure modes and consistency guarantees explicitly.
-
-For each of these, include code sketches or schema definitions where they clarify the design — not as full implementations, but as contracts that a reviewer can evaluate.
-
-**Say what each module does.** If the design adds modules or lays out
-source files, give each module's job in a sentence and trace the
-main thing the user does through them. Pick plain names that a
-newcomer can follow without the earlier discussion.
-
-**Explain how this fits into the system's trajectory.** A design doesn't exist in isolation. Describe where the system has been (the history that created today's state), where it's going (the technical direction the team is aligned on), and how this change moves along that vector. If this change diverges from the current direction, the justification must be explicit and strong. A new team member reading this doc in six months should understand the reasoning without any oral tradition.
-
----
+Write each paragraph and list item on one line, so the page wraps on
+a phone, and put a `---` line under each `#` and `##` heading.
 
 ### Step 5: Review Based on Larson's "Manage Technical Quality" Principles
 
 After drafting the doc, review it against these quality lenses. These catch problems that only emerge when reading the complete draft — gaps between sections, unstated assumptions, and tensions the author is too close to see.
 
 **Weight calibration:**
-- Re-read the staircase classification from the Solution section. Does the *actual scope* of the design match the stated problem type? A hot spot diagnosis that produced a platform-scale solution means either the diagnosis was wrong or the solution drifted. Reconcile before publishing.
+- Re-read the problem type in the first Decisions bullet. Does the
+  *actual scope* of the design match the stated problem type? A hot spot
+  diagnosis that produced a platform-scale solution means either the
+  diagnosis was wrong or the solution drifted. Reconcile before
+  publishing.
 - Could a simpler intervention — a hot spot fix, a process change, a best practice adoption — deliver most of the value? If yes and the doc doesn't explain why the heavier approach is necessary, that's a gap.
 
 **Timeframe honesty:**
 - Does the doc acknowledge tension between short-term shipping pressure and long-term quality investment? Is the tradeoff named explicitly, or is it hidden behind optimistic language? Larson: "you'll do very different work getting that critical partnership out the door for next week's deadline versus building a platform that supports launching ten times faster next quarter."
 
 **Measurability:**
-- Are the success criteria precise enough to evaluate in 30/60/90 days? Could two engineers independently look at the same data and agree on whether the design succeeded? If not, sharpen them.
+- Is the after-release measure, the last item in Steps and
+  checkpoints on the Building It and Tickets page, precise enough to
+  evaluate in 30/60/90 days? Could two engineers independently look
+  at the same data and agree on whether the design succeeded? If not,
+  sharpen it.
 
 **Feedback loops:**
 - Does the design include natural checkpoints where assumptions can be validated before committing further? Larson's core insight is that quality management is iterative — there's no winning, only learning. A design that ships as a single irreversible change has no room to learn.
 
 **Narrative quality (final pass):**
-- Read the doc start to finish. Does it tell a coherent story — from problem through reasoning to solution — or does it read like a filled-in template? If the latter, rewrite the connective tissue until a human would actually want to read it.
+- Read the main page, then each part in its index order. Does it tell
+  a coherent story — from problem through reasoning to solution — or
+  does it read like a filled-in template? If the latter, rewrite the
+  sentences that link one section to the next until a human would
+  actually want to read it.
 - Are decisions explained with their history and reasoning, or just stated as conclusions? Every "we will do X" needs a "because Y" that the reader can evaluate.
 
 After this review, revise the doc and present the final version to the
@@ -191,9 +239,16 @@ the test in Step 2.
 - **Boiling the ocean.** The design should solve the stated problem, not redesign the entire system. Scope creep in a doc becomes scope creep in implementation.
 - **Misdiagnosing the problem type.** Treating a hot spot as a platform problem (or vice versa) produces a solution at the wrong weight. If the staircase classification doesn't match the scope of the solution, one of them is wrong.
 - **Vague success criteria.** "Improve performance" is not a goal. "P99 latency under 200ms for the /search endpoint" is.
-- **Ignoring existing patterns.** A novel approach in a codebase with established conventions needs explicit justification. Don't fight Conway's Law without good reason.
+- **Ignoring existing patterns.** A novel approach in a codebase with
+  established conventions needs explicit justification. Code tends to
+  follow how the teams that own it are split, so don't fight that
+  split without good reason.
 - **Skipping alternatives.** If you only considered one approach, you didn't design — you guessed.
-- **Writing a filled-in template.** If the doc reads as disconnected sections with no narrative thread, humans will skim it and miss the reasoning. The sections should flow into each other — the problem motivates the goals, the goals constrain the solution, the solution addresses the risks.
+- **Writing a filled-in template.** If the doc reads as disconnected
+  sections with no narrative thread, humans will skim it and miss the
+  reasoning. The pages should connect — the Overview states the
+  problem, the Decisions settle it, each part explains its share in
+  the Dictionary's terms, and links lead between them.
 
 ## Remembering corrections
 
