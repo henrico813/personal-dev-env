@@ -92,8 +92,11 @@ everything that changed:
    the personal-dev-env checkout, under `ai/skills/<name>/`, not the
    installed copy. Ask the user for the checkout's path when you
    cannot find it. Create one branch and worktree in it from the
-   default branch, as your instructions say. Edit only there, commit
-   with the `git-messages` skill, and open one pull request with the
+   default branch, as your instructions say. Edit only there. Make
+   each skill edit as "Change a skill" in the `skill-development`
+   skill says, including its two reviews. Commit with the
+   `git-messages` skill. Step 6 of "Change a skill" says when to open
+   the pull request. Open it with the
    [pull-request](../pull-request/SKILL.md) skill. A rules file in
    another repository gets its own branch and pull request there.
    When another session owns a rules file, send it the change
@@ -155,8 +158,8 @@ Step 2's message, for a session with one proposal and one lesson:
   on the default branch, in the installed copy under
   `~/.agents/skills`, or on the session's feature branch.
 - Read no other session, and no whole message from the database.
-- Never fold saved lessons into skill text. That is a separate job
-  the user starts.
+- Never turn saved lessons into skill text. That is a separate job
+  the user starts, and it follows the `skill-development` skill.
 
 ## When a tool is missing
 

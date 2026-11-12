@@ -199,6 +199,8 @@ the skill name `review-plan`, and offer once to save the correction as
 a lesson. A correction to how you review tests belongs to
 `behavior-focused-testing` instead. A correction to how you review code
 comments, docstrings or function names belongs to `code-documentation`.
+A correction to how you review skill text belongs to
+`skill-development`.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->
