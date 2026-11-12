@@ -72,7 +72,7 @@ fn write_restore_codes(out: &mut impl Write) -> io::Result<()> {
 
 /// Puts the terminal back. Errors are dropped, since the screen that
 /// could show them is closing.
-fn restore_terminal() {
+pub(crate) fn restore_terminal() {
     let _ = write_restore_codes(&mut io::stdout());
     let _ = terminal::disable_raw_mode();
 }
