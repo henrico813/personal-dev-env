@@ -17,7 +17,8 @@ Use this skill to implement an approved plan without redesigning it. Do not use 
 ## When you are a delegated agent
 
 When another agent gave you this task, run only the steps it names, and
-use Vibe only when your prompt says the user allowed it. Verify each
+use Vibe only when your prompt says the user allowed it. Build on a
+local model only when your prompt asks for one. Verify each
 step, tick the automated checks that passed, report what changed, and
 stop.
 
@@ -45,6 +46,11 @@ If no plan reference is provided, ask for one and stop.
   progress, cleanup, and failed-run commits. When authorized, Vibe solely owns
   branch and worktree setup; otherwise follow the plan's checkout instructions
   and create commits only when separately requested.
+- Build on a local model instead of Vibe when the user or your prompt
+  asks for one. Then read
+  [references/local-model.md](references/local-model.md), which
+  replaces the Execution section for that build. Asking for it
+  allows the build's commits, since the plan's diffs become them.
 - Pushing, opening a pull request, or merging always requires explicit user
   instruction.
 
