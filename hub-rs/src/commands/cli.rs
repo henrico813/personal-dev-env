@@ -51,6 +51,7 @@ $HUB_RUN.
   go       show the next hub
   gather   hubs on top, filter agents
   desk     make the user's workspace
+  board    check the mouse in a pane
 
 {after-help}",
     after_help = "Exit: 0 done, 1 a tool failed,\n2 wrong usage, 3 not done."
@@ -228,6 +229,9 @@ pub enum Command {
     /// Make the user's workspace
     #[command(after_help = "Example: hub desk")]
     Desk,
+    /// Check the mouse in a Herdr pane
+    #[command(after_help = "Example: hub board")]
+    Board,
 }
 
 // The steps run in the order the `auto-run` skill gives.
@@ -290,6 +294,7 @@ impl Command {
             Command::Go => "go",
             Command::Gather => "gather",
             Command::Desk => "desk",
+            Command::Board => "board",
         }
     }
 }
@@ -355,7 +360,8 @@ pub fn takes_machine(command: &Command) -> bool {
         | Command::Alive { .. }
         | Command::Go
         | Command::Gather
-        | Command::Desk => false,
+        | Command::Desk
+        | Command::Board => false,
     }
 }
 

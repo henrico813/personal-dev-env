@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
+use hub::board;
 use hub::commands::auto::AutoApproval;
 use hub::commands::cli::{self, AutoStep, Cli, Command, RunArg};
 use hub::commands::next::NextOptions;
@@ -208,6 +209,7 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         Command::Go => sidebar::run_go(&tools),
         Command::Gather => sidebar::run_gather(&tools),
         Command::Desk => sidebar::run_desk(&tools, &home),
+        Command::Board => board::run_board(),
     }
 }
 
