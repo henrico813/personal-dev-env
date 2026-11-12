@@ -75,9 +75,10 @@ Follow the filler list in
 - Raise an optional side item, such as deleting an old branch, in
   one message only. In every later message, leave it out: no
   reminder, "no rush", "last call" or note that you will stop asking.
-  Bring it back only when it blocks work. A question or approval that
-  waits on the user is never a side item. Keep it in every update
-  until the user answers it or the request ends.
+  Bring it back only when it blocks work.
+- A question or approval that waits on the user is never a side
+  item. Keep it in every update until the user answers it or the
+  request ends.
 - Decide minor things, such as a name, and say what you chose in one
   line. Ask only when a wrong guess would cause rework.
 - Answer a short question, such as "what is batch 2?", in at most two

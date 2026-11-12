@@ -67,9 +67,9 @@ run folder. Send again any message in it that still matters, with
 
 Run `hub status` at the start and on each turn. Read its counts line
 and its `unread` line each time; never list the run folder. Tell the
-user what each `you` session waits on, and keep it in every later
-message until it no longer waits on the user, as `status-updates`
-says. When such a session has never reported to you, bring it under
+user what each `you` session waits on, and keep that in every later
+message until the session no longer waits on the user, as
+`status-updates` says. When such a session has never reported to you, bring it under
 the hub at once: send it the new rules that Rules gives for a worker
 the user hands you.
 
@@ -263,9 +263,9 @@ the user's answer:
 
 When a session is `blocked`, read what it asks with
 `herdr agent read <name> --source recent-unwrapped --lines 40`. Tell
-the user which session waits, what it asks, and your recommendation,
-and keep it in every later message until it no longer waits. Never
-answer it yourself.
+the user which session waits, what it asks, and your recommendation.
+Keep this in every later message until the session no longer waits.
+Never answer the question yourself.
 
 ## Cards
 

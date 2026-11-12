@@ -284,11 +284,10 @@ entries parked.
   files, results you have not read, and open questions. A new
   session resumes from that file, the plan and the rules file.
 - A session writes progress-only news, such as "rehearsal passed", to
-  its own `status.txt`. It writes a question, a blocker, or finished
-  work the hub waits on, such as a PR opening or a step finishing,
-  with `hub report <name>`, to the report file its handoff names.
-  Then it ends its turn. It never prompts the hub, since each prompt
-  makes the hub re-read its whole context.
+  its own `status.txt`. It reports a question, a blocker, or finished
+  work the hub waits on, such as a PR opening or a step finishing, as
+  the `herdr-handoff` skill says. It never prompts the hub, since each
+  prompt makes the hub re-read its whole context.
 - When your context grows past about 150k tokens, after it is
   summarized, and always after the build script, use the
   `herdr-handoff` skill to offer the user a new session. Keep the run
