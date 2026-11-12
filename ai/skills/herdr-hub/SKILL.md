@@ -285,7 +285,7 @@ you make any card.
   the run's first hub. `hub go` and `hub gather` find hubs by this
   name. If yours does not, rename your agent and its tab as the bullet
   on adopted sessions below shows.
-- Then run `hub gather`, which takes no `--run`. It moves every hub's
+- `hub handoff`, `hub adopt` and `hub auto now` move every hub's
   workspace on this machine into one block at the top of the sidebar.
   The user presses `ctrl+b shift+h`, or runs `hub go`, to show the
   next hub in sidebar order, wrapping to the first.
