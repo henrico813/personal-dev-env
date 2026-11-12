@@ -35,5 +35,5 @@ stays consistent.>
 #### Any time: `<function>`
 
 <One heading per call with no step number: its inputs, its output, and
-when an agent calls it. With no such call, keep the heading once with
-a one-line note on why.>
+when an agent calls it. With no such call, drop this heading and say
+why in one line under `### Call Stacks`.>

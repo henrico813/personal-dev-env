@@ -14,10 +14,9 @@ topics:
 
 Part of [[DESIGN-<Title>]]. Read its index first.
 
-Agents build the <program> as <count> pull requests, and building them changed parts of the design. This note lists those changes.
+This note lists each change that building the <program> makes to the design.
 
-<Keep the line above and fill in `<program>` and `<count>`, even in
-a new doc where nothing has changed yet.>
+<Keep the line above and fill in `<program>`.>
 
 - Each entry replaces the design text it names. The rest of the design stays as approved.
 - Each replaced passage has a pointer to its entry, so a reader of that passage sees it changed.

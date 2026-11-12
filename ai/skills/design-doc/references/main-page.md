@@ -26,7 +26,12 @@ Every agent reads this index and each part its work touches. Each PR's Reads lin
 | [[DESIGN-<Title> - Tests and Samples\|Tests and Samples]] | You add or change tests, or need the sample <items> |
 | [[DESIGN-<Title> - Building It and Tickets\|Building It and Tickets]] | You need the build order, checkpoints, tickets, or a PR's Reads line |
 
-<Keep the rows in this order. Add one Types row per Types page.>
+A reviewer checks each Skipped row against the page table in Step 4 of the design-doc skill, and reports a wrong skip as a required fix.
+
+<Keep every row, in this order, and add one Types row per Types page.
+For a page Step 4 of the skill skips, remove the link and write
+"Skipped:" and one line on why its condition does not hold in place
+of "Read this part when". Keep the reviewer line above.>
 
 In this note: [[#Overview]], [[#Dictionary]], [[#<Name> Process]], [[#Decisions]], [[#Project File Structure]], [[#Open questions]], [[#Notes for Agents]].
 
@@ -96,7 +101,8 @@ replaces, and what is left to the implementation.>
 <Name it after the folder whose code differs per case, such as
 Language rules. Numbered rules: what only that folder decides and the
 domain rules its code follows. End with a bullet on what adding a
-case takes.>
+case takes. When no folder's code differs per case, drop this heading
+and say why in one line under Project File Structure.>
 
 ## Open questions
 ---

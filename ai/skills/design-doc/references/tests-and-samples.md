@@ -27,8 +27,8 @@ write `` `<path>`, `mod tests` ``. For an outside test file, write its
 path, and add a comma and a topic when its tests split, such as
 `` `tests/check_comments.rs`, style rules ``. Under it, one bullet per
 test name with one or two sentences on why it matters, grouped under
-plain labels such as the step it covers. With no test file, keep the
-heading once with a one-line note on why.>
+plain labels such as the step it covers. With no test file, drop
+this heading and say why in one line under `## Tests and Samples`.>
 
 ### Left untested
 

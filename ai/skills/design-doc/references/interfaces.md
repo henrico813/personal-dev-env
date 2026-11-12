@@ -42,5 +42,5 @@ lives and when it goes away. Then a Field and Holds table, one JSON
 example, a table for each set of values such as statuses, and its
 rules, with an example for each rule that is not obvious. Show how
 the fields rule out bad states, and what happens to a field from a
-newer version. With no saved file, keep the heading once with a
-one-line note on why.>
+newer version. When the change adds or changes no saved file, drop
+this heading and say why in one line under `## Interfaces`.>

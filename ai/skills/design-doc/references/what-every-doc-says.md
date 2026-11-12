@@ -10,9 +10,11 @@ Every design doc must say all of the following. Each template's
   yet, work on the problem before the design. A reader should finish
   it able to propose their own solution. The Overview opens with it,
   in one or more paragraphs before the design. The UI, Skills and
-  `<Kind> Rules` pages also say what happens today in their area.
-- **The problem type.** Name its place on Larson's staircase, and
-  say in plain words what that type means:
+  `<Kind> Rules` pages, when the doc has them, also say what happens
+  today in their area.
+- **The problem type.** Name its place on Larson's staircase, which
+  [larson-technical-quality.md](larson-technical-quality.md) sums up,
+  and say in plain words what that type means:
   - A hot spot is a local pain point the design fixes directly.
   - A best practice is a known good way of working that the team has
     not adopted yet.
@@ -79,4 +81,5 @@ Every design doc must say all of the following. Each template's
 
 Keep the doc short and reviewable. Give the riskiest parts the most
 detail and keep the rest brief, so a page with little to say stays
-short. A good doc in front of reviewers now beats a better one later.
+short. Skip each page whose condition in the skill's Step 4 does not
+hold. A good doc in front of reviewers now beats a better one later.

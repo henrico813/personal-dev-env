@@ -41,7 +41,8 @@ part, with each Design Edits entry those parts point to.`>
 table, or a PR and Tickets table for several PRs. Then what the PR
 needs from earlier PRs, the types or error codes it adds, and a
 "Reads:" line of part links separated by semicolons. With no phases
-yet, keep the heading once with a one-line note on why.>
+yet, drop this heading and say why in one line under
+`## Implementation Tickets`.>
 
 ### Build order
 

@@ -129,50 +129,58 @@ Synthesize all agent outputs before proceeding. If agents surface contradictory 
 
 ### Step 4: Write the design doc pages
 
-Write the design doc as a main page and its sub-pages, in the
-project's vault folder. The main page is the index, and it calls each
-sub-page a part. Name the main page `DESIGN-<Title>.md` and each
+Write the design doc as a main page and the sub-pages it needs, in
+the project's vault folder. The main page is the index, and it calls
+each sub-page a part. Name the main page `DESIGN-<Title>.md` and each
 sub-page `DESIGN-<Title> - <Page name>.md`. Each page has a
 template in [references/](references/) that lists every heading of
 the page in order, with a line under each in `<...>` on what to write
 there. Keep each heading, its level and its order. Add no section,
-and drop, rename or reorder none. A heading whose line says "one
-heading per" repeats once for each item. Under each heading, write
-what its `<...>` line asks for, in prose where it explains why, then
-delete the line. Delete a `<...>` line that asks for nothing, such as
-a note on row order. Keep every line outside `<...>`. Fill in each
-placeholder in those lines and in the headings, such as `<Title>`.
-In a `<...>` line, "an X and Y table" means a table with columns X
-and Y.
+rename or reorder none, and drop one only as the rules below allow. A
+heading whose line says "one heading per" repeats once for each item.
+Under each heading, write what its `<...>` line asks for, in prose
+where it explains why, then delete the line. Delete a `<...>` line
+that asks for nothing, such as a note on row order. Keep every line
+outside `<...>`. Fill in each placeholder in those lines and in the
+headings, such as `<Title>`. In a `<...>` line, "an X and Y table"
+means a table with columns X and Y.
 
-The pages, in the order the main page's index lists them:
+Write each page whose condition below holds, and skip the rest. The
+table's order is the order the main page's index lists them.
 
-- The main page, which is the index:
-  [main-page.md](references/main-page.md)
-- Design Edits: [design-edits.md](references/design-edits.md)
-- UI: [ui.md](references/ui.md)
-- Skills: [skills.md](references/skills.md)
-- Interfaces: [interfaces.md](references/interfaces.md)
-- `<Kind> Rules`, the rules the program checks, such as Style Rules:
-  [style-rules.md](references/style-rules.md)
-- How Each Step Works:
-  [how-each-step-works.md](references/how-each-step-works.md)
-- `Types for <Module group>`, one page per group of source folders:
-  [types-for-module-group.md](references/types-for-module-group.md)
-- Tests and Samples:
-  [tests-and-samples.md](references/tests-and-samples.md)
-- Building It and Tickets:
-  [building-it-and-tickets.md](references/building-it-and-tickets.md)
+| Page | Template | Write it when |
+| --- | --- | --- |
+| Main page, the index | [main-page.md](references/main-page.md) | Always |
+| Design Edits | [design-edits.md](references/design-edits.md) | Always |
+| UI | [ui.md](references/ui.md) | The change adds or changes a screen, popup, prompt or key a person uses, or a notice shown on one. Commands, their output and error text go in Interfaces instead |
+| Skills | [skills.md](references/skills.md) | The change adds or changes a command, tool or reply that a skill or agent prompt uses. Rewording a skill alone does not count |
+| Interfaces | [interfaces.md](references/interfaces.md) | The change adds or changes a command, option, MCP tool or reply, or a saved file that another tool or a later version reads |
+| `<Kind> Rules`, such as Style Rules | [style-rules.md](references/style-rules.md) | The change adds or changes a set of named rules the program checks input against |
+| How Each Step Works | [how-each-step-works.md](references/how-each-step-works.md) | Always |
+| `Types for <Module group>` | [types-for-module-group.md](references/types-for-module-group.md) | One page per group of source folders whose types or signatures the change adds or changes |
+| Tests and Samples | [tests-and-samples.md](references/tests-and-samples.md) | Always |
+| Building It and Tickets | [building-it-and-tickets.md](references/building-it-and-tickets.md) | Always |
 
-Every page is required, even for a small design. When a page or
-section has nothing for this design, such as UI for a tool with no
-screen or MCP for a tool with no MCP server, keep its headings. Under
-the section's own heading, write one line that says so and why. For a
-whole page, that is its first `##` heading, not the page's `#` title.
-A "one heading per" heading with no items stays once and gets the
-same note, such as `### No saved file interface design` for a tool
-that saves no file. Design Edits' `E<n>` heading is the one
-exception. Two pages differ from the rest:
+When you are unsure whether a condition holds, write the page. A
+skipped page keeps its row in the main page's Part table, with no
+link. In place of "Read this part when", write "Skipped:" and one
+line on why its condition does not hold, such as "Skipped: the change
+adds no screen, prompt, key or message." Name a skipped row after its
+page in the table, with `<Kind> Rules` as Rules. With no Types page,
+keep one row named Types. A reader then sees every page the skill
+offers and why each missing one is missing.
+
+Inside a page you write, a section with nothing for this design, such
+as MCP for a tool with no MCP server, keeps its heading. Under it,
+write one line that says so and why. A heading whose placeholder
+names something this design does not have is dropped instead. Do not
+invent a name to fill it. For example, drop `### <Case> rules` when no
+folder's code differs per case, and drop
+`### <Saved file> interface design` when nothing is saved. A "one
+heading per" heading with no items is dropped the same way. In the
+section that held a dropped heading, write one line on what was
+dropped and why. Design Edits' `E<n>` heading is the one exception,
+dropped with no note. Two pages differ from the rest:
 
 - Design Edits starts with its opening rules and a blank Edits
   section, with no `E<n>` heading and no note, because nothing has
@@ -199,6 +207,18 @@ a phone, and put a `---` line under each `#` and `##` heading.
 ### Step 5: Review Based on Larson's "Manage Technical Quality" Principles
 
 After drafting the doc, review it against these quality lenses. These catch problems that only emerge when reading the complete draft — gaps between sections, unstated assumptions, and tensions the author is too close to see.
+
+[references/larson-technical-quality.md](references/larson-technical-quality.md)
+sums up the Larson ideas these lenses use, with links to his writing.
+
+**Skipped pages:**
+- For each "Skipped:" row in the Part table, check the page's
+  condition in Step 4's table against the design. A skip whose
+  condition holds is a required fix: write the page. Check each
+  dropped heading's note the same way, against the condition in its
+  template's `<...>` line.
+- Anyone who reviews the doc runs this check too, and reports each
+  wrong skip as a required fix.
 
 **Weight calibration:**
 - Re-read the problem type in the first Decisions bullet. Does the

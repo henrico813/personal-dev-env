@@ -18,12 +18,13 @@ Part of [[DESIGN-<Title>]]. Read its index first.
 ---
 
 <Say what a skill is in one sentence. A Skill and "Needs from the
-program" table. Then prose: what each skill does today and why the
-old tool cannot stay beside the new one. Weigh at least two options
+program" table. Then prose: what each skill does today. When the
+design replaces a tool the skills use, say why the old tool cannot
+stay beside the new one. Weigh at least two options
 for each choice that came up. Say which won, why, and the cost it
 accepts. For each option that lost, say what it would look like, what
 it gets right, and why it lost, in terms of trade-offs. End with the
-release the skills change in.>
+release the skills change in, when they ship in a release.>
 
 ### How the <Name> Process exposes CLI calls to the skills
 
