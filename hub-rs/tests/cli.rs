@@ -234,14 +234,18 @@ fn hub_next_newer_watcher_replaces_older() {
 }
 
 /// A worker's `hub report` that writes to the wrong run folder never
-/// reaches its hub, so `--run` wins over `HUB_RUN`.
+/// reaches its hub. So `--run` wins over `HUB_RUN`, and both win over
+/// the folder of the hub running on this machine.
 #[test]
-fn find_run_folder_prefers_flag_over_env() {
+fn find_run_folder_prefers_flag_then_env() {
     let folder = TempFolder::new();
     let flag_run = folder.path().join("flag-run");
     let env_run = folder.path().join("env-run");
     fs::create_dir(&flag_run).unwrap();
     fs::create_dir(&env_run).unwrap();
+    let local_state = folder.path().join("state");
+    fs::create_dir(&local_state).unwrap();
+    let _live = hold_watcher_lock(&local_state.join("herdr-hub.live"));
     let cases = [
         (
             "flag-and-env",
@@ -253,7 +257,7 @@ fn find_run_folder_prefers_flag_over_env() {
     ];
 
     for (case_name, given, hub_run, expected) in cases {
-        let found = find_run_folder(given, hub_run, None)
+        let found = find_run_folder(given, hub_run, Some(&local_state))
             .unwrap_or_else(|error| panic!("{case_name}: {error}"));
 
         assert_eq!(
@@ -265,13 +269,16 @@ fn find_run_folder_prefers_flag_over_env() {
 }
 
 /// A mistyped `--run` is wrong usage, so the command stops with exit 2
-/// before it reads or writes any run folder.
+/// rather than use the folder of the hub running on this machine.
 #[test]
 fn find_run_folder_rejects_missing_folder() {
     let folder = TempFolder::new();
     let missing = folder.path().join("missing");
+    let local_state = folder.path().join("state");
+    fs::create_dir(&local_state).unwrap();
+    let _live = hold_watcher_lock(&local_state.join("herdr-hub.live"));
 
-    let found = find_run_folder(Some(&missing), None, None);
+    let found = find_run_folder(Some(&missing), None, Some(&local_state));
 
     assert!(
         matches!(found, Err(HubError::Usage(_))),
@@ -282,32 +289,60 @@ fn find_run_folder_rejects_missing_folder() {
 
 /// The desk's `hub board` pane has no `HUB_RUN`. The search must take
 /// the folder whose `hub next` holds the lock, even when another run
-/// wrote events later. Between `hub next`
-/// runs no lock is held, and the board must still show the hub that
-/// worked last, not an older finished run or an error.
+/// wrote events later. Between `hub next` runs no lock is held, and
+/// the board must still show the hub that worked last, not an older
+/// finished run or an error. The two no-lock cases swap the ages, so
+/// the order the folders are listed in cannot decide the answer.
 #[test]
 fn find_run_folder_picks_running_else_newest() {
-    let cases: [(&str, &[&str], &str); 2] = [
-        ("one-running", &["herdr-hub.live"], "herdr-hub.live"),
-        ("none-running", &[], "herdr-hub.last"),
+    const HOUR: u64 = 60 * 60;
+    struct Case {
+        name: &'static str,
+        running: Option<&'static str>,
+        a_age_secs: u64,
+        b_age_secs: u64,
+        expected: &'static str,
+    }
+    let cases = [
+        Case {
+            name: "one-running",
+            running: Some("herdr-hub.live"),
+            a_age_secs: HOUR,
+            b_age_secs: 2 * HOUR,
+            expected: "herdr-hub.live",
+        },
+        Case {
+            name: "a-newest",
+            running: None,
+            a_age_secs: HOUR,
+            b_age_secs: 2 * HOUR,
+            expected: "herdr-hub.a",
+        },
+        Case {
+            name: "b-newest",
+            running: None,
+            a_age_secs: 2 * HOUR,
+            b_age_secs: HOUR,
+            expected: "herdr-hub.b",
+        },
     ];
 
-    for (case_name, running, expected) in cases {
+    for case in cases {
         let local_state = TempFolder::new();
-        make_finished_run(&local_state.path().join("herdr-hub.done"), 2 * 60 * 60);
-        make_finished_run(&local_state.path().join("herdr-hub.last"), 60 * 60);
-        let _locks: Vec<fs::File> = running
-            .iter()
-            .map(|name| hold_watcher_lock(&local_state.path().join(name)))
-            .collect();
+        make_finished_run(&local_state.path().join("herdr-hub.a"), case.a_age_secs);
+        make_finished_run(&local_state.path().join("herdr-hub.b"), case.b_age_secs);
+        let _lock = case
+            .running
+            .map(|name| hold_watcher_lock(&local_state.path().join(name)));
 
         let found = find_run_folder(None, None, Some(local_state.path()))
-            .unwrap_or_else(|error| panic!("{case_name}: {error}"));
+            .unwrap_or_else(|error| panic!("{}: {error}", case.name));
 
         assert_eq!(
             found.path(),
-            local_state.path().join(expected),
-            "{case_name}"
+            local_state.path().join(case.expected),
+            "{}",
+            case.name
         );
     }
 }

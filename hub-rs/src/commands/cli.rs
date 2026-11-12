@@ -22,8 +22,9 @@ use crate::shared::{AgentName, HubError};
 //
 // A command's first `///` line is its line in `hub --help`. The
 // paragraph after it shows in `hub COMMAND --help` and says what the
-// command does and when to use it. `verbatim_doc_comment` keeps each
-// line as written, so wrap them at 40 columns to fit a phone screen.
+// command does and when to use it. `max_term_width` makes clap wrap
+// help at 40 columns to fit a phone screen. clap splits a long example
+// at any space, so wrap examples by hand with a shell `\`.
 
 /// Watch, message and tidy a hub's sessions.
 #[derive(Parser)]
@@ -33,6 +34,7 @@ use crate::shared::{AgentName, HubError};
     // or Cargo.toml.
     version = env!("HUB_BUILD_VERSION"),
     override_usage = "hub [--machine LABEL] COMMAND ...",
+    max_term_width = 40,
     // clap cannot mark the commands that take a run folder, so this
     // list is written by hand. Each line repeats a command's first `///`
     // line, and `hub_help_list_matches_each_command` fails when they
@@ -93,8 +95,9 @@ pub struct RunArg {
 
 // The folder of an auto run, for each `hub auto` step. The user's
 // usual hub runs these steps while its own `hub next` holds its own
-// folder's lock, so a search would find the wrong folder. `None` falls back to
-// `HUB_RUN` only.
+// folder's lock, so a search would find the wrong folder. `None` falls
+// back to `HUB_RUN` only, and in that hub's pane `HUB_RUN` names the
+// same wrong folder, so the steps need `--run`.
 #[derive(clap::Args)]
 pub struct AutoRunArg {
     /// The auto run's folder
@@ -106,15 +109,12 @@ pub struct AutoRunArg {
 pub enum Command {
     /// Each session and its state
     ///
-    /// Prints the hub's own line, the board
-    /// line, a count per state, the unread
-    /// reports, then one row per session.
-    /// STATE says where it stands, such as
-    /// hub when it waits on the hub, or you
-    /// when it waits on the user. WHY says
-    /// why. Run it at the start of each hub
+    /// Prints the hub's own line, the board line, a count per state,
+    /// the unread reports, then one row per session. STATE says where
+    /// it stands, such as hub when it waits on the hub, or you when it
+    /// waits on the user. WHY says why. Run it at the start of each hub
     /// turn. It works with --machine.
-    #[command(verbatim_doc_comment, after_help = "Example: hub status --json")]
+    #[command(after_help = "Example: hub status --json")]
     Status {
         #[command(flatten)]
         run: RunArg,
@@ -124,14 +124,11 @@ pub enum Command {
     },
     /// Wait for news, print one line
     ///
-    /// Waits until something needs the hub,
-    /// such as a new report, a blocked
-    /// session or a finished one. Then it
-    /// prints one line and exits. A hub keeps
-    /// one running in the background and
-    /// starts it again after each line. A
-    /// newer one makes an older one exit.
-    #[command(verbatim_doc_comment, after_help = "Example: hub next --timeout 600")]
+    /// Waits until something needs the hub, such as a new report, a
+    /// blocked session or a finished one. Then it prints one line and
+    /// exits. A hub keeps one running in the background and starts it
+    /// again after each line. A newer one makes an older one exit.
+    #[command(after_help = "Example: hub next --timeout 600")]
     Next {
         #[command(flatten)]
         run: RunArg,
@@ -147,17 +144,12 @@ pub enum Command {
     },
     /// Deliver, or hold until free
     ///
-    /// Sends a message to a session at once
-    /// when it can take it. Otherwise the
-    /// hub holds it, and hub next sends it
-    /// later, oldest first. A parked session
-    /// first reopens in a new tab. Use it for
-    /// every message to a session, and --file
-    /// for long text. It works with --machine.
-    #[command(
-        verbatim_doc_comment,
-        after_help = "Example: hub send docs-fix --file /tmp/msg.md"
-    )]
+    /// Sends a message to a session at once when it can take it.
+    /// Otherwise the hub holds it, and hub next sends it later, oldest
+    /// first. A parked session first reopens in a new tab. Use it for
+    /// every message to a session, and --file for long text. It works
+    /// with --machine.
+    #[command(after_help = "Example: hub send docs-fix \\\n  --file /tmp/msg.md")]
     Send {
         #[command(flatten)]
         run: RunArg,
@@ -172,17 +164,11 @@ pub enum Command {
     },
     /// Print and archive a report
     ///
-    /// Prints a worker's report and archives
-    /// it, so it no longer counts as unread.
-    /// Then it lists the other unread reports.
-    /// Run it when hub next prints a report
-    /// line. --note also adds a line to
-    /// notes.md, and --card adds that line to
-    /// the card's Log.
-    #[command(
-        verbatim_doc_comment,
-        after_help = "Example: hub read docs-fix --note \"merged #9\""
-    )]
+    /// Prints a worker's report and archives it, so it no longer counts
+    /// as unread. Then it lists the other unread reports. Run it when
+    /// hub next prints a report line. --note also adds a line to
+    /// notes.md, and --card adds that line to the card's Log.
+    #[command(after_help = "Example: hub read docs-fix \\\n  --note \"merged #9\"")]
     Read {
         #[command(flatten)]
         run: RunArg,
@@ -198,17 +184,11 @@ pub enum Command {
     },
     /// Write your report (workers)
     ///
-    /// A worker runs it to give its report
-    /// to the hub. It writes report-NAME.md
-    /// in the run folder in one step, so the
-    /// hub never reads half of it. FILE or
-    /// standard input gives the text, and
-    /// hub next tells the hub. Empty text
-    /// writes nothing.
-    #[command(
-        verbatim_doc_comment,
-        after_help = "Example: hub report docs-fix /tmp/report.md"
-    )]
+    /// A worker runs it to give its report to the hub. It writes
+    /// report-NAME.md in the run folder in one step, so the hub never
+    /// reads half of it. FILE or standard input gives the text, and hub
+    /// next tells the hub. Empty text writes nothing.
+    #[command(after_help = "Example: hub report docs-fix \\\n  /tmp/report.md")]
     Report {
         #[command(flatten)]
         run: RunArg,
@@ -220,11 +200,10 @@ pub enum Command {
     },
     /// Print held messages (workers)
     ///
-    /// Prints every message the hub holds for
-    /// you and counts each as delivered, so
-    /// hub next never sends it. A worker runs
-    /// it before it writes its handoff.
-    #[command(verbatim_doc_comment, after_help = "Example: hub inbox docs-fix")]
+    /// Prints every message the hub holds for you and counts each as
+    /// delivered, so hub next never sends it. A worker runs it before
+    /// it writes its handoff.
+    #[command(after_help = "Example: hub inbox docs-fix")]
     Inbox {
         #[command(flatten)]
         run: RunArg,
@@ -233,12 +212,10 @@ pub enum Command {
     },
     /// Add a timed line to notes.md
     ///
-    /// Adds TEXT to the run's notes.md as a
-    /// line that starts with the local time.
-    /// The first line of each day gets a date
-    /// heading. A hub runs it to log what
-    /// happened, such as a merge.
-    #[command(verbatim_doc_comment, after_help = "Example: hub note \"merged #9\"")]
+    /// Adds TEXT to the run's notes.md as a line that starts with the
+    /// local time. The first line of each day gets a date heading. A
+    /// hub runs it to log what happened, such as a merge.
+    #[command(after_help = "Example: hub note \"merged #9\"")]
     Note {
         #[command(flatten)]
         run: RunArg,
@@ -247,31 +224,23 @@ pub enum Command {
     },
     /// What waits on the user
     ///
-    /// Prints the board line, reviews.md and
-    /// each entry of decisions.md in full, so
-    /// the user can answer without asking
-    /// what a question was. Run it when the
-    /// user asks what waits on them. A
-    /// problem in decisions.md, such as an
-    /// entry with a part missing, stops it
+    /// Prints the board line, reviews.md and each entry of decisions.md
+    /// in full, so the user can answer without asking what a question
+    /// was. Run it when the user asks what waits on them. A problem in
+    /// decisions.md, such as an entry with a part missing, stops it
     /// with an error.
-    #[command(verbatim_doc_comment, after_help = "Example: hub brief")]
+    #[command(after_help = "Example: hub brief")]
     Brief {
         #[command(flatten)]
         run: RunArg,
     },
     /// Start the next hub
     ///
-    /// Starts the next hub in a new tab, on
-    /// the model rules.md names, and gives it
-    /// the handoff file. Then it checks the
-    /// reasoning effort of its first reply.
-    /// Run it when hub next or hub status
+    /// Starts the next hub in a new tab, on the model rules.md names,
+    /// and gives it the handoff file. Then it checks the reasoning
+    /// effort of its first reply. Run it when hub next or hub status
     /// says hand off now.
-    #[command(
-        verbatim_doc_comment,
-        after_help = "Example: hub handoff kanban-hub-14 /tmp/hub-14.md"
-    )]
+    #[command(after_help = "Example: hub handoff kanban-hub-14 \\\n  /tmp/hub-14.md")]
     Handoff {
         #[command(flatten)]
         run: RunArg,
@@ -282,14 +251,11 @@ pub enum Command {
     },
     /// Take over an older open hub
     ///
-    /// Run it when hub next prints no hub
-    /// handoff for OLD. OLD is an older hub
-    /// of this run that is still open, and
-    /// no hub handoff started this hub from
-    /// it. It writes the handoff for OLD's
-    /// session review, so hub clean closes
-    /// OLD once it is idle.
-    #[command(verbatim_doc_comment, after_help = "Example: hub adopt kanban-hub-3")]
+    /// Run it when hub next prints no hub handoff for OLD. OLD is an
+    /// older hub of this run that is still open, and no hub handoff
+    /// started this hub from it. It writes the handoff for OLD's
+    /// session review, so hub clean closes OLD once it is idle.
+    #[command(after_help = "Example: hub adopt kanban-hub-3")]
     Adopt {
         #[command(flatten)]
         run: RunArg,
@@ -298,13 +264,11 @@ pub enum Command {
     },
     /// Close and park finished tabs
     ///
-    /// Closes the tab of each to-close
-    /// session and parks each to-park one,
-    /// the states hub status shows. Kept
-    /// sessions stay. Run it after hub next
-    /// names to-close or to-park sessions.
-    /// --dry-run shows what it would do.
-    #[command(verbatim_doc_comment, after_help = "Example: hub clean --dry-run")]
+    /// Closes the tab of each to-close session and parks each to-park
+    /// one, the states hub status shows. Kept sessions stay. Run it
+    /// after hub next names to-close or to-park sessions. --dry-run
+    /// shows what it would do.
+    #[command(after_help = "Example: hub clean --dry-run")]
     Clean {
         #[command(flatten)]
         run: RunArg,
@@ -314,13 +278,11 @@ pub enum Command {
     },
     /// Close one tab, keep its ID
     ///
-    /// Parks one to-park session now, rather
-    /// than waiting for hub clean. It saves
-    /// the session's ID, adds it to its card
-    /// and closes its tab. A later hub send
-    /// reopens it. A session in another state
+    /// Parks one to-park session now, rather than waiting for hub
+    /// clean. It saves the session's ID, adds it to its card and closes
+    /// its tab. A later hub send reopens it. A session in another state
     /// stays, and the reason prints.
-    #[command(verbatim_doc_comment, after_help = "Example: hub park docs-fix")]
+    #[command(after_help = "Example: hub park docs-fix")]
     Park {
         #[command(flatten)]
         run: RunArg,
@@ -329,104 +291,79 @@ pub enum Command {
     },
     /// The steps of an auto run
     ///
-    /// An auto run works a list of cards the
-    /// user approved, without the user, until
-    /// each stops at a pull request or a
-    /// question. Run its steps in the order
-    /// ready, check, approve, now. Each step
-    /// needs --run DIR or $HUB_RUN, since
-    /// the run has its own folder.
-    #[command(
-        verbatim_doc_comment,
-        after_help = "Example: hub auto check --run /tmp/run2"
-    )]
+    /// An auto run works a list of cards the user approved, without the
+    /// user, until each stops at a pull request or a question. Run its
+    /// steps in the order ready, check, approve, now. Each step needs
+    /// --run DIR, the auto run's folder. In a hub's pane, $HUB_RUN is
+    /// that hub's own folder.
+    #[command(after_help = "Example: hub auto check --run /tmp/run2")]
     Auto {
         #[command(subcommand)]
         step: AutoStep,
     },
     /// Mark a pane "needs you"
     ///
-    /// Shows "needs you" in the sidebar in
-    /// place of the session's state. Run it
-    /// when a session waits on the user. A
-    /// blocked session's mark clears once it
-    /// works again. It works with --machine.
-    #[command(verbatim_doc_comment, after_help = "Example: hub flag docs-fix")]
+    /// Shows "needs you" in the sidebar in place of the session's
+    /// state. Run it when a session waits on the user. A blocked
+    /// session's mark clears once it works again. It works with
+    /// --machine.
+    #[command(after_help = "Example: hub flag docs-fix")]
     Flag {
         /// The session's agent name
         name: AgentName,
     },
     /// Clear the "needs you" mark
     ///
-    /// Removes the mark that hub flag set.
-    /// Run it when you send the session the
-    /// user's answer. It works with --machine.
-    #[command(verbatim_doc_comment, after_help = "Example: hub unflag docs-fix")]
+    /// Removes the mark that hub flag set. Run it when you send the
+    /// session the user's answer. It works with --machine.
+    #[command(after_help = "Example: hub unflag docs-fix")]
     Unflag {
         /// The session's agent name
         name: AgentName,
     },
     /// Is an OpenCode session alive
     ///
-    /// Reads this machine's OpenCode database
-    /// and prints the message count, the
-    /// newest time, the last tool, and
-    /// working, finished or stopped. It sees
-    /// subagents that Herdr does not list.
-    /// Run it before you call a session dead.
-    #[command(
-        verbatim_doc_comment,
-        after_help = "Example: hub alive ses_0a1b2c3d4e5f"
-    )]
+    /// Reads this machine's OpenCode database and prints the message
+    /// count, the newest time, the last tool, and working, finished or
+    /// stopped. It sees subagents that Herdr does not list. Run it
+    /// before you call a session dead.
+    #[command(after_help = "Example: hub alive ses_0a1b2c3d4e5f")]
     Alive {
         /// The OpenCode session ID
         session: String,
     },
     /// Show the next hub
     ///
-    /// Shows the hub after the one you look
-    /// at, in sidebar order, wrapping to the
-    /// first. A hub is an agent whose name
-    /// ends in -hub-N. In Herdr, the prefix
-    /// key then shift+h runs it.
-    #[command(verbatim_doc_comment, after_help = "Example: hub go")]
+    /// Shows the hub after the one you look at, in sidebar order,
+    /// wrapping to the first. A hub is an agent whose name ends in
+    /// -hub-N. In Herdr, the prefix key then shift+h runs it.
+    #[command(after_help = "Example: hub go")]
     Go,
     /// Put hubs at the sidebar top
     ///
-    /// Moves every hub's workspace on this
-    /// machine to the top of the sidebar.
-    /// Hubs named kanban-hub-N come first,
-    /// then the desk, then the other hubs. It
-    /// also cuts the agent list to those hubs
-    /// and the sessions that wait on the user.
-    /// A hub runs it when it starts.
-    #[command(verbatim_doc_comment, after_help = "Example: hub gather")]
+    /// Moves every hub's workspace on this machine to the top of the
+    /// sidebar. Hubs named kanban-hub-N come first, then the desk, then
+    /// the other hubs. It also cuts the agent list to those hubs and
+    /// the sessions that wait on the user. A hub runs it when it
+    /// starts.
+    #[command(after_help = "Example: hub gather")]
     Gather,
     /// Make the user's desk
     ///
-    /// Makes the desk workspace when it is
-    /// missing, with hub board in its first
-    /// tab and a shell in its second. Then it
-    /// moves the desk below the hubs named
-    /// kanban-hub-N, as hub gather does. Run
-    /// it to set up the workspace you watch
-    /// from a phone.
-    #[command(verbatim_doc_comment, after_help = "Example: hub desk")]
+    /// Makes the desk workspace when it is missing, with hub board in
+    /// its first tab and a shell in its second. Then it moves the desk
+    /// below the hubs named kanban-hub-N, as hub gather does. Run it to
+    /// set up the workspace you watch from a phone.
+    #[command(after_help = "Example: hub desk")]
     Desk,
     /// What waits, sized for a phone
     ///
-    /// Shows what waits on you and on the hub
-    /// as a list that fits a 40x16 phone
-    /// screen. Keep it open on a phone to see
-    /// what needs you. It reads again every
-    /// 10 seconds, or when you press r. Choose
-    /// a row with j, k, the arrows or a tap to
-    /// see more of it. q quits. --print prints
-    /// one screen and exits.
-    #[command(
-        verbatim_doc_comment,
-        after_help = "Example: hub board --print --size 40x16"
-    )]
+    /// Shows what waits on you and on the hub as a list that fits a
+    /// 40x16 phone screen. Keep it open on a phone to see what needs
+    /// you. It reads again every 10 seconds, or when you press r.
+    /// Choose a row with j, k, the arrows or a tap to see more of it. q
+    /// quits. --print prints one screen and exits.
+    #[command(after_help = "Example: hub board --print --size 40x16")]
     Board {
         #[command(flatten)]
         run: RunArg,
@@ -449,45 +386,31 @@ pub enum Command {
 pub enum AutoStep {
     /// Write the ready cards to ready.md
     ///
-    /// Writes each ready card's title,
-    /// project and criteria to ready.md in
-    /// the run folder, and prints it. Run it
-    /// first, then write run.md from it.
-    #[command(
-        verbatim_doc_comment,
-        after_help = "Example: hub auto ready --run /tmp/run2"
-    )]
+    /// Writes each ready card's title, project and criteria to ready.md
+    /// in the run folder, and prints it. Run it first, then write
+    /// run.md from it.
+    #[command(after_help = "Example: hub auto ready --run /tmp/run2")]
     Ready {
         #[command(flatten)]
         run: AutoRunArg,
     },
     /// Compare run.md against the ready cards
     ///
-    /// Checks that run.md names every ready
-    /// card once, and prints how many cards
-    /// the run works, or one line per
-    /// problem. Run it after each change to
-    /// run.md.
-    #[command(
-        verbatim_doc_comment,
-        after_help = "Example: hub auto check --run /tmp/run2"
-    )]
+    /// Checks that run.md names every ready card once, and prints how
+    /// many cards the run works, or one line per problem. Run it after
+    /// each change to run.md.
+    #[command(after_help = "Example: hub auto check --run /tmp/run2")]
     Check {
         #[command(flatten)]
         run: AutoRunArg,
     },
     /// Save run.md with the user's reply
     ///
-    /// Saves the checked run.md with the
-    /// user's reply, once. The reply has to
-    /// be approve run N, word for word, unless
-    /// --given says the user's own words name
-    /// exactly the run's cards. Run it when
-    /// the user answers the run's question.
-    #[command(
-        verbatim_doc_comment,
-        after_help = "Example: hub auto approve 2 \\\n  \"approve run 2\" --run /tmp/run2"
-    )]
+    /// Saves the checked run.md with the user's reply, once. The reply
+    /// has to be approve run N, word for word, unless --given says the
+    /// user's own words name exactly the run's cards. Run it when the
+    /// user answers the run's question.
+    #[command(after_help = "Example: hub auto approve 2 \\\n  \"approve run 2\" --run /tmp/run2")]
     Approve {
         #[command(flatten)]
         run: AutoRunArg,
@@ -502,16 +425,11 @@ pub enum AutoStep {
     },
     /// Write and print brief-now.md
     ///
-    /// Writes brief-now.md, one line per card
-    /// of the run from its worker's status
-    /// file, and prints it. A card waiting
-    /// on a question says (needs you). Run
-    /// it when the user asks for a status
-    /// update during the run.
-    #[command(
-        verbatim_doc_comment,
-        after_help = "Example: hub auto now --run /tmp/run2"
-    )]
+    /// Writes brief-now.md, one line per card of the run from its
+    /// worker's status file, and prints it. A card waiting on a
+    /// question says (needs you). Run it when the user asks for a
+    /// status update during the run.
+    #[command(after_help = "Example: hub auto now --run /tmp/run2")]
     Now {
         #[command(flatten)]
         run: AutoRunArg,
@@ -568,7 +486,8 @@ pub fn parse_command() -> Result<Cli, HubError> {
 /// Returns the run folder from `--run`, else from `HUB_RUN`, else the
 /// hub's folder in `local_state`, which is `~/.local/state`. `hub auto`
 /// steps pass `None` as `local_state`, since the user's usual hub runs
-/// them and a search would find that hub's own folder.
+/// them and a search would find that hub's own folder. That hub's
+/// `HUB_RUN` names the same folder, so those steps need `--run`.
 ///
 /// # Errors
 ///
@@ -743,6 +662,40 @@ mod tests {
                 "{path} has the example {example:?}"
             );
         }
+    }
+
+    /// Help is read on a 40-column phone, where a longer line wraps
+    /// mid-word. clap wraps the text to 40 columns but splits a long
+    /// example at any space, so examples must wrap by hand with a
+    /// shell `\`. clap never wraps the usage line, so it is left out.
+    #[test]
+    fn command_help_fits_phone_width() {
+        let mut hub = Cli::command();
+        hub.build();
+        let mut pages = vec![("hub".to_owned(), hub.render_long_help().to_string())];
+        for command in hub.get_subcommands_mut() {
+            let path = format!("hub {}", command.get_name());
+            pages.push((path.clone(), help_and_example(command)));
+            for step in command.get_subcommands_mut() {
+                let step_path = format!("{path} {}", step.get_name());
+                pages.push((step_path, help_and_example(step)));
+            }
+        }
+
+        for (path, page) in pages {
+            for line in page.lines().filter(|line| !line.starts_with("Usage:")) {
+                assert!(line.chars().count() <= 40, "{path}: {line:?}");
+            }
+        }
+    }
+
+    /// One command's long help, then its example as written in the source.
+    fn help_and_example(command: &mut clap::Command) -> String {
+        let example = command
+            .get_after_help()
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        format!("{}\n{example}", command.render_long_help())
     }
 
     /// `hub --help` prints a command list written by hand, which once
