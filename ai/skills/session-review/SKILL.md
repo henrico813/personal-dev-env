@@ -155,6 +155,19 @@ trial is a rerun from step 4, not work the session already did on a
 local model. It also keeps the line that points to roadmap-run's
 Local model section.
 
+## Skill-lesson review
+
+Once two sessions have loaded a skill since its last review, a
+skill-lesson review checks what they taught it. For a skill never
+reviewed, counting starts when the script below first ran. This
+command lists each skill that is due, with its count of sessions:
+
+    python3 ~/.agents/skills/session-review/scripts/skill_review.py due
+
+conclude-session offers the review for each skill it lists. Do the
+review only when the user picks it, by
+[references/skill-lesson-review.md](references/skill-lesson-review.md).
+
 ## Output format
 
     Session review of <title>, saved to <review file path>.
@@ -229,6 +242,8 @@ review, and the user can move it into this list by a pull request.
   writing the review file.
 - [references/trials.md](references/trials.md): read before running
   or adding trials in step 4.
+- [Skill-lesson review](references/skill-lesson-review.md): read
+  when the user picks a skill-lesson review.
 - [references/evaluation.md](references/evaluation.md): read only
   when testing or revising this skill.
 

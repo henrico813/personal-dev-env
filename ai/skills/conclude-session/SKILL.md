@@ -19,7 +19,8 @@ user's pick.
 
 ## Inputs
 
-- This session. Review no other session.
+- This session. Review no other session, except in a picked
+  skill-lesson review.
 - This conversation, for the user's corrections and the work left.
 
 ## Steps
@@ -72,6 +73,11 @@ Send session-review's step 6 message with three changes:
   - Status update: a recap a new reader follows.
   - Cleanup: remove a merged plan's worktree and branch. Offer it
     only when a plan's pull request merged in this session.
+  - Skill-lesson review of <skill>: offer one for each skill this
+    command lists, with its count of sessions:
+
+        d=~/.agents/skills/session-review/scripts
+        python3 "$d/skill_review.py" due
 - In its last line, say that nothing has changed yet, and accept
   "none".
 
@@ -98,8 +104,12 @@ everything that changed:
    another repository gets its own branch and pull request there.
    When another session owns a rules file, send it the change
    instead, as session-review says.
-3. Cleanup, with the [cleanup-plan](../cleanup-plan/SKILL.md) skill.
-4. Handoff, with the [herdr-handoff](../herdr-handoff/SKILL.md)
+3. Skill-lesson review, by session-review's skill-lesson review
+   [page](../session-review/references/skill-lesson-review.md). It
+   sends its own pick list and waits for the user's reply. After the
+   user answers and the picks are done, go on to item 4.
+4. Cleanup, with the [cleanup-plan](../cleanup-plan/SKILL.md) skill.
+5. Handoff, with the [herdr-handoff](../herdr-handoff/SKILL.md)
    skill. Name the pull request and the saved lessons in the handoff
    file.
 
@@ -138,6 +148,7 @@ Step 2's message, for a session with one proposal and one lesson:
     Closing steps
     3. Hand the P6 build to a new session.
     4. Status update.
+    5. Skill-lesson review of roadmap-run (2 sessions).
 
     Nothing has changed yet. Reply with the numbers to apply, or
     none.
@@ -154,9 +165,11 @@ Step 2's message, for a session with one proposal and one lesson:
 - Edit skill and rules files only on the branches from step 3, never
   on the default branch, in the installed copy under
   `~/.agents/skills`, or on the session's feature branch.
-- Read no other session, and no whole message from the database.
+- Read no other session, except in a picked skill-lesson review,
+  and no whole message from the database.
 - Never fold saved lessons into skill text. That is a separate job
-  the user starts.
+  the user starts. A skill-lesson review the user picked counts as
+  the user starting it.
 
 ## When a tool is missing
 

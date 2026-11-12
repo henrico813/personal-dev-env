@@ -57,6 +57,7 @@ The review found:
 Conversation notes:
 - The P6 build is not started. This session runs in Herdr.
 - No pull request merged in this session.
+- skill_review.py due printed: roadmap-run 2
 ```
 
 Checks:
@@ -67,6 +68,7 @@ Checks:
 4. The AGENTS.md change goes to tally-hub, not edited here.
 5. Says nothing has changed and asks for numbers once.
 6. Every number, title and path comes from the facts above.
+7. Offers a skill-lesson review of roadmap-run as a closing step.
 
 ## Case 2: acting on the picks
 
