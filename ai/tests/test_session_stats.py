@@ -5,6 +5,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ def make_db(
     messages: list[tuple[str, dict]],
     subagents: tuple[tuple[str, int], ...] = (("opus", 4),),
     model: str = "opus",
+    tokens: tuple[int, int, int, int] = (1, 2, 3, 5),
 ) -> None:
     """Write a database with session ``ses_main``, its subagents and messages.
 
@@ -27,6 +29,8 @@ def make_db(
         subagents: Model and cache reads of each subagent, named
             ``ses_sub1``, ``ses_sub2`` and so on.
         model: Model ID of ``ses_main``, under provider ``test``.
+        tokens: Uncached input, output, reasoning and cache write tokens
+            of every session.
     """
     path = home / ".local/share/opencode/opencode.db"
     path.parent.mkdir(parents=True)
@@ -46,14 +50,16 @@ def make_db(
             for n, (model, read) in enumerate(subagents, 1)
         ]
         db.executemany(
-            "insert into session_v2 values (?,?,?,?,1,2,3,?,5,0,60000)",
+            "insert into session_v2 values (?,?,?,?,?,?,?,?,?,0,60000)",
             [
                 (
                     id,
                     parent,
                     title,
                     json.dumps({"id": model, "providerID": "test"}),
+                    *tokens[:3],
                     read,
+                    tokens[3],
                 )
                 for id, parent, title, model, read in rows
             ],
@@ -68,11 +74,40 @@ def make_db(
 
 
 def make_models(home: Path) -> None:
-    """OpenCode's model list, with a 1M window for ``opus`` under anthropic."""
+    """OpenCode's model list with ``opus`` from a cheap reseller and anthropic.
+
+    Both give ``opus`` a 1M window. The reseller charges a thousandth of
+    Anthropic's rates.
+    """
     path = home / ".cache/opencode/models.json"
     path.parent.mkdir(parents=True)
-    opus = {"limit": {"context": 1_000_000}}
-    path.write_text(json.dumps({"anthropic": {"models": {"opus": opus}}}))
+    window = {"context": 1_000_000}
+    price = {"input": 1, "output": 10, "cache_read": 0.1, "cache_write": 2}
+    cheap = {key: rate / 1000 for key, rate in price.items()}
+    path.write_text(
+        json.dumps(
+            {
+                "cheapco": {
+                    "models": {"opus": {"limit": window, "cost": cheap}}
+                },
+                "anthropic": {
+                    "models": {"opus": {"limit": window, "cost": price}}
+                },
+            }
+        )
+    )
+
+
+def make_plan_usage(home: Path, saved: dict) -> None:
+    """The plan usage file the OpenCode Claude plugin keeps."""
+    path = home / ".local/share/opencode-claude/rate-limit.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(saved))
+
+
+def make_utc_ms(*parts: int) -> int:
+    """Milliseconds since the epoch of a UTC time, as the plugin saves it."""
+    return int(datetime(*parts, tzinfo=timezone.utc).timestamp() * 1000)
 
 
 def make_step(context: int, *calls: dict) -> tuple[str, dict]:
@@ -113,6 +148,7 @@ def run_stats(
     """
     env = os.environ | {"HOME": str(home)}
     env.pop("OPENCODE_SESSION_ID", None)
+    env.pop("XDG_DATA_HOME", None)
     if session:
         env["OPENCODE_SESSION_ID"] = session
     return subprocess.run(
@@ -437,3 +473,100 @@ class TestContextLine:
         assert result.stdout == (
             "250k, window unknown, above the 200k handoff level\n"
         )
+
+
+class TestUsageOption:
+    """The lines ``--usage`` prints for the user to read."""
+
+    def test_usage_lists_plan_and_priced_subagents(
+        self, tmp_path: Path
+    ) -> None:
+        """Price each subagent at its maker's rates, and skip unknown prices.
+
+        Plan models store cost 0, so this price is the only cost the
+        user sees. Each rate adds its own cents to the $3.90, so a rate
+        left out changes it, and a reseller's lower price would too. A
+        local model has no price, and a made-up $0.00 would look free.
+        """
+        make_db(
+            tmp_path,
+            [make_step(120_000)],
+            subagents=(("opus[1m]", 10_000_000), ("qwen", 1000)),
+            model="opus[1m]",
+            tokens=(1_000_000, 100_000, 50_000, 200_000),
+        )
+        make_models(tmp_path)
+
+        result = run_stats(tmp_path, "--usage")
+
+        assert result.stdout.splitlines() == [
+            "120k of 1M (12%)",
+            "claude plan usage unknown",
+            "subagents 2, prices at API rates",
+            "  test/opus[1m] count 1 read 11.2M wrote 150k $3.90",
+            "  test/qwen count 1 read 1.2M wrote 150k",
+            "largest subagents",
+            "  Sub 1",
+            "    test/opus[1m] read 11.2M wrote 150k $3.90",
+            "  Sub 2",
+            "    test/qwen read 1.2M wrote 150k",
+        ]
+
+    @pytest.mark.parametrize(
+        "saved,expected",
+        [
+            pytest.param(
+                {
+                    "rateLimitType": "seven_day",
+                    "utilization": 0.96,
+                    "resetsAt": make_utc_ms(2100, 11, 18, 2),
+                    "updatedAt": make_utc_ms(2026, 11, 12, 8, 3),
+                },
+                "claude plan weekly 96% used, resets Nov 18 02:00,"
+                " as of Nov 12 08:03",
+                id="share-used",
+            ),
+            pytest.param(
+                {
+                    "rateLimitType": "five_hour",
+                    "utilization": 1.0,
+                    "limited": True,
+                    "limitedUntil": make_utc_ms(2100, 1, 1),
+                },
+                "claude plan 5-hour, limit reached until Jan 01 00:00",
+                id="limit-reached",
+            ),
+            pytest.param(
+                {
+                    "rateLimitType": "seven_day",
+                    "utilization": 0.5,
+                    "limited": True,
+                    "limitedUntil": make_utc_ms(2026, 11, 4, 10),
+                    "resetsAt": make_utc_ms(2026, 11, 4, 10),
+                },
+                "claude plan weekly 50% used",
+                id="old-limit-and-reset",
+            ),
+        ],
+    )
+    def test_plan_line_shows_share_or_limit(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        saved: dict,
+        expected: str,
+    ) -> None:
+        """Show the share used, or the limit while it still holds.
+
+        The user checks this line to decide whether to keep using
+        Claude models. The plugin keeps a limit's end time and a reset
+        time after they pass, and showing them would claim a limit or
+        reset that is already over.
+        """
+        monkeypatch.setenv("TZ", "UTC")
+        make_db(tmp_path, [make_step(1)])
+        make_plan_usage(tmp_path, saved)
+
+        lines = run_stats(tmp_path, "--usage").stdout.splitlines()
+
+        assert find_line(lines, "claude plan") == expected

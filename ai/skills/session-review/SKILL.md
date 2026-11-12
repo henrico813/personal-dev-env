@@ -43,7 +43,8 @@ subagent tokens by model with the five largest subagents, commands
 run more than once with the same text, and carry by tool with the
 five largest carried outputs. An output's carry is its tokens times
 the later steps that read it again, so it shows which outputs cost
-the most. The peak is
+the most. A subagent's price is what its tokens would cost at API
+rates when OpenCode lists one, not what the plan billed. The peak is
 approximate, because the claude-code provider logs some steps with
 zero tokens and adds them to the next step; the script leaves that
 next step out.

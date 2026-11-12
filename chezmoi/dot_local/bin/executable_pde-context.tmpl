@@ -6,5 +6,6 @@
 #
 #   pde-context                      # the session in $OPENCODE_SESSION_ID
 #   pde-context --session ses_abc123 # another session
+#   pde-context --usage              # plus Claude plan use and subagent prices
 exec python3 "$HOME/.agents/skills/session-review/scripts/session_stats.py" --context "$@"
 {{ end -}}

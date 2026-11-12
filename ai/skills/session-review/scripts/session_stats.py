@@ -3,12 +3,14 @@
 Reads one OpenCode session from the local database, read-only, and
 prints about thirty plain lines. Read ``report_session`` first.
 ``--context`` prints one line instead, from ``describe_context``, which
-the ``pde-context`` command runs.
+the ``pde-context`` command runs. ``--usage`` adds the Claude plan line
+and the subagent lines to it.
 
 Example:
     python3 ~/.agents/skills/session-review/scripts/session_stats.py
     python3 session_stats.py --session ses_abc123
     python3 session_stats.py --context
+    python3 session_stats.py --usage
 """
 
 import argparse
@@ -17,13 +19,30 @@ import os
 import re
 import sqlite3
 import sys
+import time
 from collections import Counter
 from contextlib import closing
+from datetime import datetime
 from pathlib import Path
 
 DB = Path.home() / ".local/share/opencode/opencode.db"
 SKILLS = Path.home() / ".agents/skills"
 MODELS = Path.home() / ".cache/opencode/models.json"
+# The OpenCode Claude plugin saves the latest plan limit event here.
+PLAN_USAGE = Path(
+    os.environ.get("OPENCODE_CLAUDE_RATE_LIMIT_STORE")
+    or Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
+    / "opencode-claude/rate-limit.json"
+)
+# Providers whose list prices are the makers' own API rates.
+PRICE_MAKERS = ("anthropic", "openai")
+API_RATES = ("input", "output", "cache_read", "cache_write")
+PLAN_WINDOWS = {
+    "five_hour": "5-hour",
+    "seven_day": "weekly",
+    "seven_day_opus": "weekly Opus",
+    "seven_day_sonnet": "weekly Sonnet",
+}
 # Agents hand the rest of their work to a new session above this context.
 HANDOFF_LEVEL = 200_000
 # A successful read prints the skill's unindented frontmatter, maybe after a
@@ -249,6 +268,7 @@ def describe_subagents(db: sqlite3.Connection, session: str) -> list[str]:
 
     Some sessions start hundreds of subagents, so the script prints one
     line per model and only the subagents that read the most tokens.
+    Each line adds an API price when OpenCode's model list has one.
 
     Args:
         db: Read-only connection to the OpenCode database.
@@ -258,36 +278,159 @@ def describe_subagents(db: sqlite3.Connection, session: str) -> list[str]:
         A count line, one line per model, then the largest subagents
         and how many more there are.
     """
-    rows = db.execute(
-        "select id, model, title, tokens_input + tokens_cache_read"
-        " + tokens_cache_write, tokens_output + tokens_reasoning"
-        " from session_v2 where parent_id = ? order by 4 desc, id",
-        (session,),
-    ).fetchall()
+    rows = list_subagents(db, session)
     if not rows:
         return ["subagents 0"]
-    models: dict[str, list[int]] = {}
-    for _, model, _, read, written in rows:
-        totals = models.setdefault(format_model(model), [0, 0, 0])
-        totals[0] += 1
-        totals[1] += read
-        totals[2] += written
     lines = [f"subagents {len(rows)}"]
-    for model, (count, read, written) in sorted(
-        models.items(), key=lambda item: -item[1][1]
-    ):
+    for model, count, read, written, dollars in sum_by_model(rows):
         lines.append(
             f"  {model} count {count} read {read:,} written {written:,}"
+            + format_dollars(dollars, " API price ")
         )
     lines.append("largest subagents by tokens read")
-    for child, model, title, read, written in rows[:SUBAGENTS_SHOWN]:
+    for child, model, title, read, written, dollars in rows[:SUBAGENTS_SHOWN]:
         lines.append(
-            f"  {child} {format_model(model)} read {read:,}"
-            f" written {written:,} {(title or '')[:60]}"
+            f"  {child} {model} read {read:,} written {written:,}"
+            f"{format_dollars(dollars, ' API price ')} {(title or '')[:60]}"
         )
     if len(rows) > SUBAGENTS_SHOWN:
         lines.append(f"  {len(rows) - SUBAGENTS_SHOWN} more")
     return lines
+
+
+def describe_usage(db: sqlite3.Connection, session: str) -> list[str]:
+    """Sum subagents by model with their API price, in lines a phone fits.
+
+    The lines hold what ``describe_subagents`` holds, in short numbers
+    such as ``8.42M``. Each large subagent gets its title on one line
+    and its model, tokens and price on the next.
+
+    Args:
+        db: Read-only connection to the OpenCode database.
+        session: OpenCode session ID of the parent.
+
+    Returns:
+        A count line, one line per model, then two lines for each of
+        the largest subagents and how many more there are.
+    """
+    rows = list_subagents(db, session)
+    if not rows:
+        return ["subagents 0"]
+    lines = [f"subagents {len(rows)}, prices at API rates"]
+    for model, count, read, written, dollars in sum_by_model(rows):
+        lines.append(
+            f"  {model} count {count} read {format_tokens(read)}"
+            f" wrote {format_tokens(written)}{format_dollars(dollars, ' ')}"
+        )
+    lines.append("largest subagents")
+    for child, model, title, read, written, dollars in rows[:SUBAGENTS_SHOWN]:
+        lines.append(f"  {(title or child)[:68]}")
+        lines.append(
+            f"    {model} read {format_tokens(read)}"
+            f" wrote {format_tokens(written)}{format_dollars(dollars, ' ')}"
+        )
+    if len(rows) > SUBAGENTS_SHOWN:
+        lines.append(f"  {len(rows) - SUBAGENTS_SHOWN} more")
+    return lines
+
+
+def list_subagents(
+    db: sqlite3.Connection, session: str
+) -> list[tuple[str, str, str | None, int, int, float | None]]:
+    """Return each direct subagent with its tokens and API price.
+
+    Args:
+        db: Read-only connection to the OpenCode database.
+        session: OpenCode session ID of the parent.
+
+    Returns:
+        ID, model as ``provider/model``, title, tokens read, tokens
+        written, and dollars or None when the model has no price. The
+        subagent that read the most comes first.
+    """
+    found = db.execute(
+        "select id, model, title, tokens_input, tokens_output,"
+        " tokens_reasoning, tokens_cache_read, tokens_cache_write"
+        " from session_v2 where parent_id = ? order by"
+        " tokens_input + tokens_cache_read + tokens_cache_write desc, id",
+        (session,),
+    ).fetchall()
+    providers = load_model_list()
+    rows = []
+    for child, model, title, *tokens in found:
+        uncached, output, reasoning, read, write = tokens
+        price = find_api_price(providers, model)
+        rows.append(
+            (
+                child,
+                format_model(model),
+                title,
+                uncached + read + write,
+                output + reasoning,
+                count_api_dollars(price, *tokens) if price else None,
+            )
+        )
+    return rows
+
+
+def sum_by_model(
+    rows: list[tuple[str, str, str | None, int, int, float | None]],
+) -> list[tuple[str, int, int, int, float | None]]:
+    """Sum subagents by model, the model that read the most first.
+
+    Args:
+        rows: Subagents from ``list_subagents``.
+
+    Returns:
+        Model, count, tokens read, tokens written, and dollars or None
+        when the model has no price.
+    """
+    models: dict[str, list] = {}
+    for _, model, _, read, written, dollars in rows:
+        totals = models.setdefault(model, [0, 0, 0, None])
+        totals[0] += 1
+        totals[1] += read
+        totals[2] += written
+        if dollars is not None:
+            totals[3] = (totals[3] or 0) + dollars
+    return sorted(
+        ((model, *totals) for model, totals in models.items()),
+        key=lambda item: -item[2],
+    )
+
+
+def describe_plan_usage() -> str:
+    """Describe the Claude plan usage the OpenCode Claude plugin saved last.
+
+    The plugin saves only the window the latest Claude reply reported,
+    such as the weekly one, so the line says when it was saved.
+
+    Returns:
+        A line such as ``claude plan weekly 96% used, resets Nov 18
+        02:00, as of Nov 12 08:03``, or ``claude plan usage unknown``
+        when the file is missing or unreadable.
+    """
+    try:
+        saved = json.loads(PLAN_USAGE.read_text())
+    except (OSError, ValueError):
+        saved = None
+    if not isinstance(saved, dict):
+        return "claude plan usage unknown"
+    kind = saved.get("rateLimitType") or "window unknown"
+    line = f"claude plan {PLAN_WINDOWS.get(kind, kind)}"
+    utilization = saved.get("utilization")
+    limited_until = saved.get("limitedUntil") or 0
+    # The plugin leaves an old limitedUntil behind after a limit ends.
+    if saved.get("limited") and limited_until > time.time() * 1000:
+        line += f", limit reached until {format_time(limited_until)}"
+    elif isinstance(utilization, (int, float)):
+        line += f" {round(utilization * 100)}% used"
+    # The plugin keeps the last reset time when an event leaves it out.
+    if (saved.get("resetsAt") or 0) > time.time() * 1000:
+        line += f", resets {format_time(saved['resetsAt'])}"
+    if saved.get("updatedAt"):
+        line += f", as of {format_time(saved['updatedAt'])}"
+    return line
 
 
 def describe_repeats(steps: list[tuple[int, dict]]) -> list[str]:
@@ -421,6 +564,83 @@ def format_model(model: str | None) -> str:
     return f"{data.get('providerID', '?')}/{data['id']}"
 
 
+def load_model_list() -> dict:
+    """Return OpenCode's model list, or an empty one when it is missing.
+
+    Returns:
+        Providers by ID, each with its ``models`` by ID.
+    """
+    if not MODELS.is_file():
+        return {}
+    return json.loads(MODELS.read_text())
+
+
+def find_api_price(providers: dict, model: str | None) -> dict | None:
+    """Return the API price of a session's model in dollars per million tokens.
+
+    The price comes from the session's own provider, else from the
+    model's maker. A reseller in the list may charge less, so it never
+    sets the price. As for the context window, an ID such as
+    ``claude-opus-5-5[1m]`` also tries ``claude-opus-5-5``.
+
+    Args:
+        providers: OpenCode's model list from ``load_model_list``.
+        model: The JSON the database stores, or None.
+
+    Returns:
+        Such as ``{"input": 4, "output": 20, "cache_read": 0.2}``, or
+        None when no listed provider prices the model.
+    """
+    data = json.loads(model or "{}")
+    if not data.get("id"):
+        return None
+    bare = data["id"].split("[")[0]
+    for provider in (data.get("providerID"), *PRICE_MAKERS):
+        listed = (providers.get(provider) or {}).get("models") or {}
+        for model_id in (data["id"], bare):
+            price = (listed.get(model_id) or {}).get("cost") or {}
+            # A free tier lists zero rates, which are not the API price.
+            if any(price.get(rate) for rate in API_RATES):
+                return price
+    return None
+
+
+def count_api_dollars(
+    price: dict,
+    uncached: int,
+    output: int,
+    reasoning: int,
+    read: int,
+    write: int,
+) -> float:
+    """Return what a session's tokens would cost at the price's base rates.
+
+    Reasoning tokens bill as output. A rate the price leaves out counts
+    as free.
+
+    Args:
+        price: Dollars per million tokens, from ``find_api_price``.
+        uncached: Input tokens not read from the cache.
+        output: Output tokens.
+        reasoning: Reasoning tokens.
+        read: Tokens read from the cache.
+        write: Tokens written to the cache.
+
+    Returns:
+        The cost in dollars.
+    """
+    rates = {
+        "input": uncached,
+        "output": output + reasoning,
+        "cache_read": read,
+        "cache_write": write,
+    }
+    return (
+        sum(tokens * (price.get(rate) or 0) for rate, tokens in rates.items())
+        / 1_000_000
+    )
+
+
 def find_context_window(model: str | None) -> int | None:
     """Return a session's context window from OpenCode's model list.
 
@@ -435,9 +655,9 @@ def find_context_window(model: str | None) -> int | None:
         The window in tokens, or None when the list or model is missing.
     """
     data = json.loads(model or "{}")
-    if not data.get("id") or not MODELS.is_file():
+    providers = load_model_list()
+    if not data.get("id") or not providers:
         return None
-    providers = json.loads(MODELS.read_text())
     own = providers.get(data.get("providerID")) or {}
     bare = data["id"].split("[")[0]
     candidates = [
@@ -447,6 +667,31 @@ def find_context_window(model: str | None) -> int | None:
     ]
     found = next((entry for entry in candidates if entry), {})
     return (found.get("limit") or {}).get("context")
+
+
+def format_dollars(dollars: float | None, opening: str) -> str:
+    """Return a price to add to a subagent line, or nothing when unknown.
+
+    Args:
+        dollars: Cost in dollars, or None when the model has no price.
+        opening: Text before the price, such as ``" API price "``.
+
+    Returns:
+        Such as `` API price $1.25``, or ``""`` when unknown.
+    """
+    return "" if dollars is None else f"{opening}${dollars:,.2f}"
+
+
+def format_time(ms: int) -> str:
+    """Return a time in milliseconds as local time, such as ``Nov 18 02:00``.
+
+    Args:
+        ms: Milliseconds since the epoch.
+
+    Returns:
+        Month, day, hour and minute in the local time zone.
+    """
+    return datetime.fromtimestamp(ms / 1000).strftime("%b %d %H:%M")
 
 
 def format_tokens(count: int) -> str:
@@ -476,6 +721,11 @@ def main() -> None:
         action="store_true",
         help="print only the latest context and its share of the window",
     )
+    parser.add_argument(
+        "--usage",
+        action="store_true",
+        help="print the context, Claude plan usage and subagent prices",
+    )
     args = parser.parse_args()
     session = args.session
     if not session:
@@ -483,9 +733,12 @@ def main() -> None:
     if not DB.is_file():
         sys.exit(f"no OpenCode database at {DB}")
     with closing(sqlite3.connect(f"file:{DB}?mode=ro", uri=True)) as db:
-        if args.context:
+        if args.context or args.usage:
             line = describe_context(db, session)
             lines = [line] if line else []
+            if line and args.usage:
+                lines += [describe_plan_usage()]
+                lines += describe_usage(db, session)
         else:
             lines = report_session(db, session)
     if not lines:
