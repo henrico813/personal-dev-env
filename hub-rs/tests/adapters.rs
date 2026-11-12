@@ -7,7 +7,7 @@ mod herdr_cli {
     use std::thread::{self, JoinHandle};
 
     use hub::external::herdr::{
-        AgentStart, AgentStatus, Herdr, HerdrCli, HerdrCode, HerdrError, NewPlace,
+        AgentStart, AgentStatus, Herdr, HerdrCli, HerdrCode, HerdrError, HubKind, NewPlace,
     };
     use serde_json::{Value, json};
 
@@ -31,9 +31,13 @@ mod herdr_cli {
 
     /// Herdr refuses the pane ID after `--source`, so a wrong order
     /// leaves the sidebar without the mark while `hub flag` says it is
-    /// there.
+    /// there. The agent filter finds hubs and flagged idle sessions
+    /// only by these tokens, so a wrong token hides them from the user.
+    /// The hub token's value sets the row's place in the list.
+    /// A blocked session gets no token, since its mark goes away once it
+    /// works again.
     #[test]
-    fn herdr_cli_puts_pane_before_source() {
+    fn herdr_cli_sends_pane_marks_and_tokens() {
         let folder = TempFolder::new();
         let script = folder.write_script("herdr", OK_ANSWER, "", 0);
         let herdr = HerdrCli::new(script.clone(), None, folder.path().join("herdr.sock"));
@@ -41,7 +45,12 @@ mod herdr_cli {
         herdr
             .mark_needs_you("w1:p7", &[AgentStatus::Idle, AgentStatus::Done])
             .unwrap();
+        herdr
+            .mark_needs_you("w1:p7", &[AgentStatus::Blocked])
+            .unwrap();
         herdr.clear_marks("w1:p7").unwrap();
+        herdr.tag_hub_pane("w1:p7", HubKind::Kanban).unwrap();
+        herdr.tag_hub_pane("w1:p7", HubKind::Other).unwrap();
 
         let pane = ["pane", "report-metadata", "w1:p7", "--source", "pde-hub"];
         assert_eq!(
@@ -54,10 +63,45 @@ mod herdr_cli {
                         "idle=needs you",
                         "--state-label",
                         "done=needs you",
+                        "--token",
+                        "needs_you=yes",
                     ],
                 ]
                 .concat(),
-                [&pane[..], &["--clear-state-labels"]].concat(),
+                [&pane[..], &["--state-label", "blocked=needs you"]].concat(),
+                [
+                    &pane[..],
+                    &["--clear-state-labels", "--clear-token", "needs_you"],
+                ]
+                .concat(),
+                [
+                    &pane[..],
+                    &[
+                        "--token",
+                        "go_to=1-kanban-hub",
+                        "--state-label",
+                        "working=hub busy",
+                        "--state-label",
+                        "idle=hub free",
+                        "--state-label",
+                        "done=hub free",
+                    ],
+                ]
+                .concat(),
+                [
+                    &pane[..],
+                    &[
+                        "--token",
+                        "go_to=3-hub",
+                        "--state-label",
+                        "working=hub busy",
+                        "--state-label",
+                        "idle=hub free",
+                        "--state-label",
+                        "done=hub free",
+                    ],
+                ]
+                .concat(),
             ]
         );
     }
@@ -143,7 +187,7 @@ mod herdr_cli {
     #[test]
     fn herdr_cli_creates_tab_then_starts_agent() {
         let folder = TempFolder::new();
-        let tab_answer = r#"{"result":{"type":"tab_created","root_pane":{"pane_id":"w1:p9"},"tab":{"tab_id":"w1:t9"}}}"#;
+        let tab_answer = r#"{"result":{"type":"tab_created","root_pane":{"pane_id":"w1:p9","workspace_id":"w1"},"tab":{"tab_id":"w1:t9"}}}"#;
         let script = folder.write_script("herdr", tab_answer, "", 0);
         let herdr = HerdrCli::new(script.clone(), None, folder.path().join("herdr.sock"));
         let place = NewPlace {
@@ -202,7 +246,7 @@ mod herdr_cli {
     #[test]
     fn herdr_cli_creates_workspace_and_closes_tab() {
         let folder = TempFolder::new();
-        let answer = r#"{"result":{"type":"workspace_created","root_pane":{"pane_id":"w4:p1"},"tab":{"tab_id":"w4:t1"},"workspace":{"workspace_id":"w4"}}}"#;
+        let answer = r#"{"result":{"type":"workspace_created","root_pane":{"pane_id":"w4:p1","workspace_id":"w4"},"tab":{"tab_id":"w4:t1"},"workspace":{"workspace_id":"w4"}}}"#;
         let script = folder.write_script("herdr", answer, "", 0);
         let herdr = HerdrCli::new(script.clone(), None, folder.path().join("herdr.sock"));
         let place = NewPlace {
@@ -215,6 +259,7 @@ mod herdr_cli {
         herdr.close_tab("w1:t3").unwrap();
 
         assert_eq!(ids.root_pane_id, "w4:p1");
+        assert_eq!(ids.workspace_id, "w4");
         assert_eq!(
             read_script_calls(&script),
             [
@@ -231,6 +276,23 @@ mod herdr_cli {
                 ],
                 vec!["tab", "close", "w1:t3"],
             ]
+        );
+    }
+
+    /// `hub desk` starts the board by typing `hub board` into the desk's
+    /// first pane. Herdr takes the pane before the command, so a swapped
+    /// order leaves the desk without its board.
+    #[test]
+    fn herdr_cli_runs_command_in_pane() {
+        let folder = TempFolder::new();
+        let script = folder.write_script("herdr", OK_ANSWER, "", 0);
+        let herdr = HerdrCli::new(script.clone(), None, folder.path().join("herdr.sock"));
+
+        herdr.run_in_pane("w4:p1", "hub board").unwrap();
+
+        assert_eq!(
+            read_script_calls(&script),
+            [["pane", "run", "w4:p1", "hub board"]]
         );
     }
 
@@ -268,8 +330,9 @@ mod herdr_cli {
     }
 
     /// Whether a failed message is unsure or not sent comes from Herdr's
-    /// error code. A code misread turns a message that may have arrived
-    /// into one the hub sends again, or the reverse.
+    /// error code, which Herdr prints on stderr with stdout empty. A
+    /// code misread turns a message that may have arrived into one the
+    /// hub sends again, or the reverse.
     #[test]
     fn herdr_cli_reads_refusal_code() {
         let cases = [
@@ -290,7 +353,7 @@ mod herdr_cli {
         let folder = TempFolder::new();
         for (case_name, code, expected) in cases {
             let answer = format!(r#"{{"error":{{"code":"{code}","message":"Herdr said no"}}}}"#);
-            let script = folder.write_script(&format!("herdr-{case_name}"), &answer, "", 1);
+            let script = folder.write_script(&format!("herdr-{case_name}"), "", &answer, 1);
             let herdr = HerdrCli::new(script, None, folder.path().join("herdr.sock"));
 
             let error = herdr.prompt("docs-fix", "Rebase on main.").unwrap_err();
@@ -376,6 +439,93 @@ mod herdr_cli {
                 "id": "hub",
                 "method": "workspace.move_block",
                 "params": {"workspace_ids": ["w1", "w3"], "before_workspace_id": "w2"},
+            })
+        );
+    }
+
+    /// The desk's board pane must become an agent with the `go_to`
+    /// token, or the "go to" list has no desk row. Herdr lists panes in
+    /// tab order, so the first pane listed is the board's, not the
+    /// shell's.
+    #[test]
+    fn show_desk_as_agent_reports_first_pane() {
+        let folder = TempFolder::new();
+        let answer = json!({"id": "cli", "result": {"panes": [
+            {"pane_id": "w4:p1", "tab_id": "w4:t1", "focused": false, "agent": null},
+            {"pane_id": "w4:p2", "tab_id": "w4:t2", "focused": true, "agent": null},
+        ]}});
+        let script = folder.write_script("herdr", &answer.to_string(), "", 0);
+        let herdr = HerdrCli::new(script.clone(), None, folder.path().join("herdr.sock"));
+
+        herdr.show_desk_as_agent("w4").unwrap();
+
+        assert_eq!(
+            read_script_calls(&script),
+            [
+                vec!["pane", "list", "--workspace", "w4"],
+                vec![
+                    "pane",
+                    "report-agent",
+                    "w4:p1",
+                    "--source",
+                    "pde-hub",
+                    "--agent",
+                    "desk",
+                    "--state",
+                    "idle",
+                ],
+                vec![
+                    "pane",
+                    "report-metadata",
+                    "w4:p1",
+                    "--source",
+                    "pde-hub",
+                    "--token",
+                    "go_to=2-desk",
+                    "--state-label",
+                    "idle=your desk",
+                    "--state-label",
+                    "done=your desk",
+                ],
+            ]
+        );
+    }
+
+    /// Each hub start filters Herdr's agent list through the socket.
+    /// Herdr refuses a wrong method or field name, and a wrong token
+    /// name, state or sort hides the desk, a hub or a waiting session
+    /// from the user or moves it below the others.
+    #[test]
+    fn filter_agent_list_sends_agent_view_request() {
+        let folder = TempFolder::new();
+        let socket = folder.path().join("herdr.sock");
+        let server = answer_one_request(&socket, json!({"id": "hub", "result": {}}));
+        let herdr = HerdrCli::new(folder.path().join("herdr"), None, socket);
+
+        herdr.filter_agent_list().unwrap();
+
+        assert_eq!(
+            server.join().unwrap(),
+            json!({
+                "id": "hub",
+                "method": "agent.view.set",
+                "params": {
+                    "source": "pde-hub",
+                    "label": "go to",
+                    "filter": {"op": "any", "filters": [
+                        {"op": "exists", "field": {"token": "go_to"}},
+                        {"op": "eq", "field": "status", "value": "blocked"},
+                        {"op": "all", "filters": [
+                            {"op": "eq", "field": {"token": "needs_you"}, "value": "yes"},
+                            {"op": "in", "field": "status", "values": ["idle", "done"]},
+                        ]},
+                    ]},
+                    "sort": [
+                        {"field": {"token": "go_to"}, "order": "asc"},
+                        {"field": "attention", "order": "desc"},
+                        {"field": "state_change_seq", "order": "desc"},
+                    ],
+                },
             })
         );
     }

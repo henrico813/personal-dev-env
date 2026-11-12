@@ -6,6 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
+use std::path::PathBuf;
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -67,15 +68,19 @@ pub(crate) enum EventKind {
     HandoffAsked { name: String, session: String },
     /// `hub next` told the hub with this session ID to hand off.
     HubContextTold { session: String },
-    /// `hub next` printed that the board went over its limit.
+    /// `hub next` printed that the board went over its limit, or the
+    /// run's first minute pass found it over and printed nothing.
     BoardOver { busy: u32, limit: u32 },
-    /// The minute pass saw the board back within its limit.
+    /// The minute pass saw the board back within its limit, or within
+    /// it at the run's first pass.
     BoardUnder { busy: u32, limit: u32 },
     /// `hub next` printed that NAMES became `state`, `to-close` or
     /// `to-park`.
     Listed { state: String, names: Vec<String> },
     /// The minute pass saw NAMES leave the state they were listed in.
     Unlisted { names: Vec<String> },
+    /// `hub next` printed that the old hub's message file `path` waits.
+    OldSendSeen { path: PathBuf },
     /// `hub handoff` started `new` after `old`, whose tab is `tab`.
     Handoff {
         old: String,
@@ -121,8 +126,13 @@ pub(crate) struct Memory {
     pub handoff_asked: BTreeSet<String>,
     /// The board was over its limit at the last crossing.
     pub board_over: bool,
+    /// A minute pass saw the board, so a later pass can tell a
+    /// crossing from the board as it was when the run started.
+    pub board_known: bool,
     /// The state, `to-close` or `to-park`, each name was last listed in.
     pub listed: BTreeMap<String, String>,
+    /// Old hub message files `hub next` already printed.
+    pub old_send_seen: BTreeSet<PathBuf>,
     /// How many `read` events the log holds, for the minute pass.
     pub read_count: usize,
     /// When `hub read` last archived each name's report.
@@ -193,8 +203,17 @@ fn fold_events(events: impl IntoIterator<Item = Event>) -> Memory {
             EventKind::HandoffAsked { session, .. } => {
                 memory.handoff_asked.insert(session);
             }
-            EventKind::BoardOver { .. } => memory.board_over = true,
-            EventKind::BoardUnder { .. } => memory.board_over = false,
+            EventKind::BoardOver { .. } => {
+                memory.board_over = true;
+                memory.board_known = true;
+            }
+            EventKind::BoardUnder { .. } => {
+                memory.board_over = false;
+                memory.board_known = true;
+            }
+            EventKind::OldSendSeen { path } => {
+                memory.old_send_seen.insert(path);
+            }
             EventKind::Listed { state, names } => {
                 for name in names {
                     memory.listed.insert(name, state.clone());

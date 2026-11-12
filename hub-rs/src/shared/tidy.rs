@@ -508,6 +508,7 @@ mod tests {
             stage: Stage::Accepted,
             needs_you_open: false,
             newer_session_live: false,
+            from_report: false,
         });
         let verdict = Verdict {
             state: Lifecycle::ToClose,

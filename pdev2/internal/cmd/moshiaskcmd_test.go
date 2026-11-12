@@ -184,7 +184,7 @@ func TestMoshiRerunKeepsLiveAsk(t *testing.T) {
 	discardStderr(t)
 	// Create the request, which starts the first question.
 	req := approval.Request{ID: "live", Args: []string{"pr", "comment", "12"}}
-	if _, err := loadOrCreate(req, ""); err != nil {
+	if _, err := loadOrCreate(req, "", false); err != nil {
 		t.Fatal(err)
 	}
 	first, err := approval.Load(req.ID)
@@ -198,7 +198,7 @@ func TestMoshiRerunKeepsLiveAsk(t *testing.T) {
 	}
 
 	// Rerun the same request while the first question is still running.
-	state, err := loadOrCreate(req, "")
+	state, err := loadOrCreate(req, "", false)
 
 	if err != nil || state != approval.StatePending {
 		t.Fatalf("rerun state %q, err %v", state, err)
@@ -233,7 +233,7 @@ func TestMoshiRerunRestartsDeadAsk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	state, err := loadOrCreate(approval.Request{ID: rec.ID, Args: []string{"pr", "comment", "12"}}, "")
+	state, err := loadOrCreate(approval.Request{ID: rec.ID, Args: []string{"pr", "comment", "12"}}, "", false)
 
 	if err != nil || state != approval.StatePending {
 		t.Fatalf("rerun state %q, err %v", state, err)

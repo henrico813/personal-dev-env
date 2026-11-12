@@ -229,7 +229,9 @@ fn run_next_asks_worker_handoff_once() {
 /// The hub must hear once when the board goes over its limit, so it
 /// starts no new work, and again after it fell back and rose again.
 /// Telling it on every check costs a hub turn each time, and never
-/// telling it again lets the board pile up a second time.
+/// telling it again lets the board pile up a second time. A board
+/// already over its limit when the run starts is not a crossing, so
+/// the first check stays quiet.
 #[test]
 fn run_next_wakes_once_per_board_crossing() {
     let mut test_tools = TestTools::new();
@@ -251,10 +253,26 @@ fn run_next_wakes_once_per_board_crossing() {
     forget_minute_pass(&test_tools);
     let over_again = check_once(&test_tools);
 
-    assert_eq!(first, "board over its limit: 25/8 (hub -)");
+    assert_eq!(first, "timeout (hub -)");
     assert_eq!(still_over, "timeout (hub -)");
     assert_eq!(under, "timeout (hub -)");
     assert_eq!(over_again, "board over its limit: 25/8 (hub -)");
+}
+
+/// A message the old hub left as `send-NAME.json` is never sent by
+/// this hub, so the hub must hear of it to send it again. Printing it
+/// on every check costs the hub a turn every 5 seconds.
+#[test]
+fn run_next_prints_old_send_file_once() {
+    let test_tools = TestTools::new();
+    let old = test_tools.run_path().join("send-docs-fix.json");
+    fs::write(&old, "{}").unwrap();
+
+    let first = check_once(&test_tools);
+    let second = check_once(&test_tools);
+
+    assert_eq!(first, format!("old send file: {} (hub -)", old.display()));
+    assert_eq!(second, "timeout (hub -)");
 }
 
 /// `hub next` must name finished sessions and leave them open, so the

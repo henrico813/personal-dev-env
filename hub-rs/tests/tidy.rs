@@ -9,6 +9,7 @@ use hub::commands::clean::{run_clean, run_park};
 use hub::external::cards::{CardNote, Stage};
 use hub::external::herdr::{Agent, AgentStatus, Pane};
 use hub::shared::HubError;
+use jiff::{SignedDuration, Timestamp};
 use serde_json::{Value, json};
 
 use common::{TestTools, make_agent, make_time, read_events};
@@ -372,6 +373,40 @@ fn run_clean_closes_nothing_while_requests_unreadable() {
         outcome.lines,
         [
             "kept every session: requests: 1 files did not parse",
+            "nothing to close",
+        ]
+    );
+    assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
+}
+
+/// A worker whose card is accepted may still be merging another pull
+/// request. A request it filed in the last hour must keep its tab
+/// through `hub clean`, or the user approves a request whose session
+/// is gone.
+#[test]
+fn run_clean_keeps_worker_with_recent_request() {
+    let mut test_tools = TestTools::new();
+    add_finished_worker(
+        &mut test_tools,
+        "demo-kb-001-impl",
+        "DEMO-KB-001",
+        Stage::Accepted,
+    );
+    let requests = test_tools.state_folder().join("pr-write");
+    fs::create_dir_all(&requests).unwrap();
+    let request = json!({
+        "state": "ran",
+        "pane_id": "w1:demo-kb-001-impl",
+        "created": (Timestamp::now() - SignedDuration::from_mins(10)).to_string(),
+    });
+    fs::write(requests.join("a.json"), request.to_string()).unwrap();
+
+    let outcome = clean(&test_tools, false);
+
+    assert_eq!(
+        outcome.lines,
+        [
+            "kept demo-kb-001-impl: request in the last hour",
             "nothing to close",
         ]
     );

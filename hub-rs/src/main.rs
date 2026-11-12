@@ -198,6 +198,7 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         Command::Alive { session } => alive::run_alive(&tools, session, &now),
         Command::Go => sidebar::run_go(&tools),
         Command::Gather => sidebar::run_gather(&tools),
+        Command::Desk => sidebar::run_desk(&tools, &home),
         Command::Board { run, print, size } => {
             let run = find_run(run)?;
             let time_zone = now.time_zone().clone();

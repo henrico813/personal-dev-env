@@ -47,7 +47,8 @@ $HUB_RUN.
   unflag   clear the mark
   alive    is an OpenCode session alive
   go       show the next hub
-  gather   put hubs at the top
+  gather   hubs on top, filter agents
+  desk     make the user's workspace
   board    check the mouse in a pane
 
 {after-help}",
@@ -209,9 +210,12 @@ pub enum Command {
     /// Show the next hub
     #[command(after_help = "Example: hub go")]
     Go,
-    /// Put hubs at the top
+    /// Put hubs on top, filter agents
     #[command(after_help = "Example: hub gather")]
     Gather,
+    /// Make the user's workspace
+    #[command(after_help = "Example: hub desk")]
+    Desk,
     /// Show what waits on you and the hub
     #[command(after_help = "Example: hub board --print --size 40x16")]
     Board {
@@ -289,6 +293,7 @@ impl Command {
             Command::Alive { .. } => "alive",
             Command::Go => "go",
             Command::Gather => "gather",
+            Command::Desk => "desk",
             Command::Board { .. } => "board",
         }
     }
@@ -354,6 +359,7 @@ pub fn takes_machine(command: &Command) -> bool {
         | Command::Alive { .. }
         | Command::Go
         | Command::Gather
+        | Command::Desk
         | Command::Board { .. } => false,
     }
 }
@@ -420,6 +426,7 @@ mod tests {
             ),
             ("go", Command::Go, false),
             ("gather", Command::Gather, false),
+            ("desk", Command::Desk, false),
         ];
 
         for (case_name, command, expected) in cases {
