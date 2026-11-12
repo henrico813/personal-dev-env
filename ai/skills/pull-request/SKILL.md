@@ -70,6 +70,8 @@ steps' defaults.
    Rerun the identical command later only to read its result.
    `already ran <id>, exit N` (followed by the captured `gh` output),
    `declined <id>` (exit 4), and `interrupted <id>` (exit 6) are final.
+   After `already ran` with N not 0, fix the cause, then ask again by
+   putting `--retry` before `pr` in the same command.
    Never answer approval requests, run `pde-pr-approve`, or set `PDE_GH_WRITE`.
 
 ## Update
@@ -90,6 +92,16 @@ steps' defaults.
 
 ## Merge
 
+For a pull request the user reviewed, the `herdr-hub` skill's merge
+worker script runs these steps. It sends step 5's request itself, and
+the approval popup shows the squash message. For the script, the try
+recorded in Testing when the pull request was opened or last updated
+counts as Guardrail 4. The script merges the head it tests. When the
+branch is behind, that head is a new commit that merges the base in.
+Without such a try in Testing, a cloud session started by
+`herdr-handoff` follows Merge from step 1 instead, on the review
+model, as `model-routing` picks.
+
 1. Run the merge checks from the repository, with each test command
    as one argument:
 
@@ -101,7 +113,10 @@ steps' defaults.
    It fetches and works from the PR's current title and description,
    not a local copy. In a repository with several remotes, add
    `--remote <remote>`. It prints at most 20 lines. In later
-   commands, use the folder on its `out:` line as `$O`.
+   commands, use the folder on its `out:` line as `$O`. The local
+   model, as `model-routing` picks, may run this command in a script.
+   The script's summary file holds the command's output, with `done`
+   as its last line. You do steps 2 to 6.
 2. It runs the tests on the PR merged into its base, in a scratch
    clone, so no checkout changes. It also lists the changed files and
    counts GitHub's checks. When its last line starts with

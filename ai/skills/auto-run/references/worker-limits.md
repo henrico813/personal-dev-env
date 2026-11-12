@@ -113,28 +113,19 @@ through your report file.
 
 ## Subagents
 
-- Models: planners run on `claude-code/claude-opus-5-5[1m]`.
-  Reviews run on `claude-code/claude-sonnet-5#medium`, except the
-  data safety review of a risky change, which runs on Opus. Jobs a
-  script checks run on the local model, `goog/qwen3.8`. The auto hub
-  checked which answer: `<models>`.
-- A local model runs only a job a script checks: your test and lint
-  commands once per plan version, the deleted-test check above, and
-  the merge checks before a merge request, with
+- Models: pick each subagent's model as `model-routing` says.
+  Planners run on the strongest model. Reviews run on the review
+  model, except the data safety review of a risky change, which runs
+  on the strongest model. The auto hub checked which models answer:
+  `<models>`.
+- Local jobs here are your test and lint commands once per plan
+  version, the deleted-test check above, and a reviewed pull
+  request's merge, with
   `~/.agents/skills/herdr-hub/scripts/merge-worker.sh` as the
-  script. Plans, reviews, pull request text and decisions stay on
-  cloud models. Write each job as one script that sends long output
-  to a log and writes a summary file whose last line is `done`. Give
-  the model only this brief:
-
-      Run this one command: `bash <script>`. Then print <summary file>
-      exactly. Touch no other file and run nothing else. Never answer
-      an approval request.
-
-  Read the summary file yourself. The job counts only when its last
-  line is `done`, never by the model's own words. Give each plan and
-  code reviewer the latest test summary, so it runs at most the one
-  test a finding needs.
+  script. Run each on the local model. Brief it and check its result
+  yourself, as `model-routing` says. Give each plan and code reviewer
+  the latest test summary, so it runs at most the one test a finding
+  needs.
 - When `<run folder>/feedback.md` exists, every planner and reviewer
   brief names it. It lists the user's feedback on the run's pull
   requests.
@@ -161,11 +152,9 @@ through your report file.
   checkout before and after it, and move only files that appeared
   during its run into your run folder.
 - When a model fails with a limit or a login error, write the error
-  and the time in your status file and do not retry in a loop. For a
-  review, try another model that answered. A planner has no other
-  model. Only a job a script checks may move to the local model, and
-  when the local model fails, run its script yourself. When no model
-  is left, report a blocker.
+  and the time in your status file and do not retry in a loop. Pick
+  the next model as `model-routing` says. When `model-routing` leaves
+  no model to try, report a blocker.
 
 ## Skills
 
@@ -190,19 +179,28 @@ step again.
   on "status update". Add a `card note` at each milestone, one
   `card` call per shell call, since each writes to the vault on the
   network drive and can be slow.
-- Write a question, a blocker or finished work to
-  `<run folder>/report-<your agent name>.md`, replacing its old
-  text, then end your turn at once. Update your status file and card
-  before the report, never after: a message the hub sends while you
-  still work waits, and blocks its next one. Never prompt the hub,
-  and never use an interactive question tool. A question gives 2 or
+- Write a question, a blocker or finished work with
+  `hub report --run "<run folder>" <your agent name> <file>`, which
+  replaces your old report whole, then end your turn at once. Update
+  your status file and card before the report, never after. Never
+  prompt the hub, and never use an interactive question tool. A
+  question gives 2 or
   3 choices, what each leads to, and your recommendation. Finished
   work gives the checks run, with results, and the checks not run.
+- Wait outside your chat on a long job you start yourself, such as
+  a build. A job a local model runs for you, as Subagents says, ends
+  before the model replies, so it needs no wait. First
+  run `hub wait --run "<run folder>" <your agent name>` with
+  `--file <summary file> --deadline <minutes>`. Then start the job
+  with `setsid nohup bash <script> > <log> 2>&1 &`, so it outlives
+  your tool call, and end your turn. A plain `&` job can end with the
+  tool call. The script writes its summary file in one step at its
+  end, and the watch prods you when that file changes or the
+  deadline passes.
 - Edit only your card through `card`, your plan note, your worktree
   and branch, and your own files in the run folder.
 - Near 150K context, write a handoff by `herdr-handoff` and report it
   to the hub instead of starting a session yourself.
 - When the hub says your card is accepted or dropped, check that you
-  hold nothing unsaved, then close your own tab with
-  `herdr tab close <tab>`, the tab being `.result.agent.tab_id` of
-  `herdr agent get "$HERDR_PANE_ID"`.
+  hold nothing unsaved, then end your turn. Never close your own tab;
+  the hub closes or parks it.

@@ -21,7 +21,7 @@ func TestMachinesScreenUpdatesThenTapCloses(t *testing.T) {
 	release := make(chan struct{})
 	check := func() []string {
 		<-release
-		return []string{"***REMOVED***: 1 waiting in", "  notes", "Lab: not reachable"}
+		return []string{"Office: 1 waiting in", "  notes", "Lab: not reachable"}
 	}
 	closed := make(chan error, 1)
 	go func() { closed <- ShowOtherMachines(approvaltest.PopupTerminal(t, terminal), terminal, check) }()
@@ -43,10 +43,10 @@ func TestMachinesScreenRedrawsWhenResized(t *testing.T) {
 	// Start narrow, so the machine line is cut, and wait for the result.
 	master, terminal := approvaltest.OpenPTY(t)
 	approvaltest.SetPopupSize(t, terminal, 20, 14)
-	check := func() []string { return []string{"***REMOVED***: 1 waiting in", "  notes"} }
+	check := func() []string { return []string{"Office: 1 waiting in", "  notes"} }
 	closed := make(chan error, 1)
 	go func() { closed <- ShowOtherMachines(approvaltest.PopupTerminal(t, terminal), terminal, check) }()
-	approvaltest.ReadUntil(t, master, "***REMOVED***: 1 waiting i")
+	approvaltest.ReadUntil(t, master, "Office: 1 waiting i")
 
 	// Grow the terminal and send the resize signal, as a terminal does. The
 	// screen runs in this process, so the signal goes to the test itself.
@@ -55,7 +55,7 @@ func TestMachinesScreenRedrawsWhenResized(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	approvaltest.ShownBeforeAnswer(t, master, "***REMOVED***: 1 waiting in", closed)
+	approvaltest.ShownBeforeAnswer(t, master, "Office: 1 waiting in", closed)
 	approvaltest.WriteTerminal(t, master, "q")
 	approvaltest.Receive(t, closed)
 }

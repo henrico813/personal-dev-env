@@ -1,0 +1,10 @@
+[Unit]
+Description=Delete idle Rust build folders in scratch copies and worktrees
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/pde-prune-targets
+# Oneshot services have no start timeout, and a hung run would block later ones.
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=idle

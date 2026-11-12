@@ -38,7 +38,7 @@ Pick the profile for the machine:
   command-line tools.
 - `client`: a laptop that edits files, runs OpenCode, and shows herdr sessions
   from other machines, with nothing compiled by the installer. Full without Go,
-  Rust, local builds other than `skill-lessons` and `hub`, the PR approval
+  Rust, local builds other than `skill-lessons`, the PR approval
   tools, or most skills. Client installs no Go itself, so the machine still
   needs Go 1.21 or newer to build the installer, for example from `sudo apt
   install golang-go` on Ubuntu 24.04.
@@ -62,11 +62,11 @@ configuration, and PDE Git configuration.
 Terminal excludes runtimes, Neovim, LSPs, npm/AI tools, fonts, Keychain, local
 builds, Alacritty, WezTerm, and editor/AI configuration. Client adds
 `fontconfig`, `python3`, the managed fonts, Neovim and its plugins, Node, the
-npm tools, herdr, nobs, `skill-lessons`, `hub`, and the Alacritty, WezTerm,
+npm tools, herdr, nobs, `skill-lessons`, and the Alacritty, WezTerm,
 herdr, Neovim, and OpenCode configuration with the shared agent guidance. Its
 skills are only `obsidian-zettel`, `obsidian-daily-note`,
-`plain-direct-english`, `behavior-focused-testing`, `delegate`, and
-`status-updates`, and its OpenCode config leaves out
+`plain-direct-english`, `behavior-focused-testing`, `delegate`,
+`model-routing`, and `status-updates`, and its OpenCode config leaves out
 the plan and design commands and the plan reviewer agents. Client removes those
 files and full's other skills if a full install left them. It still excludes Go,
 Rust, LSPs, Keychain, Moshi Hook, the other local builds such as planner and
@@ -156,8 +156,7 @@ uncapped when no systemd user manager is available.
 Restart all OpenCode TUIs and `opencode serve --service` after installation.
 Existing processes keep their previous cgroup. PDE does not set `MemoryHigh`.
 
-Run `opencode --model <provider/model> ...` to open the TUI on a chosen model,
-such as `opencode --model claude-code/claude-sonnet-5 --auto`; `--model` must
-come first. The launcher waits up to 15 seconds for the model to appear in
-`opencode models`, creates a session on it in the current folder, and opens
+Run `opencode --model <provider/model> ...` to open the TUI on a chosen model;
+`--model` must come before other flags, such as `--auto`. The launcher waits
+up to 15 seconds for the model to appear in `opencode models`, creates a session on it in the current folder, and opens
 that session. The configured default model does not change.

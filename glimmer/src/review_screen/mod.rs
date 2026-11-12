@@ -14,6 +14,7 @@ mod picker;
 mod result;
 mod saving;
 mod screen;
+mod stale_reviews;
 mod start;
 mod surrounding_code;
 #[cfg(test)]

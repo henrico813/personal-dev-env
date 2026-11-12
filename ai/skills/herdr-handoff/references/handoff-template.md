@@ -59,24 +59,33 @@ writes them to its report file instead.>
 - <Who records ownership changes on the tracking page, if any.>
 - Write progress-only news to <your status file>. Write a question,
   a blocker, or finished work "<this session's agent name>" waits on,
-  such as a PR opening, to <report file>, then end your turn. Replace
-  the file's old text each time. Never prompt "<this session's agent
-  name>"; it learns of your report when your turn ends.
+  such as a PR opening, with
+  `hub report --run "<run folder>" <your agent name> <file>`, then end
+  your turn. It replaces <report file> whole. Never prompt "<this
+  session's agent name>"; it learns of your report when your turn
+  ends.
 - <When this session keeps nothing and no hub runs: leave out the
   report line above, and say the new session asks the user in its
   own pane.>
 - <When a hub runs: the hub's agent name in place of this session's
   name in the line above, a report file in the hub's run folder, and
-  that the new session reports only to the hub. The new session never
+  that the new session reports only to the hub. To wait on a long
+  job, such as a test run, it first runs `hub wait` with
+  `--run "<run folder>"`, its agent name, `--file <summary file>` and
+  `--deadline <minutes>`. Then it starts the job with
+  `setsid nohup bash <script> > <log> 2>&1 &`, so the job outlives
+  the tool call, and ends its turn. The script writes the summary
+  file in one step at its end. The hub's watch prods the new session
+  when that file changes or the deadline passes. The new session never
   uses an interactive question tool, since Herdr then rejects every
   message to it. It sends a merge or pull request edit request only
   after the hub tells it the user reviewed that pull request. When its
   card is accepted or dropped, or once it has written a handoff that
   pauses the card, it checks that it holds nothing unsaved, such as
   uncommitted files or an unpushed branch, or, for a pause, that its
-  handoff lists each one. Then it closes its own tab with
-  `herdr tab close <tab>`, the tab being `.result.agent.tab_id` of
-  `herdr agent get "$HERDR_PANE_ID"`.>
+  handoff lists each one. It never closes its own tab; the hub closes
+  or parks it, and closes it after a pause once it has read that
+  report.>
 
 ## Rules for the files you edit
 

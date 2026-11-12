@@ -1,0 +1,109 @@
+"""Tests for the one-package-per-line Dockerfile check."""
+
+import os
+import subprocess
+import sys
+import tempfile
+import unittest
+
+CHECK = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "check_dockerfile_packages.py",
+)
+
+
+class TestCheckDockerfilePackages(unittest.TestCase):
+    """The check as CI runs it, on Dockerfiles given as arguments."""
+
+    def run_check(self, dockerfile_text):
+        """Return the exit code and output for a Dockerfile with this text."""
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "Dockerfile")
+            with open(path, "w", encoding="utf-8") as dockerfile:
+                dockerfile.write(dockerfile_text)
+            result = subprocess.run(
+                [sys.executable, CHECK, path],
+                capture_output=True,
+                text=True,
+            )
+        return result.returncode, result.stdout
+
+    def test_check_fails_on_crowded_install_line(self):
+        """Fails and names the file line holding several packages.
+
+        A failing exit code is what stops CI, and the line number and
+        package names tell the author which line to split. apk is
+        checked too because its subcommand is add, not install.
+        """
+        cases = (
+            ("apt-get install -y bash git", "bash, git"),
+            ("apk add --no-cache bash git", "bash, git"),
+            ("pip install requests rich", "requests, rich"),
+        )
+        for install_line, packages in cases:
+            with self.subTest(install_line=install_line):
+                dockerfile_text = (
+                    "FROM debian\n"
+                    "RUN true \\\n"
+                    f"    && {install_line} \\\n"
+                    "    && rm -rf /var/lib/apt/lists/*\n"
+                )
+
+                exit_code, output = self.run_check(dockerfile_text)
+
+                self.assertEqual(exit_code, 1)
+                self.assertIn(
+                    f"Dockerfile:3: {packages} share one line", output
+                )
+
+    def test_check_sees_past_comment_inside_run(self):
+        """Keeps looking inside a RUN whose continuation line is a comment.
+
+        Docker removes the comment line without ending the RUN, so a check
+        that ends the RUN there misses the install on the next line and CI
+        lets a crowded line through.
+        """
+        dockerfile_text = (
+            "FROM debian\n"
+            "RUN apt-get update \\\n"
+            "    # tools for the build\n"
+            "    && apt-get install -y bash git\n"
+        )
+
+        exit_code, output = self.run_check(dockerfile_text)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("Dockerfile:4: bash, git share one line", output)
+
+    def test_check_passes_repo_install_styles(self):
+        """Passes the one-per-line forms the repository's Dockerfiles use.
+
+        These forms include a retry loop with tabs, flags on the install
+        line, one package after npm install, and commands after the
+        install. A false finding here would block every CI run.
+        """
+        dockerfile_text = (
+            "FROM ubuntu\n"
+            "RUN for attempt in 1 2 3; do \\\n"
+            "\t\tapt-get update \\\n"
+            "\t\t&& apt-get install -y --no-install-recommends \\\n"
+            "\t\t\tbison \\\n"
+            "\t\t\tsudo \\\n"
+            "\t\t\t&& break; \\\n"
+            '\t\tif [ "$attempt" = 3 ]; then exit 1; fi; \\\n'
+            "\t\tsleep 60; \\\n"
+            "\tdone \\\n"
+            "\t&& useradd -m -s /bin/bash testuser\n"
+            "RUN npm install -g pi-coding-agent@0.85.1 \\\n"
+            "    && HOME=/opt/vibe pi install npm:pi-models-discovery@1.4.0\n"
+        )
+
+        exit_code, output = self.run_check(dockerfile_text)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(output, "")
+
+
+if __name__ == "__main__":
+    unittest.main()

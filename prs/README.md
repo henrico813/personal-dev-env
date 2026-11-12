@@ -4,6 +4,8 @@
 phone screen. It reads from GitHub through `gh` and never writes. How to use
 it is in the `prs` part of
 [GitHub Pull Request Reviews](../chezmoi/README.md#github-pull-request-reviews).
+`prs status` prints the open pull requests of the current folder's
+repository as a Markdown list, for status updates.
 
 `pde-installer` builds it on full installs. It runs `gh`, `fzf` 0.74.5 or
 newer and `less` 590 or newer. `delta` colors the diffs and `bat` the

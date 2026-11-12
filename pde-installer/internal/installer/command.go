@@ -148,6 +148,8 @@ func reconcile(config config, runner run.Runner) error {
 	if err := config.validate(); err != nil {
 		return err
 	}
+	// Warn before any stage runs, so the owner sees it before anything is replaced.
+	warnReplacingBranch(config, runner)
 	// Check before apt runs, so a refused install changes nothing.
 	if config.Profile.Has(profile.Workstation) {
 		if err := direct.New(config.Home, runner).RejectToolRemoval(config.Profile); err != nil {

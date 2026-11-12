@@ -1,0 +1,138 @@
+# Versions and releases each tool in the list below. A merge to main
+# that changes a tool's folder with a feat, fix, perf or breaking commit
+# gets a <tool>-vX.Y.Z tag and a GitHub release with a Linux binary.
+# .github/cliff.toml says which commit bumps which part of the version.
+# A newly listed tool gets its first release on the next merge to main.
+# Other merges end green with no release, and a rerun finds the tag it
+# made and stops. A pull request builds each tool it changes with a
+# made-up version and checks the version line, and publishes nothing.
+name: release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One run at a time per branch, so two quick merges cannot take the same
+# number.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: release ${{ matrix.tool }}
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        # Add or remove a tool here, one line each. `make -C <dir> build`
+        # must leave the binary at <dir>/<binary>, and that binary's
+        # `--version` must print "<tool> $RELEASE_VERSION" when the build
+        # had that variable set. `make -C <dir> check` runs before each
+        # release. Both must work with the tools ubuntu-latest has and
+        # read nothing outside <dir>, because the job builds the newest
+        # commit but tags the last one that changed <dir>. first is the
+        # version of the tool's first release.
+        include:
+          - {tool: hub, dir: hub-rs, binary: target/release/hub, first: 0.2.0}
+    runs-on: ubuntu-latest
+    env:
+      TOOL: ${{ matrix.tool }}
+      DIR: ${{ matrix.dir }}
+      BINARY: ${{ matrix.binary }}
+      GIT_CLIFF_VERSION: 2.14.2
+      GIT_CLIFF_SHA512: 26d1f7c8ea2400f2ccb0b2e7f321635f600b583bf4cd1f7afaa5e8c24068ad1088a2504e0a4d9f4333d4bb20a80329327d9462634343ee3af91e1a7fbdc6f18a
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # git-cliff and git describe need every tag and the commits since.
+          fetch-depth: 0
+          # Keeps the write token out of .git/config, where the build and
+          # tests could read it.
+          persist-credentials: false
+      - name: pick a test version
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --quiet "origin/$GITHUB_BASE_REF...HEAD" -- "$DIR" \
+            .github/workflows/release.yml .github/cliff.toml; then
+            echo "This pull request does not change $DIR."
+            exit 0
+          fi
+          echo "RELEASE_VERSION=9.8.7" >>"$GITHUB_ENV"
+      - name: install git-cliff
+        if: github.event_name != 'pull_request'
+        run: |
+          archive="git-cliff-$GIT_CLIFF_VERSION-x86_64-unknown-linux-gnu.tar.gz"
+          curl --fail --silent --show-error --location \
+            --output "$RUNNER_TEMP/$archive" \
+            "https://github.com/orhun/git-cliff/releases/download/v$GIT_CLIFF_VERSION/$archive"
+          echo "$GIT_CLIFF_SHA512  $RUNNER_TEMP/$archive" | sha512sum --check
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/git-cliff-$GIT_CLIFF_VERSION" >>"$GITHUB_PATH"
+      - name: pick the version
+        if: github.event_name != 'pull_request'
+        env:
+          FIRST: ${{ matrix.first }}
+        run: |
+          # The tag goes on the last commit that changed the tool's folder.
+          # git-cliff ignores a tag on any other commit and would count old
+          # commits again. The folder there matches the checkout, so the
+          # build is the same.
+          target=$(git log -1 --format=%H -- "$DIR")
+          covered=$(git tag --list "$TOOL-v*" --contains "$target")
+          if [ -n "$covered" ]; then
+            echo "Releases that already cover $target"
+            echo "$covered"
+            exit 0
+          fi
+          last=$(git describe --tags --abbrev=0 --match "$TOOL-v*" 2>/dev/null || true)
+          if [ -z "$last" ]; then
+            version=$FIRST
+          else
+            next=$(git-cliff --config .github/cliff.toml --include-path "$DIR/**" \
+              --tag-pattern "^$TOOL-v[0-9]+\.[0-9]+\.[0-9]+$" --bumped-version)
+            if [ "$next" = "$last" ]; then
+              echo "No $TOOL commit since $last calls for a release."
+              exit 0
+            fi
+            version=${next#"$TOOL-v"}
+          fi
+          if git rev-parse --quiet --verify "refs/tags/$TOOL-v$version" >/dev/null; then
+            echo "$TOOL-v$version already exists."
+            exit 0
+          fi
+          echo "RELEASE_VERSION=$version" >>"$GITHUB_ENV"
+          echo "RELEASE_TARGET=$target" >>"$GITHUB_ENV"
+      - name: check
+        if: env.RELEASE_VERSION != '' && github.event_name != 'pull_request'
+        run: make -C "$DIR" check
+      - name: build
+        if: env.RELEASE_VERSION != ''
+        run: make -C "$DIR" build
+      - name: check the version line
+        if: env.RELEASE_VERSION != ''
+        run: test "$("$DIR/$BINARY" --version)" = "$TOOL $RELEASE_VERSION"
+      - name: package
+        if: env.RELEASE_VERSION != '' && github.event_name != 'pull_request'
+        run: |
+          name="$TOOL-$RELEASE_VERSION-x86_64-linux"
+          mkdir dist
+          cp "$DIR/$BINARY" "dist/$name"
+          (cd dist && sha256sum "$name" >"$name.sha256")
+          git-cliff --config .github/cliff.toml --include-path "$DIR/**" \
+            --tag-pattern "^$TOOL-v[0-9]+\.[0-9]+\.[0-9]+$" \
+            --unreleased --output notes.md
+      - name: publish
+        if: env.RELEASE_VERSION != '' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TOOL-v$RELEASE_VERSION" dist/* \
+            --target "$RELEASE_TARGET" \
+            --title "$TOOL $RELEASE_VERSION" \
+            --notes-file notes.md

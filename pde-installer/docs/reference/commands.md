@@ -76,6 +76,11 @@ home configuration in dependency order. It migrates older PDE settings,
 configures Git and chezmoi-managed content, and runs source-managed scripts.
 It rejects UID 0. `--dry-run` prints ordered actions and does not mutate HOME.
 
+An install from `main` prints one warning line on stderr when the install
+record names another branch. The line names that branch, its commit and its
+install time, so a branch install under test is never replaced silently. The
+install still runs, and `--dry-run` prints the warning too.
+
 The removed `update`, `config`, and `--profile` interfaces have no aliases.
 
 Installation also configures Git's template directory at
