@@ -122,8 +122,8 @@ that summary and run at most the one test a finding needs.
    reviewer named, in a `.md` file in the run folder. Then run
    build.md's Put back the bugs, and send each `FAIL` line to a new
    planner as a fix. Handle each `stale` line yourself, as build.md
-   says. A local model may run these scripts, as prompts.md's Local
-   model says.
+   says. A local model may run these scripts, as the
+   `model-routing` skill says.
 7. **Ship.** You or Sonnet 5 write the PR text, never
    `gpt-5.6-luna`. `msg lint` cannot tell whether it reads well, so
    read it yourself and rewrite it until it meets `git-messages`

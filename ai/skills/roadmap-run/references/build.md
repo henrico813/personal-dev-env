@@ -120,7 +120,7 @@ suites, after `planner check` passes on it. Planners and reviewers
 run no test suites or linters, since one script runs them once per
 plan version. Reviewers read its summary and run at most the one test
 a finding needs. Hand the job to a cheap or local
-model with prompts.md's Local model brief, the command
+model with the `model-routing` skill's local model brief, the command
 `bash <run folder>/suites.sh` and the summary file
 `<run folder>/suites.txt`. Then name that file in each reviewer's
 brief.

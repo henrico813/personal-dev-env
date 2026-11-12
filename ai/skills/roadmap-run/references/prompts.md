@@ -19,7 +19,6 @@ folder exists, so give it a file in a folder you make with `mktemp -d`.
 - Fresh plan review
 - Skill review
 - Revision message
-- Local model
 
 ## Rules every agent gets
 
@@ -182,21 +181,3 @@ out the part in brackets.
 
     Report: new size, changed `plant` lines,
     `planner check` result, and anything not applied and why.
-
-## Local model
-
-A local model runs only a job a script checks: tests and linters,
-`plant` lines, or the checks before a merge. build.md's
-`suites.sh` and `plants.sh` and the pull-request skill's
-`merge-check.sh` are such scripts. Plans, design
-checks, reviews, PR text and decisions stay on cloud models, and you
-build and ship. Write the job as one script that sends long output to
-a log and writes a summary file whose last line is `done`. The model
-gets no rules file, only this brief:
-
-    Run this one command: `bash <script>`. Then print <summary file>
-    exactly. Touch no other file and run nothing else. Never answer
-    an approval request.
-
-Read the summary file yourself. The job counts only when its last
-line is `done`; never trust the model's own words about it.
