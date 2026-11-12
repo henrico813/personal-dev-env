@@ -92,7 +92,7 @@ largest carried outputs
    about 1.1M tokens (estimate, proposal 1).
 2. Worktree cleanup: about 2,000 tokens (estimate). Its script
    prints `done`, so `goog/qwen3.8` can run it, briefed as
-   roadmap-run's Local model section says. The saving is small.
+   the model-routing skill says. The saving is small.
 
 ## Trials
 

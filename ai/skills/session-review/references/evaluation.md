@@ -136,16 +136,15 @@ Conversation notes:
   cheap cloud model.
 - You also deleted two merged worktrees by hand, with a script that
   printed "done" at the end.
-- roadmap-run's references/prompts.md has a Local model section on
-  briefing a local model.
+- The model-routing skill says how to brief a local model.
 ```
 
 Checks:
 
 1. Names the worktree cleanup as a job for the local model.
 2. Does not call gpt-6-luna local.
-3. Points to roadmap-run's Local model section instead of writing
-   out a brief.
+3. Points to the model-routing skill instead of writing out a
+   brief.
 4. Says what would break if the plan review ran on the local model,
    and does not move it there while cloud models work.
 5. Has a Fallback, an Efficiency and a Trials line, and the Trials

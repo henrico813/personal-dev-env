@@ -119,12 +119,11 @@ together, or a script that a local agent can run and that saves a
 cloud agent tokens. Proposals from the two maps count toward step
 2's limit of three.
 
-To brief a local model on a job a script checks, point to the Local
-model section of
-[roadmap-run's prompts](../roadmap-run/references/prompts.md) rather
-than restating it. Keep cheap cloud models, such as
-`openai/gpt-6-luna`, apart from local ones, such as `goog/qwen3.8`:
-only a local model keeps working when cloud access fails.
+To brief a local model on a job a script checks, point to the
+`model-routing` skill rather than restating it. Keep cheap cloud
+models, such as `openai/gpt-6-luna`, apart from local ones, such as
+`goog/qwen3.8`: only a local model keeps working when cloud access
+fails.
 For long, repetitive work, such as an audit that repeats one check
 for each ticket, follow
 [herdr-handoff's page](../herdr-handoff/references/cheaper-model.md)
@@ -152,8 +151,8 @@ below. Then wait. Change nothing until the user answers.
 A narrow question, such as "what could a local model have done?",
 still gets the Fallback, Efficiency and Trials lines at the end. A
 trial is a rerun from step 4, not work the session already did on a
-local model. It also keeps the line that points to roadmap-run's
-Local model section.
+local model. It also keeps the line that points to the
+`model-routing` skill.
 
 ## Output format
 
@@ -173,8 +172,7 @@ Local model section.
     saving>.
     Trials: <each case's pass rate and the rules hash, or "none
     ran">.
-    To brief a local model, see the Local model section of
-    roadmap-run's references/prompts.md.
+    To brief a local model, see the model-routing skill.
 
     Reply with the numbers to apply.
 
