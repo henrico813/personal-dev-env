@@ -395,8 +395,8 @@ and, when they pass, sends the merge request. The user approves it in
 the popup or on the phone, which shows the squash message. The script
 keeps running when the shell tool stops it.
 
-Read `<folder>/summary.txt` yourself. It counts only when its last
-line is `done`; never trust the worker's words about it. The line
+Read `<folder>/summary.txt` yourself. When it fails the check, retry
+it as `model-routing` says under When the check fails. The line
 before `exit:` says what happened:
 
 - `merged: <commit>`: handle it as a merged pull request, as Reports

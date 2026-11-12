@@ -192,7 +192,16 @@ model can run the loop from them.
    that model and opens it. For a name not in that list, it prints
    close names and exits, so the start fails; read them with
    `herdr pane read <pane>`. Without `--model`, OpenCode uses the
-   `model` set in `~/.config/opencode/opencode.json`.
+   `model` set in `~/.config/opencode/opencode.json`. Pick the model
+   by the `model-routing` skill.
+
+   Start a mechanical worker, one whose job a script checks, on the
+   local model by default: `-- --model goog/qwen3.8 --auto`. Its
+   handoff file holds only `model-routing`'s local model brief,
+   filled in with the job script, and none of the handoff template's
+   sections. Read its summary file yourself. When the check fails,
+   follow the When the check fails section of the `model-routing`
+   skill.
 5. Send a short prompt that points to the file, such as "Read the
    handoff at <path> and follow it. Load each skill it names when it
    says. Start by <step>. Do not edit <file> yet." Keep the brief in the
