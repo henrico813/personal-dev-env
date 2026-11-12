@@ -213,7 +213,7 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
     }
     // Rule 6. An old hub closes only once `hub handoff` named it, and
     // not while the user types in it or its approval waits.
-    if is_hub_name(&facts.name) && !facts.name.starts_with(REVIEW_PREFIX) {
+    if is_hub_name(&facts.name) {
         return if facts.is_predecessor {
             make_close_unless_user_waits(facts, agent, "handed off")
         } else {
@@ -260,9 +260,10 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
 
 /// Tells whether a name belongs to a hub, such as `kanban-hub-13`.
 pub(crate) fn is_hub_name(name: &str) -> bool {
-    name.rsplit_once("-hub-").is_some_and(|(_, number)| {
-        !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit())
-    })
+    !name.starts_with(REVIEW_PREFIX)
+        && name.rsplit_once("-hub-").is_some_and(|(_, number)| {
+            !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit())
+        })
 }
 
 /// Returns the first check that keeps a finished session open. The
@@ -724,12 +725,13 @@ mod tests {
     /// for a hub, would be moved to the top by `gather`, shown by `go`
     /// and kept open by `hub status` as another hub.
     #[test]
-    fn is_hub_name_needs_number_after_hub() {
+    fn is_hub_name_rejects_workers_and_reviews() {
         let cases = [
             ("hub", "kanban-hub-13", true),
             ("no-number", "kanban-hub-", false),
             ("text-after-number", "kanban-hub-13-notes", false),
             ("worker", "demo-kb-001-impl", false),
+            ("old-hub-review", "review-kanban-hub-16", false),
         ];
 
         for (case_name, name, expected) in cases {
