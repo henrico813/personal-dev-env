@@ -147,9 +147,9 @@ are off by default. Most lines end with your own context, such as
 - `unsure <name>: <reason>`: a held message may have arrived. Handle
   it as an `unsure` send, as Send to a session says.
 - `timed message to <N> sessions: <path>`: a message stored with
-  `hub at` reached its time and is held for N sessions. `<path>` is the
-  `--file` given to `hub at`. A session that is gone or turns it down
-  gets its own `not sent` or `unsure` line.
+  `hub at` has reached its time and is held for N sessions. `<path>` is
+  the `--file` given to `hub at`. A session that is gone or turns it
+  down gets its own `not sent` or `unsure` line.
 - `hand off now: hub at <N>k`: your context passed 150k. Hand off
   the hub now, as Hand off the hub says.
 - `board over its limit: N/M`: the cards in active and review passed
@@ -255,8 +255,9 @@ it with `hub at`:
     hub at --run "<run folder>" 20:00 --to <name>... --file <path>
     hub at --run "<run folder>" 20:00 --all --file <path>
 
-`--all` means every live worker, found at that time: a session on a card
-or that has reported, never a hub. `hub at` prints
+`--all` means every live worker found at that time. A live worker is a
+session on a card or one that has reported, and never a hub. `hub at`
+prints
 `at 20:00 to <names>: <stored file>`, and exits 2 for a time already
 past today. Delete the stored file to cancel the message. At that time,
 `hub next` holds the message for each session and sends it as it sends
