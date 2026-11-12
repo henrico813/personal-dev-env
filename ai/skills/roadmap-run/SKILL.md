@@ -235,8 +235,8 @@ entries parked.
 - A question that blocks one PR parks only that PR; keep building the
   others. Put non-blocking questions in the roadmap page as "your
   call".
-- Sessions of one run send the hub a question, a blocker, or finished
-  work it waits on, such as a PR opening or a step finishing.
+- Sessions of one run report to the hub a question, a blocker, or
+  finished work it waits on, such as a PR opening or a step finishing.
   Progress-only news, such as a passed rehearsal, goes only in the
   session's own status file. The hub answers from the user's standing
   decisions first. When none applies, it picks the simplest option
@@ -278,9 +278,11 @@ entries parked.
   files, results you have not read, and open questions. A new
   session resumes from that file, the plan and the rules file.
 - A session writes progress-only news, such as "rehearsal passed", to
-  its own `status.txt`. It prompts the hub with a question, a blocker,
-  or finished work the hub waits on, such as a PR opening or a step
-  finishing. Each prompt makes the hub re-read its whole context.
+  its own `status.txt`. It writes a question, a blocker, or finished
+  work the hub waits on, such as a PR opening or a step finishing,
+  with `hub report <name>`, to the report file its handoff names.
+  Then it ends its turn. It never prompts the hub, since each prompt
+  makes the hub re-read its whole context.
 - When your context grows past about 150k tokens, after it is
   summarized, and always after the build script, use the
   `herdr-handoff` skill to offer the user a new session. Keep the run

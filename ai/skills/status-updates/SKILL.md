@@ -75,7 +75,9 @@ Follow the filler list in
 - Raise an optional side item, such as deleting an old branch, in
   one message only. In every later message, leave it out: no
   reminder, "no rush", "last call" or note that you will stop asking.
-  Bring it back only when it blocks work.
+  Bring it back only when it blocks work. A question or approval that
+  waits on the user is never a side item. Keep it in every update
+  until the user answers it or the request ends.
 - Decide minor things, such as a name, and say what you chose in one
   line. Ask only when a wrong guess would cause rework.
 - Answer a short question, such as "what is batch 2?", in at most two
@@ -125,6 +127,7 @@ no earlier message, and fix it before you send it:
      path or command.
    - Every number was checked, and unchecked things are named.
    - No side item that an earlier message raised.
+   - Every question and approval still waiting on the user is in it.
    - Nothing from the filler list in `plain-direct-english` is left.
    - It fits a phone screen without a wall of text.
 3. Read the fixed draft once more. Send it only when every check
