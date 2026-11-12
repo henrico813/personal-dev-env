@@ -94,6 +94,11 @@ prs 123
 prs OWNER/REPO 123
 ```
 
+To get a status update of every open pull request in the current folder's
+repository, run `prs status`. It prints a Markdown list in merge order,
+with each pull request's problem, checks and blockers, and the first one
+to review in bold.
+
 Check out a pull request when review requires repository search or tests. Use
 the merge base to isolate changes introduced by its branch:
 
@@ -201,6 +206,11 @@ Use `Ctrl-A` for tmux and `Ctrl-B` for Herdr. Herdr uses its mobile status heade
 and full-screen machine switcher at 100 columns and below. Machine labels
 distinguish Local and Office agents. The managed config is validated with Herdr
 0.9.1, so run `herdr config check` after upgrades.
+
+A Herdr server keeps the `PATH` of the shell that started it, and tools its
+plugins start, such as nvim, look there. When ssh starts the server and the
+login shell is zsh, that shell reads only `~/.zshenv`, which now adds
+`~/.local/bin`, so restart a Herdr server started before this install.
 
 See the [maintenance guide](../pde-installer/docs/how-to/update-chezmoi-content.md).
 

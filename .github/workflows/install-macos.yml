@@ -10,7 +10,6 @@ on:
       - install/macos.sh
       - pde-installer/**
       - chezmoi/**
-      - hub/**
       - skill-lessons/**
       - .github/workflows/install-macos.yml
   pull_request:
@@ -18,7 +17,6 @@ on:
       - install/macos.sh
       - pde-installer/**
       - chezmoi/**
-      - hub/**
       - skill-lessons/**
       - .github/workflows/install-macos.yml
   workflow_dispatch:
@@ -46,7 +44,7 @@ jobs:
         run: bash install/macos.sh client
       - name: install client again
         run: bash install/macos.sh client
-      # skill-lessons and hub fail to start when their #! line names macOS's
+      # skill-lessons fails to start when its #! line names macOS's
       # own Python, which is too old. The runner has its own rg and jq, so
       # these must resolve under the Aqua root.
       - name: start zsh and find the tools
@@ -55,7 +53,7 @@ jobs:
           zsh -i -c 'for tool in nvim tmux rg fzf fd bat eza jq gh chezmoi herdr; do
             command -v "$tool" >/dev/null || { print -u2 "missing $tool"; exit 1; }
           done
-          skill-lessons --version && hub --version || exit 1
+          skill-lessons --version || exit 1
           for tool in rg jq; do
             [[ "$(command -v $tool)" == "$AQUA_ROOT_DIR"/* ]] ||
               { print -u2 "$tool is not from Aqua: $(command -v $tool)"; exit 1; }

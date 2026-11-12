@@ -31,9 +31,10 @@ printf '#!/bin/sh\nexit 1\n' >"$E/bin/opencode"
 chmod +x "$E/bin/opencode"
 ```
 
-The fake `opencode` fails, as Strata does when it is down. Add
-`Bash(opencode *),Bash(mktemp *)` to the allowed commands, and for
-the run with the skill, `$(cat auto-run/SKILL.md)`.
+The fake `opencode` fails for every model, as if no model answered.
+Add `Bash(opencode *),Bash(mktemp *)` to the allowed commands. For
+the run with the skill, also add `$(cat auto-run/SKILL.md)` to
+`$sys`.
 
 ## Case 1: a loose reply to the briefing
 
@@ -74,7 +75,7 @@ Checks:
 herdr-hub holds the same "status update" rule, so both runs may pass
 this case. It checks that rule as much as this skill.
 
-## Case 3: a briefing while Strata is down
+## Case 3: a briefing while no model can sort the cards
 
 `auto/` is empty. The prompt is:
 

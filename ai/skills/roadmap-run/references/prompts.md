@@ -8,6 +8,7 @@ SKILL.md's Before you start. `<design digest>` is the PR's file from
 build.md's Write a design digest. `<suites summary>` is the PR's
 `<run folder>/suites.txt`, from build.md's Run the suites once per
 plan version, for the plan version the agent reads.
+`<Write in parts>` is the block in Write in parts below.
 `<report file>` stands for a new file in the PR's run folder, such as
 `<run folder>/plan-review-1.md`. The first planner starts before that
 folder exists, so give it a file in a folder you make with `mktemp -d`.
@@ -16,10 +17,11 @@ folder exists, so give it a file in a folder you make with `mktemp -d`.
 
 - Rules every agent gets
 - Planner
+- Write in parts
+- Next part
 - Fresh plan review
 - Skill review
 - Revision message
-- Local model
 
 ## Rules every agent gets
 
@@ -42,6 +44,10 @@ from the roadmap page too.
     summary lines, such as counts and the names of failed tests.
     Never run a whole test suite or linter; a script runs them once
     for each plan version.
+    Do not read the design digest whole. Ask it questions with the
+    digest reader, as "Ask a digest a question" in
+    `~/.agents/skills/roadmap-run/references/build.md` says, and
+    read whole only the passages your work changes.
     Reply in at most 20 lines, starting with the report's path.
 
 Reviewers also get:
@@ -73,8 +79,8 @@ Reviewers also get:
     vault before writing there.
 
     Base: <branch> at <full commit>; for a child of an unbuilt
-    parent, the commit of the parent's planned tree. Read: <roadmap>,
-    <parent plans> and <design digest>, which holds the design
+    parent, the commit of the parent's planned tree. Read: <roadmap>
+    and <parent plans>. Design: <design digest>, which holds the design
     passages this PR touches, the Dictionary and the design-edits
     entries they point to. Use the words the Dictionary defines in
     names and comments. Scope: <what this PR does and does not do>.
@@ -98,9 +104,52 @@ Reviewers also get:
     tests, other), choices you made, and anything that contradicts the
     design.
 
+    <Write in parts>
+
 Every revision goes to a new planner, with the revision message
 below. The plan's `## Notes for agents` holds every decision, so the
 new planner needs no earlier session.
+
+## Write in parts
+
+Add this to the end of every planner brief: the first planner, each
+next part and each revision.
+
+    Write the plan in parts, one part per planner. After each section
+    or plan step you finish, run `pde-context --context`. It prints
+    your context, such as `86k of 1M (9%)`. Once the first number is
+    past 150k, stop. Before you stop, write each decision you made
+    into the plan's `## Notes for agents`. Then end your report with
+    `Left:` and what is left, such as "steps 5 to 9 and
+    Verification". `planner check` fails until the last part is
+    written, which is expected. When the command prints
+    `no session ID` instead of a number, stop after every five plan
+    steps.
+
+## Next part
+
+When a planner's report ends with `Left:`, start a new planner with
+this. Repeat until a report has no `Left:` line.
+
+    Continue the implementation plan <plan path>.
+    Applicable skills: create-plan, <domain skills>,
+    code-documentation, behavior-focused-testing. Load each first and
+    report any that are unavailable. Follow create-plan's "When you
+    are a delegated agent" section. Read `Projects/AGENTS.md` in the
+    vault before writing there.
+
+    The planner before you stopped at its context limit. What is
+    left: <the Left: list>. Read <roadmap> and <parent plans>.
+    Design: <design digest>. Read the plan as written so far with
+    `rg` and `sed -n`, and write what is left. Keep the decisions in
+    its `## Notes for agents`; change one only on evidence, and say
+    so in your report.
+
+    Report: plan paths, `planner check` result, changed lines (code,
+    tests, other), choices you made, and anything that contradicts the
+    design.
+
+    <Write in parts>
 
 ## Fresh plan review
 
@@ -183,20 +232,4 @@ out the part in brackets.
     Report: new size, changed `plant` lines,
     `planner check` result, and anything not applied and why.
 
-## Local model
-
-A local model runs only a job a script checks: tests and linters,
-`plant` lines, or the checks before a merge. build.md's
-`suites.sh` and `plants.sh` and the pull-request skill's
-`merge-check.sh` are such scripts. Plans, design
-checks, reviews, PR text and decisions stay on cloud models, and you
-build and ship. Write the job as one script that sends long output to
-a log and writes a summary file whose last line is `done`. The model
-gets no rules file, only this brief:
-
-    Run this one command: `bash <script>`. Then print <summary file>
-    exactly. Touch no other file and run nothing else. Never answer
-    an approval request.
-
-Read the summary file yourself. The job counts only when its last
-line is `done`; never trust the model's own words about it.
+    <Write in parts>

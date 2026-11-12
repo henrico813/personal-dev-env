@@ -5,7 +5,7 @@ apt_groups:
          tar, unzip, xclip, xz-utils, zsh]
   # fontconfig provides fc-cache for the fonts.
   fonts: [fontconfig]
-  # The packed skill-lessons and hub run with /usr/bin/python3.
+  # The packed skill-lessons runs with /usr/bin/python3.
   python: [python3]
   dev: [build-essential, bzip2, gawk, make, patch]
   # Both desktops list this group. Apt runs with --no-install-recommends, so
@@ -53,7 +53,7 @@ profiles:
   terminal: {apt: [base], brew: [base], tiers: [terminal]}
   # Installs Neovim, OpenCode, herdr and fonts for a laptop that
   # compiles nothing. It leaves out Go, Rust, the approval tools and
-  # every local build but skill-lessons and hub.
+  # every local build but skill-lessons.
   client:
     apt: [base, fonts, python]
     brew: [base, python]

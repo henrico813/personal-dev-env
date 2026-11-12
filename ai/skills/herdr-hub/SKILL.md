@@ -42,41 +42,39 @@ session with the `hub` command, instead of `ls`, `cat` or
 
     hub status --run "<run folder>"
 
-It prints one line for every named session except the hub:
+It prints the hub's own line, the board, one count per state, the
+unread reports, then one row per session:
 
-    NAME              STATE  CTX   CARD         REPORT  SEND  LABEL
-    demo-kb-007-impl  idle   108k  DEMO-KB-007  unread  -     needs you
+    hub kanban-hub-18 131k, watcher running
+    board 24/8, review 19
+    open 24: 4 working, 2 hub, 3 you,
+      5 kept, 1 to-close, 2 to-park; 12 parked
+    unread 2: demo-kb-007-impl docs-fix
 
-CTX is the session's context size from OpenCode's database. It is
-`-` with `--machine`, when the database has no count for the
-session, or when it cannot be read. REPORT is `unread`
-while `report-<name>.md` waits in the run folder. SEND is `held` while
-a message waits for the session, `failed` when Herdr refused one, and
-`unsure` when a send stopped part way. A named session missing from
-the table is gone.
+    NAME              STATE    CTX   WHY
+    demo-kb-007-impl  hub      98k   unread report
 
-Below it comes one line per active card, with the card's newest live
-session:
+STATE says who must act: `working` needs nothing, `hub` waits on you,
+`you` waits on the user, `kept` is finished but holds something (WHY
+says what), `to-close` and `to-park` are finished and `hub clean` will
+close or park them, and `parked` has no tab but can reopen. CTX is
+the session's context size, `-` when it cannot be read. A last
+`no session:` line names the active and review cards no session works
+on. After the switch from the Python hub, it also prints an
+`old send file: <path>` line for each Python send file left in the
+run folder. Send again any message in it that still matters, with
+`hub send`, then delete the file.
 
-    CARD         SESSION           STATE  WAITS
-    DEMO-KB-007  demo-kb-007-impl  idle   you
-
-WAITS is `hub` when the session waits on you, and `you` when it waits
-on the user, even when it does not report to you. A session waits on
-the user when:
-
-- it is blocked, or marked "needs you"
-- its card has a needs-you note with no answer
-- it sits idle and has never reported to you
-
-Run `hub status` at the start and on each turn. Tell the user once
-what each `you` session waits on. When such a session has never
-reported to you, bring it under the hub at once: send it the new
-rules that Rules gives for a worker the user hands you.
+Run `hub status` at the start and on each turn. Read its counts line
+and its `unread` line each time; never list the run folder. Tell the
+user once what each `you` session waits on. When such a session has
+never reported to you, bring it under the hub at once: send it the
+new rules that Rules gives for a worker the user hands you.
 
 Before you send a worker new build work, check its CTX in
 `hub status`. A worker near 150k writes its handoff first, and the
-new session it hands off to gets the work.
+new session it hands off to gets the work. `hub next` asks each
+worker past 150k to hand off by itself, so send no second ask.
 
 Before you tell the user that a worker or subagent died, run
 `hub alive <session ID>` with its OpenCode session ID. Its line ends
@@ -86,34 +84,96 @@ in `working`, `finished` or `stopped`. Report it dead only on
 When you hand work to a new session with `herdr-handoff`, its
 Coordination section names you as the one session it reports to,
 gives its report file, `<run folder>/report-<name>.md`, and names no
-other owner. Workers never message each other.
+other owner. Its template also tells the session to wait on a long
+job with `hub wait`. Workers never message each other.
 
 ## Wake on news
+
+At the start, run this once in your own pane:
+
+    hub watch start --run "<run folder>"
+
+It names you as the run's hub and starts `hub watch` when none runs
+on this machine. The watch runs outside every chat and never types
+into your pane. It prods a worker that sat idle 10 minutes owing a
+report and marks a blocked worker "needs you". When a report waits
+10 minutes with no `hub next` line, your next `hub next` prints it as
+`missed report <name>`. Only when you are gone does the watch alert
+the user's phone. A
+worker that waits on a long job registers it with `hub wait` and
+ends its turn. The watch prods it when the job ends and never counts
+it as stalled meanwhile, so you do nothing for it. When
+`hub watch start` exits 3, tell the user its reason once, and go on
+with `hub next`. An auto hub, which never messages the user, lists the
+reason in its end brief instead.
 
 Keep one `hub next` running in the background at all times, started
 once the first session works:
 
-    hub next --run "<run folder>"
+    hub next --run "<run folder>" --timeout 2700
+
+The timeout ends it within 45 minutes, before OpenCode drops an idle
+folder's background commands, and its `timeout` line wakes you to
+start it again.
 
 It waits until a session has news, prints one line and ends, so its
-end starts your turn. While it waits it sends held messages. Handle
-the line, then start it again:
+end starts your turn. While it waits it sends held messages. It never
+closes or parks a session; Cleanup says how. Add `--start-reviews`
+only when the user asks for session reviews of old hubs, since they
+are off by default. Most lines end with your own context, such as
+`(hub 131k)`. Handle the line, then start it again:
 
-- `report <name>`: run `hub read --run "<run folder>" <name>`. It
+- `report <name>`: run `hub read --run "<run folder>" <name>` and the
+  next `hub next` as two tool calls in the same reply, since
+  `hub next` does not print a report it already printed. `hub read`
   prints the report, renames it to `report-<name>.<HHMM>.read`, and
-  ends with `unread:` and the other unread reports, or `-`. Handle it
-  as Reports from sessions says. `--note "<line>"` adds a timed line
-  to `notes.md`, so use it for the report before: when `unread:`
-  names another report, read that one in the step that acts on this
-  one, with a note on what you did. When it says `-`, add your line
-  to `notes.md` yourself, as `- HHMM <line>`.
+  ends with `unread:` and the other unread reports, or `-`. It exits
+  3 when `<name>` has no unread report. Handle the report as Reports
+  from sessions says. `--note "<line>"` adds a timed line to
+  `notes.md`, and `--card` adds it to the session's card Log as well.
+  When `unread:` names another report, read that one in the step that
+  acts on this one, with a note on what you did.
+- `missed report <name>`: handle it as a `report` line. No
+  `hub next` ran for 10 minutes before it, so keep one running.
 - `blocked <name>`: the session waits at an approval or question in
   its pane. Handle it as Waiting on the user says.
-- `failed <name>: <reason>`: Herdr refused a held message before
-  taking it. Read the message in `<run folder>/send-<name>.failed`,
-  check the session, and send it again.
+- `not sent <name>: <reason>`: Herdr turned a held message down, or
+  the session is gone. The message stays in a `.notsent` file in
+  `<run folder>/sends/`. Check the session, and send it again. Once
+  you have sent it again, or decided not to, delete that `.notsent`
+  file, since the session waits on you while it stays.
 - `unsure <name>: <reason>`: a held message may have arrived. Handle
   it as an `unsure` send, as Send to a session says.
+- `hand off now: hub at <N>k`: your context passed 150k. Hand off
+  the hub now, as Hand off the hub says.
+- `board over its limit: N/M`: the cards in active and review passed
+  the board's limit. Tell the user at once, with the board line, and
+  start no new work until the count is back under the limit or the
+  user says to go on.
+- `to-close <names>: <why>; run hub clean`, or the same with
+  `to-park`: those sessions finished. Run `hub clean` as Cleanup
+  says.
+- `old send file: <path>`: handle it as the `hub status` line of the
+  same name, above.
+- `no hub handoff for <old> -> hub adopt <old>`: an older hub of this
+  run is still open, and no `hub handoff` started you from it. Run
+  `hub adopt --run "<run folder>" <old>`. It writes the old hub's
+  review handoff. Once the old hub is idle, `hub next` lists it as
+  `to-close`, and `hub clean` closes its tab.
+- `review started <name>`: with `--start-reviews`, the old hub's
+  session review now runs. Bring its pick list to the user when it
+  reports.
+- `review not started for <old>: <reason>; start it from <file> with
+  herdr-handoff`: `hub next` tries no more. Start that review with
+  `herdr-handoff` from that file.
+- `timeout`: the `--timeout` you gave ran out with no news. Start it
+  again.
+- `replaced by a newer hub next`: start nothing, since a newer
+  `hub next` runs.
+
+Add any other line to `notes.md` with
+`hub note --run "<run folder>" "<line>"`, which stamps the time.
+Never write a `- HHMM` line by hand.
 
 It prints each blocked state once, so a session that stays blocked
 does not wake you again.
@@ -133,6 +193,9 @@ the report with the second:
 machine's sessions.
 
 ## Reports from sessions
+
+Workers write their reports with `hub report`, never with their file
+tools, so you never read half a report.
 
 - A question: answer it yourself when the user's standing decisions,
   the repository's usual practice or the run's design document
@@ -156,22 +219,28 @@ machine's sessions.
 Send every message, such as an answer, with `hub send`:
 
     hub send --run "<run folder>" <name> "<message>"
+    hub send --run "<run folder>" <name> --file <path>
 
-It sends at once when the session is `idle` or `done` and the user is
-not in its pane, and prints `sent <name>`. Otherwise it prints
-`held <name>` and keeps the message in the run folder, and the
-running `hub next` sends it when the session is free. For a session
-on another machine, put `--machine <label>` after `hub`.
+It sends at once to an OpenCode or Claude Code session that works,
+idles or is done, when the user is not in its pane, and prints
+`sent <name>`. Otherwise it prints `held <name>: <why>` and the
+running `hub next` sends it later, oldest first. A second message
+waits behind the first. A message to a parked session reopens it.
+Use `--file` for any message that names a tool or holds quotes. For a
+session on another machine, put `--machine <label>` after `hub`.
 
-`hub send` exits 1 with Herdr's reason when Herdr refuses the
-message. When Herdr gives up after taking it, the send shows as
-`unsure`, since the message may have arrived. `hub send` refuses a
-second message, with exit code 2, while one to that session is held
-or `unsure`. Wait for the held one to go out.
-For `unsure`, read the pane with
-`herdr agent read <name> --source recent-unwrapped --lines 40` to see
-whether the message arrived. Then delete
-`<run folder>/send-<name>.sending` and send again only if it did not.
+A message to a parked session prints
+`reopening <name>; held until it starts`. A message to a session that
+handed off goes to the newest live session on its card, and prints
+`sent <new name> (<name> handed off to it)`.
+
+`hub send` exits 1 with `not sent` when Herdr turned the message
+down or the session is gone, and with `unsure` when it may have
+arrived. For `unsure`, read
+the pane with
+`herdr agent read <name> --source recent-unwrapped --lines 40`, then
+delete the `.sending` file it names and send again only if the
+message did not arrive.
 
 ## Waiting on the user
 
@@ -202,17 +271,21 @@ vault. A hub never reports to a hub on another machine.
   card. A short chat holds none. A card is one piece of work, so
   sessions on the same work share one card, and its `sessions` list
   keeps each of them.
-- Two limits, across every project: 8 cards in `active` and 6 in
-  `review`. While both allow, start the oldest ready card, or the one
-  the user names. Never start one past a limit; only the user does.
-  When active work is over its limit, propose which cards to pause,
-  and let the user decide. If `card` refuses a start that both limits
-  allow, pass `--user` and say so in `--why`.
+- One limit, across every project: 8 cards in `active` and
+  `review` together, as `card board` shows. While it allows, start
+  the oldest ready card, or the one the user names. Never start one
+  past the limit; only the user does. When work is over the limit,
+  propose which cards to pause, and let the user decide. If `card`
+  refuses a start that the limit allows, pass `--user` and say so in
+  `--why`.
 - Move a card to `review` as soon as its work waits only on the user,
   such as an open pull request or a plan or question for the user,
   even when more work follows. When the user has answered or
   reviewed and more work follows, move it back to `active` with
   `--user`, since the user's review is the go-ahead.
+  When you move a card to `review`, add the user's one next step with
+  `card note KEY "next: <step>"`, such as `next: review PR #498`.
+  `hub board` shows it on the card's details page.
 - Only the user moves a card from `draft` to `ready`, adopts work
   already under way, or drops a card. Never release a card the user
   described in a sentence: it stays in `draft` until the user has
@@ -240,10 +313,13 @@ you make any card.
   the run's first hub. `hub go` and `hub gather` find hubs by this
   name. If yours does not, rename your agent and its tab as the bullet
   on adopted sessions below shows.
-- Then run `hub gather`, which takes no `--run`. It moves every hub's
+- `hub handoff`, `hub adopt` and `hub auto now` move every hub's
   workspace on this machine into one block at the top of the sidebar.
+  `hub gather` makes the same move when the user runs it.
   The user presses `ctrl+b shift+h`, or runs `hub go`, to show the
   next hub in sidebar order, wrapping to the first.
+- The workspace labelled `desk` is the user's. Never open a tab or pane
+  in it or start an agent there.
 - A card's worker gets its own workspace, named
   `<card key> <one word>`, such as `demo-kb-007 approvals`. Cards that
   belong together share one workspace, named `<project> <topic>`, such
@@ -264,19 +340,17 @@ you make any card.
 
 ## Cleanup
 
-- Each worker closes its own tab when its card is accepted or
-  dropped, or once it has written a handoff that pauses its card. It
-  first checks that it holds nothing unsaved, such as uncommitted files
-  or an unpushed branch. A paused worker may leave such files, since
-  closing a tab changes no file, but its handoff lists each one. The
-  handoff that starts it says so, and you tell it when its card is
-  accepted or dropped.
-- When a worker cannot close its tab, close it yourself, once
-  `hub status` shows it `idle` or `done` and it holds nothing unsaved,
-  or, for a pause, its handoff lists each file it leaves. Never ask
-  the user to close a worker.
-- A cleanup worker sweeps the tabs left open with the session sweep
-  script, once that script exists.
+The hub owns closing. `hub next` names each session that turns
+`to-close` or `to-park` once, but closes nothing. Run
+`hub clean --dry-run` to see what it would do, and `hub clean` to
+close each `to-close` session's tab and park each `to-park` session.
+It logs each to `notes.md`. A parked session's ID is kept, and a
+message sent to it with `hub send` reopens it in a new tab. Run
+`hub park <name>` to park one `to-park` session now.
+Never close a `kept` session; its WHY says what closing would lose.
+`hub clean` never closes a worker whose handoff paused its card, since
+its card is back in ready. Close its tab yourself once you have read
+that report. Never ask the user to close a worker.
 
 ## Questions for the user
 
@@ -303,9 +377,10 @@ user everything that waits on them with:
 
     hub brief --run "<run folder>"
 
-It prints `reviews.md`, then every entry. It exits 2, naming the
-entry, when one lacks its question, two choices, `Recommended:` or
-`If no reply:`. Fix the entry and run it again.
+Its first line is `board N/M, review R; K decisions`, then it prints
+`reviews.md` and every entry. It exits 3, naming the entry, when one
+lacks its question, two choices, `Recommended:` or `If no reply:`.
+Fix the entry and run it again.
 
 ## Merges
 
@@ -316,31 +391,72 @@ one message. A merge or pull request edit request is never a routine
 step. A worker sends one only after you tell it the user reviewed
 that pull request, so tell it once the user has, and take the pull
 request off the list. The worker then merges and reports once it has
-merged.
+merged. When the worker is parked, do not message it, since a message
+reopens it; hand its merge to a merge worker, as below.
 
-Hand any other merge first to a merge worker: a new Herdr session on
-the local model, started by `herdr-handoff` with
-`--model goog/qwen3.8 --auto`, never a subagent of the hub. A
-subagent ends when the hub's turn is interrupted, and the user cannot
-see it. Make a folder with `mktemp -d`. The worker's handoff file
-holds only this brief, filled in, and none of the handoff template's
-sections. In a repository with several remotes, add
-`--remote <remote>` after the test command.
+Hand any other merge first to a merge worker. A merge worker is a new
+Herdr session on the local model, as `model-routing` picks, never a
+subagent of the hub. A subagent ends when the hub's turn is
+interrupted, and the user cannot see it. Start it with
+`herdr-handoff`. Pass `--auto`, and set `--model` to that model.
+Make a folder with `mktemp -d`. Brief the worker as `model-routing`
+says for a local job. In that brief, put the command below in place
+of `bash <script>`, and name `<folder>/summary.txt` as the summary
+file. In a repository with
+several remotes, add `--remote <remote>` after the test command.
 
-    From <repository>, run this one command once:
-    bash ~/.agents/skills/herdr-hub/scripts/merge-worker.sh \
-      <number> <folder> '<test command>'
-    Then print <folder>/summary.txt exactly and stop. Never run it
-    again, even when a check fails. Touch no other file and run
-    nothing else. Never answer an approval request.
+Start a merge worker only for a pull request whose Testing records that
+the change was deployed and tried, as `pull-request` Guardrail 4 asks.
+Otherwise hand the merge on as that skill's Merge says. When `rules.md`
+names an environment setting that `git push` needs, such as an SSH
+agent socket, put it just before `bash` in the brief's command.
 
-Read `<folder>/summary.txt` yourself. It counts only when its last
-line is `done`; never trust the worker's words about it. When it
-says `result: ready`, start a cloud session by `herdr-handoff` that
-follows `pull-request`'s Merge from step 4, with `<folder>/prep` as
-`$O`. Otherwise bring the problems it names to the user with the
-pull request's review entry. Close the merge worker's tab once you
-have read its summary.
+    cd <repository> &&
+      bash ~/.agents/skills/herdr-hub/scripts/merge-worker.sh \
+        <number> <folder> '<test command>'
+
+The script merges the base into a branch that is behind it and pushes
+the merge as a new commit. It then runs `pull-request`'s merge checks
+and, when they pass, sends the merge request. The user approves it in
+the popup or on the phone, which shows the squash message. The script
+keeps running when the shell tool stops it.
+
+Read `<folder>/summary.txt` yourself. When the summary fails the check
+in `model-routing`, retry the merge worker as that skill says, with
+the same folder. The script starts no second run in the same folder.
+A new folder would start a second run, which could send a second
+merge request. The line before `exit:` says what happened:
+
+- `merged: <commit>`: handle it as a merged pull request, as Reports
+  from sessions says.
+- `result: conflict with <base>: <files>`: resolving a conflict
+  writes code, so it is a local job. Hand it to a worker as
+  `herdr-handoff`'s "Hand a local job to a worker" says, with an edit
+  brief as `model-routing` says. The brief has the model merge the
+  base into the branch in the branch's worktree and resolve the
+  conflict, and then stop. The brief lists `<files>` as the only
+  files to edit. The model commits nothing and writes no pull request
+  text.
+
+  After the model stops, run the edit job's check script yourself, as
+  `model-routing` says. The script runs `git diff --check` to catch
+  leftover conflict markers, then the merge worker's test command.
+  The script commits with your message and pushes only when both
+  pass. Write the message as `git-messages` says. The script writes a
+  summary that ends in `done`. A broken resolution then never reaches
+  the pull request's branch.
+
+  When the summary ends in `done`, start a new merge worker with a
+  new folder, since no merge request went out. When the check fails,
+  or the new merge worker reports a conflict again, count it as a
+  failed check. Retry and step up as `model-routing` says. A retry
+  starts with `git merge --abort` in the branch's worktree.
+- `result: not ready: ...`: bring the problems it names to the user
+  with the pull request's review entry.
+- Any other line, such as a declined request or an `error:` line:
+  tell the user.
+
+Close the merge worker's tab once you have read its summary.
 
 ## Hand off the hub
 
@@ -354,11 +470,14 @@ as `kanban-hub-14` after `kanban-hub-13`.
 
 It starts `<name>` in a tab of your workspace on the model of the last
 `--model '...'` line in `rules.md`, so keep the hub start command there
-in that form. It checks its inputs before it starts anything. Before it
-sends the handoff, it writes your session review's handoff and adds to
-the new hub's handoff how to close your tab and start that review. It
+in that form. The new hub's tab gets `HUB_RUN` set to the run folder.
+It checks its inputs before it starts anything. Before it
+sends the handoff, it writes your session review's handoff. It adds to
+the new hub's handoff that `hub clean` closes your tab once you are
+idle, and that `hub next --start-reviews` starts that review if the
+user asks for it. It
 then reads back the reasoning effort of the new hub's first reply. Tell
-the user the effort it printed, never one you assume. When it exits 2
+the user the effort it printed, never one you assume. When it exits 3
 with `started <name>, but`, the new hub runs: tell the user, who can
 switch its effort in that session, and never run `hub handoff` again.
 
@@ -374,6 +493,8 @@ switch its effort in that session, and never run `hub handoff` again.
   steps without asking, report to the hub, and bring other questions
   to the hub instead of its pane. Approvals that only a human may give
   still go to the user.
+- Start every status that lists what waits on the user with the
+  board line from `hub status`.
 - Write to the user only when the user must act or decide, in one
   short message per turn, by `status-updates`. Keep the detail in
   `<run folder>/notes.md`. The user reads your pane while news keeps
@@ -385,9 +506,10 @@ switch its effort in that session, and never run `hub handoff` again.
 - During an auto run, answer "status update" with the output of
   `hub auto now --run "<auto run folder>"`, word for word, then your
   own news. The `auto-run` skill covers the rest of the run.
-- When your context grows past about 150k tokens, or after it is
-  summarized, use the `herdr-handoff` skill to offer the user a new
-  session. Offer once.
+- When `hub next` prints `hand off now`, or `hub status`'s first
+  line says `hand off now`, hand off the hub as Hand off the hub
+  says. After your context is summarized, use the
+  `herdr-handoff` skill to offer the user a new session. Offer once.
 
 Read [references/evaluation.md](references/evaluation.md) only when
 testing or revising this skill.

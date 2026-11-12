@@ -1,0 +1,13 @@
+[Unit]
+Description=Watch hub workers for stalls and unread reports
+
+[Service]
+ExecStart=%h/.local/bin/hub watch run
+# Starts the watch again whenever it ends, as after a crash.
+Restart=always
+RestartSec=10
+# The watch runs herdr, card and moshi-hook, which live here.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target

@@ -494,6 +494,108 @@ class TestEdit:
         )
 
 
+class TestAttach:
+    """Attaching copies a file into the project and embeds it in Context."""
+
+    def test_attach_copies_file_and_embeds_it(
+        self, projects: Path, tmp_path: Path
+    ) -> None:
+        """The file lands in attachments under the key, and Context shows it.
+
+        The user attaches photos so a card holds what they saw. A wrong
+        name or folder would leave the embed pointing at nothing, and a
+        bad copy would show a broken image.
+        """
+        path = write_card(projects, KEY, "draft")
+        photo = tmp_path / "photo.jpg"
+        photo.write_bytes(b"made-up image bytes")
+
+        code = run_card(projects, "attach", KEY, str(photo))
+
+        assert code == 0
+        attachment = projects / "DevEnv" / "attachments" / f"{KEY} photo.jpg"
+        assert attachment.read_bytes() == b"made-up image bytes"
+        context = card.read_section(path.read_text(), "Context")
+        assert context.rstrip().endswith(f"- ![[{KEY} photo.jpg]]")
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            pytest.param("missing.jpg", id="missing-file"),
+            pytest.param("", id="folder"),
+        ],
+    )
+    def test_attach_without_file_leaves_vault_unchanged(
+        self, projects: Path, tmp_path: Path, name: str
+    ) -> None:
+        """A path with no file behind it fails before the vault changes.
+
+        A typo in the path is easy to make. If card still made the
+        attachments folder or an embed line, the card would show a
+        broken image and the user would have to clean up by hand.
+        """
+        path = write_card(projects, KEY, "draft")
+        before = path.read_text()
+
+        code = run_card(projects, "attach", KEY, str(tmp_path / name))
+
+        assert code == 1
+        assert path.read_text() == before
+        assert not (projects / "DevEnv" / "attachments").exists()
+
+    def test_attach_refuses_to_overwrite_existing_attachment(
+        self, projects: Path, tmp_path: Path
+    ) -> None:
+        """A second file with the same name keeps the first one intact.
+
+        Attachments are the only copy of some photos once the original
+        is deleted. Writing over one would lose it, and the sync would
+        copy the loss to every device.
+        """
+        path = write_card(projects, KEY, "draft")
+        before = path.read_text()
+        attachment = projects / "DevEnv" / "attachments" / f"{KEY} photo.jpg"
+        attachment.parent.mkdir()
+        attachment.write_bytes(b"first photo")
+        photo = tmp_path / "photo.jpg"
+        photo.write_bytes(b"second photo")
+
+        code = run_card(projects, "attach", KEY, str(photo))
+
+        assert code == 1
+        assert attachment.read_bytes() == b"first photo"
+        assert path.read_text() == before
+
+    def test_attach_removes_copy_when_update_fails(
+        self,
+        projects: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When the card cannot be saved, only the new copy is removed.
+
+        Without the cleanup, the copy would stay with no embed, and the
+        retry would be refused as an overwrite. Removing the wrong file
+        instead would delete the user's original.
+        """
+        write_card(projects, KEY, "draft")
+        photo = tmp_path / "photo.jpg"
+        photo.write_bytes(b"made-up image bytes")
+
+        def refuse_update(*args: object) -> bool:
+            """Fail as update_card does when the note keeps changing."""
+            raise card.CardError("changed twice while writing")
+
+        monkeypatch.setattr(card, "update_card", refuse_update)
+
+        code = run_card(projects, "attach", KEY, str(photo))
+
+        assert code == 1
+        attachment = projects / "DevEnv" / "attachments" / f"{KEY} photo.jpg"
+        assert not attachment.exists()
+        assert photo.read_bytes() == b"made-up image bytes"
+
+
 class TestBoard:
     """The board shows what waits on the user, oldest first."""
 

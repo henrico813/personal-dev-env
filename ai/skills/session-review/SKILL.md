@@ -88,6 +88,9 @@ While cloud models are available, local models should do work that
 cuts cloud tokens. Answer both in two required sections, for each
 role the session used, workers as well as the hub. A list of jobs a
 script could check is not enough.
+For each job, the stored trials find the weakest model that does the
+job well, in the order of `model-routing`'s roles, from local to
+strongest.
 
 - Fallback map: for each role, such as hub, planner, implementer,
   reviewer or merge worker, the local model that would run it, what
@@ -96,13 +99,21 @@ script could check is not enough.
 - Efficiency map: each large reading, sorting, summarizing or
   checking step a local model could do now, so the cloud model reads
   a short result. Give its tokens from the script or a named query,
-  the check that makes the local result safe to trust, and the
-  saving, marked measured or estimate.
+  the check script for the local result, and the saving, marked
+  measured or estimate. A step that no script can check goes on the
+  role `model-routing` gives it, often the cheap model.
 
-Find a trial in an earlier review in the session-reviews folder whose
-role this session used. Rerun it on the same local model, and give
-its result in a Trials section. If you ran none, say so there and
-why.
+Run the stored trials on the local model, then on the cheap model, as
+`model-routing` picks them. Run each case at least three times on
+each model, as [references/trials.md](references/trials.md) says. Give
+each case's pass rate, with the model, effort and rules hash, in a
+Trials section. If you ran none, say so there and why.
+
+When the user corrected a mistake in a hub run folder's `rules.md`,
+`notes.md` or `decisions.md`, add a trial case for it: the situation
+before the mistake, with the correction as its answer key. A case is
+review data, like the review file, so add it without waiting for the
+user's pick, and run it with the others.
 
 At least one of step 2's proposals, or one lesson, helps a local
 model take over a workflow. It may use cloud and local models
@@ -110,12 +121,10 @@ together, or a script that a local agent can run and that saves a
 cloud agent tokens. Proposals from the two maps count toward step
 2's limit of three.
 
-To brief a local model on a job a script checks, point to the Local
-model section of
-[roadmap-run's prompts](../roadmap-run/references/prompts.md) rather
-than restating it. Keep cheap cloud models, such as
-`openai/gpt-6-luna`, apart from local ones, such as `goog/qwen3.8`:
-only a local model keeps working when cloud access fails.
+To brief a local model on a local job, point to the `model-routing`
+skill rather than restating its brief. Keep the cheap model apart
+from the local model, as `model-routing` names them. Only the local
+model still runs when cloud access fails.
 For long, repetitive work, such as an audit that repeats one check
 for each ticket, follow
 [herdr-handoff's page](../herdr-handoff/references/cheaper-model.md)
@@ -143,8 +152,8 @@ below. Then wait. Change nothing until the user answers.
 A narrow question, such as "what could a local model have done?",
 still gets the Fallback, Efficiency and Trials lines at the end. A
 trial is a rerun from step 4, not work the session already did on a
-local model. It also keeps the line that points to roadmap-run's
-Local model section.
+local model. The reply to a narrow question also keeps the line that
+points to the `model-routing` skill.
 
 ## Output format
 
@@ -162,16 +171,17 @@ Local model section.
     Fallback: <the role least ready for a local model, and its fix>.
     Efficiency: <the largest step a local model could take, and its
     saving>.
-    Trials: <the trial you reran and its result, or "none ran">.
-    To brief a local model, see the Local model section of
-    roadmap-run's references/prompts.md.
+    Trials: <each case's pass rate and the rules hash, or "none
+    ran">.
+    To brief a local model, see the model-routing skill.
 
     Reply with the numbers to apply.
 
 ## Guardrails
 
 - Change nothing, including skills, lessons, memories and rules
-  files, until the user picks.
+  files, until the user picks. The review file and new trial cases
+  are review data, so write them before the pick.
 - Edit a shared rules file only when this session owns it or the
   user says so. Otherwise send the change to its owner, such as the
   session that coordinates the run.
@@ -210,12 +220,14 @@ review, and the user can move it into this list by a pull request.
   as step 4 asks.
 - No dollars.
 - The fresh check ran, or the message says it did not.
-- Nothing was changed.
+- Nothing was changed except the review file and new trial cases.
 
 ## References
 
 - [references/example.md](references/example.md): read before
   writing the review file.
+- [references/trials.md](references/trials.md): read before running
+  or adding trials in step 4.
 - [references/evaluation.md](references/evaluation.md): read only
   when testing or revising this skill.
 

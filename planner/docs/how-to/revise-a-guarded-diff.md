@@ -87,8 +87,9 @@ unedited is an error: edit it first.
 
 ## Keep the base commit
 
-Pass the full commit ID recorded when the plan was created as `--base-commit`.
-See [How planner applies diffs to the base
+Inspect and patch read the base commit from the plan's `Base commit:` line.
+If you pass `--base-commit`, pass the full commit ID recorded when the plan was
+created, never the current `HEAD`. See [How planner applies diffs to the base
 commit](../explanation/applying-diffs-to-the-base-commit.md) for how the base
 commit is recorded and why the original commit is required.
 

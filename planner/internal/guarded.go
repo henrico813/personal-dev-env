@@ -28,8 +28,8 @@ const (
 	codePlanEdit           = "PLAN_EDIT"
 	codeCollateralChange   = "PLAN_COLLATERAL_CHANGE"
 	codeOutputReportFailed = "OUTPUT_REPORT_FAILED"
-	// codeBaseCommitRequired marks a plan that records no base commit and a check
-	// call that supplied no --base-commit. It is distinct from planpatch's
+	// Marks a guarded command run without --base-commit on a plan with no
+	// Base commit line. It is distinct from planpatch's
 	// CodeBaseCommitInvalid so the recovery hint can name the Current State line.
 	codeBaseCommitRequired = "BASE_COMMIT_REQUIRED"
 )
@@ -53,9 +53,9 @@ func codedError(code string, err error) error {
 	return &planpatch.Error{Code: code, Cause: err}
 }
 
-// guardedInspectOptions selects one fenced change and optionally writes the
-// proposed source that precedes or follows it. Repo and BaseCommit are required
-// so the returned edit_expect binds the recorded base commit.
+// Selects one fenced change and optionally writes the proposed source that
+// precedes or follows it. Empty Repo means the current directory, and empty
+// BaseCommit means the plan's Base commit line.
 type guardedInspectOptions struct {
 	PlanPath   string
 	Target     string
@@ -69,8 +69,6 @@ func (o guardedInspectOptions) validate() error {
 	switch {
 	case o.Target == "":
 		return usageError("--target is required")
-	case o.Repo == "" || o.BaseCommit == "":
-		return usageError("--repo and --base-commit are required")
 	case o.Before && o.CodeOut == "":
 		return usageError("--before requires --code-out")
 	}
@@ -112,6 +110,10 @@ func guardedInspect(opts guardedInspectOptions) (guardedInspectResult, error) {
 	if err != nil {
 		return result, codedError(plannerCode(PlannerUsageError), err)
 	}
+	repo, baseCommit, err := resolveRepoAndBaseCommit(opts.Repo, opts.BaseCommit, parsed.Plan)
+	if err != nil {
+		return result, err
+	}
 	selected := parsed.Plan.Implementation[step].FileChanges[change]
 	result = guardedInspectResult{
 		Selector:    selector,
@@ -119,15 +121,15 @@ func guardedInspect(opts guardedInspectOptions) (guardedInspectResult, error) {
 		StepTitle:   parsed.Plan.Implementation[step].Title,
 		StepSummary: parsed.Plan.Implementation[step].Summary,
 		Explanation: selected.Explanation,
-		BaseCommit:  opts.BaseCommit,
-		EditExpect:  planpatch.Expect(raw, selector, opts.BaseCommit),
+		BaseCommit:  baseCommit,
+		EditExpect:  planpatch.Expect(raw, selector, baseCommit),
 		Validation:  "inspection_only",
 	}
 	if opts.CodeOut == "" {
 		result.Diff = selected.Diff
 		return result, nil
 	}
-	s, err := sessionBefore(opts.Repo, opts.BaseCommit, parsed.Plan, step, change)
+	s, err := sessionBefore(repo, baseCommit, parsed.Plan, step, change)
 	if err != nil {
 		return result, codedError(codeSourceCheck, err)
 	}
@@ -185,8 +187,6 @@ func (o guardedPatchOptions) validate() error {
 		return usageError("--target is required")
 	case o.Expect == "":
 		return usageError("--expect is required")
-	case o.Repo == "" || o.BaseCommit == "":
-		return usageError("--repo and --base-commit are required")
 	case (o.AfterFile == "") == (o.DiffFile == ""):
 		return usageError("exactly one of --after-file and --diff-file is required")
 	}
@@ -226,17 +226,21 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 	if err != nil {
 		return result, codedError(plannerCode(PlannerUsageError), err)
 	}
+	repo, baseCommit, err := resolveRepoAndBaseCommit(opts.Repo, opts.BaseCommit, parsed.Plan)
+	if err != nil {
+		return result, err
+	}
 	// The token binds the plan bytes, the normalized selector, and the base
 	// commit. Now that inspect and patch always have a base commit, any mismatch
 	// is PLAN_STALE.
-	if opts.Expect != planpatch.Expect(raw, selector, opts.BaseCommit) {
+	if opts.Expect != planpatch.Expect(raw, selector, baseCommit) {
 		return result, &planpatch.Error{
 			Code:  planpatch.CodePlanStale,
 			Cause: errors.New("plan, target, or base commit changed since inspection"),
 		}
 	}
 	selected := parsed.Plan.Implementation[step].FileChanges[change]
-	s, err := sessionBefore(opts.Repo, opts.BaseCommit, parsed.Plan, step, change)
+	s, err := sessionBefore(repo, baseCommit, parsed.Plan, step, change)
 	if err != nil {
 		return result, codedError(codeSourceCheck, err)
 	}
@@ -330,7 +334,7 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 	result.PatchSyntaxValid = true
 	result.PrefixApplied = true
 	result.DownstreamChecked = false
-	result.BaseCommit = opts.BaseCommit
+	result.BaseCommit = baseCommit
 	result.BehaviorChecked = false
 	return result, nil
 }
@@ -481,15 +485,9 @@ func guardedCheck(opts guardedCheckOptions) (guardedCheckResult, error) {
 	if err := validateGuardedPlan(parsed.Plan); err != nil {
 		return result, codedError(plannerCode(PlannerValidateInputError), err)
 	}
-	baseCommit, err := checkBaseCommit(opts.BaseCommit, parsed.Plan)
+	repo, baseCommit, err := resolveRepoAndBaseCommit(opts.Repo, opts.BaseCommit, parsed.Plan)
 	if err != nil {
 		return result, err
-	}
-	repo := opts.Repo
-	if repo == "" {
-		if repo, err = os.Getwd(); err != nil {
-			return result, codedError(plannerCode(PlannerReadInputError), err)
-		}
 	}
 	changes := orderedChanges(parsed.Plan)
 	session, err := planpatch.ApplyToBase(repo, baseCommit, changes)
@@ -530,8 +528,8 @@ type guardedExportResult struct {
 
 func guardedExport(opts guardedExportOptions) (guardedExportResult, error) {
 	var result guardedExportResult
-	if opts.Repo == "" || opts.Out == "" {
-		return result, usageError("--repo and --out are required")
+	if opts.Out == "" {
+		return result, usageError("--out is required")
 	}
 	if _, err := os.Lstat(opts.Out); err == nil {
 		return result, codedError(plannerCode(PlannerWriteOutputError),
@@ -550,7 +548,7 @@ func guardedExport(opts guardedExportOptions) (guardedExportResult, error) {
 	if err := validateGuardedPlan(parsed.Plan); err != nil {
 		return result, codedError(plannerCode(PlannerValidateInputError), err)
 	}
-	baseCommit, err := checkBaseCommit(opts.BaseCommit, parsed.Plan)
+	repo, baseCommit, err := resolveRepoAndBaseCommit(opts.Repo, opts.BaseCommit, parsed.Plan)
 	if err != nil {
 		return result, err
 	}
@@ -563,7 +561,7 @@ func guardedExport(opts guardedExportOptions) (guardedExportResult, error) {
 		}
 	}
 	changes := orderedChanges(Plan{Implementation: parsed.Plan.Implementation[:steps]})
-	session, err := planpatch.ApplyToBase(opts.Repo, baseCommit, changes)
+	session, err := planpatch.ApplyToBase(repo, baseCommit, changes)
 	if err != nil {
 		return result, codedError(codeSourceCheck, err)
 	}
@@ -601,24 +599,41 @@ func guardedExport(opts guardedExportOptions) (guardedExportResult, error) {
 // lowercase object ID keeps the recorded base commit immutable and unambiguous.
 var baseCommitRE = regexp.MustCompile(`^Base commit: ([0-9a-f]{40}|[0-9a-f]{64})$`)
 
-// checkBaseCommit returns the commit that check applies. An explicit
-// --base-commit wins; otherwise the plan must record one on the first line of
-// Current State. check never falls back to HEAD, so a stale plan cannot
-// silently measure against the current checkout.
-func checkBaseCommit(flagBaseCommit string, plan Plan) (string, error) {
-	if flagBaseCommit != "" {
-		return flagBaseCommit, nil
+// Returns the repository and base commit that guarded commands apply diffs to.
+// Flags win over the current directory and the plan's Base commit line, and
+// HEAD is never used because it moves as implementation steps are committed.
+func resolveRepoAndBaseCommit(flagRepo, flagBaseCommit string, plan Plan) (repo, baseCommit string, err error) {
+	baseCommit = flagBaseCommit
+	if baseCommit == "" {
+		baseCommit, _ = cutBaseCommitLine(plan.DefinitionOfDone.CurrentState)
 	}
-	first, _, _ := strings.Cut(strings.TrimSpace(plan.DefinitionOfDone.CurrentState), "\n")
-	if m := baseCommitRE.FindStringSubmatch(strings.TrimSpace(first)); m != nil {
-		return m[1], nil
+	if baseCommit == "" {
+		return "", "", &planpatch.Error{
+			Code: codeBaseCommitRequired,
+			Cause: errors.New(
+				`first line of Current State must be "Base commit: <full commit ID>" ` +
+					`or --base-commit must be given`),
+		}
 	}
-	return "", &planpatch.Error{
-		Code: codeBaseCommitRequired,
-		Cause: errors.New(
-			`first line of Current State must be "Base commit: <full commit ID>" ` +
-				`or --base-commit must be given`),
+	repo = flagRepo
+	if repo == "" {
+		if repo, err = os.Getwd(); err != nil {
+			return "", "", codedError(plannerCode(PlannerReadInputError), err)
+		}
 	}
+	return repo, baseCommit, nil
+}
+
+// Splits Current State into the commit named on its first line and the text
+// after that line. When the first line is not a Base commit line, commit is
+// empty and rest is the whole text.
+func cutBaseCommitLine(currentState string) (commit, rest string) {
+	first, rest, _ := strings.Cut(strings.TrimSpace(currentState), "\n")
+	m := baseCommitRE.FindStringSubmatch(strings.TrimSpace(first))
+	if m == nil {
+		return "", currentState
+	}
+	return m[1], rest
 }
 
 var patchFileChangeSelectorRE = regexp.MustCompile(`^implementation\[(-?\d+)\]\.file_changes\[(-?\d+)\]$`)

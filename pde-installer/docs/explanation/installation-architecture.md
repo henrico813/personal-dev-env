@@ -34,8 +34,7 @@ The full order is:
 6. Install npm tools with the managed npm.
 7. Install direct-release fonts and run `fc-cache`, which macOS does not need.
 8. Build repository applications with the managed toolchains, and pack
-   `skill-lessons` and `hub` with `/usr/bin/python3`, or Homebrew's Python on
-   macOS.
+   `skill-lessons` with `/usr/bin/python3`, or Homebrew's Python on macOS.
 9. Migrate legacy PDE and Neovim configuration.
 10. Install the inline plugin runtime.
 11. Apply the chezmoi source.
@@ -44,7 +43,7 @@ The full order is:
 
 Terminal skips steps 5 to 8, 10, and 12. Client skips step 2's compiler checks,
 installs no Go, Rust, Keychain, or Moshi Hook in step 5, and only packs
-`skill-lessons` and `hub` in step 8. It skips step 12, because chezmoi installs
+`skill-lessons` in step 8. It skips step 12, because chezmoi installs
 blink.cmp with its Lua matcher in step 11, so client compiles nothing. Before
 step 1, client refuses to run if step 5 would delete installed release tools.
 

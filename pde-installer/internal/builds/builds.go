@@ -42,6 +42,11 @@ type buildSpec struct {
 // link keeps one binary, so the two names cannot drift apart.
 const approveAlias = "pde-pr-approve"
 
+// Reconcile deletes these names from ~/.local/bin when the profile does not
+// build them. hub-next was the Rust hub's old name, and client laptops no
+// longer get hub, which was the Python hub there.
+var droppedBuilds = []string{"hub-next", "hub"}
+
 type buildState struct {
 	Inputs     map[string]string `json:"inputs"`
 	Toolchains map[string]string `json:"toolchains"`
@@ -100,7 +105,7 @@ var wallpaperPlayers = map[string]wallpaperPlayer{
 }
 
 // Homebrew's Python, from the python@3.13 formula in profiles.yaml. macOS's
-// own /usr/bin/python3 is older than the 3.10 that skill-lessons and hub need.
+// own /usr/bin/python3 is older than the 3.10 that skill-lessons needs.
 const macOSPython = "/opt/homebrew/opt/python@3.13/bin/python3.13"
 
 // New returns a local build manager.
@@ -131,9 +136,18 @@ func (m Manager) Reconcile(selected profile.Profile) (*fsutil.Journal, error) {
 	if m.current(specs, inputs) {
 		return &fsutil.Journal{}, nil
 	}
+	droppedFiles, err := m.findDroppedBuildFiles(specs)
+	if err != nil {
+		return nil, err
+	}
 	if m.Runner.DryRun {
 		for _, spec := range specs {
 			if err := m.Runner.Plan("build and atomically activate "+spec.name, nil); err != nil {
+				return nil, err
+			}
+		}
+		for _, path := range droppedFiles {
+			if err := m.Runner.Plan("remove "+path, nil); err != nil {
 				return nil, err
 			}
 		}
@@ -157,6 +171,7 @@ func (m Manager) Reconcile(selected profile.Profile) (*fsutil.Journal, error) {
 	cargoTargets := map[string]string{
 		"vibe":    filepath.Join(stageRoot, "vibe-target"),
 		"glimmer": filepath.Join(stageRoot, "glimmer-target"),
+		"hub":     filepath.Join(stageRoot, "hub-target"),
 	}
 	for _, spec := range specs {
 		if err := fsutil.GuardHome(m.Home, stageRoot); err != nil {
@@ -210,6 +225,11 @@ func (m Manager) Reconcile(selected profile.Profile) (*fsutil.Journal, error) {
 				return nil, journal.Revert(err)
 			}
 			tracked = true
+		}
+	}
+	for _, path := range droppedFiles {
+		if err := removeWithBackup(journal, path); err != nil {
+			return nil, journal.Revert(fmt.Errorf("remove %s: %w", path, err))
 		}
 	}
 	for _, spec := range specs {
@@ -680,6 +700,20 @@ func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []bu
 			verifyArg: "help",
 		},
 		{
+			name:   "hub",
+			source: filepath.Join(m.RepoRoot, "hub-rs"),
+			output: filepath.Join(stageRoot, "hub-target", "release", "hub"),
+			command: run.Command{
+				Name: cargo,
+				Args: []string{
+					"build", "--locked", "--release", "--bin", "hub",
+					"--target-dir", filepath.Join(stageRoot, "hub-target"),
+				},
+				Dir: filepath.Join(m.RepoRoot, "hub-rs"), Env: environment,
+			},
+			verifyArg: "--version",
+		},
+		{
 			name:   "skill-lessons",
 			source: filepath.Join(m.RepoRoot, "skill-lessons"),
 			output: filepath.Join(stageRoot, "skill-lessons"),
@@ -690,18 +724,6 @@ func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []bu
 			},
 			verifyArg:     "--version",
 			pythonPackage: "skill_lessons",
-		},
-		{
-			name:   "hub",
-			source: filepath.Join(m.RepoRoot, "hub"),
-			output: filepath.Join(stageRoot, "hub"),
-			command: run.Command{
-				Name: m.python,
-				Args: []string{"-I", "build.py", filepath.Join(stageRoot, "hub")},
-				Dir:  filepath.Join(m.RepoRoot, "hub"), Env: environment,
-			},
-			verifyArg:     "--version",
-			pythonPackage: "hub",
 		},
 		{
 			name:   "prs",
@@ -749,6 +771,42 @@ func (spec buildSpec) hashSource() (string, error) {
 		return hashPythonSources(spec.source, spec.pythonPackage)
 	}
 	return hashTree(spec.source)
+}
+
+// Returns the existing files in ~/.local/bin that droppedBuilds says to
+// delete for these specs.
+func (m Manager) findDroppedBuildFiles(specs []buildSpec) ([]string, error) {
+	built := map[string]bool{}
+	for _, spec := range specs {
+		built[spec.name] = true
+	}
+	var paths []string
+	for _, name := range droppedBuilds {
+		if built[name] {
+			continue
+		}
+		path := filepath.Join(m.Home, ".local", "bin", name)
+		if _, err := os.Lstat(path); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		paths = append(paths, path)
+	}
+	return paths, nil
+}
+
+// Deletes path after recording a copy in journal, so a rollback puts it back
+// and a commit deletes the copy.
+func removeWithBackup(journal *fsutil.Journal, path string) error {
+	backup := fsutil.BackupName(path)
+	if err := fsutil.CopyPath(path, backup); err != nil {
+		return err
+	}
+	if err := journal.RecordReplaced(path, backup); err != nil {
+		return err
+	}
+	return os.Remove(path)
 }
 
 func managedVersion(name string) string {
