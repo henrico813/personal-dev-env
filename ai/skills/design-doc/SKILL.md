@@ -34,6 +34,20 @@ not start reviewers. Whoever gave you the task starts the fresh
 review that follows Step 5. Report only the open questions that pass
 the test in Step 2, each with its example and your recommendation.
 
+Write the doc in parts, one part per writer. After each section you
+finish, run `pde-context --context`. It prints your context, such as
+`86k of 1M (9%)`. Once the first number is past 150k, stop. Before
+you stop, write each choice you made so far as a bullet in the main
+page's Decisions. Then end your report with `Left:` and the pages and
+sections not yet written. A page you stopped partway counts as not
+written, and `Left:` names its missing sections. When the command
+prints `no session ID` instead of a number, stop after each page.
+
+When a writer's report ends with `Left:`, the agent that delegated
+to it starts a new writer with the same brief and the `Left:` list.
+The new writer reads the brief's inputs, such as a digest, and the
+pages already written. It then writes what is left.
+
 ## Writing for Humans
 
 The output of this process is a document for human readers. Humans
