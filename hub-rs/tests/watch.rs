@@ -112,6 +112,14 @@ fn register_wait(
     run_wait(run, &request, now).unwrap();
 }
 
+/// Counts the run's log lines of one event kind.
+fn count_events(run_path: &Path, kind: &str) -> usize {
+    read_events(run_path)
+        .into_iter()
+        .filter(|event| event["event"] == kind)
+        .count()
+}
+
 /// Returns the ID of a process that already ended.
 fn find_ended_pid() -> u32 {
     let mut child = Command::new("true").spawn().unwrap();
@@ -386,9 +394,38 @@ fn check_once_phones_only_when_hub_gone() {
         let calls = read_script_calls(&notifier);
         assert_eq!(calls.len(), expected_calls, "{case_name}: {calls:?}");
         if let Some(call) = calls.first() {
-            assert_eq!(call[4], "kanban-hub-1 is gone", "{case_name}");
+            assert_eq!(call[5], "kanban-hub-1 is gone", "{case_name}");
         }
     }
+}
+
+/// Moshi refuses pushes past its rate limit, and the phone alert is
+/// the only word the user gets when no hub runs. A refused alert must
+/// stay unrecorded and go again at the next check, or it is lost.
+#[test]
+fn check_once_retries_refused_phone_alert() {
+    let mut test_tools = TestTools::new();
+    let run = make_watched_run(&mut test_tools);
+    test_tools.herdr.agents.clear();
+    let report = run.path().join("report-docs-fix.md");
+    fs::write(&report, "PR opened.\n").unwrap();
+    let refusing = test_tools.write_script("moshi-hook", "", "rate limit reached", 1);
+    let options = make_options(&test_tools, &refusing, 1);
+    let mut clock = IdleClock::default();
+    let later = Zoned::now()
+        .checked_add(SignedDuration::from_mins(11))
+        .unwrap();
+
+    let refused = check_once(&test_tools.tools(), &options, &mut clock, &later).unwrap();
+    let alerted_after_refusal = count_events(run.path(), "phone_alerted");
+    test_tools.write_script("moshi-hook", "", "", 0);
+    let sent = check_once(&test_tools.tools(), &options, &mut clock, &later).unwrap();
+
+    assert_eq!(refused.len(), 1, "{refused:?}");
+    assert_eq!(alerted_after_refusal, 0);
+    assert!(sent.is_empty(), "{sent:?}");
+    assert_eq!(read_script_calls(&refusing).len(), 2);
+    assert_eq!(count_events(run.path(), "phone_alerted"), 1);
 }
 
 /// An auto run has two hubs on one machine, and each card's worker

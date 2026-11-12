@@ -13,11 +13,12 @@ const NOTIFY_TIMEOUT: Duration = Duration::from_secs(30);
 /// The wait between checks on whether the program ended.
 const EXIT_POLL: Duration = Duration::from_millis(100);
 
-/// Runs `program notify --source hub --title TITLE MESSAGE` and stops
-/// it after 30 seconds. `main` gives `moshi-hook` as `program`, and
-/// tests give a script. The program's error output goes to the watch's
-/// log. `moshi-hook notify` exits 0 even when the phone was not
-/// reached, so a success means only that the program ran.
+/// Runs `program notify --strict --source hub --title TITLE MESSAGE`
+/// and stops it after 30 seconds. `main` gives `moshi-hook` as
+/// `program`, and tests give a script. The program's error output goes
+/// to the watch's log. Without `--strict`, `moshi-hook notify` exits 0
+/// even when Moshi refused the push, such as at its rate limit, so the
+/// caller could not tell to try again.
 ///
 /// # Errors
 ///
@@ -29,7 +30,9 @@ pub(crate) fn send_phone_notification(
     message: &str,
 ) -> Result<(), String> {
     let mut child = Command::new(program)
-        .args(["notify", "--source", "hub", "--title", title, message])
+        .args([
+            "notify", "--strict", "--source", "hub", "--title", title, message,
+        ])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .spawn()

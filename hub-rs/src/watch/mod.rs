@@ -522,12 +522,13 @@ fn record_prod(run: &RunFolder, agent: &Agent, why: &str, now: &Zoned) -> Result
 /// `report_missed` event makes its next `hub next` print
 /// `missed report NAME`, and nothing types into the hub's pane. When
 /// the hub is gone from Herdr, one phone notification tells the user
-/// instead, for reports from the last day only.
+/// instead, for reports from the last day only. It is recorded only
+/// once sent, so a refused one is tried again at the next check.
 ///
 /// # Errors
 ///
-/// A file failure, or the notifier's failure after the notification
-/// was recorded.
+/// A file failure, or the notifier's failure, which leaves the
+/// notification unrecorded.
 fn pass_on_missed_reports(
     options: &WatchOptions,
     watched: &WatchedRun,
@@ -565,13 +566,6 @@ fn pass_on_missed_reports(
     if new.is_empty() {
         return Ok(());
     }
-    for report in &new {
-        let alerted = WatchEvent::PhoneAlerted {
-            name: report.name.clone(),
-            mtime_ns: report.mtime_ns,
-        };
-        append_watch_event(&watched.run, alerted, now)?;
-    }
     let hub = watch.hub.as_deref().unwrap_or("the hub");
     let names: Vec<&str> = new.iter().map(|report| report.name.as_str()).collect();
     let title = format!("{hub} is gone");
@@ -580,7 +574,16 @@ fn pass_on_missed_reports(
         names.join(", "),
         watched.run.path().display()
     );
-    phone::send_phone_notification(&options.notifier, &title, &message).map_err(HubError::NotDone)
+    phone::send_phone_notification(&options.notifier, &title, &message)
+        .map_err(HubError::NotDone)?;
+    for report in &new {
+        let alerted = WatchEvent::PhoneAlerted {
+            name: report.name.clone(),
+            mtime_ns: report.mtime_ns,
+        };
+        append_watch_event(&watched.run, alerted, now)?;
+    }
+    Ok(())
 }
 
 /// Returns each `herdr-hub.*` folder in `runs_folder` whose event log
