@@ -38,10 +38,8 @@ static TEST_WAITING_LIST_FOLDER: OnceLock<PathBuf> = OnceLock::new();
 ///
 /// # Errors
 ///
-/// Refuses with `WaitingForUserFeedback` while a list waits for the user, and
-/// with `WriteNotFinished` while a write is unfinished. Refuses with
-/// `ListChanged` when the Review Session is no longer as `seen`, such as after
-/// another call sent a list.
+/// Refuses with `WaitingForUserFeedback` or `WriteNotFinished` while the
+/// Review Session is busy, and with `ListChanged` when it changed since `seen`.
 pub(crate) fn add_list(
     dir: &Path,
     list: FeedbackRequestList,
@@ -171,8 +169,7 @@ pub fn restore(dir: &Path) -> Result<(), Error> {
 /// Saves User Feedback unless the Review Session stopped waiting for it or the
 /// Feedback Request changed since the screen showed it. Once every Feedback
 /// Request has User Feedback and any of it is a User Note, sets
-/// `user_notes_waiting` and then takes the worktree off the waiting list, so a
-/// waiting-list error comes after the save and the User Feedback is kept.
+/// `user_notes_waiting` and takes the worktree off the waiting list.
 pub fn save_user_feedback(
     dir: &Path,
     shown_request: &FeedbackRequest,
@@ -352,11 +349,38 @@ pub fn add_to_waiting_list(dir: &Path) -> Result<(), Error> {
     })
 }
 
-/// Takes the worktree that holds `dir` off the waiting list.
 pub(crate) fn remove_from_waiting_list(dir: &Path) -> Result<(), Error> {
     change_waiting_list(dir, |worktrees, worktree| {
         worktrees.retain(|listed| *listed != worktree);
     })
+}
+
+/// Returns true when `worktree` holds no Review Session, or a done one, so
+/// its waiting-list entry is left over and nothing needs the user. A Review
+/// Session that cannot be read is not left over, since the picker shows it.
+pub(crate) fn is_leftover(worktree: &Path) -> bool {
+    let folder = match git::find_worktree_git_folder(worktree) {
+        Ok(folder) => folder,
+        // A folder that is no longer a worktree holds no Review Session.
+        Err(error) => return error.code == ErrorCode::NotAGitCheckout,
+    };
+    !folder.join("pde").join(REVIEW_FILE).exists()
+        || read_status(worktree).ok().flatten() == Some(ReviewStatus::Done)
+}
+
+/// Takes each of `worktrees` off the waiting list if it is still a leftover
+/// when checked again under the list's lock. An agent may have saved a new
+/// Review Session since the first check, and it adds nothing to the list
+/// when its worktree is already there.
+pub(crate) fn remove_leftovers_from_waiting_list(worktrees: &[PathBuf]) -> Result<(), Error> {
+    let folder = find_waiting_list_folder()?;
+    // `_lock` holds the lock until this function returns, after the save.
+    let _lock = lock_waiting_list(&folder)?;
+    let mut saved = read_saved_waiting_list(&folder.join(WAITING_LIST_FILE))?;
+    saved
+        .worktrees
+        .retain(|listed| !(worktrees.contains(listed) && is_leftover(listed)));
+    write_saved_waiting_list(&folder, &saved)
 }
 
 /// Lists the worktrees on the waiting list in the order they were added,

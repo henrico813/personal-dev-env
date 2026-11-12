@@ -103,6 +103,7 @@ Vibe binaries plus repo-managed AI config.
 | Herdr handoff | `ai/skills/herdr-handoff/` | `~/.agents/skills/herdr-handoff/` | Shared workflow skill for handing work to a new session in a new Herdr workspace |
 | Herdr hub | `ai/skills/herdr-hub/` | `~/.agents/skills/herdr-hub/` | Shared workflow skill for the session that coordinates other Herdr sessions |
 | Roadmap run | `ai/skills/roadmap-run/` | `~/.agents/skills/roadmap-run/` | Shared workflow skill for building a roadmap's pull requests as a stack while the user is away |
+| Auto run | `ai/skills/auto-run/` | `~/.agents/skills/auto-run/` | Shared workflow skill for working an approved list of cards to pull requests without the user |
 | Session review | `ai/skills/session-review/` | `~/.agents/skills/session-review/` | Shared workflow skill for reviewing a session's token use, lessons and local model jobs |
 | Conclude session | `ai/skills/conclude-session/` | `~/.agents/skills/conclude-session/` | Shared workflow skill for closing out a session after one pick from the user |
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/` | Shared test-writing guidance |
@@ -110,6 +111,7 @@ Vibe binaries plus repo-managed AI config.
 | Plain direct English | `ai/skills/plain-direct-english/` | `~/.agents/skills/plain-direct-english/` | Clear sentences in comments, docs and other prose, and breakdowns of hard ones |
 | Status updates | `ai/skills/status-updates/` | `~/.agents/skills/status-updates/` | Status updates and recaps a new reader understands on a phone |
 | Skill lessons skill | `ai/skills/skill-lessons/` | `~/.agents/skills/skill-lessons/` | How to follow and save the lessons in a skill's Lessons section |
+| Skill development | `ai/skills/skill-development/` | `~/.agents/skills/skill-development/` | Writing and reviewing skills so each rule has one owner and reads plainly |
 | Comment review skill | `ai/skills/comment-review/` | `~/.agents/skills/comment-review/` | Saves code comments as a review you answer one per screen |
 | Go development | `ai/skills/go-development/` | `~/.agents/skills/go-development/` | Shared Go development guidance |
 | Python development | `ai/skills/python-development/` | `~/.agents/skills/python-development/` | Shared Python development guidance |
@@ -131,7 +133,7 @@ Vibe binaries plus repo-managed AI config.
 | PR write approval | `pdev2/`, `chezmoi/` | `~/.local/bin/{pde-gh-write,pde-pr-approve,gh}`, `~/.local/share/pde/herdr-plugins/pde-approval/` (full only) | Agents write to pull requests only after you approve; see the [approval docs](pdev2/docs/README.md) |
 | Comment review | `glimmer/`, `chezmoi/` | `~/.local/bin/glimmer`, `~/.local/share/pde/herdr-plugins/glimmer/` (full only) | Decide on an AI's Go, Python and Rust comments one per phone screen with Ctrl+b e, and keep agents from changing the ones you approved; run `glimmer help` for its commands |
 | Skill lessons | `skill-lessons/` | `~/.local/bin/skill-lessons` (client and full) | Saves your corrections as lessons in the installed copy of a skill; see the [skill-lessons README](skill-lessons/README.md) |
-| Hub | `hub/` | `~/.local/bin/hub` (client and full) | Shows, messages and marks the Herdr sessions a hub session runs; see the [hub README](hub/README.md) |
+| Hub | `hub-rs/` | `~/.local/bin/hub` (full only) | Shows, messages, parks and tidies the Herdr sessions a hub session runs; see the [hub README](hub-rs/README.md) |
 | prs | `prs/` | `~/.local/bin/prs` (full only) | Reads your open pull requests on a phone; see [GitHub Pull Request Reviews](chezmoi/README.md#github-pull-request-reviews) |
 
 Shared configuration lives in `chezmoi/`, including local-file mappings for the complete `ai/` source tree and checksummed remote externals.
@@ -183,6 +185,7 @@ loads `~/.agents/skills/`.
 | `herdr-handoff` | Hand work to a new session in a new Herdr workspace, with a handoff file it reads first | "Hand the docs work to a new session" |
 | `herdr-hub` | Coordinate other Herdr sessions: pass messages, answer their questions, run merges | "You are the hub of this run" |
 | `roadmap-run` | Plan, build, review and file the remaining PRs of an approved roadmap as a stack | "Build the rest of the roadmap overnight" |
+| `auto-run` | Brief the user on ready cards, then have a separate hub work the approved list to PRs | "Set up an auto run" |
 | `session-review` | Review a session for token use, lessons to save and jobs a local model could run, then wait for your pick | "Review this session for token usage, skill lessons and local model handoff" |
 | `conclude-session` | Close out a session: review it, wait for your pick, then save lessons, open one skill PR and hand off or report | "conclude-session" |
 | `review-plan` | Review a plan, PR, commit, or diff for architecture, bugs, completeness | "Use review-plan on docs/design-auth.md with focus on security" |
@@ -193,6 +196,23 @@ stay aligned with the rest of the tree. `install client` installs only
 `obsidian-zettel`, `obsidian-daily-note`, `plain-direct-english`,
 `behavior-focused-testing`, `delegate`, `skill-lessons` and
 `status-updates`; every other skill is full-only.
+
+## Privacy Checks
+
+This repository is public. `ci/scan` runs gitleaks with the
+rules in `.gitleaks.toml`, which find secrets, personal email addresses, LAN
+and tailnet addresses, real home folders, and network-drive paths. It also
+blocks the owner's private names, which stay encrypted outside the
+repository and are never committed or printed.
+
+- The `privacy` CI check scans the files, each pull request's commits and
+  authors, and its title and description. Make it required on `main`.
+- Run `uvx pre-commit install` once in each clone to scan every commit; the hook
+  needs gitleaks from the aqua profile, and checks private names only where the
+  sops list exists. If `core.hooksPath` is set to `.git/hooks`, which pre-commit
+  refuses, first run `git config --unset core.hooksPath`.
+- Edit the private names with `ci/terms edit`, then copy them
+  to CI's `PRIVATE_TERMS` secret with `ci/terms push`.
 
 ## Requirements
 

@@ -61,7 +61,9 @@ model can run the loop from them.
    pauses the work and no session takes it now, also list each
    uncommitted file, unpushed branch and worktree you leave, and each
    question waiting on the user, word for word. Leave the files as
-   they are.
+   they are. When this session works for a hub, first run
+   `hub inbox <your agent name>` and copy every message it prints into
+   the handoff, since no one sends those messages again.
 4. Never write a secret into it. Name where the secret lives instead,
    such as a sops file the new session reads with `pde-sops-peek`.
 5. Reread it as a reader with no earlier context. Explain each label
@@ -88,20 +90,23 @@ model can run the loop from them.
 - After the handoff, stop changing what you handed over.
 - When ownership moves later, tell the user. Tell the new session,
   and the hub when one runs, with `hub send`, as Send to a session of
-  [herdr-hub](../herdr-hub/SKILL.md) says. It holds the message while
-  the session is busy or the user is in its pane, and a hub's
+  [herdr-hub](../herdr-hub/SKILL.md) says. When a hub runs, messages
+  queue, so a held message needs no deleting or resending; the hub's
   `hub next` sends it later. Without a hub, nothing sends a held
-  message, so first wait in the background with
+  message, and every later message waits behind it. So first wait in
+  the background with
   `herdr agent wait <name> --until idle --until done`, then run
   `hub send` with the handoff folder as its run folder. If it prints
-  `held`, the user is in the pane. Delete
-  `<handoff folder>/send-<name>.json` and try again later.
+  `held`, the user is in the pane. Delete the `.held` file under
+  `<handoff folder>/sends/` and try again later.
 - The handoff tells the new session to write progress-only news, such
   as "rehearsal passed", to its own status file. It names a report
   file, `report-<name>.md` in this session's run folder or the
   handoff folder, for a question, a blocker, or finished work this
-  session waits on, such as a PR opening. The new session overwrites
-  the report and ends its turn. It never prompts this session.
+  session waits on, such as a PR opening. The new session writes its
+  report with `hub report <name>`, from standard input or a file,
+  which replaces the report whole, and ends its turn. It never prompts
+  this session.
 - When this session keeps nothing and no hub runs, the handoff names
   no report file. The new session asks the user in its own pane.
 - Learn of a report with one background command:
@@ -110,9 +115,10 @@ model can run the loop from them.
         --until blocked
 
   When it returns at `blocked`, tell the user. Otherwise read the
-  report, then rename it to `report-<name>.read`. No report file
-  means no news. Never start it on a session that is already `idle`
-  or `done`, since it returns at once. After it returns at `blocked`,
+  report with `hub read --run "<folder>" <name>`, the folder that
+  holds the report, which prints it and renames it. It exits 3 when
+  there is no report, which means no news. Never start it on a
+  session that is already `idle` or `done`, since it returns at once. After it returns at `blocked`,
   wait with only `--until idle` and `--until done`. A hub learns of
   reports with `hub next` instead, as Wake on news of herdr-hub says.
 - A question in the new session's report is yours to answer. An
@@ -141,12 +147,16 @@ model can run the loop from them.
    tab in the hub's workspace. The hub reads its workspace from
    `$HERDR_WORKSPACE_ID`, and another session from
    `.result.agent.workspace_id` of `herdr agent get <hub>`. The hub
-   keeps tab 1.
+   keeps tab 1. Add `--env HUB_RUN=<run folder>` to the create
+   command below, so the new session's `hub` commands need no `--run`.
 
    Without a hub, when this session keeps nothing, make a tab on this
    machine in this session's workspace, read from
    `$HERDR_WORKSPACE_ID`, unless the user asks for a new workspace. A
    tab here adds no workspace to the user's sidebar.
+
+   Never make a tab or pane in the workspace labelled `desk`. It is
+   the user's own. Make a new workspace instead.
 
    Give a tab and its agent the same short name, such as `docs-p2`:
 
@@ -288,8 +298,10 @@ or revising this skill.
 - Use the `herdr` CLI, not a harness plugin, so this works in any
   agent.
 - Never close the new session's workspace, tab or agent. When a hub
-  runs, the new session closes its own tab, as Cleanup of herdr-hub
-  says. Otherwise they belong to the user.
+  runs, the new session never closes its own tab; the hub closes or
+  parks it, as Cleanup of herdr-hub says. After a handoff that pauses
+  its card, the hub closes it once it has read that report. Otherwise
+  they belong to the user.
 - Never answer an approval or question shown in the new agent's
   pane. Answer only what it writes in its report.
 - Filter `herdr agent list` with `jq`, and never print the whole

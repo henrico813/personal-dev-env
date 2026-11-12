@@ -22,6 +22,15 @@ type = "plugin_action"
 command = "pde.comment-review.open-tab"
 description = "open comment review in a tab"
 
+# Replaces Herdr's default prefix+shift+h, which swaps a pane with the one on
+# its left. The server's PATH may lack ~/.local/bin, which holds hub and the
+# herdr and card commands hub runs.
+[[keys.command]]
+key = "prefix+shift+h"
+type = "shell"
+command = 'PATH="$HOME/.local/bin:$PATH" hub go'
+description = "show the next hub"
+
 [theme]
 name = "vesper"
 auto_switch = false

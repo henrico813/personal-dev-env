@@ -15,6 +15,7 @@ Shared skills include `git-messages` for commit and PR text, `pull-request` for 
 `plain-direct-english` for clear sentences in comments and docs,
 `status-updates` for status updates and recaps a new reader follows,
 `skill-lessons` for saving the user's corrections as lessons in a skill,
+`skill-development` for writing and reviewing skills,
 `session-review` for reviewing a session's token use, lessons and
 local model jobs,
 `go-development`
@@ -31,7 +32,8 @@ handing a task to an agent and reviewing it, `herdr-handoff` for
 handing work to a new session in a new Herdr workspace, `herdr-hub`
 for the session that coordinates other Herdr sessions,
 `roadmap-run` for building a roadmap's pull requests while the user
-is away, and `conclude-session` for closing out a session after one
+is away, `auto-run` for working an approved list of cards without the
+user, and `conclude-session` for closing out a session after one
 pick from the user; they
 install only to
 `~/.agents/skills/`, and the OpenCode commands load them. Shared instructions

@@ -13,6 +13,7 @@
 {{ end }}
 {{ if and (has "workstation" .pde.tiers) (not (has "development" .pde.tiers)) }}
 # Only full installs these, so client removes what a full install left.
+.agents/skills/auto-run
 .agents/skills/cleanup-plan
 .agents/skills/code-documentation
 .agents/skills/comment-review
@@ -32,6 +33,7 @@
 .agents/skills/roadmap-run
 .agents/skills/rust-development
 .agents/skills/session-review
+.agents/skills/skill-development
 .agents/skills/typescript-development
 .config/opencode/commands/cleanup_plan.md
 .config/opencode/commands/create_plan.md

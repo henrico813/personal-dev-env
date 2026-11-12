@@ -73,6 +73,16 @@ jobs:
       - name: check
         run: make check
 
+  hub-rs:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hub-rs
+    steps:
+      - uses: actions/checkout@v4
+      - name: check
+        run: make check
+
   opencode-inline-nvim:
     runs-on: ubuntu-latest
     defaults:
@@ -209,20 +219,6 @@ jobs:
       run:
         working-directory: skill-lessons
     # Ubuntu 22.04, the oldest release pde-installer supports, ships 3.10.
-    env:
-      UV_PYTHON: "3.10"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - name: test on Python 3.10
-        run: uv sync --locked && uv run --locked pytest
-
-  hub:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: hub
-    # The packed hub runs with /usr/bin/python3, 3.10 on Ubuntu 22.04.
     env:
       UV_PYTHON: "3.10"
     steps:

@@ -524,6 +524,104 @@ class TestDocsType:
         assert (result.returncode, result.stdout) == (0, "")
 
 
+class TestCodeSpans:
+    """Keep inline code in backticks on one line.
+
+    The PR Overview becomes the squash commit body. PR descriptions had
+    inline code split over two lines, such as "`hub" then "board`",
+    because fmt wrapped inside the span and lint passed it. The split
+    then stayed in git history.
+    """
+
+    @pytest.mark.parametrize(
+        ("body", "expected"),
+        [
+            pytest.param(
+                "The status page lists every worker that is still running, "
+                "such as `hub board`, after a restart.\n",
+                "The status page lists every worker that is still running, "
+                "such as\n`hub board`, after a restart.\n",
+                id="span-at-wrap-point",
+            ),
+            pytest.param(
+                "- Run `msg lint --pr --base feat/a-long-parent-branch FILE "
+                "--and more options` first.\n",
+                "- Run\n"
+                "  `msg lint --pr --base feat/a-long-parent-branch FILE "
+                "--and more options`\n"
+                "  first.\n",
+                id="span-longer-than-limit",
+            ),
+        ],
+    )
+    def test_fmt_keeps_spans_whole(
+        self, tmp_path: Path, body: str, expected: str
+    ) -> None:
+        """Wrap the line before a code span rather than inside it.
+
+        Agents run fmt and trust its output, so a span it breaks reaches
+        the commit history. A span too long for one line gets a line of
+        its own rather than being cut.
+        """
+        path = tmp_path / "message"
+        path.write_text("fix: keep code whole\n\n" + body)
+
+        assert run_msg(tmp_path, "fmt").returncode == 0
+
+        assert path.read_text() == "fix: keep code whole\n\n" + expected
+
+    def test_lint_rejects_open_span_outside_fences(
+        self, tmp_path: Path
+    ) -> None:
+        """Fail each line that leaves a code span open, outside code fences.
+
+        Text edited after fmt, or written without fmt, must still pass lint
+        before it reaches the squash commit. A backtick in a code fence is
+        shell code, not a span, so it must not fail.
+        """
+        (tmp_path / "message").write_text(
+            "fix: keep code whole\n\n"
+            "Run it, such as `hub\nboard`, after a restart.\n\n"
+            "```bash\necho `date\n```\n"
+        )
+
+        result = run_msg(tmp_path, "lint")
+
+        assert result.returncode == 1
+        assert result.stdout == (
+            "line 3: code span not closed on this line\n"
+            "line 4: code span not closed on this line\n"
+        )
+
+    @pytest.mark.parametrize(
+        "mode",
+        [
+            pytest.param([], id="lint"),
+            pytest.param(["--hook"], id="commit-hook"),
+        ],
+    )
+    def test_lint_allows_long_span_alone(
+        self, tmp_path: Path, mode: list[str]
+    ) -> None:
+        """Accept a line over 72 characters that holds only one code span.
+
+        fmt puts such a span on its own line and cannot shorten it. If
+        lint or the commit hook refused that line, no message holding a
+        long command could pass.
+        """
+        (tmp_path / "message").write_text(
+            "fix: keep code whole\n\n"
+            "- `msg lint --pr --base feat/a-long-parent-branch FILE "
+            "--and more options`\n"
+            "  `msg lint --hook --base feat/a-long-parent-branch FILE "
+            "--and more options`.\n"
+        )
+
+        result = run_msg(tmp_path, "lint", *mode)
+
+        assert (result.returncode, result.stdout) == (0, "")
+
+
 @pytest.mark.local_ai
 def test_local_model_writes_lintable_message(tmp_path: Path) -> None:
     """Check a model writing through the same skill a worker receives.

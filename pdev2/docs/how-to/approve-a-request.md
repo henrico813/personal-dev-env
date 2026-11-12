@@ -37,14 +37,14 @@ holds the other requests; Ctrl+b, then a, takes you there. See
 
 Each machine keeps and answers its own requests. With nothing waiting
 here, `prefix+a` checks the other saved Herdr machines and says where
-requests wait, such as `***REMOVED***: 1 waiting in` and `notes`. A request
+requests wait, such as `Office: 1 waiting in` and `notes`. A request
 dismissed there counts too. To answer it, select that machine in
 Herdr, in the sidebar or with the machine switcher on the phone, and
 press `prefix+a` there.
 
-`***REMOVED***: not reachable` means the check failed or took over 20
+`Office: not reachable` means the check failed or took over 20
 seconds, so requests may still wait there. Check from here with
-`herdr --machine ***REMOVED*** pane list`.
+`herdr --machine Office pane list`.
 
 ## On the Phone
 
@@ -80,4 +80,6 @@ Exit 3 means no one answered within 90 seconds. The request still waits:
 answer it as above, and `gh` runs within a second of your approval. When
 the agent runs the same command again, it prints
 `pde-gh-write: already ran ID, exit N`, where `N` is the exit code of
-`gh`, and what `gh` printed, such as the new PR's address.
+`gh`, and what `gh` printed, such as the new PR's address. When `N` is
+not 0, the agent can ask again by putting `--retry` before `pr`, and
+you see the request as a new one.

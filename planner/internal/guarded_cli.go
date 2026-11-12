@@ -12,24 +12,23 @@ import (
 
 const guardedHelp = `
 Guarded source-code revisions:
-  planner inspect <plan.md> --target SELECTOR --repo DIR
-      --base-commit COMMIT [--code-out NEWFILE [--before]] [--print FIELD] [--json-errors]
-  planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR
-      --base-commit COMMIT (--after-file FILE | --diff-file FILE)
+  planner inspect <plan.md> --target SELECTOR [--repo DIR]
+      [--base-commit COMMIT] [--code-out NEWFILE [--before]] [--print FIELD] [--json-errors]
+  planner patch <plan.md> --target SELECTOR --expect TOKEN [--repo DIR]
+      [--base-commit COMMIT] (--after-file FILE | --diff-file FILE)
       [--dry-run] [--diff] [--json-errors]
   planner check <plan.md> [--repo DIR] [--base-commit COMMIT] [--json-errors]
 
   SELECTOR is implementation[N].file_changes[M], with 1-based indices. Leading
   zeros are accepted and the normalized selector is echoed in results.
-  inspect and patch require --repo and --base-commit. check validates
-  structure, then starts with the base commit named by the "Base commit:" line
-  and tries every planned change in order. The base commit is the original code
-  version the plan's changes are written against. It does not run tests or
-  check behavior. --base-commit is the full commit ID from the plan's Current
-  State when the plan was created, not the current HEAD of a worktree. Without
-  --base-commit, check reads the first line of Current State,
-  "Base commit: <full commit ID>".
-  Without --repo, check uses the current working directory's Git repository.
+  inspect, patch, check, and export start with the base commit named by the
+  first line of Current State, "Base commit: <full commit ID>". The base commit
+  is the original code version the plan's changes are written against. Planner
+  never uses HEAD instead. --base-commit overrides the line; pass the full
+  commit ID recorded when the plan was created, not the current HEAD of a
+  worktree. Without --repo, these commands use the Git repository that contains
+  the current directory. check validates structure, then tries every planned
+  change in order. It does not run tests or check behavior.
   Dirty and untracked source files are excluded; Planner does not stage, stash,
   reset, or commit them.
   On success, references_outside_plan is an optional non-blocking list of

@@ -48,8 +48,10 @@ steps' defaults.
 
 ## Open
 
-1. Write FILE as the title, a blank line, and the three PR sections. Add one
-   Changes bullet per change and one real Testing block.
+1. Write FILE as the title, a blank line, and the three PR sections,
+   shaped for a phone reader as `git-messages` item 5 says. Paste the
+   whole draft into the chat for the user to review, rather than a
+   path to the file.
 2. Run `python3 ~/.agents/skills/git-messages/scripts/msg fmt FILE`, then
    `python3 ~/.agents/skills/git-messages/scripts/msg lint --pr FILE`. Fix only
    reported lines, up to three tries. Repositories may keep their own copy.
@@ -60,12 +62,16 @@ steps' defaults.
 4. Push the phase with `git push --force-with-lease -u <remote> HEAD`.
    Create the description without the title:
    `tail -n +3 FILE > BODY`
+   Before the first request goes out, tell the user who approves each
+   request and when.
    Run `pde-gh-write pr create --title "$(head -n 1 FILE)" --body-file BODY`.
    If it exits 3, tell the user once that a detached runner will
    perform the write when approved. Do not ask the user to confirm.
    Rerun the identical command later only to read its result.
    `already ran <id>, exit N` (followed by the captured `gh` output),
    `declined <id>` (exit 4), and `interrupted <id>` (exit 6) are final.
+   After `already ran` with N not 0, fix the cause, then ask again by
+   putting `--retry` before `pr` in the same command.
    Never answer approval requests, run `pde-pr-approve`, or set `PDE_GH_WRITE`.
 
 ## Update
@@ -76,14 +82,25 @@ steps' defaults.
    short body without PR sections. Run `python3 ~/.agents/skills/git-messages/scripts/msg fmt COMMIT`, then
    `python3 ~/.agents/skills/git-messages/scripts/msg lint COMMIT`.
    Commit it with `git commit -F COMMIT`. Keep FILE as the PR message.
-3. Never rewrite a reviewed phase. Append a Changes bullet per change and
-   append or update Testing blocks with checks actually run. Run fmt and lint
+3. Never rewrite a reviewed phase. Fold each round's fixes into the
+   Changes lines they belong to, and update Testing with checks
+   actually run, as `git-messages` item 5 says. Run fmt and lint
    --pr on FILE, then `tail -n +3 FILE > BODY` and
    run `pde-gh-write pr edit NUMBER --body-file BODY` and handle its
    result as in Open step 4.
 4. Push the round with `git push --force-with-lease -u <remote> HEAD`.
 
 ## Merge
+
+For a pull request the user reviewed, the `herdr-hub` skill's merge
+worker script runs these steps. It sends step 5's request itself, and
+the approval popup shows the squash message. For the script, the try
+recorded in Testing when the pull request was opened or last updated
+counts as Guardrail 4. The script merges the head it tests. When the
+branch is behind, that head is a new commit that merges the base in.
+Without such a try in Testing, a cloud session started by
+`herdr-handoff` follows Merge from step 1 instead, on the cheapest
+cloud model that does it well.
 
 1. Run the merge checks from the repository, with each test command
    as one argument:

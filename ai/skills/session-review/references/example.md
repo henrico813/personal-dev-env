@@ -38,6 +38,17 @@ largest subagents by tokens read
 repeated commands 2
   4x cd ~/src/lantern && uv run pytest -q
   3x planner check "/vault/LANT-003 Resume copies.md" --repo ~/src/lantern
+carry by tool
+  read calls 21 tokens 31,480 carry 1,904,220
+  shell calls 58 tokens 24,906 carry 1,512,330
+  skill calls 4 tokens 14,212 carry 1,227,040
+  edit calls 9 tokens 1,104 carry 38,610
+largest carried outputs
+  carry 912,000 tokens 12,000 later steps 76 seq 37 read /vault/LANT-003 Resume copies.md
+  carry 440,000 tokens 5,000 later steps 88 seq 9 skill create-plan
+  carry 285,600 tokens 3,570 later steps 80 seq 214 shell cd ~/src/lantern && uv run pytest -q
+  carry 271,440 tokens 3,480 later steps 78 seq 230 shell cd ~/src/lantern && uv run pytest -q
+  carry 262,800 tokens 3,650 later steps 72 seq 287 shell cd ~/src/lantern && uv run pytest -q
 ```
 
 ## Proposals
@@ -85,9 +96,11 @@ repeated commands 2
 
 ## Trials
 
-Reran the PR text cold read trial from the Lantern P2 review on
-`goog/qwen3.8`. It found the same two unclear sentences as
-`openai/gpt-6-luna`, in 9 seconds.
+Ran the stored trials on `goog/qwen3.8`, three runs each:
+
+- pr-text-cold-read 3/3, rules hash `9b0e47d2c1a5`.
+- pr-key-in-title 1/3, rules hash `5d83f0a6e214`. Added from this
+  session's correction; two runs kept the key in the title.
 
 ## Fresh check
 
@@ -117,7 +130,8 @@ Lessons to save, pick by number
 Fallback: the planner is least ready; a brief per plan step would
 fit qwen3.8's window.
 Efficiency: test runs on qwen3.8, about 1.1M tokens (estimate).
-Trials: PR text cold read on qwen3.8 matched luna, 9 s.
+Trials: pr-text-cold-read 3/3, new pr-key-in-title 1/3 on
+qwen3.8.
 
 Reply with the numbers to apply.
 ```

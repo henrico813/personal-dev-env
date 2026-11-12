@@ -39,8 +39,11 @@ variable holds the subagent's own ID, so pass the parent's ID with
 
 The script prints totals, user messages and model steps, the peak
 context, compactions, each skill with the step that first loaded it,
-subagent tokens by model with the five largest subagents, and
-commands run more than once with the same text. The peak is
+subagent tokens by model with the five largest subagents, commands
+run more than once with the same text, and carry by tool with the
+five largest carried outputs. An output's carry is its tokens times
+the later steps that read it again, so it shows which outputs cost
+the most. The peak is
 approximate, because the claude-code provider logs some steps with
 zero tokens and adds them to the next step; the script leaves that
 next step out.
@@ -85,6 +88,8 @@ While cloud models are available, local models should do work that
 cuts cloud tokens. Answer both in two required sections, for each
 role the session used, workers as well as the hub. A list of jobs a
 script could check is not enough.
+The stored trials find the cheapest model, local or cloud, that does
+each job well.
 
 - Fallback map: for each role, such as hub, planner, implementer,
   reviewer or merge worker, the local model that would run it, what
@@ -96,10 +101,17 @@ script could check is not enough.
   the check that makes the local result safe to trust, and the
   saving, marked measured or estimate.
 
-Find a trial in an earlier review in the session-reviews folder whose
-role this session used. Rerun it on the same local model, and give
-its result in a Trials section. If you ran none, say so there and
-why.
+Run the stored trials on the cheapest model that might do the job,
+local or cloud, at least three runs each, as
+[references/trials.md](references/trials.md) says. Give
+each case's pass rate, with the model, effort and rules hash, in a
+Trials section. If you ran none, say so there and why.
+
+When the user corrected a mistake in a hub run folder's `rules.md`,
+`notes.md` or `decisions.md`, add a trial case for it: the situation
+before the mistake, with the correction as its answer key. A case is
+review data, like the review file, so add it without waiting for the
+user's pick, and run it with the others.
 
 At least one of step 2's proposals, or one lesson, helps a local
 model take over a workflow. It may use cloud and local models
@@ -159,7 +171,8 @@ Local model section.
     Fallback: <the role least ready for a local model, and its fix>.
     Efficiency: <the largest step a local model could take, and its
     saving>.
-    Trials: <the trial you reran and its result, or "none ran">.
+    Trials: <each case's pass rate and the rules hash, or "none
+    ran">.
     To brief a local model, see the Local model section of
     roadmap-run's references/prompts.md.
 
@@ -168,7 +181,8 @@ Local model section.
 ## Guardrails
 
 - Change nothing, including skills, lessons, memories and rules
-  files, until the user picks.
+  files, until the user picks. The review file and new trial cases
+  are review data, so write them before the pick.
 - Edit a shared rules file only when this session owns it or the
   user says so. Otherwise send the change to its owner, such as the
   session that coordinates the run.
@@ -207,12 +221,14 @@ review, and the user can move it into this list by a pull request.
   as step 4 asks.
 - No dollars.
 - The fresh check ran, or the message says it did not.
-- Nothing was changed.
+- Nothing was changed except the review file and new trial cases.
 
 ## References
 
 - [references/example.md](references/example.md): read before
   writing the review file.
+- [references/trials.md](references/trials.md): read before running
+  or adding trials in step 4.
 - [references/evaluation.md](references/evaluation.md): read only
   when testing or revising this skill.
 

@@ -39,6 +39,10 @@ func TestIgnoreListMatchesEachProfile(t *testing.T) {
 		".local/share/pde/herdr-plugins/**",
 		"link_herdr_plugins.sh",
 		".config/opencode/bin/planner",
+		".local/bin/pde-prune-targets",
+		".config/systemd/user/pde-prune-targets.service",
+		".config/systemd/user/pde-prune-targets.timer",
+		"enable_prune_timer.sh",
 	}
 	terminalIgnores := []string{
 		".config/alacritty",
@@ -218,6 +222,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".config/opencode/commands/document_codebase.md",
 	}
 	fullOnlyFiles := []string{
+		".agents/skills/auto-run",
 		".agents/skills/cleanup-plan",
 		".agents/skills/code-documentation",
 		".agents/skills/comment-review",
@@ -237,6 +242,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".agents/skills/roadmap-run",
 		".agents/skills/rust-development",
 		".agents/skills/session-review",
+		".agents/skills/skill-development",
 		".agents/skills/typescript-development",
 		".config/opencode/commands/cleanup_plan.md",
 		".config/opencode/commands/create_plan.md",
@@ -480,7 +486,7 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"local -a roles=(work test shell)",
 				"tw init [directory]",
 				"$HOME/.config/pde/tw.yml",
-				"local -a roles=(herdr ***REMOVED*** shell)",
+				"local -a roles=(herdr ",
 				"@tw-root",
 			},
 		},
@@ -519,7 +525,7 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"local -a roles=(work test shell)",
 				"tw init [directory]",
 				"$HOME/.config/pde/tw.yml",
-				"local -a roles=(herdr ***REMOVED*** shell)",
+				"local -a roles=(herdr ",
 				"@tw-root",
 			},
 		},
@@ -595,6 +601,38 @@ print -r -- "${GOOG_BASE_URL-}:${GOOG_API_KEY-}:${GOOG_MODEL-}" >"$HOME/vibe-cal
 		if got := string(data); got != want {
 			t.Errorf("%s = %q, want %q", path, got, want)
 		}
+	}
+}
+
+// ~/.zshenv must put ~/.local/bin on PATH, or comment review on a Herdr
+// server started over ssh cannot open nvim.
+func TestZshenvPutsLocalBinOnPath(t *testing.T) {
+	home := t.TempDir()
+	writeApplyFile(
+		t,
+		filepath.Join(home, ".zshenv"),
+		renderProfileTemplate(t, "dot_zshenv.tmpl", "client"),
+	)
+	testfile.WriteExecutable(
+		t,
+		filepath.Join(home, ".local", "bin", "nvim"),
+		"#!/bin/sh\n",
+	)
+	command := exec.Command(
+		"zsh",
+		"-c",
+		"nvim --version",
+	)
+	command.Env = buildServerEnvironment(home)
+
+	output, err := command.CombinedOutput()
+
+	if err != nil {
+		t.Fatalf(
+			"zsh did not find nvim in ~/.local/bin: %v\n%s",
+			err,
+			output,
+		)
 	}
 }
 

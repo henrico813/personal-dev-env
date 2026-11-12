@@ -1,6 +1,10 @@
 # Every zsh reads this file, including non-interactive agent shells, so wt
 # finds these settings wherever it runs.
 export WORKTRUNK_SYSTEM_CONFIG_PATH="$HOME/.config/pde/worktrunk.toml"
+# A Herdr server started over ssh keeps this PATH, and tools its plugins start,
+# such as nvim, look in it. Adding the folder only when missing keeps folders a
+# caller put first, such as a test's fake tools, in front of it.
+(( ${path[(Ie)$HOME/.local/bin]} )) || path=("$HOME/.local/bin" $path)
 {{- if has "development" .pde.tiers }}
 # Load the Vibe Goog endpoint for interactive and agent Zsh shells.
 env_file="$HOME/.config/vibe/goog.env"

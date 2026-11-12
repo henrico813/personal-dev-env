@@ -38,7 +38,9 @@ One request goes like this:
    a terminal. The first answer counts.
 7. After an approval, the agent's waiting command or the runner, whichever
    gets there first, runs the real `gh` directly, once. After 90 seconds
-   the agent's command stops waiting, and only the runner is left.
+   the agent's command stops waiting, and only the runner is left. A
+   merge may also run GitHub's merge API for stacks and move the PRs
+   based on the merged branch, all under the same approval.
 8. A rerun of the same command prints the saved result instead of posting
    again.
 

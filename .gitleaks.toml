@@ -1,0 +1,53 @@
+# Rules for ci/scan, on top of gitleaks' secret rules. The
+# owner's private names are added at run time and are never committed.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "personal-email"
+description = "An email address other than a GitHub noreply or example one"
+regex = '''[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'''
+keywords = ["@"]
+[[rules.allowlists]]
+regexTarget = "match"
+regexes = [
+    '''@users\.noreply\.github\.com$''',
+    # GitHub commits squash merges and web edits as this address.
+    '''^noreply@github\.com$''',
+    '''@(?:[a-z0-9-]+\.)*example\.(?:com|org|net|invalid)$''',
+    # Powerlevel10k's own example in chezmoi/dot_p10k.zsh.tmpl.
+    '''^x@y\.com$''',
+    # Placeholder file names in capitals, as in prs/docs/reference/files.md.
+    '''^[A-Z_]+@[A-Z_]+\.[a-z]+$''',
+    # GitHub's SSH remote user, as in git@github.com:owner/repo.
+    '''^git@github\.com$''',
+]
+
+[[rules]]
+id = "private-ip"
+description = "A LAN or tailnet IPv4 address"
+regex = '''\b(?:10\.\d{1,3}|192\.168|172\.(?:1[6-9]|2\d|3[01])|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7]))\.\d{1,3}\.\d{1,3}\b'''
+
+# The secret is the user name alone, since gitleaks skips any secret that
+# starts with /home/.
+[[rules]]
+id = "home-path"
+description = "A home folder that names a real user"
+regex = '''/(?:home|Users)/([a-z_][a-z0-9_.-]*)'''
+secretGroup = 1
+keywords = ["home/", "users/"]
+[[rules.allowlists]]
+regexTarget = "secret"
+regexes = ['''^(?:user|username|me|testuser|runner|directory)$''']
+
+[[rules]]
+id = "mount-path"
+description = "A path under /mnt, which names a network drive"
+regex = '''/(?:mnt)/[A-Za-z0-9_-][A-Za-z0-9_.-]*'''
+keywords = ["mnt/"]
+
+[[rules]]
+id = "tailnet-host"
+description = "A Tailscale host name"
+regex = '''\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.ts\.net\b'''
+keywords = [".ts.net"]
