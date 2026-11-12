@@ -13,8 +13,8 @@ Agents follow skills, and people keep them working. A rule written in
 two skills drifts until the copies disagree, and an agent then
 follows whichever copy it read last. This skill says where each rule
 goes, how to write it so a person can follow it, and how to check a
-change against every other skill. A script finds what a program can
-find, and two fresh reviewers check the rest.
+change against every other skill. A script finds mistakes such as
+broken links, and two fresh reviewers check the rest.
 
 ## Inputs
 
@@ -46,12 +46,15 @@ names the owner instead of copying it, such as "open it with the
   routing line in `ai/AGENTS.md` that says which tasks load it.
 - A rule every run of the skill needs: the main text of SKILL.md, next
   to the rules on the same topic.
-- An example: shows a rule the text states, and adds none of its own.
+- An example: a concrete case that shows a rule the text states. It
+  adds no rule of its own.
 - Detail that only some runs need: a file in `references/`. Link it
   from SKILL.md and say when to read it. Give a reference over 100
-  lines a Contents list.
+  lines a Contents list. Keep the SKILL.md body under 500 lines by
+  moving such detail there.
 - A step a program can do or check: a script in `scripts/`, tested in
-  `ai/tests/`.
+  `ai/tests/`. Make the script handle its errors and say what went
+  wrong.
 - A saved lesson: the Lessons section, filled only by `skill-lessons`.
 - A rule that is easy to miss: also a line in Final checks.
 
@@ -70,14 +73,17 @@ other copy with a pointer.
 
 - Write each sentence by the `plain-direct-english` skill.
 - Put one rule in each list item.
+- Leave out what the agent already knows, such as what a PDF is.
 - Use the words other skills use for the same thing, such as
   "worktree" and "Lessons section". A new word makes the reader wonder
   whether it means something new.
-- Wrap each Markdown line you add or change at 72 columns. Leave lines
-  you did not change as they are.
+- Wrap each prose line you add or change at 72 columns. Code blocks,
+  table rows, headings and a line that holds only one long link may be
+  longer. Leave lines you did not change as they are.
 - Leave out task details, such as plan and card IDs, pull request
   numbers and dates. Name a repository only when a step must run in
-  it. The skill's reader missed the task.
+  it. The skill's reader was not part of the task, so these details
+  tell them nothing.
 - Write the description in the third person. Say what the skill does
   and when to use it, in under 1024 characters.
 - Keep made-up skill names and example links inside code blocks. The
@@ -102,15 +108,11 @@ other copy with a pointer.
 3. For a new skill, name its folder in lowercase words joined by
    hyphens, and give its frontmatter the same `name`. Give a skill
    that runs a whole workflow, such as `create-plan`, the frontmatter
-   `pde-workflow: "true"` under `metadata:`. Vibe workers do one task,
-   so they leave those skills out.
-   - Add its files to Git. The installer copies every file Git tracks
-     in `ai/skills/` to a full install. A client install gets only the
-     skills listed in `chezmoi/.chezmoiexternal.toml.tmpl`, so add the
-     skill there only when a client laptop needs it.
-   - Add its routing line to `ai/AGENTS.md`, a row to the
-     installed-layout table in `README.md`, its name to the skill list
-     in `ai/README.md`, and a row to `ai/evals/skill-routing.md`.
+   `pde-workflow: "true"` under `metadata:`. Vibe runs agents that
+   each do one task, so it leaves those skills out.
+   - Add its files to Git, and its routing line to `ai/AGENTS.md`.
+   - List it everywhere the repository's own `AGENTS.md` says a new
+     skill goes, such as install lists and READMEs.
    - Add `references/evaluation.md` with at least three cases, each
      also run with no skill to compare.
 4. Run the check from the checkout's top folder, with the commit your
@@ -121,17 +123,19 @@ other copy with a pointer.
      --base "$(git merge-base main HEAD)"
    ```
 
-   For a branch stacked on another, use that branch in place of
-   `main`. Fix every error. For each repeat, replace the copy with a
-   pointer to its owner, or write down why it stays, for the pull
-   request.
+   For a branch stacked on another branch, use the parent branch in
+   place of `main`. Fix every error. For each repeat, replace the copy
+   with a pointer to its owner, or write down why it stays. The pull
+   request gives that reason in Changes.
 5. Run the checks in `ai/evals/skill-routing.md` when its opening says
    to.
-6. Get the two reviews in "Review a skill change". If you cannot start
-   another agent, or another agent gave you this task and did not ask
-   you to start reviewers, check the change yourself against Final
-   checks instead. Then say in your report that the fresh reviews did
-   not run, so whoever gave you the task arranges them.
+6. Get the two reviews in "Review a skill change". Check the change
+   yourself against Final checks instead when you cannot start another
+   agent. Do the same when another agent gave you this task and did
+   not ask you to start reviewers. Then say in your report that the
+   fresh reviews did not run, so whoever gave you the task arranges
+   them. Open the pull request with the `pull-request` skill only
+   after both reviews ran.
 
 ## Turn saved lessons into skill text
 
@@ -146,8 +150,9 @@ Do this only when the user asks, as `skill-lessons` says.
 2. Place each lesson's rule as "Where a rule goes" says. A lesson on a
    topic another skill owns goes to that owner. Write each rule in
    your own words.
-3. Before you commit, check the skill the lessons came from. When it
-   grew, add `--growth-reason "<why>"`:
+3. Before you commit, check the skill the lessons came from. When the
+   skill now has more lines than before, add
+   `--growth-reason "<why>"`:
 
    ```bash
    skill-lessons promote-check <skill> --checkout <worktree>
@@ -157,10 +162,8 @@ Do this only when the user asks, as `skill-lessons` says.
    from one of its lessons. It reads no other file, so check by hand
    that a rule you put in another file copies no five words in a row
    from its lesson.
-4. Run the check script, the routing checks and the reviews, as steps
-   4 to 6 of "Change a skill" say. When both reviews ran, open the
-   pull request with the `pull-request` skill. Otherwise report as
-   step 6 says, and open no pull request.
+4. Run the check script, the routing checks and the reviews, and open
+   the pull request, as steps 4 to 6 of "Change a skill" say.
 5. After the pull request merges, retire the lessons:
 
    ```bash
@@ -190,34 +193,23 @@ the change, and neither one starts another agent.
 2. A new-reader reviewer gets only the changed skill's files, never
    the task. It reports each sentence it cannot follow, each term it
    does not know, and each step where it would not know what to do.
-   Even after it loads this skill, it reads no other file and runs
-   nothing.
+   If it loads this skill, it still reads no file outside the changed
+   skill and runs no command.
 
 Fix each required finding. When the fixes are large, run a new
 reviewer of the same kind once more.
 
 The consistency reviewer, and anyone who reviews a skill change under
 the `review-plan` skill, checks the change against "Where a rule
-goes", "Write for a person", Final checks and the guide checks
-below. It uses the check script output that came with the change,
-and reports a missing one as a finding.
-
-Also check these rules from the guides in References:
-
-- The SKILL.md body stays under 500 lines. Detail past that goes to
-  `references/`.
-- No paragraph explains what the agent already knows, such as what a
-  PDF is.
-- Each example is concrete, not abstract.
-- Each script handles its errors and says what went wrong.
-
-When a guide and this skill differ, follow this skill.
+goes", "Write for a person" and Final checks. These reviewers use the
+check script output that came with the change. One who did not get
+that output reports the missing output as a finding.
 
 ## Output format
 
 - For a change: when you open a pull request, write it by the
-  `pull-request` skill. Put the check script's last line in Testing,
-  and the reason each kept repeat stays in its Changes line.
+  `pull-request` skill. Put the check script's last line in Testing.
+  In Changes, give the reason each kept repeat stays.
 - For a review: one finding per item, required ones first, or the
   `review-plan` layout under that skill. Each finding gives the file
   and line and the rule it breaks. A conflict quotes both sides.
@@ -228,8 +220,8 @@ When a guide and this skill differ, follow this skill.
   `~/.agents/skills/`, since the installer replaces them.
 - A change to `ai/AGENTS.md` changes what every session loads. Say so
   in the pull request's Overview, so the user reads it before merging.
-- Report a conflict between skills the change does not touch to the
-  user. Fix it in its own pull request, not this one.
+- Report to the user a conflict between skills the change does not
+  touch. Fix it in its own pull request, not this one.
 
 ## When a tool is missing
 
@@ -249,8 +241,9 @@ When a guide and this skill differ, follow this skill.
 - Each rule you added has one owner, and every other mention points
   to it.
 - Each reference file is linked from SKILL.md with when to read it.
-- Each prose line you added is at most 72 columns.
-- The change meets the guide checks in "Review a skill change".
+- Each prose line you added or changed is at most 72 columns.
+- A new skill is listed everywhere the repository's `AGENTS.md` says
+  a new skill goes.
 - Both reviews ran, or your report says they did not.
 - The skill names no plan, card or pull request, and no repository a
   step does not run in.
@@ -260,8 +253,8 @@ When a guide and this skill differ, follow this skill.
 - [references/evaluation.md](references/evaluation.md): read only
   when testing or revising this skill.
 
-The guide checks in "Review a skill change" come from these guides.
-Read one when a check is unclear:
+Some rules above come from these guides. Read one when a rule above
+is unclear. When a guide and this skill differ, follow this skill.
 
 - Anthropic's "The Complete Guide to Building Skills for Claude", at
   <https://resources.anthropic.com/hubfs/The-Complete-Guide-to-Building-Skill-for-Claude.pdf>.
@@ -280,7 +273,8 @@ the user made, so a lesson wins when it disagrees with the text above.
 When the user corrects how you write, place or review skill text,
 follow [skill-lessons](../skill-lessons/SKILL.md) with the skill name
 `skill-development`, and offer once to save the correction as a
-lesson.
+lesson. A correction to the wording of one sentence belongs to
+`plain-direct-english` instead.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

@@ -93,4 +93,5 @@ agent, unless the linking skill names someone else.
   the local store.
 - Lessons become rules in a skill's text only when the user asks,
   through a pull request. Retire them only after it merges.
-  Follow the `skill-development` skill for the steps.
+  Follow "Turn saved lessons into skill text" in the
+  `skill-development` skill.

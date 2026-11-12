@@ -219,7 +219,7 @@ class TestSkillText:
                 GARDEN,
                 "<!-- skill-lessons: filled from the local store; "
                 "do not edit -->\n",
-                "",
+                "- Water at dawn. [L1]\n",
                 "the skill-lessons marker must follow",
                 id="lessons-marker-gone",
             ),
@@ -246,9 +246,10 @@ class TestSkillText:
         """Each kind of defect fails the check and says what is wrong.
 
         Renaming, merging or copying skills is how these defects
-        start. An agent that follows a dead pointer misses the rule
-        behind it, and a copied Lessons section saves the user's
-        corrections to the wrong skill, with no visible failure.
+        start. An agent that follows a link or skill name that leads
+        nowhere misses the rule behind it. A Remembering corrections
+        line copied from another skill saves the user's corrections to
+        that skill, with no visible failure.
         """
         replace_text(repo / file, old, new)
 
@@ -276,10 +277,10 @@ class TestSkillText:
     ) -> None:
         """Code examples and installed skill names are not errors.
 
-        Skills show made-up skills and links in code examples, and a
-        skill in another repository names skills this one installs.
-        Failing on those would push authors to delete good examples
-        or skip the check.
+        Skills show made-up skills and links in code examples. A
+        skill here may also name a skill that another repository
+        installs. Failing on those would push authors to delete good
+        examples or skip the check.
         """
         replace_text(
             repo / GARDEN,
@@ -310,7 +311,7 @@ class TestSkillText:
 
 
 class TestAddedLines:
-    """Checks that ``--base`` limits to the lines a change adds."""
+    """``--base`` adds the width and repeat checks, on added lines only."""
 
     def test_base_reports_only_added_repeats(self, repo: Path) -> None:
         """Repeats are reported for added lines and new files only.
@@ -331,6 +332,28 @@ class TestAddedLines:
         assert result.stdout.splitlines()[-1] == "0 errors, 2 repeats"
         assert "ai/skills/garden/SKILL.md:8: repeat: " in result.stdout
         assert "ai/skills/mulch/SKILL.md:8: repeat: " in result.stdout
+
+    def test_base_reports_repeat_overlapping_another(self, repo: Path) -> None:
+        """Overlapping repeats from two skills are both reported.
+
+        An added paragraph can join sentences copied from two skills.
+        The check once skipped the words after each repeat, so the
+        second skill's copy went unreported.
+        """
+        replace_text(
+            repo / GARDEN,
+            "# Garden\n",
+            "# Garden\n\nTurn the pile once a week so the middle stays warm"
+            " and dry under straw.\n",
+        )
+        write_skill(
+            repo, "mulch", "Rake so the middle stays warm and dry under straw."
+        )
+
+        result = run_check(repo, "--base", "HEAD")
+
+        assert "is also in compost" in result.stdout
+        assert "is also in mulch" in result.stdout
 
     @pytest.mark.parametrize(
         "line,code",

@@ -139,9 +139,10 @@ def check_skills(skills_dir: Path, base: str | None) -> list[Problem]:
 def read_skills(skills_dir: Path) -> Skills:
     """Read the skills in skills_dir and the prose of their files.
 
-    Only files from ``list_skill_files`` are read. Skills installed in
-    ``~/.agents/skills`` count as known names, since a skill may name
-    one that another repository holds.
+    Only files from ``list_skill_files`` and the ``AGENTS.md`` beside
+    skills_dir are read. Skills installed in ``~/.agents/skills`` count
+    as known names, since a skill may name one that another repository
+    holds.
 
     Args:
         skills_dir: Folder with one subfolder per skill.
@@ -611,7 +612,7 @@ def find_repeats(skills: Skills, added: dict[Path, set[int]]) -> list[Problem]:
             if not others[start]:
                 start += 1
                 continue
-            # Overlapping shared runs make one repeat, reported once.
+            # Shared runs that start on back-to-back words make one repeat.
             end = start
             while end < len(others) and others[end]:
                 end += 1
@@ -622,7 +623,7 @@ def find_repeats(skills: Skills, added: dict[Path, set[int]]) -> list[Problem]:
                 quote = " ".join(word for word, _ in span[:12])
                 message = f'"{quote}" is also in {where}'
                 problems.append(Problem(path, new_lines[0], "repeat", message))
-            start = end + REPEAT_WORDS - 1
+            start = end
     return problems
 
 

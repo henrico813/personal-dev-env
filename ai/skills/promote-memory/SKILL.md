@@ -22,11 +22,14 @@ change. A memory write never authorizes this work on its own.
 ## Workflow
 
 1. Restate the learning as one concise, future-facing rule.
-2. Place the rule and make the change as the
-   `skill-development` skill says, including its reviews.
+2. Place the rule, write the change and run its checks as steps 1
+   to 5 of "Change a skill" in the `skill-development` skill say.
 3. Run `(cd pde-installer && go test ./... && go vet ./...)` and
-   `git diff --check`.
-4. Before committing, verify that `git config user.email` ends
+   `git diff --check` before the reviews in step 4 below. That way,
+   any fix those checks need is already in the change the reviewers
+   read.
+4. Get the reviews that step 6 of "Change a skill" describes.
+5. Before committing, verify that `git config user.email` ends
    in `@users.noreply.github.com`. Stop and report a mismatch.
-5. Load and follow `git-messages`, commit, push to `github`, and open
-   a PR.
+6. Load `git-messages` and commit. When step 6 of "Change a skill"
+   allows a pull request, open one with the `pull-request` skill.
