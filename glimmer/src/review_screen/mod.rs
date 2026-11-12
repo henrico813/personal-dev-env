@@ -20,7 +20,6 @@ mod surrounding_code;
 #[cfg(test)]
 mod test_repo;
 
-use std::collections::HashSet;
 use std::io::{self, Write};
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -210,22 +209,13 @@ fn run_result_screen(terminal: &mut RawTerminal, mut screen: ResultScreen) -> io
 }
 
 /// Shows the Review Session Picker on the raw terminal, or picks the only
-/// review when its agent session still runs or is unknown, and returns the
-/// chosen one. Returns `None` when none waits or the user quits.
-/// `live_sessions` holds the agent sessions Herdr runs now, or `None` when
-/// Herdr cannot tell.
-fn pick_review(
-    reviews: Vec<WaitingReview>,
-    live_sessions: Option<HashSet<String>>,
-) -> io::Result<Option<WaitingReview>> {
-    let mut picker = ReviewSessionPicker::new(reviews, read_size()?, live_sessions);
-    if picker.is_empty() {
-        return Ok(None);
+/// review, and returns the chosen one. Returns `None` when none waits or the
+/// user quits.
+fn pick_review(reviews: Vec<WaitingReview>) -> io::Result<Option<WaitingReview>> {
+    if reviews.len() < 2 {
+        return Ok(reviews.into_iter().next());
     }
-    // A lone review whose agent session ended still opens the picker to say so.
-    if !picker.is_choice_needed() {
-        return Ok(Some(picker.into_chosen()));
-    }
+    let mut picker = ReviewSessionPicker::new(reviews, read_size()?);
     if drop_waiting_keys()? {
         return Ok(None);
     }

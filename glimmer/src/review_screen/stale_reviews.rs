@@ -146,8 +146,8 @@ mod tests {
     /// `drop_stale_reviews` must dismiss a waiting review once its pull
     /// request is merged or closed, and keep it while the pull request is
     /// open, missing, from an older branch of the same name or a commit the
-    /// clone lacks, or `gh` cannot answer. Otherwise Ctrl+b e offers reviews nobody needs, or hides one
-    /// the user still has to answer.
+    /// clone lacks, or `gh` cannot answer. Otherwise Ctrl+b e offers reviews
+    /// nobody needs, or hides one the user still has to answer.
     #[test]
     fn drop_stale_reviews_follows_pull_request_state() {
         let cases = [

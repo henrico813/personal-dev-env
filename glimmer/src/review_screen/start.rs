@@ -145,9 +145,8 @@ fn pick_and_show_review(
         println!("No comment reviews are waiting.");
         return Ok(());
     }
-    let live_sessions = Herdr::from_env().and_then(|herdr| herdr.list_agent_sessions().ok());
     let mut terminal = RawTerminal::start().map_err(terminal_failure)?;
-    let Some(picked) = pick_review(reviews, live_sessions).map_err(terminal_failure)? else {
+    let Some(picked) = pick_review(reviews).map_err(terminal_failure)? else {
         return Ok(());
     };
     on_pick(&picked);

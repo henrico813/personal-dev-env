@@ -1,9 +1,8 @@
 //! This module holds the Review Session Picker, the list for choosing a Review
-//! Session when more than one waits, or when a lone one's agent session ended.
-//! Read the `find_waiting_reviews(worktrees)` and
-//! `ReviewSessionPicker::build_screen()` functions to understand the module.
+//! Session when more than one waits. Read the `find_waiting_reviews(worktrees)`
+//! and `ReviewSessionPicker::build_screen()` functions to understand the
+//! module.
 
-use std::collections::HashSet;
 use std::path::PathBuf;
 
 use super::draw::{Row, Style, fit_label};
@@ -104,9 +103,6 @@ pub(super) struct ReviewSessionPicker {
     /// Holds each group's agent session, empty for none, and its reviews, in
     /// the order shown.
     groups: Vec<(String, Vec<WaitingReview>)>,
-    /// Holds the agent sessions Herdr runs now. `None` means Herdr could not
-    /// tell, so no session shows as ended.
-    live_sessions: Option<HashSet<String>>,
     index: usize,
     /// Shows in place of the Key Help until the next key, such as after `x`.
     notice: String,
@@ -117,11 +113,7 @@ pub(super) struct ReviewSessionPicker {
 impl ReviewSessionPicker {
     /// Groups the reviews, given newest first, by agent session. A group sits
     /// where its newest review would, and reviews with no session come last.
-    pub(super) fn new(
-        reviews: Vec<WaitingReview>,
-        (cols, rows): (usize, usize),
-        live_sessions: Option<HashSet<String>>,
-    ) -> Self {
+    pub(super) fn new(reviews: Vec<WaitingReview>, (cols, rows): (usize, usize)) -> Self {
         let mut groups: Vec<(String, Vec<WaitingReview>)> = Vec::new();
         let mut unknown = Vec::new();
         for review in reviews {
@@ -146,7 +138,6 @@ impl ReviewSessionPicker {
         }
         Self {
             groups,
-            live_sessions,
             index: 0,
             notice: String::new(),
             cols,
@@ -170,27 +161,6 @@ impl ReviewSessionPicker {
     /// Returns true once every review is dismissed.
     pub(super) fn is_empty(&self) -> bool {
         self.groups.is_empty()
-    }
-
-    /// Returns true when the user has to see the picker, because more than
-    /// one review waits or a review's agent session ended.
-    pub(super) fn is_choice_needed(&self) -> bool {
-        self.reviews().count() > 1
-            || self
-                .groups
-                .iter()
-                .any(|(session, _)| self.has_session_ended(session))
-    }
-
-    /// Returns true when Herdr runs no agent with `session`, such as after its
-    /// pane closed. A subagent's session also counts as ended, since Herdr
-    /// lists only top-level agents.
-    fn has_session_ended(&self, session: &str) -> bool {
-        !session.is_empty()
-            && self
-                .live_sessions
-                .as_ref()
-                .is_some_and(|live| !live.contains(session))
     }
 
     /// Acts on one key. `j` and `k` move, Enter opens, `x` dismisses, `q` or
@@ -248,15 +218,7 @@ impl ReviewSessionPicker {
             let title = if session.is_empty() {
                 "Unknown session".to_owned()
             } else {
-                let ended = if self.has_session_ended(session) {
-                    " · ended"
-                } else {
-                    ""
-                };
-                format!(
-                    "Session {}{ended}",
-                    escape_control_characters(clip(session, 8))
-                )
+                format!("Session {}", escape_control_characters(clip(session, 8)))
             };
             list.push(Row::new(Style::Title, clip(&title, self.cols).to_owned()));
             for review in reviews {
@@ -416,7 +378,7 @@ mod tests {
             make_waiting("three", "ses_aaaa", 2),
         ];
 
-        let picker = ReviewSessionPicker::new(reviews, (40, 16), None);
+        let picker = ReviewSessionPicker::new(reviews, (40, 16));
         let rows = row_texts(&picker.build_screen());
 
         assert_eq!(
@@ -435,50 +397,6 @@ mod tests {
         );
     }
 
-    /// Returns the sessions Herdr would list as running.
-    fn make_live_sessions(sessions: &[&str]) -> HashSet<String> {
-        sessions.iter().map(|&session| session.to_owned()).collect()
-    }
-
-    /// `ReviewSessionPicker::build_screen` must mark a group whose agent
-    /// session Herdr no longer runs, and only that group. Otherwise the user
-    /// cannot tell that a review's agent is gone, or a live agent's review
-    /// looks abandoned.
-    #[test]
-    fn build_screen_marks_only_ended_agent_sessions() {
-        let reviews = vec![
-            make_waiting("one", "ses_aaaa", 0),
-            make_waiting("two", "ses_bbbb", 0),
-        ];
-        let live = make_live_sessions(&["ses_bbbb"]);
-
-        let picker = ReviewSessionPicker::new(reviews, (40, 16), Some(live));
-        let rows = row_texts(&picker.build_screen());
-
-        assert_eq!(rows[1], "Session ses_aaaa · ended");
-        assert_eq!(rows[4], "Session ses_bbbb");
-    }
-
-    /// `ReviewSessionPicker::is_choice_needed` must hold for a lone review
-    /// whose agent session ended, and not for a lone review whose agent runs.
-    /// Otherwise the ended mark never shows for one review, or every lone
-    /// review needs an extra Enter.
-    #[test]
-    fn is_choice_needed_follows_lone_review_session() {
-        let cases = [("ended", &[][..], true), ("runs", &["ses_aaaa"][..], false)];
-
-        for (case, sessions, expected) in cases {
-            let live = make_live_sessions(sessions);
-            let picker = ReviewSessionPicker::new(
-                vec![make_waiting("one", "ses_aaaa", 0)],
-                (40, 16),
-                Some(live),
-            );
-
-            assert_eq!(picker.is_choice_needed(), expected, "{case}");
-        }
-    }
-
     /// `ReviewSessionPicker::dismiss_chosen` must save the chosen review as dismissed and take it off the list, keeping the others.
     /// Otherwise `x` would dismiss the wrong review, or one the user dismissed would stay on the screen.
     #[test]
@@ -488,7 +406,7 @@ mod tests {
         let second = MadeUpRepo::new("feat/second", &[]);
         second.save_review("waiting_for_user_feedback", vec![], json!({}));
         let reviews = find_waiting_reviews(vec![first.path().to_owned(), second.path().to_owned()]);
-        let mut picker = ReviewSessionPicker::new(reviews, (40, 16), None);
+        let mut picker = ReviewSessionPicker::new(reviews, (40, 16));
 
         // The second review shows first, so `j` chooses the first.
         picker.press_key(Key::Char('j'));

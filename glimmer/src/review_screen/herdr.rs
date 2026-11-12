@@ -4,7 +4,6 @@
 //! `save_popup_record(path, workspace_id, name)` functions to understand the
 //! module.
 
-use std::collections::HashSet;
 use std::env;
 use std::fmt;
 use std::fs::{self, OpenOptions};
@@ -96,20 +95,6 @@ impl Herdr {
     pub(super) fn show_notification(&self, title: &str) -> Result<(), HerdrError> {
         self.send("notification.show", json!({"title": title}))
             .map(|_| ())
-    }
-
-    /// Returns the session of each agent Herdr runs now, such as an OpenCode
-    /// session ID. Herdr lists only top-level agents, never subagents. An agent
-    /// with no known session is skipped.
-    pub(super) fn list_agent_sessions(&self) -> Result<HashSet<String>, HerdrError> {
-        let listed = self.send("agent.list", json!({}))?;
-        Ok(listed["agents"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|agent| agent.pointer("/agent_session/value")?.as_str())
-            .map(str::to_owned)
-            .collect())
     }
 
     /// Closes the pane `pane_id`, such as the Review Tab when the user quits.
@@ -377,24 +362,6 @@ mod tests {
         let requests = server.join().unwrap();
         assert_eq!(list_methods(&requests), ["tab.list", "tab.focus"]);
         assert_eq!(requests[1]["params"]["tab_id"], "t7");
-    }
-
-    /// `Herdr::list_agent_sessions` must read each agent's session from
-    /// `agent.list`, and skip an agent with no session. Otherwise the picker
-    /// marks the reviews of running agents as ended.
-    #[test]
-    fn list_agent_sessions_reads_each_agent_session() {
-        let listed = json!({"result": {"agents": [
-            {"pane_id": "w1:p1", "agent_session": {"kind": "id", "value": "ses_aaaa"}},
-            {"pane_id": "w1:p2", "agent": "desk"},
-        ]}});
-        let (herdr, _folder, server) = start_fake_herdr(vec![listed]);
-
-        let sessions = herdr.list_agent_sessions().unwrap();
-
-        let requests = server.join().unwrap();
-        assert_eq!(list_methods(&requests), ["agent.list"]);
-        assert_eq!(sessions, HashSet::from(["ses_aaaa".to_owned()]));
     }
 
     /// `choose_screen_pane` and `parse_command` must match the Herdr plugin file's plugin id,
