@@ -36,7 +36,9 @@ job goes to a local model only when a script checks its result.
    - Cheap cloud, `openai/gpt-6-luna`: long prose drafts, such as a
      design doc draft or notes. Opus then checks the draft.
    - Opus, `claude-code/claude-opus-5-5[1m]`: plans, reviews,
-     decisions, and the hub of other sessions.
+     decisions, and the hub of other sessions. Type the name as
+     written, since `[1m]` marks the version with a one-million-token
+     context.
    - Web lookups that only quote pages: the small model that
      `ai/AGENTS.md` names under Subagent Models.
 4. Send a job to the local model only when a script can check its

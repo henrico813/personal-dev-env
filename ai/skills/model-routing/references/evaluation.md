@@ -47,11 +47,9 @@ Say which model runs each job and why, in one line each.
 Checks:
 
 1. Job 1 goes to `goog/qwen3.8`.
-2. Job 1 runs as a script that writes a summary file, and the agent
-   reads that file itself.
-3. Job 2 goes to Opus.
-4. Job 3 goes to `openai/gpt-6-luna`, with an Opus check after.
-5. Job 4 stays on a cloud model, because no script can check it.
+2. Job 2 goes to Opus.
+3. Job 3 goes to `openai/gpt-6-luna`, with an Opus check after.
+4. Job 4 stays on a cloud model, because no script can check it.
 
 ## Case 2: a local job fails its check
 
