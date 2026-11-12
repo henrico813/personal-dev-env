@@ -144,7 +144,8 @@ it in these ways.
 - `board` is new. It lists the cards by stage, sized for a 40x16
   phone screen: In progress, In review, Needs you, Ready and Draft.
   Needs you holds the questions in `decisions.md` and the sessions
-  that wait on the user. An open group shows four rows, then
+  that wait on the user. A Could not read group shows on top when a
+  read fails. An open group shows four rows, then
   `+ N more`; Ready and Draft start folded. A tap on a count in the
   top line jumps to its group, a tap on a heading folds or opens it,
   and a tap on a row opens its details. On a details page, any tap,

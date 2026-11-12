@@ -364,12 +364,13 @@ pub enum Command {
     /// 40x16 phone screen. The top line counts
     /// the cards in progress and in review, and
     /// what waits on you. Below it are five
-    /// groups. In progress, In review, Ready
-    /// and Draft hold cards, and Needs you
-    /// holds the questions in decisions.md and
-    /// the sessions that wait on you. Ready and
-    /// Draft start folded. It reads again every
-    /// 10 seconds, or when you press r.
+    /// groups, and Could not read on top when
+    /// a read fails. In progress, In review,
+    /// Ready and Draft hold cards, and Needs
+    /// you holds the questions in decisions.md
+    /// and the sessions that wait on you. Ready
+    /// and Draft start folded. It reads again
+    /// every 10 seconds, or when you press r.
     ///
     /// Tap a count to jump to its group, a
     /// group to fold or open it, + N more to

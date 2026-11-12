@@ -78,9 +78,9 @@ impl FromStr for ScreenSize {
     }
 }
 
-/// Shows the board until the user quits or a signal stops it. The
-/// reader thread owns `tools` and `run`. With `listen`, it also follows
-/// the steps `send_step` sends, as if the user tapped or pressed them.
+/// Shows the board until the user quits or a signal stops it. With
+/// `listen`, it also follows the steps `send_step` sends, as if the user
+/// tapped or pressed them.
 ///
 /// # Errors
 ///
@@ -105,7 +105,8 @@ pub fn run_board(
         None
     };
     // A signal only sets the flag, so the loop ends and dropping the
-    // screen puts the terminal back.
+    // screen puts the terminal back. When the loop is stuck on a closed
+    // terminal, `exit_if_stuck` ends the process instead.
     let stop = Arc::new(AtomicBool::new(false));
     for signal in [SIGTERM, SIGHUP, SIGINT] {
         signal_hook::flag::register(signal, Arc::clone(&stop)).map_err(terminal_error)?;
