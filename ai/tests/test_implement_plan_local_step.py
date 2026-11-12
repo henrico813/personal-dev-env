@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-LOCAL_STEP = ROOT / "ai/skills/implement-plan/scripts/local-step.sh"
+BUILD_STEP = ROOT / "ai/skills/implement-plan/scripts/build-step.sh"
 FAKE_PLANNER = """\
 #!/bin/sh
 # The command named in $FAIL_ON fails. Otherwise check passes, and
@@ -97,7 +97,7 @@ def repo(tmp_path: Path, env: dict[str, str]) -> Path:
     return repo
 
 
-def run_local_step(
+def run_build_step(
     repo: Path, env: dict[str, str], check: str
 ) -> subprocess.CompletedProcess[str]:
     """Run local-step.sh for step 1 from the repository.
@@ -115,7 +115,7 @@ def run_local_step(
     return subprocess.run(
         [
             "bash",
-            str(LOCAL_STEP),
+            str(BUILD_STEP),
             str(tmp_path / "plan.md"),
             base,
             "1",
@@ -130,7 +130,7 @@ def run_local_step(
     )
 
 
-class TestLocalStep:
+class TestBuildStep:
     """The script commits the planned tree and reports in summary.txt."""
 
     def test_passing_step_commits_planned_tree(
@@ -145,7 +145,7 @@ class TestLocalStep:
         """
         base = run_git(repo, env, "rev-parse", "HEAD")
 
-        result = run_local_step(repo, env, "true")
+        result = run_build_step(repo, env, "true")
 
         assert result.returncode == 0
         summary = repo.parent / "job/summary.txt"
@@ -167,7 +167,7 @@ class TestLocalStep:
         could not tell a failed step from a passed one or say why it
         moved the step to a stronger model.
         """
-        result = run_local_step(repo, env, "echo 'tests broke'; exit 3")
+        result = run_build_step(repo, env, "echo 'tests broke'; exit 3")
 
         assert result.returncode == 3
         summary = repo.parent / "job/summary.txt"
@@ -185,9 +185,9 @@ class TestLocalStep:
         second commit of the same tree would leave an empty commit
         in the pull request.
         """
-        run_local_step(repo, env, "false")
+        run_build_step(repo, env, "false")
 
-        result = run_local_step(repo, env, "true")
+        result = run_build_step(repo, env, "true")
 
         assert result.returncode == 0
         summary = repo.parent / "job/summary.txt"
@@ -205,7 +205,7 @@ class TestLocalStep:
         """
         (repo / "stray.txt").write_text("left behind\n")
 
-        result = run_local_step(repo, env, "true")
+        result = run_build_step(repo, env, "true")
 
         assert result.returncode == 1
         summary = repo.parent / "job/summary.txt"
@@ -246,7 +246,7 @@ class TestLocalStep:
         """
         failing_env = {**env, "FAIL_ON": failing}
 
-        result = run_local_step(repo, failing_env, "true")
+        result = run_build_step(repo, failing_env, "true")
 
         assert result.returncode == 1
         summary = repo.parent / "job/summary.txt"

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Commit one step of a plan in the current worktree for a local model,
-# then run the check command. Run it from the worktree:
+# Commit one step of a plan in the current worktree, then run the
+# check command. Run it from the worktree:
 #
-#   bash local-step.sh PLAN BASE STEP MESSAGE FOLDER CHECK
+#   bash build-step.sh PLAN BASE STEP MESSAGE FOLDER CHECK
 #
 # FOLDER/summary.txt gets "result: pass" or "result: fail: <why>",
 # then "exit: <code>" and "done", so the caller reads what the script
@@ -10,7 +10,7 @@
 set -u
 
 if [ $# -ne 6 ]; then
-  echo "usage: local-step.sh PLAN BASE STEP MESSAGE FOLDER CHECK" >&2
+  echo "usage: build-step.sh PLAN BASE STEP MESSAGE FOLDER CHECK" >&2
   exit 2
 fi
 plan=$1
