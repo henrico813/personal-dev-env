@@ -599,6 +599,38 @@ print -r -- "${GOOG_BASE_URL-}:${GOOG_API_KEY-}:${GOOG_MODEL-}" >"$HOME/vibe-cal
 	}
 }
 
+// ~/.zshenv must put ~/.local/bin on PATH, or comment review on a Herdr
+// server started over ssh cannot open nvim.
+func TestZshenvPutsLocalBinOnPath(t *testing.T) {
+	home := t.TempDir()
+	writeApplyFile(
+		t,
+		filepath.Join(home, ".zshenv"),
+		renderProfileTemplate(t, "dot_zshenv.tmpl", "client"),
+	)
+	testfile.WriteExecutable(
+		t,
+		filepath.Join(home, ".local", "bin", "nvim"),
+		"#!/bin/sh\n",
+	)
+	command := exec.Command(
+		"zsh",
+		"-c",
+		"nvim --version",
+	)
+	command.Env = buildServerEnvironment(home)
+
+	output, err := command.CombinedOutput()
+
+	if err != nil {
+		t.Fatalf(
+			"zsh did not find nvim in ~/.local/bin: %v\n%s",
+			err,
+			output,
+		)
+	}
+}
+
 func TestPRDPropagatesGitHubFailure(t *testing.T) {
 	home := t.TempDir()
 	writeOpenCodeZshRuntime(t, home)

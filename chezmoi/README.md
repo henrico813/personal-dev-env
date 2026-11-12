@@ -207,6 +207,11 @@ and full-screen machine switcher at 100 columns and below. Machine labels
 distinguish Local and Office agents. The managed config is validated with Herdr
 0.9.1, so run `herdr config check` after upgrades.
 
+A Herdr server keeps the `PATH` of the shell that started it, and tools its
+plugins start, such as nvim, look there. When ssh starts the server and the
+login shell is zsh, that shell reads only `~/.zshenv`, which now adds
+`~/.local/bin`, so restart a Herdr server started before this install.
+
 See the [maintenance guide](../pde-installer/docs/how-to/update-chezmoi-content.md).
 
 ## Agent GitHub approvals
