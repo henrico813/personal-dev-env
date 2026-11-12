@@ -1,5 +1,6 @@
 [package]
 name = "hub"
+# Release tags such as hub-v0.3.0 set the version hub prints; see build.rs.
 version = "0.2.0"
 edition = "2024"
 rust-version = "1.90"
