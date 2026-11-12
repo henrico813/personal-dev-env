@@ -113,28 +113,19 @@ through your report file.
 
 ## Subagents
 
-- Models: planners run on `claude-code/claude-opus-5-5[1m]`.
-  Reviews run on `claude-code/claude-sonnet-5#medium`, except the
-  data safety review of a risky change, which runs on Opus. Jobs a
-  script checks run on the local model, `goog/qwen3.8`. The auto hub
-  checked which answer: `<models>`.
-- A local model runs only a job a script checks: your test and lint
-  commands once per plan version, the deleted-test check above, and
-  a reviewed pull request's merge, with
+- Models: pick each subagent's model as `model-routing` says.
+  Planners run on the strongest model. Reviews run on the review
+  model, except the data safety review of a risky change, which runs
+  on the strongest model. The auto hub checked which models answer:
+  `<models>`.
+- Local jobs here are your test and lint commands once per plan
+  version, the deleted-test check above, and a reviewed pull
+  request's merge, with
   `~/.agents/skills/herdr-hub/scripts/merge-worker.sh` as the
-  script. Plans, reviews, pull request text and decisions stay on
-  cloud models. Write each job as one script that sends long output
-  to a log and writes a summary file whose last line is `done`. Give
-  the model only this brief:
-
-      Run this one command: `bash <script>`. Then print <summary file>
-      exactly. Touch no other file and run nothing else. Never answer
-      an approval request.
-
-  Read the summary file yourself. The job counts only when its last
-  line is `done`, never by the model's own words. Give each plan and
-  code reviewer the latest test summary, so it runs at most the one
-  test a finding needs.
+  script. Run each on the local model. Brief it and check its result
+  yourself, as `model-routing` says. Give each plan and code reviewer
+  the latest test summary, so it runs at most the one test a finding
+  needs.
 - When `<run folder>/feedback.md` exists, every planner and reviewer
   brief names it. It lists the user's feedback on the run's pull
   requests.
@@ -161,11 +152,9 @@ through your report file.
   checkout before and after it, and move only files that appeared
   during its run into your run folder.
 - When a model fails with a limit or a login error, write the error
-  and the time in your status file and do not retry in a loop. For a
-  review, try another model that answered. A planner has no other
-  model. Only a job a script checks may move to the local model, and
-  when the local model fails, run its script yourself. When no model
-  is left, report a blocker.
+  and the time in your status file and do not retry in a loop. Pick
+  the next model as `model-routing` says. When `model-routing` leaves
+  no model to try, report a blocker.
 
 ## Skills
 

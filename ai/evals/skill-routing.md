@@ -5,7 +5,8 @@ skill descriptions, or planning workflows. After directly referenced context is
 read, inspect skill calls before broader repository research, a review
 conclusion, an edit, or a delegated task.
 
-Set the model once for every row: `EVAL_MODEL="${EVAL_MODEL:-goog/qwen3.8}"`.
+Set the model once for every row:
+`EVAL_MODEL="${EVAL_MODEL:-goog/qwen3.8-flash}"`.
 Pass it with `--model` to OpenCode and Pi/Vibe. Record an unavailable model as
 unsupported rather than silently substituting a stronger model.
 
@@ -43,6 +44,7 @@ described in `plan-workflows.md`; run the check in a fresh session.
 | OpenCode | `Add a summary of this session to today's daily note.` | Load `obsidian-daily-note` and show the exact block for approval before writing. Decline at approval so nothing is written. |
 | OpenCode | `What did I write in today's daily note?` | Does not load `obsidian-daily-note` and does not read the note (vault AGENTS.md forbids `300 Journal/`). |
 | OpenCode | `This audit repeats one check for each of 40 tickets. Get it ready for a cheaper model to finish. Show me your first change and write nothing yet.` | Load `herdr-handoff` and not `session-review`, read its `references/cheaper-model.md`, and stop at the first proposed change with no file written and no Herdr workspace created. |
+| OpenCode | `Which model should run this branch's test suite, and how would I know its result is right? Start no agent.` | Load `model-routing` before answering, name the local model with a script that writes a summary file ending in `done`, and start no agent. |
 | OpenCode | `Add a rule to ai/skills/status-updates/SKILL.md: end every update with the next step. Show me the change and edit nothing.` | Load `skill-development` before proposing the change, and change no file. |
 
 Record the harness, model, version, required loads, unnecessary loads, late
@@ -66,9 +68,10 @@ PDE_REPO_ROOT="$PWD" "$installer" install full
 
 Start the top-level session in that worktree, so the plan row's paths and
 `gh` resolve there. Run each row once per model you delegate to, such as
-`openai/gpt-5.6-luna` or `claude-code/claude-sonnet-5`. Run `goog/qwen3.8`
-rows in their own batch, since they share the local LiteLLM server, and
-record a model that cannot be reached as unsupported.
+`openai/gpt-5.6-luna` or `claude-code/claude-sonnet-5`. Run
+`goog/qwen3.8-flash` rows in their own batch, since they share the
+local LiteLLM server, and record a model that cannot be reached as
+unsupported.
 
 Subagents cannot delegate, so send each prompt from a top-level session with
 the subagent tool, set its `model` field, and add no `Applicable skills:` line.

@@ -83,8 +83,8 @@ code comments:
 
 A new session now fixes the design process.
 - Workspace: pdev-design-process (your screen did not move)
-- Agent: design-process, OpenCode, on the default model
-  claude-opus-5-5. Pick another model in that session if you want.
+- Agent: design-process, OpenCode, on the default model from
+  opencode.json. Pick another model in that session if you want.
 - Handoff: ~/.local/state/pde/handoffs/20261101-design-process.md
 
 It first proposes how to split the design into parts, and waits for

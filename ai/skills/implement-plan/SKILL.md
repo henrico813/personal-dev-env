@@ -78,9 +78,9 @@ mismatch, and get the proposal corrected before expanding scope.
 Build each step with the step script, as
 [references/build.md](references/build.md) says. Read that page before
 the first step. The plan's own diffs become the commits, so no model
-writes the code. Each step's job goes to the cheapest model that does
-it well, and an expensive model such as Opus only fixes a step that
-cheaper models could not.
+writes the code. Each step is a local job on the local model, as
+`model-routing` picks. A stronger model steps in only to fix a step
+that the local model could not pass.
 
 Before the next step, confirm:
 
