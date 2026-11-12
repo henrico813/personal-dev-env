@@ -4,7 +4,8 @@
 //! `run_minute_pass` is the slow part, at most once a minute, which
 //! reads the board, finds finished sessions and asks workers to hand
 //! off. It never closes or parks a session, which only `hub clean`
-//! does.
+//! does. The one session it starts is an old hub's session review,
+//! once that hub's tab has closed, and only with `--start-reviews`.
 
 use std::path::PathBuf;
 use std::thread;
@@ -14,12 +15,13 @@ use jiff::{SignedDuration, Zoned};
 use serde_json::json;
 
 use super::Outcome;
+use super::handoff::{self, ReviewStart};
 use crate::external::cards::{BoardCounts, CardKey};
 use crate::external::herdr::{Agent, AgentStatus};
 use crate::shared::context::{HANDOFF_TOKENS, format_tokens};
 use crate::shared::events::{self, Event, EventKind, Memory};
 use crate::shared::facts::{self, CollectedFacts, HubLine};
-use crate::shared::lifecycle::{Lifecycle, decide_lifecycle};
+use crate::shared::lifecycle::{self, Lifecycle, decide_lifecycle};
 use crate::shared::messages::{self, SendOutcome};
 use crate::shared::run_folder::{FinishedSession, MinuteMark, ReportFile, RunFolder};
 use crate::shared::tidy;
@@ -43,6 +45,11 @@ pub struct NextOptions {
     pub json: bool,
     /// This process's ID, written to `.watcher-pid`.
     pub process_id: u32,
+    /// The folder an old hub's session review starts in.
+    pub cwd: PathBuf,
+    /// Starts old hubs' session reviews, from `--start-reviews`. Off by
+    /// default, since the user wants reviews only on the runs they pick.
+    pub start_reviews: bool,
 }
 
 /// The one line `hub next` prints.
@@ -82,6 +89,12 @@ enum News {
     OldSendFile {
         path: PathBuf,
     },
+    /// What this check did about an old hub's session review.
+    Review(ReviewStart),
+    /// An older hub of the run that no `handoff` event names.
+    UnadoptedHub {
+        old: String,
+    },
     Replaced,
     Timeout,
 }
@@ -90,6 +103,9 @@ enum News {
 struct NewsFacts<'a> {
     /// The held message that was not sent or is unsure, if any.
     outcome: Option<&'a SendOutcome>,
+    /// The old hub's session review this check started or failed to
+    /// start, if any.
+    review: Option<&'a ReviewStart>,
     reports: &'a [ReportFile],
     agents: &'a [Agent],
     memory: &'a Memory,
@@ -121,7 +137,7 @@ pub fn run_next(
         }
         let now = Zoned::now();
         let hub = facts::read_hub_line(tools);
-        if let Some(news) = check_for_news(tools, run, &hub, &now)? {
+        if let Some(news) = check_for_news(tools, run, &hub, options, &now)? {
             // A newer watcher that took over during the check finds this
             // news again, so this one records nothing.
             if run.is_replaced(options.process_id)? {
@@ -150,13 +166,16 @@ pub fn run_next(
     }
 }
 
-/// Runs one check. Runs the minute pass when it is due, delivers held
-/// messages and returns the news to print, if any. Records nothing
-/// about the news itself, since `run_next` does that before printing.
+/// Runs one check. Runs the minute pass when it is due, starts an old
+/// hub's session review when one is due and reviews are on, delivers
+/// held messages and returns the news to print, if any. Records
+/// nothing about the news itself, since `run_next` does that before
+/// printing.
 fn check_for_news(
     tools: &Tools<'_>,
     run: &RunFolder,
     hub: &HubLine,
+    options: &NextOptions,
     now: &Zoned,
 ) -> Result<Option<News>, HubError> {
     let memory = events::load_memory(run)?;
@@ -172,9 +191,15 @@ fn check_for_news(
         board = run_minute_pass(tools, run, &agents, &memory, now)?;
         mark = run.read_minute_mark()?;
     }
+    let review = if options.start_reviews {
+        handoff::start_due_review(tools, run, &memory, &agents, &options.cwd, now)?
+    } else {
+        None
+    };
     let outcome = messages::deliver_held_messages(tools, run, &agents, now)?;
     Ok(choose_news(&NewsFacts {
         outcome: outcome.as_ref(),
+        review: review.as_ref(),
         reports: &reports,
         agents: &agents,
         memory: &memory,
@@ -374,9 +399,10 @@ fn ask_for_worker_handoffs(
 
 /// Picks the most urgent news in a fixed order, or `None` when nothing
 /// is new. A message that was not sent or is unsure comes first, since
-/// nothing prints it again. Then come reports, blocked states, the
-/// hub's own handoff, the board crossing its limit, finished sessions
-/// not listed yet and old hub message files not printed yet.
+/// nothing prints it again. Then come an old hub's review start,
+/// reports, blocked states, the hub's own handoff, the board crossing
+/// its limit, finished sessions not listed yet, old hub message files
+/// not printed yet and older hubs left without a handoff.
 fn choose_news(facts: &NewsFacts<'_>) -> Option<News> {
     match facts.outcome {
         Some(SendOutcome::NotSent { name, reason }) => {
@@ -392,6 +418,9 @@ fn choose_news(facts: &NewsFacts<'_>) -> Option<News> {
             });
         }
         Some(SendOutcome::Delivered) | None => {}
+    }
+    if let Some(review) = facts.review {
+        return Some(News::Review(review.clone()));
     }
     if let Some(report) = find_unannounced_reports(facts.reports, facts.memory).first() {
         return Some(News::Report {
@@ -426,11 +455,25 @@ fn choose_news(facts: &NewsFacts<'_>) -> Option<News> {
     if let Some(news) = find_unlisted_finished(facts.finished, facts.memory) {
         return Some(news);
     }
-    facts
+    if let Some(path) = facts
         .old_send_files
         .iter()
         .find(|path| !facts.memory.old_send_seen.contains(*path))
-        .map(|path| News::OldSendFile { path: path.clone() })
+    {
+        return Some(News::OldSendFile { path: path.clone() });
+    }
+    let own = facts.hub.name.as_deref()?;
+    let predecessor = facts.memory.predecessor.as_deref();
+    facts
+        .agents
+        .iter()
+        .find(|agent| {
+            lifecycle::is_unadopted_hub(own, &agent.name, predecessor)
+                && !facts.memory.unadopted_seen.contains(&agent.name)
+        })
+        .map(|agent| News::UnadoptedHub {
+            old: agent.name.clone(),
+        })
 }
 
 /// Returns the first finished session not yet listed in its state,
@@ -498,6 +541,15 @@ fn record_news(news: &News) -> Option<EventKind> {
             names: names.clone(),
         }),
         News::OldSendFile { path } => Some(EventKind::OldSendSeen { path: path.clone() }),
+        News::Review(ReviewStart::Started { old, reviewer }) => Some(EventKind::ReviewStarted {
+            old: old.clone(),
+            reviewer: reviewer.clone(),
+        }),
+        News::Review(ReviewStart::Failed { old, reason, .. }) => Some(EventKind::ReviewFailed {
+            old: old.clone(),
+            reason: events::cut_reason(reason),
+        }),
+        News::UnadoptedHub { old } => Some(EventKind::UnadoptedHubSeen { old: old.clone() }),
         News::NotSent { .. } | News::Unsure { .. } | News::Replaced | News::Timeout => None,
     }
 }
@@ -530,6 +582,18 @@ fn format_news_line(news: &News, hub_tokens: Option<u64>) -> String {
             format!("{state} {}: {why}; run hub clean", names.join(", "))
         }
         News::OldSendFile { path } => format!("old send file: {} {hub}", path.display()),
+        News::Review(ReviewStart::Started { reviewer, .. }) => {
+            format!("review started {reviewer} {hub}")
+        }
+        News::Review(ReviewStart::Failed {
+            old,
+            review,
+            reason,
+        }) => format!(
+            "review not started for {old}: {reason}; start it from {} with herdr-handoff {hub}",
+            review.display()
+        ),
+        News::UnadoptedHub { old } => format!("no hub handoff for {old} -> hub adopt {old} {hub}"),
         News::Replaced => "replaced by a newer hub next".to_owned(),
         News::Timeout => format!("timeout {hub}"),
     }
@@ -549,6 +613,19 @@ fn format_news_json(news: &News, hub_tokens: Option<u64>) -> String {
             (state.as_str(), Some(names.join(", ")), Some(why.clone()))
         }
         News::OldSendFile { path } => ("old_send_file", None, Some(path.display().to_string())),
+        News::Review(ReviewStart::Started { reviewer, .. }) => {
+            ("review_started", Some(reviewer.clone()), None)
+        }
+        News::Review(ReviewStart::Failed {
+            old,
+            review,
+            reason,
+        }) => (
+            "review_failed",
+            Some(old.clone()),
+            Some(format!("{reason}; start it from {}", review.display())),
+        ),
+        News::UnadoptedHub { old } => ("unadopted_hub", Some(old.clone()), None),
         News::Replaced => ("replaced", None, None),
         News::Timeout => ("timeout", None, None),
     };
@@ -686,6 +763,7 @@ mod tests {
         let hub = HubLine::default();
         let facts = NewsFacts {
             outcome: Some(&outcome),
+            review: None,
             reports: &reports,
             agents: &agents,
             memory: &memory,

@@ -1,26 +1,39 @@
 mod common;
 
 use std::fs::{self, File};
+use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use hub::commands::next::{NextOptions, run_next};
 use hub::commands::send::{SendRequest, run_send};
 use hub::external::cards::{BoardCounts, CardNote, Stage};
-use hub::external::herdr::{Agent, AgentStatus};
+use hub::external::herdr::{Agent, AgentStatus, HerdrCode};
 use serde_json::{Value, json};
 
 use common::{
-    OpenCodeRow, TestTools, make_agent, make_time, read_events, write_opencode_db,
+    OpenCodeRow, TestTools, make_agent, make_refusal, make_time, read_events, write_opencode_db,
     write_opencode_session,
 };
 
 /// Runs one `hub next` check and returns its line.
 fn check_once(test_tools: &TestTools) -> String {
+    run_one_check(test_tools, false)
+}
+
+/// Runs one `hub next --start-reviews` check and returns its line.
+fn check_once_starting_reviews(test_tools: &TestTools) -> String {
+    run_one_check(test_tools, true)
+}
+
+/// Runs one check, with `--start-reviews` when `start_reviews` is set.
+fn run_one_check(test_tools: &TestTools, start_reviews: bool) -> String {
     let options = NextOptions {
         timeout: Some(Duration::ZERO),
         poll: Duration::ZERO,
         json: false,
         process_id: 1,
+        cwd: test_tools.path().to_owned(),
+        start_reviews,
     };
     let outcome = run_next(&test_tools.tools(), &test_tools.run(), &options).unwrap();
     outcome.lines.join("\n")
@@ -80,6 +93,36 @@ fn set_hub_context(test_tools: &mut TestTools, tokens: u64) {
         data: json!({"tokens": {"input": tokens, "cache": {"read": 0, "write": 0}}}),
     };
     write_opencode_db(&test_tools.opencode_path(), &[step]);
+}
+
+/// Makes this hub `kanban-hub-2`, in pane `w1:kanban-hub-2`, with a
+/// `rules.md` model at medium effort and a `handoff` event from the old
+/// hub `kanban-hub-1` whose review is due. Returns the review file.
+fn add_due_review(test_tools: &mut TestTools) -> PathBuf {
+    test_tools
+        .herdr
+        .agents
+        .push(make_agent("kanban-hub-2", AgentStatus::Working));
+    test_tools.own_pane = Some("w1:kanban-hub-2".to_owned());
+    let run_path = test_tools.run_path();
+    fs::write(
+        run_path.join("rules.md"),
+        "- start hubs with `--model 'claude-code/claude-opus-5-5[1m]#medium'`.\n",
+    )
+    .unwrap();
+    let review = test_tools
+        .state_folder()
+        .join("handoffs/20261111-kanban-hub-1-review.md");
+    let handoff = json!({
+        "at": "2026-11-11T22:14:00Z",
+        "event": "handoff",
+        "old": "kanban-hub-1",
+        "tab": "w1:t-kanban-hub-1",
+        "new": "kanban-hub-2",
+        "review": review,
+    });
+    fs::write(run_path.join("events.jsonl"), format!("{handoff}\n")).unwrap();
+    review
 }
 
 /// The hub runs `hub read` and a new `hub next` in one reply, so a
@@ -368,4 +411,125 @@ fn run_next_skips_handoff_of_finished_worker() {
     );
     assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
     assert!(test_tools.herdr.prompts.borrow().is_empty());
+}
+
+/// Session reviews are off by default, since the user does not want
+/// every hub starting new sessions. With no `--start-reviews`, a due
+/// review must start nothing.
+#[test]
+fn run_next_starts_no_review_without_flag() {
+    let mut test_tools = TestTools::new();
+    add_due_review(&mut test_tools);
+
+    let line = check_once(&test_tools);
+
+    assert_eq!(line, "timeout (hub -)");
+    assert!(test_tools.herdr.created_tabs.borrow().is_empty());
+}
+
+/// With `--start-reviews`, every hub that hands off gets a session
+/// review, which hubs used to start by hand at high effort. The review
+/// waits until the old hub's tab is gone, since its handoff tells the
+/// reviewer so, and starts only once. A second start would review the
+/// same hub twice.
+#[test]
+fn run_next_starts_review_once_old_closes() {
+    let mut test_tools = TestTools::new();
+    let review = add_due_review(&mut test_tools);
+    test_tools
+        .herdr
+        .agents
+        .push(make_agent("kanban-hub-1", AgentStatus::Working));
+
+    let while_open = check_once_starting_reviews(&test_tools);
+    test_tools
+        .herdr
+        .agents
+        .retain(|agent| agent.name != "kanban-hub-1");
+    let after_close = check_once_starting_reviews(&test_tools);
+    let next_check = check_once_starting_reviews(&test_tools);
+
+    assert_eq!(while_open, "timeout (hub -)");
+    assert_eq!(after_close, "review started review-kanban-hub-1 (hub -)");
+    assert_eq!(next_check, "timeout (hub -)");
+    let created_tabs = test_tools.herdr.created_tabs.borrow();
+    assert_eq!(created_tabs.len(), 1);
+    assert_eq!(created_tabs[0].0, "w1");
+    assert_eq!(created_tabs[0].1.label, "review-kanban-hub-1");
+    assert_eq!(
+        test_tools.herdr.started.borrow()[0].args,
+        ["--model", "claude-code/claude-opus-5-5[1m]#high", "--auto"]
+    );
+    let prompt = format!(
+        "Read the handoff at {} and follow it. Load each skill it names when it says.",
+        review.display()
+    );
+    assert_eq!(
+        *test_tools.herdr.prompts.borrow(),
+        [("review-kanban-hub-1".to_owned(), prompt)]
+    );
+}
+
+/// A review that cannot start must reach the hub once, with the file
+/// to start it from, or nobody reviews that hub. Trying again on every
+/// check would print the same failure every 5 seconds.
+#[test]
+fn run_next_reports_failed_review_start_once() {
+    let mut test_tools = TestTools::new();
+    let review = add_due_review(&mut test_tools);
+    test_tools
+        .herdr
+        .fail_next("create_tab", make_refusal(HerdrCode::Other(String::new())));
+
+    let failed = check_once_starting_reviews(&test_tools);
+    let next_check = check_once_starting_reviews(&test_tools);
+
+    assert_eq!(
+        failed,
+        format!(
+            "review not started for kanban-hub-1: Herdr said no; start it from {} with herdr-handoff (hub -)",
+            review.display()
+        )
+    );
+    assert_eq!(next_check, "timeout (hub -)");
+}
+
+/// The review may already run, started by hand or by a `hub next`
+/// whose line was never recorded because a newer one replaced it.
+/// Starting it again would review the same hub twice.
+#[test]
+fn run_next_skips_review_already_running() {
+    let mut test_tools = TestTools::new();
+    add_due_review(&mut test_tools);
+    test_tools
+        .herdr
+        .agents
+        .push(make_agent("review-kanban-hub-1", AgentStatus::Working));
+
+    let line = check_once_starting_reviews(&test_tools);
+
+    assert_eq!(line, "timeout (hub -)");
+    assert!(test_tools.herdr.created_tabs.borrow().is_empty());
+}
+
+/// A hub started without `hub handoff` leaves the older hub open, and
+/// nothing closes it or starts its review. The new hub must hear once
+/// which command repairs that, not on every check.
+#[test]
+fn run_next_names_unadopted_hub_once() {
+    let mut test_tools = TestTools::new();
+    test_tools.herdr.agents = vec![
+        make_agent("kanban-hub-4", AgentStatus::Working),
+        make_agent("kanban-hub-3", AgentStatus::Working),
+    ];
+    test_tools.own_pane = Some("w1:kanban-hub-4".to_owned());
+
+    let first = check_once(&test_tools);
+    let second = check_once(&test_tools);
+
+    assert_eq!(
+        first,
+        "no hub handoff for kanban-hub-3 -> hub adopt kanban-hub-3 (hub -)"
+    );
+    assert_eq!(second, "timeout (hub -)");
 }

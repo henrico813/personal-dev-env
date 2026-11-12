@@ -287,6 +287,27 @@ fn run_status_bad_request_file_keeps_sessions() {
     );
 }
 
+/// A hub started without `hub handoff` leaves the older hub open, and
+/// nothing closes it or starts its review. `hub status` is where the
+/// hub looks after a restart, so the repair command must show there
+/// too, not only in a `hub next` line printed once.
+#[test]
+fn run_status_names_hub_left_without_handoff() {
+    let mut test_tools = TestTools::new();
+    test_tools.herdr.agents = vec![
+        make_agent("kanban-hub-4", AgentStatus::Working),
+        make_agent("kanban-hub-3", AgentStatus::Working),
+    ];
+    test_tools.own_pane = Some("w1:kanban-hub-4".to_owned());
+
+    let status = read_status_json(&test_tools);
+
+    assert_eq!(
+        status["problems"],
+        json!(["no hub handoff for kanban-hub-3 -> hub adopt kanban-hub-3"])
+    );
+}
+
 /// A worker can finish its own card and go on to another, such as a
 /// second pull request to merge. Its newest report names that card,
 /// here one in review whose pull request waits on the user. While that
