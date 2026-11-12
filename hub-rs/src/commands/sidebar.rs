@@ -167,8 +167,8 @@ fn move_block_to_top(
 /// agent list show only them and the sessions that wait on the user.
 /// Another machine's hubs show there once a hub on that machine runs
 /// `gather` too, since each machine tags only its own panes. Herdr
-/// forgets pane tokens and the filter when its server restarts, so
-/// each handoff, adoption and `hub auto now` sets them again.
+/// forgets pane tokens and the filter on restart, so each `gather`,
+/// `desk`, handoff, adoption and `hub auto now` sets them again.
 fn show_go_to_list(
     tools: &Tools<'_>,
     agents: &[Agent],
@@ -196,8 +196,8 @@ fn show_go_to_list(
 }
 
 /// Returns the hubs ordered by their workspace's place, then by name.
-/// Includes the hub in this pane, since the commands that gather run in
-/// a hub's own pane.
+/// Keeps the hub in this pane in the list, since a gathering command
+/// usually runs in a hub's own pane and that hub's workspace moves too.
 fn list_hubs<'a>(agents: &'a [Agent], workspaces: &[Workspace]) -> Vec<&'a Agent> {
     let find_place = |agent: &Agent| {
         workspaces
