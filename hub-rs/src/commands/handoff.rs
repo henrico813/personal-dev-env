@@ -43,7 +43,9 @@ pub(crate) enum ReviewStart {
 /// Starts the next hub on the model `rules.md` names, with `HUB_RUN`
 /// set, records the handoff, and reads back its first reply's effort.
 /// Checks every input before it starts anything. Only then does the
-/// next hub get its prompt, so it reads the whole handoff.
+/// next hub get its prompt, so it reads the whole handoff. It then puts
+/// the hubs at the top of the sidebar, and a failure there adds a
+/// warning line, not an error.
 ///
 /// # Errors
 ///
@@ -160,7 +162,8 @@ pub fn run_handoff(
 /// `hub handoff` named. Writes the handoff for `old`'s session review
 /// and records a `handoff` event, so `hub clean` closes `old` once it
 /// is idle and `hub next --start-reviews` then starts the review.
-/// Changes nothing in Herdr.
+/// Then puts the hubs at the top of the sidebar, and a failure there
+/// adds a warning line, not an error.
 ///
 /// # Errors
 ///

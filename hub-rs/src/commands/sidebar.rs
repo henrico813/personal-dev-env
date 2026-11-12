@@ -4,7 +4,8 @@
 //! `gather` and `desk` put the kanban hubs at the top, then the desk,
 //! then the other hubs. They also cut Herdr's agent list down to a "go
 //! to" list in that order, followed by the sessions that wait on the
-//! user.
+//! user. `hub handoff`, `hub adopt` and `hub auto now` gather too,
+//! through `gather_after_hub_start`, so no hub has to run `hub gather`.
 
 use std::path::Path;
 
@@ -166,8 +167,8 @@ fn move_block_to_top(
 /// agent list show only them and the sessions that wait on the user.
 /// Another machine's hubs show there once a hub on that machine runs
 /// `gather` too, since each machine tags only its own panes. Herdr
-/// forgets pane tokens and the filter when its server restarts, so each
-/// hub start sets them again.
+/// forgets pane tokens and the filter when its server restarts, so
+/// each handoff, adoption and `hub auto now` sets them again.
 fn show_go_to_list(
     tools: &Tools<'_>,
     agents: &[Agent],
@@ -195,8 +196,8 @@ fn show_go_to_list(
 }
 
 /// Returns the hubs ordered by their workspace's place, then by name.
-/// Includes the hub in this pane, since that hub runs `hub gather`
-/// itself.
+/// Includes the hub in this pane, since the commands that gather run in
+/// a hub's own pane.
 fn list_hubs<'a>(agents: &'a [Agent], workspaces: &[Workspace]) -> Vec<&'a Agent> {
     let find_place = |agent: &Agent| {
         workspaces

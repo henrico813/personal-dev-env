@@ -168,7 +168,9 @@ pub fn run_auto_approve(
 /// A card's line is the first non-empty line of its worker's status
 /// file. It says `(needs you)` while `decisions.md` holds a question
 /// whose title starts with the card's key. The title of each question
-/// follows the count.
+/// follows the count. It then puts the hubs at the top of the sidebar,
+/// and a failure there adds a warning line to the output, never to the
+/// file.
 ///
 /// # Errors
 ///
