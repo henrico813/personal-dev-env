@@ -32,8 +32,8 @@ Arm does not work yet, because the installer's tmux is x64 only.
 
 Open an Ubuntu-24.04 tab in Windows Terminal for these steps.
 
-1. Keep the repository on Ubuntu's own disk, not under `/mnt/c`. A checkout on
-   the Windows drive is slow, and the install script refuses it. For a new
+1. Keep the repository on Ubuntu's own disk, not on a Windows drive. A
+   checkout there is slow, and the install script refuses it. For a new
    checkout:
 
    ```bash
