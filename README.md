@@ -188,7 +188,7 @@ loads `~/.agents/skills/`.
 | `auto-run` | Brief the user on ready cards, then have a separate hub work the approved list to PRs | "Set up an auto run" |
 | `session-review` | Review a session for token use, lessons to save and jobs a local model could run, then wait for your pick | "Review this session for token usage, skill lessons and local model handoff" |
 | `conclude-session` | Close out a session: review it, wait for your pick, then save lessons, open one skill PR and hand off or report | "conclude-session" |
-| `model-routing` | Pick the model for each agent job, and check and escalate local model jobs | "Which model should run these test jobs?" |
+| `model-routing` | Pick the model for each agent job, and check and step up failed local jobs | "Which model should run these test jobs?" |
 | `review-plan` | Review a plan, PR, commit, or diff for architecture, bugs, completeness | "Use review-plan on docs/design-auth.md with focus on security" |
 
 The skills are installed to `~/.agents/skills/`, and the installer copies the

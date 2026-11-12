@@ -156,8 +156,7 @@ uncapped when no systemd user manager is available.
 Restart all OpenCode TUIs and `opencode serve --service` after installation.
 Existing processes keep their previous cgroup. PDE does not set `MemoryHigh`.
 
-Run `opencode --model <provider/model> ...` to open the TUI on a chosen model,
-such as `opencode --model claude-code/claude-sonnet-5 --auto`; `--model` must
-come first. The launcher waits up to 15 seconds for the model to appear in
-`opencode models`, creates a session on it in the current folder, and opens
+Run `opencode --model <provider/model> ...` to open the TUI on a chosen model;
+`--model` must come before other flags, such as `--auto`. The launcher waits
+up to 15 seconds for the model to appear in `opencode models`, creates a session on it in the current folder, and opens
 that session. The configured default model does not change.

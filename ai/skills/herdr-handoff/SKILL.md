@@ -41,12 +41,40 @@ asks.
 ## Prepare the work for a cheaper model
 
 Use this part only when the user asks to prepare long, repetitive
-work for a smaller or local model. A review that repeats one check
-for each of many tickets is such work. Follow
+work for a cheaper model. A review that repeats one check for each of
+many tickets is such work. Such work runs on the cheap model, as
+`model-routing` picks. Follow
 [references/cheaper-model.md](references/cheaper-model.md) before you
 write the handoff file. That page moves the judgment, facts and tool
-steps out of this conversation into the work's own log, so a smaller
+steps out of this conversation into the work's own log, so the cheap
 model can run the loop from them.
+
+## Hand a local job to a worker
+
+A local job is a job that `model-routing` gives the local model, such
+as the merge that herdr-hub hands to a merge worker. Its worker gets
+only a brief. Follow these steps instead of the sections from Write
+the handoff file through Tell the user:
+
+1. Save the handoff file as step 1 of Write the handoff file says. It
+   holds only the brief that `model-routing` says to write for the
+   job. It holds no secret.
+2. Start the worker as steps 1 to 4 of Start the session say, with
+   kind `opencode`, `--model` set to the local model, as
+   `model-routing` picks, and `--auto`. Send it the prompt "Read
+   <path> and follow it." with the command in step 5 there.
+3. Wait in the background with
+   `herdr agent wait <name> --until idle --until done --until blocked`.
+   Do this even when a hub runs, since `hub next` does not wake when
+   a local worker finishes. When the wait returns at `blocked`, tell
+   the user. Then wait again with only `--until idle --until done`.
+4. Check the result yourself, as `model-routing` says. Never take the
+   result from `hub read` or the worker's reply. When the check
+   fails, retry the worker as that skill says.
+5. Add no card note, and send the user no handoff message. Hand the
+   checked result to the skill that owns the job, as `model-routing`
+   says. The skill that owns the job also says when to close the
+   worker's tab.
 
 ## Write the handoff file
 
@@ -185,23 +213,13 @@ model can run the loop from them.
    names one.
 
    To choose a model, pass the agent's own model flag after `--`.
-   For OpenCode, put `--model <provider>/<model>` first, such as
-   `-- --model github-copilot/claude-sonnet-5 --auto`. Names differ
-   between machines, so take one from `opencode models` on the machine
-   that runs the session. PDE's `opencode` launcher makes a session on
-   that model and opens it. For a name not in that list, it prints
-   close names and exits, so the start fails; read them with
-   `herdr pane read <pane>`. Without `--model`, OpenCode uses the
-   `model` set in `~/.config/opencode/opencode.json`. Pick the model
-   by the `model-routing` skill.
-
-   Start a mechanical worker, one whose job a script checks, on the
-   local model by default: `-- --model goog/qwen3.8 --auto`. Its
-   handoff file holds only `model-routing`'s local model brief,
-   filled in with the job script, and none of the handoff template's
-   sections. Read its summary file yourself. When the check fails,
-   follow the When the check fails section of the `model-routing`
-   skill.
+   For OpenCode, put `--model <provider>/<model>` first, as in
+   `-- --model <provider>/<model> --auto`. Pick the model by the
+   `model-routing` skill. PDE's `opencode` launcher makes a session on
+   that model and opens it. When the name is not in `opencode models`,
+   the launcher prints close names and exits, so the start fails. Read
+   those names with `herdr pane read <pane>`. Without `--model`,
+   OpenCode uses the `model` set in `~/.config/opencode/opencode.json`.
 5. Send a short prompt that points to the file, such as "Read the
    handoff at <path> and follow it. Load each skill it names when it
    says. Start by <step>. Do not edit <file> yet." Keep the brief in the
@@ -280,6 +298,9 @@ or revising this skill.
 
 ## Final checks
 
+- A local job passed `model-routing`'s check, or you reported it as
+  that skill says. Of the checks below, only the first two
+  and the `--auto` check apply to it.
 - The handoff file is outside the repository, any pull request and
   the vault.
 - It holds no secret.

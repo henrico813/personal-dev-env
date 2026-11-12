@@ -88,8 +88,9 @@ While cloud models are available, local models should do work that
 cuts cloud tokens. Answer both in two required sections, for each
 role the session used, workers as well as the hub. A list of jobs a
 script could check is not enough.
-The stored trials find the cheapest model, local or cloud, that does
-each job well.
+For each job, the stored trials find the weakest model that does the
+job well, in the order of `model-routing`'s roles, from local to
+strongest.
 
 - Fallback map: for each role, such as hub, planner, implementer,
   reviewer or merge worker, the local model that would run it, what
@@ -98,12 +99,13 @@ each job well.
 - Efficiency map: each large reading, sorting, summarizing or
   checking step a local model could do now, so the cloud model reads
   a short result. Give its tokens from the script or a named query,
-  the check that makes the local result safe to trust, and the
-  saving, marked measured or estimate.
+  the check script for the local result, and the saving, marked
+  measured or estimate. A step that no script can check goes on the
+  role `model-routing` gives it, often the cheap model.
 
-Run the stored trials on the cheapest model that might do the job,
-local or cloud, at least three runs each, as
-[references/trials.md](references/trials.md) says. Give
+Run the stored trials on the local model, then on the cheap model, as
+`model-routing` picks them. Run each case at least three times on
+each model, as [references/trials.md](references/trials.md) says. Give
 each case's pass rate, with the model, effort and rules hash, in a
 Trials section. If you ran none, say so there and why.
 
@@ -119,11 +121,10 @@ together, or a script that a local agent can run and that saves a
 cloud agent tokens. Proposals from the two maps count toward step
 2's limit of three.
 
-To brief a local model on a job a script checks, point to the
-`model-routing` skill rather than restating it. Keep cheap cloud
-models, such as `openai/gpt-6-luna`, apart from local ones, such as
-`goog/qwen3.8`: only a local model keeps working when cloud access
-fails.
+To brief a local model on a local job, point to the `model-routing`
+skill rather than restating its brief. Keep the cheap model apart
+from the local model, as `model-routing` names them. Only the local
+model still runs when cloud access fails.
 For long, repetitive work, such as an audit that repeats one check
 for each ticket, follow
 [herdr-handoff's page](../herdr-handoff/references/cheaper-model.md)
@@ -151,8 +152,8 @@ below. Then wait. Change nothing until the user answers.
 A narrow question, such as "what could a local model have done?",
 still gets the Fallback, Efficiency and Trials lines at the end. A
 trial is a rerun from step 4, not work the session already did on a
-local model. It also keeps the line that points to the
-`model-routing` skill.
+local model. The reply to a narrow question also keeps the line that
+points to the `model-routing` skill.
 
 ## Output format
 

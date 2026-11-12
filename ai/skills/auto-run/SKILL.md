@@ -46,9 +46,9 @@ The user's rules for every run:
 
        hub auto ready --run "<run folder>"
 
-3. Sort them with Strata, the local model:
+3. Sort them with the cheap model, as `model-routing` picks:
 
-       opencode run --standalone -m goog/qwen3.8 \
+       opencode run --standalone -m <model> \
          "$(cat <run folder>/ready.md)
 
        Sort each card into one group, one line per card as
@@ -57,9 +57,10 @@ The user's rules for every run:
        device, a login, a purchase or a choice before work can
        start), alone (the rest)."
 
-   When it fails or gives no line for a card, sort the cards yourself
-   by the same rule. Read each line against the card before you use
-   it.
+   When the model does not answer, pick the next one as
+   `model-routing` says. When none is left, or a card gets no line,
+   sort the cards yourself by the same rule. Read each line against
+   the card before you use it.
 4. Write `<run folder>/run.md`. Put under `## Run` the `alone` cards
    you pick, and every other ready card under `## Needs your hands`,
    `## Work PC` or `## Left out`, with a reason. Each line is the key,
@@ -161,10 +162,10 @@ before the user reviews that pull request.
 2. Check with `command -v` that `hub`, `card`, `herdr`, `wt`,
    `planner` and `pde-gh-write` are on `PATH`; never run
    `pde-gh-write pr` to test it, since any `pr` command files a
-   request. Send each model that worker-limits.md names a one-line
-   job, `opencode run --standalone -m <model> "reply OK"`. When a
-   tool is missing or the planner model does not answer, write a
-   blocker to the front hub and end your turn.
+   request. Check each model the workers will use, as
+   `model-routing` says. When a tool is missing or no strongest model
+   answers for the planners, write a blocker to the front hub and end
+   your turn.
 3. Copy [references/worker-limits.md](references/worker-limits.md)
    to `<run folder>/common.md`, with your name, the run folder and
    the models that answered as `<models>`. Each worker's handoff points

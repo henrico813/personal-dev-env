@@ -1,40 +1,46 @@
 # Evaluation
 
-Three cases check whether the skill changes which model an agent
-picks and what it does when a local job fails. Run each case twice in
-a fresh session on the same model: once with no skill, and once with
-SKILL.md pasted after the system prompt. Score each reply against the
-case's checks, one point each.
+Four cases check whether the skill changes which model an agent picks
+and what it does when a model is missing or a local job fails. Run
+each case twice on the same model, each time in a fresh session: once
+with no skill, and once with SKILL.md in the prompt. Score each reply
+against the case's checks, one point each.
 
 ## How to run
 
-Run in a folder from `mktemp -d`. `--safe-mode` leaves out the user's
-CLAUDE.md and installed skills, so the baseline sees no rules.
+Run from a scratch home, a folder from `mktemp -d`, so the agent sees
+no installed skills or rules. Set `HOME` to it and `XDG_CONFIG_HOME`
+to its `.config` folder. Copy only the model's provider entry into
+`.config/opencode/opencode.json` there. Set `XDG_DATA_HOME` and
+`XDG_STATE_HOME` to your own folders, since OpenCode keeps its logins
+in the data folder.
 
-```bash
-sys='You are a coding agent that starts other agents for a user.
-Reply with only what you would do next, in order.'
-claude -p --safe-mode --model claude-sonnet-5 --tools "" \
-  --no-session-persistence --system-prompt "$sys" "$(cat case1.txt)"
+Save these two lines as `prompt.txt`:
+
+```text
+You are a coding agent that starts other agents for a user.
+Reply with only what you would do next, in order.
 ```
 
-For the run with the skill, copy this skill's SKILL.md into the
-folder. This command puts it at the end of the system prompt:
+Save each case's facts block below as `caseN.txt`, and copy this
+skill's SKILL.md into the folder that holds `prompt.txt`. Then run
+each case without the skill and with it:
 
 ```bash
-claude -p --safe-mode --model claude-sonnet-5 --tools "" \
-  --no-session-persistence --system-prompt "$sys
-
-$(cat SKILL.md)" "$(cat case1.txt)"
+m=goog/qwen3.8
+opencode run --standalone -m $m "$(cat prompt.txt case1.txt)"
+opencode run --standalone -m $m "$(cat prompt.txt SKILL.md case1.txt)"
 ```
 
-Save each case's facts block below as `caseN.txt`.
+Score each reply with a script that looks for each check's model
+names and key words, then read the reply to confirm each point.
 
 ## Case 1: pick a model for each job
 
 ```text
 You are about to start four agents. `opencode models` lists
-goog/qwen3.8, openai/gpt-6-luna and claude-code/claude-opus-5-5[1m].
+goog/qwen3.8, openai/gpt-6-luna, claude-code/claude-sonnet-5 and
+claude-code/claude-opus-5-5[1m].
 
 1. Run `make test` in a scratch clone and report which tests fail.
 2. Review a pull request that changes how backups are deleted.
@@ -47,13 +53,17 @@ Say which model runs each job and why, in one line each.
 Checks:
 
 1. Job 1 goes to `goog/qwen3.8`.
-2. Job 2 goes to Opus.
-3. Job 3 goes to `openai/gpt-6-luna`, with an Opus check after.
-4. Job 4 stays on a cloud model, because no script can check it.
+2. Job 2 goes to Opus, since the change can delete the user's data.
+3. Job 3 goes to `openai/gpt-6-luna`, and a stronger model checks the
+   draft.
+4. Job 4 goes to `openai/gpt-6-luna`, not the local model, and the
+   session reads each line.
 
 ## Case 2: a local job fails its check
 
 ```text
+`opencode models` lists goog/qwen3.8, openai/gpt-6-luna,
+claude-code/claude-sonnet-5 and claude-code/claude-opus-5-5[1m].
 You gave goog/qwen3.8 this job: run `bash jobs/lint.sh`, then print
 jobs/lint.txt. It replied "All lint checks passed, done." You open
 jobs/lint.txt. It is empty.
@@ -68,8 +78,9 @@ Checks:
 3. Runs the job once more on `goog/qwen3.8` with the same brief.
 4. Says that a second failure moves the job to `openai/gpt-6-luna`
    once.
-5. Says that a third failure moves the job to Opus once, and an Opus
-   failure stops the job and gets reported.
+5. Says that later failures move up one model at a time, to Sonnet
+   and then Opus, and that an Opus failure stops the job and gets
+   reported.
 
 ## Case 3: a failing test is a result
 
@@ -92,3 +103,21 @@ Checks:
 2. Does not rerun the job or move it to another model.
 3. Hands the two failing tests to the work that owns the pull
    request, such as a fix or a report to the user.
+
+## Case 4: the role's model is missing
+
+```text
+You need a plan reviewed before it is built. `opencode models` lists
+goog/qwen3.8, openai/gpt-6-luna and claude-code/claude-opus-5-5[1m].
+No Sonnet model is listed.
+
+Say which model reviews the plan, and why, in two lines.
+```
+
+Checks:
+
+1. Does not give the review to `goog/qwen3.8` or
+   `openai/gpt-6-luna`.
+2. Gives the review to `claude-code/claude-opus-5-5[1m]`.
+3. Says the review's usual model is missing, so the job moves to a
+   stronger model rather than a weaker one.

@@ -68,27 +68,13 @@
 - When the user or a handoff makes this session the hub of other
   Herdr sessions, load and follow the `herdr-hub` skill.
 - When choosing the model for a subagent, a new session, a worker or
-  a job script, load and follow the `model-routing` skill.
+  a job script, load and follow the `model-routing` skill. Its choices
+  count as the user's explicit request to set a subagent's model.
 - When delegating domain work, include an `Applicable skills:` line in the
   delegation prompt with each skill's exact name. Require the subagent to load
   available skills before working and to report required skills that are
   unavailable. Workflow skills are routed by the rules above; never name one
   on a Vibe worker's line.
-
-## Subagent Models
-
-- A subagent that only searches the web and quotes pages, with no
-  judgment, runs on a small, cheap model, such as a mini, flash,
-  haiku or luna model. Pick one from the provider of the session's
-  own model, since that provider is known to work, and look up its
-  exact name instead of guessing it. Set the subagent tool's `model`
-  to it. This rule is the user's explicit request for that model. In
-  OpenCode, also pick the `web-search-researcher` agent. If the tool
-  cannot take that model, or the call fails, run the lookup without
-  setting a model.
-- Subagents that review, plan, decide or write code keep the
-  session's model, except for jobs that `model-routing` gives to a
-  cheaper model.
 
 ## Code Search
 

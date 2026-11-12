@@ -1,10 +1,10 @@
 # Prepare Work for a Cheaper Model
 
 Long reviews and audits repeat one loop many times, such as "read the
-ticket, check it against the rules, write a verdict". A smaller or
-local model can run that loop when the judgment, the facts and the
-tool steps live in files. This page moves them there, out of the
-conversation.
+ticket, check it against the rules, write a verdict". The cheap
+model, as `model-routing` picks, can run that loop when the judgment,
+the facts and the tool steps live in files. This page moves them
+there, out of the conversation.
 
 When the user wants the session reviewed first, follow the
 `session-review` skill.

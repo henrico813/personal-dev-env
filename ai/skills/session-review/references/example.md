@@ -96,11 +96,14 @@ largest carried outputs
 
 ## Trials
 
-Ran the stored trials on `goog/qwen3.8`, three runs each:
+Ran the stored trials on `goog/qwen3.8`, then on
+`openai/gpt-6-luna`, three runs each on each model:
 
-- pr-text-cold-read 3/3, rules hash `9b0e47d2c1a5`.
-- pr-key-in-title 1/3, rules hash `5d83f0a6e214`. Added from this
-  session's correction; two runs kept the key in the title.
+- pr-text-cold-read: `goog/qwen3.8` 3/3, `openai/gpt-6-luna` 3/3,
+  rules hash `9b0e47d2c1a5`.
+- pr-key-in-title: `goog/qwen3.8` 1/3, `openai/gpt-6-luna` 3/3,
+  rules hash `5d83f0a6e214`. Added from this session's correction;
+  two `goog/qwen3.8` runs kept the key in the title.
 
 ## Fresh check
 
@@ -130,8 +133,8 @@ Lessons to save, pick by number
 Fallback: the planner is least ready; a brief per plan step would
 fit qwen3.8's window.
 Efficiency: test runs on qwen3.8, about 1.1M tokens (estimate).
-Trials: pr-text-cold-read 3/3, new pr-key-in-title 1/3 on
-qwen3.8.
+Trials: pr-text-cold-read 3/3 on qwen3.8 and gpt-6-luna; new
+pr-key-in-title 1/3 on qwen3.8, 3/3 on gpt-6-luna.
 
 Reply with the numbers to apply.
 ```

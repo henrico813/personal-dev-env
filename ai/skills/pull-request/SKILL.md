@@ -99,8 +99,8 @@ recorded in Testing when the pull request was opened or last updated
 counts as Guardrail 4. The script merges the head it tests. When the
 branch is behind, that head is a new commit that merges the base in.
 Without such a try in Testing, a cloud session started by
-`herdr-handoff` follows Merge from step 1 instead, on the cheapest
-cloud model that does it well.
+`herdr-handoff` follows Merge from step 1 instead, on the review
+model, as `model-routing` picks.
 
 1. Run the merge checks from the repository, with each test command
    as one argument:
@@ -113,8 +113,10 @@ cloud model that does it well.
    It fetches and works from the PR's current title and description,
    not a local copy. In a repository with several remotes, add
    `--remote <remote>`. It prints at most 20 lines. In later
-   commands, use the folder on its `out:` line as `$O`. A local model
-   may run these checks, as the `model-routing` skill says.
+   commands, use the folder on its `out:` line as `$O`. The local
+   model, as `model-routing` picks, may run this command in a script.
+   The script's summary file holds the command's output, with `done`
+   as its last line. You do steps 2 to 6.
 2. It runs the tests on the PR merged into its base, in a scratch
    clone, so no checkout changes. It also lists the changed files and
    counts GitHub's checks. When its last line starts with

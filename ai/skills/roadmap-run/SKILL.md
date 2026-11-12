@@ -44,19 +44,18 @@ answering the comment reviews you queued.
    `~/.local/state`, and write the run's rules file, `rules.md`, in
    it: prompts.md's rules every agent gets, the user's style rules and
    feedback list, and each role's model. Parallel sessions of the run
-   share it, so write its path on the roadmap page. Send each model
-   the run will use a one-line job, "reply OK", and write in
-   `rules.md` which answered. When the brief names no model for a
-   role, use these:
-   - Planners: Opus 5.5 with 1M context, at high reasoning where the
-     harness takes it. Never Sonnet: its context overflowed and
+   share it, so write its path on the roadmap page. Check each model
+   the run will use, as `model-routing` says. Write in `rules.md`
+   which models answered. When the brief names no model for a role,
+   pick it by `model-routing`, with these roles:
+   - Planners: the strongest model, since only it has the long
+     context a large plan needs. A model with a shorter context
      compacted many times on one large plan.
-   - Reviews of a new plan, `review-plan` reviews and language-skill
-     reviews: Sonnet 5, medium thinking. When step 4 calls a PR
-     risky because it can change files or data the user owns,
-     `review-plan` runs on Opus.
-   - `code-documentation` and `behavior-focused-testing` reviews:
-     Sonnet 5, medium thinking or more, never `gpt-5.6-luna`.
+   - Reviews of a new plan, `review-plan` reviews, language-skill
+     reviews, and `code-documentation` and
+     `behavior-focused-testing` reviews: the review model. When step
+     4 calls a PR risky because it can change files or data the user
+     owns, `review-plan` runs on the strongest model.
 
 ## The loop for each PR
 
@@ -66,7 +65,7 @@ commands in [references/build.md](references/build.md).
 
 Planners and reviewers run no test suites or linters, since a script
 runs them once per plan version. Before an agent reviews a plan
-version, a cheap or local model runs the suites on it once, as
+version, the local model runs the suites on it once, as
 build.md's Run the suites once per plan version says. Reviewers read
 that summary and run at most the one test a finding needs.
 
@@ -122,10 +121,10 @@ that summary and run at most the one test a finding needs.
    reviewer named, in a `.md` file in the run folder. Then run
    build.md's Put back the bugs, and send each `FAIL` line to a new
    planner as a fix. Handle each `stale` line yourself, as build.md
-   says. A local model may run these scripts, as the
-   `model-routing` skill says.
-7. **Ship.** You or Sonnet 5 write the PR text, never
-   `gpt-5.6-luna`. `msg lint` cannot tell whether it reads well, so
+   says. The local model, as `model-routing` picks, may run these
+   scripts.
+7. **Ship.** You or the review model write the PR text, never the
+   cheap model. `msg lint` cannot tell whether it reads well, so
    read it yourself and rewrite it until it meets `git-messages`
    item 5. Then run build.md's ship script. It
    stops when the branch's tree differs from the plan, on bad PR text,
