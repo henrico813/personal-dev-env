@@ -1,15 +1,15 @@
 # hub in Rust
 
-The `hub` command, rewritten in Rust. A hub is the Herdr session that
+The `hub` command, written in Rust. A hub is the Herdr session that
 other sessions report to, and it runs `hub` to watch, message and
-tidy them. The Python hub in `../hub/` stays the one agents and skills
-use until this program replaces it.
+tidy them. It replaced the Python hub, which was deleted.
 
 pde-installer builds this folder on the Development tier and installs
-it as `~/.local/bin/hub-next`, so you can try it beside the Python
-`hub`. So far it has `status`, `next`, `send`, `read`, `report`,
-`inbox`, `note`, `brief`, `handoff`, `clean`, `park`, `auto`, `flag`,
-`unflag`, `alive`, `go`, `gather`, `desk` and `board`.
+it as `~/.local/bin/hub`, so full machines get it and client laptops,
+which compile nothing, do not. It has `status`, `next`, `send`,
+`read`, `report`, `inbox`, `note`, `brief`, `handoff`, `adopt`,
+`clean`, `park`, `auto`, `flag`, `unflag`, `alive`, `go`, `gather`,
+`desk` and `board`.
 
 ```bash
 make build   # target/release/hub
@@ -20,22 +20,24 @@ make test
 Exit codes: 0 done, 1 an external system such as Herdr failed, 2 wrong
 usage, 3 not done, such as when no hub is running. Each failure prints
 its reason. When the reader of the output stops early, as
-`hub-next go | head` does, the hub stops printing and keeps its exit
+`hub go | head` does, the hub stops printing and keeps its exit
 code.
 
-## Differences from hub
+## Changes from the Python hub
 
-- `hub-next --version` prints `hub 0.2.0`, since the binary already
-  calls itself `hub`. The Python hub prints `hub 0.1.0`.
-- `hub-next go` and `hub-next gather` exit 3, not 2, when no hub is
+For anyone who used the deleted Python hub, this program differs from
+it in these ways.
+
+- `hub --version` prints `hub 0.2.0`. The Python hub printed `0.1.0`.
+- `hub go` and `hub gather` exit 3, not 2, when no hub is
   running, so a script can tell this from a mistyped command.
-- `hub-next flag` on a working session marks it on idle and done, so
+- `hub flag` on a working session marks it on idle and done, so
   "needs you" shows once it stops. The Python hub marked the working
   state, which showed "needs you" while the session still worked.
 - `status`, `next`, `send`, `read`, `report`, `inbox`, `note`,
-  `brief`, `handoff`, `clean` and `park` take the run folder from
-  `--run DIR`, else from `HUB_RUN`. With neither, or with a folder
-  that does not exist, they exit 2.
+  `brief`, `handoff`, `adopt`, `clean` and `park` take the run folder
+  from `--run DIR`, else from `HUB_RUN`. With neither, or with a
+  folder that does not exist, they exit 2.
 - `read` exits 3, not 2, when the session has no unread report.
   `read --note TEXT --card [KEY]` also adds the note to the card's Log,
   with the key in the session's name or the KEY given. If a step
@@ -46,7 +48,8 @@ code.
   first line of each day.
 - `report NAME [FILE]` and `note TEXT` are new. `report` writes
   `report-NAME.md` whole, from FILE or standard input.
-- `read` and `handoff` add a line to `events.jsonl` in the run folder.
+- `read`, `handoff` and `adopt` add a line to `events.jsonl` in the
+  run folder.
 - `handoff` exits 3, not 2, when it stops, and starts the next hub's
   tab with `HUB_RUN` set. When the prompt to the next hub stalls, it
   does not press Enter to send pasted text, as the Python hub did.
@@ -60,7 +63,7 @@ code.
   step takes the run folder from `--run DIR`, else from `HUB_RUN`.
   `auto check` prints `hub: ` before its first problem only, one
   problem per line.
-- `hub-next --machine LABEL alive` exits 2 with
+- `hub --machine LABEL alive` exits 2 with
   `alive works on this machine only`, the same words as `go`.
 - `send` sends at once to an OpenCode or Claude Code session that is
   working, idle or done, when the user is not in its pane. Another
@@ -85,7 +88,22 @@ code.
   `events.jsonl`, not in `next-seen.json`.
 - `next` prints `old send file: PATH (hub 131k)` once for each old
   `send-NAME.*` file in the run folder, which it never sends, after
-  every other line.
+  every other line but `no hub handoff`.
+- Session reviews are off by default. `next --start-reviews` starts
+  the session review of an old hub that handed off, once that hub's
+  tab has closed, in a new tab on the `rules.md` model at high
+  effort. It also starts reviews still due from earlier handoffs in
+  the run. It prints `review started NAME (hub 131k)`, or
+  `review not started for OLD: REASON; start it from FILE with
+  herdr-handoff (hub 131k)` and tries no more. Plain `next` starts
+  no review.
+- For an older hub of the run that no handoff names, `next` prints
+  `no hub handoff for OLD -> hub adopt OLD (hub 131k)` once, and
+  `status` lists the same words as a problem.
+- `adopt OLD` is new. It makes the hub take over OLD, an older hub
+  left open without `handoff`: it writes OLD's review handoff and
+  records a handoff, so `clean` closes OLD once it is idle and
+  `next --start-reviews` then starts its review.
 - `next` runs a minute pass at most once a minute, and only after a
   session's state changed or a report was read. It reads `card board`.
   Each time the board crosses into its limit, it wakes the hub once
@@ -106,7 +124,7 @@ code.
   `nothing to close` when nothing changed. `--dry-run` prints
   `would close`, `would park` and `would forget` lines and changes
   nothing. A plain shell closes only with its finished agent's tab. A
-  tab with only a shell stays open. The Python `clean` closes that
+  tab with only a shell stays open. The Python `clean` closed that
   tab; this one does not. While `card` or a request
   file cannot be read, it closes nothing and prints
   `kept every session: REASON`. Closes and parks also go to

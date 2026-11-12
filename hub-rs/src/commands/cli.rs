@@ -39,6 +39,7 @@ $HUB_RUN.
   note*    add a timed line to notes.md
   brief*   what waits on the user
   handoff* start the next hub
+  adopt*   take over a hub left without handoff
   clean*   close and park finished tabs
   park*    park one finished session
   auto     the steps of an auto run
@@ -92,6 +93,9 @@ pub enum Command {
         /// Print the news as JSON
         #[arg(long)]
         json: bool,
+        /// Start old hubs' session reviews, which are off by default
+        #[arg(long)]
+        start_reviews: bool,
     },
     /// Deliver now, or hold until free
     #[command(after_help = "Example: hub send docs-fix --file /tmp/msg.md")]
@@ -164,6 +168,14 @@ pub enum Command {
         name: AgentName,
         /// The handoff file for the next hub
         handoff: PathBuf,
+    },
+    /// Take over a hub left without handoff
+    #[command(after_help = "Example: hub adopt kanban-hub-3")]
+    Adopt {
+        #[command(flatten)]
+        run: RunArg,
+        /// The older hub's agent name
+        old: AgentName,
     },
     /// Close and park finished tabs
     #[command(after_help = "Example: hub clean --dry-run")]
@@ -270,6 +282,7 @@ impl Command {
             Command::Note { .. } => "note",
             Command::Brief { .. } => "brief",
             Command::Handoff { .. } => "handoff",
+            Command::Adopt { .. } => "adopt",
             Command::Clean { .. } => "clean",
             Command::Park { .. } => "park",
             Command::Auto { .. } => "auto",
@@ -338,6 +351,7 @@ pub fn takes_machine(command: &Command) -> bool {
         | Command::Note { .. }
         | Command::Brief { .. }
         | Command::Handoff { .. }
+        | Command::Adopt { .. }
         | Command::Clean { .. }
         | Command::Park { .. }
         | Command::Auto { .. }

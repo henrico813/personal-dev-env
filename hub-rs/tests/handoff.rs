@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use hub::commands::handoff::run_handoff;
+use hub::commands::handoff::{run_adopt, run_handoff};
 use hub::external::herdr::{Agent, AgentStatus, HerdrCode};
 use hub::shared::{AgentName, HubError};
 use serde_json::json;
@@ -85,6 +85,17 @@ fn run_next_hub(test_tools: &TestTools, handoff: &Path) -> Result<Vec<String>, H
     .map(|outcome| outcome.lines)
 }
 
+/// Runs `hub adopt OLD`.
+fn adopt_hub(test_tools: &TestTools, old: &str) -> Result<Vec<String>, HubError> {
+    run_adopt(
+        &test_tools.tools(),
+        &test_tools.run(),
+        &old.parse().unwrap(),
+        &make_time("2026-11-11T22:14:00+00:00[UTC]"),
+    )
+    .map(|outcome| outcome.lines)
+}
+
 /// A hub once told the user its next hub ran at medium effort when it
 /// ran at the default, because nothing passed or checked the effort.
 /// The next hub starts on the newest rules model, and the printed
@@ -127,10 +138,10 @@ fn run_handoff_gives_new_tab_run_folder() {
     );
 }
 
-/// Every hub that hands off gets a session review. The reviewer finds
-/// the old hub by its session ID, and the next hub learns from its own
-/// handoff, the one its only prompt names, which tab to close and which
-/// handoff starts the review.
+/// Every hub that hands off gets a session review handoff, used when
+/// reviews are on. The reviewer finds the old hub by its session ID,
+/// and the next hub learns from its own handoff, the one its only
+/// prompt names, which reviewer starts and from which file.
 #[test]
 fn run_handoff_tells_next_hub_review_steps() {
     let (test_tools, handoff) = make_handoff_tools();
@@ -155,7 +166,7 @@ fn run_handoff_tells_next_hub_review_steps() {
     );
     let next_handoff = fs::read_to_string(&handoff).unwrap();
     assert!(next_handoff.starts_with("# Handoff: run the hub\n"));
-    assert!(next_handoff.contains("herdr tab close w1:t1"));
+    assert!(next_handoff.contains("review-kanban-hub"));
     assert!(next_handoff.contains(&reviews[0].display().to_string()));
     let prompts = test_tools.herdr.prompts.borrow();
     assert_eq!(prompts.len(), 1);
@@ -228,11 +239,12 @@ fn run_handoff_stops_when_reply_effort_differs() {
     );
 }
 
-/// The tidy pass closes the old hub's tab from the `handoff` event.
+/// The tidy pass closes the old hub's tab from the `handoff` event,
+/// and `hub next` then starts its review from the event's review file.
 /// The event is written once the new tab exists, even when the effort
 /// check then fails, so the old hub never stays open forever.
 #[test]
-fn run_handoff_records_old_hub_for_closing() {
+fn run_handoff_records_old_hub_and_review() {
     let (test_tools, handoff) = make_handoff_tools();
     write_first_reply(&test_tools, "default");
 
@@ -244,4 +256,63 @@ fn run_handoff_records_old_hub_for_closing() {
     assert_eq!(events[0]["old"], "kanban-hub");
     assert_eq!(events[0]["tab"], "w1:t1");
     assert_eq!(events[0]["new"], "kanban-hub-2");
+    assert!(
+        events[0]["review"]
+            .as_str()
+            .unwrap()
+            .ends_with("20261111-kanban-hub-review.md")
+    );
+}
+
+/// A hub started without `hub handoff` leaves the older hub open with
+/// no review. Adopting it records the same `handoff` event a handoff
+/// writes, so the tidy pass closes the old hub and
+/// `hub next --start-reviews` starts its review, which finds the old hub by its session ID.
+#[test]
+fn run_adopt_records_handoff_with_review() {
+    let mut test_tools = TestTools::new();
+    test_tools.herdr.agents = vec![
+        make_agent("kanban-hub-4", AgentStatus::Working),
+        Agent {
+            session_id: Some("ses_old".to_owned()),
+            ..make_agent("kanban-hub-3", AgentStatus::Working)
+        },
+    ];
+    test_tools.own_pane = Some("w1:kanban-hub-4".to_owned());
+
+    adopt_hub(&test_tools, "kanban-hub-3").unwrap();
+
+    let events = read_events(&test_tools.run_path());
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["event"], "handoff");
+    assert_eq!(events[0]["old"], "kanban-hub-3");
+    assert_eq!(events[0]["tab"], "w1:t-kanban-hub-3");
+    assert_eq!(events[0]["new"], "kanban-hub-4");
+    let review = events[0]["review"].as_str().unwrap();
+    assert!(review.ends_with("20261111-kanban-hub-3-review.md"));
+    assert!(
+        fs::read_to_string(review)
+            .unwrap()
+            .contains("--session ses_old")
+    );
+}
+
+/// Adopting the newer hub would make the tidy pass close the hub that
+/// runs the board. The command must refuse and record nothing.
+#[test]
+fn run_adopt_refuses_newer_hub() {
+    let mut test_tools = TestTools::new();
+    test_tools.herdr.agents = vec![
+        make_agent("kanban-hub-3", AgentStatus::Working),
+        Agent {
+            session_id: Some("ses_new".to_owned()),
+            ..make_agent("kanban-hub-4", AgentStatus::Working)
+        },
+    ];
+    test_tools.own_pane = Some("w1:kanban-hub-3".to_owned());
+
+    let error = adopt_hub(&test_tools, "kanban-hub-4").unwrap_err();
+
+    assert!(matches!(error, HubError::NotDone(_)), "{error:?}");
+    assert!(read_events(&test_tools.run_path()).is_empty());
 }
