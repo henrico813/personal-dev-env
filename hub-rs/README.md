@@ -9,7 +9,7 @@ pde-installer builds this folder on the Development tier and installs
 it as `~/.local/bin/hub-next`, so you can try it beside the Python
 `hub`. So far it has `status`, `next`, `send`, `read`, `report`,
 `inbox`, `note`, `brief`, `handoff`, `adopt`, `clean`, `park`, `auto`,
-`flag`, `unflag`, `alive`, `go` and `gather`.
+`flag`, `unflag`, `alive`, `go`, `gather` and `desk`.
 
 ```bash
 make build   # target/release/hub

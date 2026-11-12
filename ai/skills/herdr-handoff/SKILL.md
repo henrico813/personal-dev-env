@@ -148,6 +148,9 @@ model can run the loop from them.
    `$HERDR_WORKSPACE_ID`, unless the user asks for a new workspace. A
    tab here adds no workspace to the user's sidebar.
 
+   Never make a tab or pane in the workspace labelled `desk`. It is
+   the user's own. Make a new workspace instead.
+
    Give a tab and its agent the same short name, such as `docs-p2`:
 
        herdr tab create --no-focus --workspace <workspace> \
