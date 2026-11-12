@@ -57,6 +57,25 @@ class TestCheckDockerfilePackages(unittest.TestCase):
                     f"Dockerfile:3: {packages} share one line", output
                 )
 
+    def test_check_sees_past_comment_inside_run(self):
+        """Keeps looking inside a RUN whose continuation line is a comment.
+
+        Docker removes the comment line without ending the RUN, so a check
+        that ends the RUN there misses the install on the next line and CI
+        lets a crowded line through.
+        """
+        dockerfile_text = (
+            "FROM debian\n"
+            "RUN apt-get update \\\n"
+            "    # tools for the build\n"
+            "    && apt-get install -y bash git\n"
+        )
+
+        exit_code, output = self.run_check(dockerfile_text)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("Dockerfile:4: bash, git share one line", output)
+
     def test_check_passes_repo_install_styles(self):
         """Passes the one-per-line forms the repository's Dockerfiles use.
 
