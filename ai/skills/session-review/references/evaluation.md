@@ -125,15 +125,15 @@ The script printed (subagent lines only):
 subagents 3
   claude-code/claude-opus-5-5[1m] count 1 read 1,880,400 written 11,200
   openai/gpt-6-luna count 1 read 140,220 written 3,100
-  goog/qwen3.8 count 1 read 28,400 written 760
+  goog/qwen3.8-flash count 1 read 28,400 written 760
 largest subagents by tokens read
   ses_9c03 claude-code/claude-opus-5-5[1m] read 1,880,400 written 11,200 Review plan
   ses_9c01 openai/gpt-6-luna read 140,220 written 3,100 Cold read PR text
-  ses_9c02 goog/qwen3.8 read 28,400 written 760 Run tests and linters
+  ses_9c02 goog/qwen3.8-flash read 28,400 written 760 Run tests and linters
 
 Conversation notes:
-- goog/qwen3.8 runs on the user's own machine. openai/gpt-6-luna is a
-  cheap cloud model.
+- goog/qwen3.8-flash runs on the user's own machine.
+  openai/gpt-6-luna is a cheap cloud model.
 - You also deleted two merged worktrees by hand, with a script that
   printed "done" at the end.
 - The model-routing skill says how to brief a local model.

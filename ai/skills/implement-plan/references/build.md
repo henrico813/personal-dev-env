@@ -103,11 +103,12 @@ A step fails in one of two ways:
   when tests fail. That is a failed result, not a failed check. Fix
   the step as below without a retry.
 
-A fix is its own job. This skill sets the fix's role. The fix starts
-on the review model and moves to the strongest model when it fails.
-A fix can change the plan, so the local model never makes one.
+A fix is its own job. This skill sets the fix's role. A fix can
+change the plan, so the local model never makes one. The review model
+writes no code, as `model-routing` says, so the fix runs on the
+strongest model.
 
-1. Start a subagent on the review model, as `model-routing` picks.
+1. Start a subagent on the strongest model, as `model-routing` picks.
    Give it the step, the summary, `check.log`, `planner.log`, the
    worktree path, and an `Applicable skills:` line with each loaded
    skill the step needs. It finds the cause and never edits worktree
@@ -123,9 +124,8 @@ A fix can change the plan, so the local model never makes one.
    has a second commit on the branch, the fix.
 3. When the cause is outside the code, such as a missing tool, the
    subagent fixes it and reruns `bash $D/step<n>.sh`.
-4. When the subagent cannot make the step pass, start a new subagent
-   the same way on the strongest model. When that one fails too, stop
-   and report the step as blocked.
+4. When the subagent cannot make the step pass, stop and report the
+   step as blocked.
 5. The step counts as escalated. Check its summary as in Run a step
    before the next step starts.
 

@@ -358,7 +358,7 @@ git -C "$EVAL_REPO" config user.email "plan-eval@example.com"
 git -C "$EVAL_REPO" add .
 git -C "$EVAL_REPO" commit -qm "Create evaluation fixture"
 export EVAL_FIXTURE_COMMIT="$(git -C "$EVAL_REPO" rev-parse HEAD)"
-export EVAL_MODEL="${EVAL_MODEL:-goog/qwen3.8}"
+export EVAL_MODEL="${EVAL_MODEL:-goog/qwen3.8-flash}"
 planner check "$EVAL_REPO/plans/review.md" --repo "$EVAL_REPO" \
   --base-commit "$EVAL_FIXTURE_COMMIT" --json-errors
 planner check "$EVAL_REPO/plans/implement.md" --repo "$EVAL_REPO" \

@@ -164,8 +164,8 @@ before the user reviews that pull request.
    `pde-gh-write pr` to test it, since any `pr` command files a
    request. Check each model the workers will use, as
    `model-routing` says. When a tool is missing or no strongest model
-   answers for the planners, write a blocker to the front hub and end
-   your turn.
+   answers for the planners and workers, write a blocker to the front
+   hub and end your turn.
 3. Copy [references/worker-limits.md](references/worker-limits.md)
    to `<run folder>/common.md`, with your name, the run folder and
    the models that answered as `<models>`. Each worker's handoff points
@@ -177,9 +177,12 @@ before the user reviews that pull request.
    call that times out is the only one in doubt.
 5. Start one worker per card by `herdr-handoff`, as agent
    `<key in lower case>-auto`, in its own workspace named as
-   `herdr-hub`'s Sidebar names say. `hub auto now` reads its status
-   file by the agent name. After a restart, check `hub status` first
-   and start no second worker for a card.
+   `herdr-hub`'s Sidebar names say. Each worker directs other agents,
+   so it is an orchestrator. Start it on the model and reasoning
+   level that `model-routing` gives an orchestrator.
+   `hub auto now` reads its status file by the agent name. After a
+   restart, check `hub status` first and start no second worker for a
+   card.
 
    Before you start them, compare the files each card will change, from
    its card and the code. Cards that share a file run one after another:

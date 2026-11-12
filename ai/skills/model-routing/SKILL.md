@@ -34,10 +34,11 @@ Each job has one role, set by what the job needs. The roles run from
 weakest to strongest.
 
 1. Local: a script checks the result. Examples are running tests,
-   linters, git commands, merge checks or `planner check`, quoting
-   lines that a script finds in their source file, and applying a
-   plan step that tests check. The model only has to follow a short
-   brief and call tools. Such a job is a local job.
+   linters, git commands, merge checks or `planner check`, and quoting
+   lines that a script finds in their source file. The model only has
+   to follow a short brief and call tools. Such a job is a local job.
+   Writing code is a local job too, inside or outside a plan step.
+   A script runs tests and linters to check the code.
 2. Cheap: either the job needs little judgment, or a stronger model
    or the session checks the output. Examples are web lookups that only
    quote pages, long prose drafts that a stronger model then checks,
@@ -46,14 +47,27 @@ weakest to strongest.
 3. Review: the job needs judgment over a bounded input. Its model
    runs at medium reasoning. Examples are reviews of plans, diffs,
    comments and tests, including `code-documentation` and
-   `behavior-focused-testing` reviews. Writing pull request text, and
-   writing code outside a checked plan step, are review jobs too.
+   `behavior-focused-testing` reviews. Drafting text that no stronger
+   model checks, such as pull request text, is a review job too.
 4. Strongest: the job needs the deepest reasoning and a long context,
    up to one million tokens for a large plan. Examples are plans,
-   decisions, risky reviews, the hub of other sessions, and the last
-   try of any failed job. A review is risky when the code it checks
-   can change or delete the user's files or data. A skill may also
-   mark its own reviews as risky.
+   decisions, risky reviews and the last try of any failed job.
+   Strongest jobs run at high reasoning. A review is risky when the
+   code it checks can change or delete the user's files or data. A
+   skill may also mark its own reviews as risky.
+
+The strongest model also directs other agents, at a lower reasoning
+level:
+
+- The hub of other sessions runs at medium reasoning.
+- An orchestrator is a worker session that directs other agents,
+  such as one that hands plan steps to the local model and review
+  jobs to the review model. It runs at low reasoning. It is not a
+  hub. A session the user started, such as one running
+  `roadmap-run`, keeps the model and level the user started it on.
+
+Neither the cheap nor the review model writes code or directs other
+agents.
 
 ## Models
 
@@ -62,19 +76,19 @@ name is the default, and later names are fallbacks.
 
 OpenCode, for `--model` and the subagent tool's `model`:
 
-- Local: `goog/qwen3.8`.
+- Local: `goog/qwen3.8-flash`, `goog/qwen3.8`.
 - Cheap: `openai/gpt-6-luna`, `opencode-go/gpt-6-luna`,
   `claude-code/claude-haiku-4-5-20251001`.
 - Review: `claude-code/claude-sonnet-5`,
   `github-copilot/claude-sonnet-5`.
 - Strongest: `claude-code/claude-opus-5-5[1m]`. The `[1m]` marks the
-  one-million-token version. Use high reasoning where the harness
-  takes it.
+  one-million-token version. Use the reasoning level that the Roles
+  section gives the job, where the harness takes it.
 
-Adding `#medium` to a name, as in
-`claude-code/claude-sonnet-5#medium`, sets medium reasoning where the
-tool takes a variant. The availability check compares the name
-without it.
+Adding `#low`, `#medium` or `#high` to a name, as in
+`claude-code/claude-sonnet-5#medium`, sets that reasoning level where
+the tool takes a variant. The availability check compares the name
+without the suffix.
 
 Claude Code, for a subagent's `model` and `claude --model`:
 
@@ -112,13 +126,18 @@ Each Claude Code alias follows the newest model of its kind.
 2. Otherwise, use the role a skill names for one of its own jobs. The
    skill, or one of its lessons, may also set the job's reasoning
    level.
-3. Otherwise, use the job's role from Roles.
-4. Take the first available model in that role's list. A web lookup
-   is the one exception, as Web lookups says.
-5. When no model of the role is available, step up to the next
-   stronger role. Never step down. When no strongest model is
-   available, stop and report to the user, or to the session that
-   gave you the work.
+3. Otherwise, use the role in the Roles section whose description
+   fits the job.
+4. When no role fits, keep the session's model, or the model the
+   configuration sets. Never pick a cheaper model on your own to save
+   tokens.
+5. When a role fits, take the first available model in its list. A
+   web lookup is the one exception, as Web lookups says.
+6. When no model of the role is available, step up to the next
+   stronger role. Never step down. A job that writes code skips the
+   cheap and review roles and steps from local to strongest. When no
+   strongest model is available, stop and report to the user, or to
+   the session that gave you the work.
 
 ## Brief a local model
 
@@ -135,7 +154,9 @@ Each Claude Code alias follows the newest model of its kind.
 
 3. When the job needs edits, such as fixing lint errors, write a
    separate brief. That brief names the input files, the only files
-   the model may edit, and the check script the model runs last.
+   the model may edit, and the check script the model runs last. Leave
+   a check script that commits or pushes out of the brief. You run
+   that script yourself, as step 5 says.
 4. When the model does the reading or searching, such as quoting lines
    from notes or finding the callers of a function, it runs no
    script. The brief names the input files, the one answer file the
@@ -171,8 +192,10 @@ the job.
 
 1. Run the job once more on the same model, with the same brief.
 2. When it fails again, step up one role and run it once, with the
-   same brief and script. The skill that owns the job may give a
-   stronger model other work instead, such as fixing the job.
+   same brief and script. A job that writes code skips the cheap and
+   review roles and steps up to the strongest. The skill that owns the
+   job may give a stronger model other work instead, such as fixing
+   the job.
 3. Each time it fails again, step up one more role and try once,
    until the strongest model has tried. A job that starts on the
    local model can try the local, cheap, review and strongest models.
@@ -190,8 +213,12 @@ did not answer".
 
 - A local model writes no plan, review, decision or pull request
   text.
+- The cheap and review models write no code and direct no agents.
 - Never step a job down to a weaker role, even when its model is
   unavailable.
+- Never move a job to a cheaper model only to save tokens. A job's
+  model comes from the user, a rule such as one in `ai/AGENTS.md`,
+  or a role that a skill names, including the Roles section here.
 - Never pass a weaker model as Claude Code's `--fallback-model`.
 - A role a skill names for one of its own jobs wins over the role
   here.
@@ -219,6 +246,10 @@ did not answer".
   with one try on each. The skill that owns the job may instead have
   given a stronger model other work. Either way, the job stopped after
   the strongest model.
+- A job that writes code ran on the local model, or on the strongest
+  after the local model failed. It skipped the cheap and review
+  roles.
+- Each hub ran at medium reasoning, and each orchestrator at low.
 - No local model wrote a plan, review, decision or pull request text.
 
 ## References

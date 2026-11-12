@@ -5,7 +5,8 @@ skill descriptions, or planning workflows. After directly referenced context is
 read, inspect skill calls before broader repository research, a review
 conclusion, an edit, or a delegated task.
 
-Set the model once for every row: `EVAL_MODEL="${EVAL_MODEL:-goog/qwen3.8}"`.
+Set the model once for every row:
+`EVAL_MODEL="${EVAL_MODEL:-goog/qwen3.8-flash}"`.
 Pass it with `--model` to OpenCode and Pi/Vibe. Record an unavailable model as
 unsupported rather than silently substituting a stronger model.
 
@@ -66,9 +67,10 @@ PDE_REPO_ROOT="$PWD" "$installer" install full
 
 Start the top-level session in that worktree, so the plan row's paths and
 `gh` resolve there. Run each row once per model you delegate to, such as
-`openai/gpt-5.6-luna` or `claude-code/claude-sonnet-5`. Run `goog/qwen3.8`
-rows in their own batch, since they share the local LiteLLM server, and
-record a model that cannot be reached as unsupported.
+`openai/gpt-5.6-luna` or `claude-code/claude-sonnet-5`. Run
+`goog/qwen3.8-flash` rows in their own batch, since they share the
+local LiteLLM server, and record a model that cannot be reached as
+unsupported.
 
 Subagents cannot delegate, so send each prompt from a top-level session with
 the subagent tool, set its `model` field, and add no `Applicable skills:` line.

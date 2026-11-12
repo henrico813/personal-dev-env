@@ -401,13 +401,28 @@ merge request. The line before `exit:` says what happened:
 
 - `merged: <commit>`: handle it as a merged pull request, as Reports
   from sessions says.
-- `result: conflict with <base>: <files>`: start a cloud session by
-  `herdr-handoff` that merges the base into the branch, resolves the
-  conflict and pushes one new commit, as `pull-request`'s Update
-  says. Set that session's `--model` to the review model, as
-  `model-routing` picks. Without `--model` the session gets the
-  default model, which may be the strongest one. Then start a new
-  merge worker with a new folder, since no merge request went out.
+- `result: conflict with <base>: <files>`: resolving a conflict
+  writes code, so it is a local job. Hand it to a worker as
+  `herdr-handoff`'s "Hand a local job to a worker" says, with an edit
+  brief as `model-routing` says. The brief has the model merge the
+  base into the branch in the branch's worktree and resolve the
+  conflict, and then stop. The brief lists `<files>` as the only
+  files to edit. The model commits nothing and writes no pull request
+  text.
+
+  After the model stops, run the edit job's check script yourself, as
+  `model-routing` says. The script runs `git diff --check` to catch
+  leftover conflict markers, then the merge worker's test command.
+  The script commits with your message and pushes only when both
+  pass. Write the message as `git-messages` says. The script writes a
+  summary that ends in `done`. A broken resolution then never reaches
+  the pull request's branch.
+
+  When the summary ends in `done`, start a new merge worker with a
+  new folder, since no merge request went out. When the check fails,
+  or the new merge worker reports a conflict again, count it as a
+  failed check. Retry and step up as `model-routing` says. A retry
+  starts with `git merge --abort` in the branch's worktree.
 - `result: not ready: ...`: bring the problems it names to the user
   with the pull request's review entry.
 - Any other line, such as a declined request or an `error:` line:

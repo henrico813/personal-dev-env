@@ -29,12 +29,12 @@ skills loaded roadmap-run (seq 9), create-plan (seq 9), review-plan (seq 9), pul
 subagents 4
   claude-code/claude-opus-5-5[1m] count 2 read 4,216,557 written 25,890
   openai/gpt-6-luna count 1 read 88,120 written 1,402
-  goog/qwen3.8 count 1 read 31,904 written 880
+  goog/qwen3.8-flash count 1 read 31,904 written 880
 largest subagents by tokens read
   ses_0a1b3d claude-code/claude-opus-5-5[1m] read 2,310,442 written 14,020 P3 planner
   ses_0a1b4e claude-code/claude-opus-5-5[1m] read 1,906,115 written 11,870 P3 fresh review
   ses_0a1b5f openai/gpt-6-luna read 88,120 written 1,402 P3 PR text cold read
-  ses_0a1b60 goog/qwen3.8 read 31,904 written 880 Run P3 tests
+  ses_0a1b60 goog/qwen3.8-flash read 31,904 written 880 Run P3 tests
 repeated commands 2
   4x cd ~/src/lantern && uv run pytest -q
   3x planner check "/vault/LANT-003 Resume copies.md" --repo ~/src/lantern
@@ -53,7 +53,7 @@ largest carried outputs
 
 ## Proposals
 
-1. Have `goog/qwen3.8` run the planner's tests by a script that
+1. Have `goog/qwen3.8-flash` run the planner's tests by a script that
    writes only the failing tests' names. It lives in a roadmap-run
    pull request. Saves about 1.1M tokens (estimate): each of the 4
    pytest runs printed about 3,500 tokens, and about 80 later steps
@@ -72,17 +72,19 @@ largest carried outputs
 
 ## Fallback map
 
-- Planner, `ses_0a1b3d`: `goog/qwen3.8` would run it. Breaks: the
+- Planner, `ses_0a1b3d`: `goog/qwen3.8-flash` would run it. Breaks: the
   plan and code it read pass the model's 128K window. Makes it work:
   a brief for one plan step at a time. Evidence: none; no trial has
   run.
-- Plan reviewer, `ses_0a1b4e`: `goog/qwen3.8`. Breaks: judging the
+- Plan reviewer, `ses_0a1b4e`: `goog/qwen3.8-flash`. Breaks: judging the
   plan. Makes it work: a checklist whose answers cite the lines they
   checked. Evidence: none.
 - PR text cold read, `ses_0a1b5f`: runs on `openai/gpt-6-luna`, a
-  cheap cloud model, so it stops when the cloud does. `goog/qwen3.8`
-  can run the same brief. Evidence: the trial below.
-- Test runner, `ses_0a1b60`: already on `goog/qwen3.8`, and it works.
+  cheap cloud model, so it stops when the cloud does.
+  `goog/qwen3.8-flash` can run the same brief. Evidence: the trial
+  below.
+- Test runner, `ses_0a1b60`: already on `goog/qwen3.8-flash`, and it
+  works.
 
 ## Efficiency map
 
@@ -91,19 +93,19 @@ largest carried outputs
    script writes pytest's exit code and the failing names. Saves
    about 1.1M tokens (estimate, proposal 1).
 2. Worktree cleanup: about 2,000 tokens (estimate). Its script
-   prints `done`, so `goog/qwen3.8` can run it, briefed as
+   prints `done`, so `goog/qwen3.8-flash` can run it, briefed as
    the model-routing skill says. The saving is small.
 
 ## Trials
 
-Ran the stored trials on `goog/qwen3.8`, then on
+Ran the stored trials on `goog/qwen3.8-flash`, then on
 `openai/gpt-6-luna`, three runs each on each model:
 
-- pr-text-cold-read: `goog/qwen3.8` 3/3, `openai/gpt-6-luna` 3/3,
+- pr-text-cold-read: `goog/qwen3.8-flash` 3/3, `openai/gpt-6-luna` 3/3,
   rules hash `9b0e47d2c1a5`.
-- pr-key-in-title: `goog/qwen3.8` 1/3, `openai/gpt-6-luna` 3/3,
+- pr-key-in-title: `goog/qwen3.8-flash` 1/3, `openai/gpt-6-luna` 3/3,
   rules hash `5d83f0a6e214`. Added from this session's correction;
-  two `goog/qwen3.8` runs kept the key in the title.
+  two `goog/qwen3.8-flash` runs kept the key in the title.
 
 ## Fresh check
 
@@ -120,7 +122,7 @@ Session review of Lantern P3 plan and review, saved to
 9.4M tokens read, peak context about 162k, 96 model steps.
 
 Proposals
-1. Tests on qwen3.8, failing names only (roadmap-run PR). Saves
+1. Tests on qwen3.8-flash, failing names only (roadmap-run PR). Saves
    about 1.1M tokens (estimate).
 2. Read plans with narrow rg (create-plan lesson). Saves about 0.9M
    tokens (estimate).
@@ -131,10 +133,10 @@ Lessons to save, pick by number
 1. Keep the key out of the PR title -> pull-request
 
 Fallback: the planner is least ready; a brief per plan step would
-fit qwen3.8's window.
-Efficiency: test runs on qwen3.8, about 1.1M tokens (estimate).
-Trials: pr-text-cold-read 3/3 on qwen3.8 and gpt-6-luna; new
-pr-key-in-title 1/3 on qwen3.8, 3/3 on gpt-6-luna.
+fit qwen3.8-flash's window.
+Efficiency: test runs on qwen3.8-flash, about 1.1M tokens (estimate).
+Trials: pr-text-cold-read 3/3 on qwen3.8-flash and gpt-6-luna; new
+pr-key-in-title 1/3 on qwen3.8-flash, 3/3 on gpt-6-luna.
 
 Reply with the numbers to apply.
 ```
