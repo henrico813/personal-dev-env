@@ -77,6 +77,8 @@ The user's rules for every run:
 
        hub auto check --run "<run folder>"
 
+   It exits 3, with one problem per line, when the list fails its
+   check.
    A card the user wants that is still a draft stays out until the
    user moves it to ready, or tells you to.
 6. Send the briefing, by `status-updates`, as that turn's only
@@ -103,8 +105,8 @@ The user's rules for every run:
 
    It saves the list and the reply in `approved.md` only when the
    reply is `approve run N`. Any other reply, such as "go" or "yes",
-   approves nothing: make the edits it asks for, check the list
-   again, and send the briefing again.
+   approves nothing and exits 3: make the edits it asks for, check
+   the list again, and send the briefing again.
 
    When the user approved the run in their own words before the
    briefing, such as before going away, pass those words instead:
@@ -151,9 +153,11 @@ before the user reviews that pull request.
 
 ## The auto hub
 
-1. Run `hub auto now --run "<run folder>"`. When it exits 2, the run
-   is not approved: write that to the front hub's
-   `report-auto-hub-<N>.md`, start nothing, and end your turn.
+1. Run `hub auto now --run "<run folder>"`. When it exits 3, the run
+   is not approved: write that to the front hub with
+   `hub report --run "<front hub's run folder>" auto-hub-<N> <file>`,
+   start nothing, and end your turn. Write every report to the front
+   hub this way.
 2. Check with `command -v` that `hub`, `card`, `herdr`, `wt`,
    `planner` and `pde-gh-write` are on `PATH`; never run
    `pde-gh-write pr` to test it, since any `pr` command files a
@@ -205,8 +209,9 @@ before the user reviews that pull request.
    minute apart, since Moshi refuses pushes that come too fast. Add
    each pull request to `<run folder>/reviews.md` with its approval
    ID. Then
-   write the end brief by `status-updates` to the front hub's
-   `report-auto-hub-<N>.md`: per card, its project, the problem it
+   write the end brief by `status-updates` and send it to the front
+   hub with `hub report auto-hub-<N>`, as step 1 says: per card, its
+   project, the problem it
    solves, the result, whether a comment review waits, and the checks
    run and not run; then the output
    of `hub brief --run "<run folder>"`; then what went wrong in the

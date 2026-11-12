@@ -1,0 +1,27 @@
+# Tells git-cliff, which .github/workflows/release.yml runs for each
+# tool, how to pick the tool's next version and write its release notes.
+# The workflow passes the tool's folder and tag pattern. Only feat, fix
+# and perf commits and breaking changes count. Docs, tests, refactors and
+# the rest release nothing and stay out of the notes.
+
+[changelog]
+# One line per commit, its subject as merged.
+body = """
+{% for commit in commits %}- {{ commit.raw_message | split(pat="\n") | first | trim }}
+{% endfor %}"""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+commit_parsers = [
+  { message = "^(feat|fix|perf)(\\(.*\\))?!?:", group = "release" },
+  { message = ".*", skip = true },
+]
+# Keeps a breaking refactor or docs change, which the last parser would skip.
+protect_breaking_commits = true
+
+[bump]
+# Below 1.0 a feature and a breaking change both bump the minor number.
+features_always_bump_minor = true
+breaking_always_bump_major = false

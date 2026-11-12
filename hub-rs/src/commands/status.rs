@@ -32,6 +32,17 @@ pub fn run_status(
 ) -> Result<Outcome, HubError> {
     let memory = events::load_memory(run)?;
     let collected = facts::collect_session_facts(tools, run, &memory)?;
+    let hub = facts::read_hub_line(tools);
+    let unadopted = hub.name.as_deref().and_then(|own| {
+        collected
+            .sessions
+            .iter()
+            .filter(|session| session.agent.is_some())
+            .find(|session| {
+                lifecycle::is_unadopted_hub(own, &session.name, memory.predecessor.as_deref())
+            })
+            .map(|session| session.name.clone())
+    });
     let verdicts = collected
         .sessions
         .into_iter()
@@ -44,9 +55,12 @@ pub fn run_status(
     for old in run.find_old_send_files()? {
         problems.push(format!("old send file: {}", old.display()));
     }
+    if let Some(old) = unadopted {
+        problems.push(format!("no hub handoff for {old} -> hub adopt {old}"));
+    }
     let (counts, rows) = build_status_rows(verdicts, now.time_zone());
     let view = StatusView {
-        hub: facts::read_hub_line(tools),
+        hub,
         watcher_running: run.is_watcher_running()?,
         board: tools.cards.read_board().map_err(|error| error.to_string()),
         counts,
