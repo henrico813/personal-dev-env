@@ -30,8 +30,9 @@ understanding of the problem in your report and continue instead of
 waiting for the user to confirm it. Write the main page, which is the
 doc's index, to the path you were given. Write each part, one of the
 doc's other pages, beside it. Step 4 says which pages to write. Do
-not start reviewers. Report only the open questions that pass the
-test in Step 2, each with its example and your recommendation.
+not start reviewers. Whoever gave you the task starts the fresh
+review that follows Step 5. Report only the open questions that pass
+the test in Step 2, each with its example and your recommendation.
 
 ## Writing for Humans
 
@@ -117,7 +118,10 @@ With context gathered, analyze before proposing solutions:
   or a tradeoff a future reader needs to see? If not, it is an
   implementation question; decide it yourself and record the
   decision. For each question that passes, give a concrete example
-  and your recommendation in the same message you ask it in.
+  and your recommendation in the same message you ask it in. Ask
+  every question that passes in one message. Go on without waiting
+  for the answers. Put each question still unanswered in the main
+  page's Open questions section.
 
 ### Step 3: Research in Parallel with Subagents
 
@@ -289,9 +293,11 @@ Read it when a lens below is unclear.
   until a human would actually want to read it.
 - Are decisions explained with their history and reasoning, or just stated as conclusions? Every "we will do X" needs a "because Y" that the reader can evaluate.
 
-After this review, revise the doc and present the final version to the
-user. Flag any unresolved tensions, and any open questions that pass
-the test in Step 2.
+After this review, revise the doc. Then start one fresh agent that did
+not write the doc, and have it review the doc under the `review-plan`
+skill. Fix each item in its Required Corrections list. Then present
+the final version to the user. Flag any unresolved tensions, and any
+open questions that pass the test in Step 2.
 
 ## Common Mistakes
 
