@@ -4,7 +4,8 @@
 //! `gather` and `desk` put the kanban hubs at the top, then the desk,
 //! then the other hubs. They also cut Herdr's agent list down to a "go
 //! to" list in that order, followed by the sessions that wait on the
-//! user.
+//! user. `hub handoff`, `hub adopt` and `hub auto now` gather too,
+//! through `gather_after_hub_start`, so no hub has to run `hub gather`.
 
 use std::path::Path;
 
@@ -38,17 +39,23 @@ pub fn run_go(tools: &Tools<'_>) -> Result<Outcome, HubError> {
 /// block at the top of the sidebar. Kanban hubs come first, then the
 /// desk, then the other hubs. It then fills the "go to" agent list.
 pub fn run_gather(tools: &Tools<'_>) -> Result<Outcome, HubError> {
-    let agents = tools.herdr.list_agents()?;
-    let workspaces = tools.herdr.list_workspaces()?;
-    let hubs = list_hubs(&agents, &workspaces);
-    if hubs.is_empty() {
+    let Some(block) = gather_hubs(tools)? else {
         return Err(HubError::NotDone("no hub is running".to_owned()));
-    }
-    let desk_id = find_desk(&workspaces).map(|desk| desk.workspace_id.as_str());
-    let block = list_top_block(&hubs, desk_id);
-    move_block_to_top(tools, &block, &workspaces)?;
-    show_go_to_list(tools, &agents, &hubs, desk_id)?;
+    };
     Ok(Outcome::line(format!("at the top: {}", block.join(" "))))
+}
+
+/// Does what `hub gather` does, for a command that just started or
+/// took over a hub. Returns a warning line when that fails, since a
+/// sidebar problem must never fail the command. Returns `None` when it
+/// worked or when no hub runs.
+pub(crate) fn gather_after_hub_start(tools: &Tools<'_>) -> Option<String> {
+    match gather_hubs(tools) {
+        Ok(_) => None,
+        Err(error) => Some(format!(
+            "could not put the hubs on top: {error}; hub gather tries again"
+        )),
+    }
 }
 
 /// Makes the desk when it is missing, with the board in its first tab
@@ -67,6 +74,22 @@ pub fn run_desk(tools: &Tools<'_>, home: &Path) -> Result<Outcome, HubError> {
     move_block_to_top(tools, &block, &workspaces)?;
     show_go_to_list(tools, &agents, &hubs, Some(&desk_id))?;
     Ok(Outcome::line(line))
+}
+
+/// Moves the top block and fills the "go to" agent list, then returns
+/// the block. Returns `None` and changes nothing when no hub runs.
+fn gather_hubs(tools: &Tools<'_>) -> Result<Option<Vec<String>>, HubError> {
+    let agents = tools.herdr.list_agents()?;
+    let workspaces = tools.herdr.list_workspaces()?;
+    let hubs = list_hubs(&agents, &workspaces);
+    if hubs.is_empty() {
+        return Ok(None);
+    }
+    let desk_id = find_desk(&workspaces).map(|desk| desk.workspace_id.as_str());
+    let block = list_top_block(&hubs, desk_id);
+    move_block_to_top(tools, &block, &workspaces)?;
+    show_go_to_list(tools, &agents, &hubs, desk_id)?;
+    Ok(Some(block))
 }
 
 /// Makes the desk workspace in `home` and returns its ID.
@@ -144,8 +167,8 @@ fn move_block_to_top(
 /// agent list show only them and the sessions that wait on the user.
 /// Another machine's hubs show there once a hub on that machine runs
 /// `gather` too, since each machine tags only its own panes. Herdr
-/// forgets pane tokens and the filter when its server restarts, so each
-/// hub start sets them again.
+/// forgets pane tokens and the filter on restart, so each `gather`,
+/// `desk`, handoff, adoption and `hub auto now` sets them again.
 fn show_go_to_list(
     tools: &Tools<'_>,
     agents: &[Agent],
@@ -173,8 +196,8 @@ fn show_go_to_list(
 }
 
 /// Returns the hubs ordered by their workspace's place, then by name.
-/// Includes the hub in this pane, since that hub runs `hub gather`
-/// itself.
+/// Keeps the hub in this pane in the list, since a gathering command
+/// usually runs in a hub's own pane and that hub's workspace moves too.
 fn list_hubs<'a>(agents: &'a [Agent], workspaces: &[Workspace]) -> Vec<&'a Agent> {
     let find_place = |agent: &Agent| {
         workspaces

@@ -6,9 +6,10 @@ use hub::commands::auto::{
     AutoApproval, run_auto_approve, run_auto_check, run_auto_now, run_auto_ready,
 };
 use hub::external::cards::CardNote;
+use hub::external::herdr::{AgentStatus, HerdrError};
 use hub::shared::HubError;
 
-use common::{TestTools, make_time};
+use common::{TestTools, make_agent, make_time, make_workspaces};
 
 /// Doubles whose ready cards are these keys, each with a note, and an
 /// empty run folder.
@@ -317,7 +318,7 @@ fn run_auto_now_writes_line_per_card() {
     )
     .unwrap();
 
-    let outcome = run_auto_now(&test_tools.run()).unwrap();
+    let outcome = run_auto_now(&test_tools.tools(), &test_tools.run()).unwrap();
 
     let expected = "Auto run 2\n\
                     DEMO-KB-001: PR #12 opened; waiting for the user's review.\n\
@@ -339,8 +340,74 @@ fn run_auto_now_stops_without_approval() {
     let test_tools = TestTools::new();
     write_run_list(&test_tools, "- DEMO-KB-001 demo: retry", "");
 
-    let result = run_auto_now(&test_tools.run());
+    let result = run_auto_now(&test_tools.tools(), &test_tools.run());
 
     assert!(matches!(result, Err(HubError::NotDone(_))));
     assert!(!test_tools.run_path().join("brief-now.md").exists());
+}
+
+/// An approved auto run 2 with one card, `DEMO-KB-001`, and no status
+/// or questions yet.
+fn write_approved_run(test_tools: &TestTools) {
+    fs::write(
+        test_tools.run_path().join("approved.md"),
+        "# Auto run 2\n\n## Run\n- DEMO-KB-001 demo: retry\n",
+    )
+    .unwrap();
+}
+
+/// The auto hub runs `hub auto now` at each start, and its run's
+/// workspace once sat at the bottom of the sidebar because no agent ran
+/// `hub gather`. The front hub prints the output word for word, so a
+/// working gather adds no line to it.
+#[test]
+fn run_auto_now_gathers_hubs_silently() {
+    let mut test_tools = TestTools::new();
+    test_tools.herdr.agents = vec![make_agent("auto-hub-1", AgentStatus::Working)];
+    test_tools.herdr.workspaces = make_workspaces(&["w2", "w1"]);
+    write_approved_run(&test_tools);
+
+    let outcome = run_auto_now(&test_tools.tools(), &test_tools.run()).unwrap();
+
+    assert_eq!(
+        *test_tools.herdr.moves.borrow(),
+        [(vec!["w1".to_owned()], "w2".to_owned())]
+    );
+    assert_eq!(
+        outcome.lines,
+        [
+            "Auto run 2",
+            "DEMO-KB-001: not started",
+            "Questions for you: 0"
+        ]
+    );
+}
+
+/// The brief is how the user learns where the run stands, so a Herdr
+/// that cannot be reached must not hide it. The warning line goes to
+/// the output only, never into `brief-now.md`.
+#[test]
+fn run_auto_now_prints_brief_when_herdr_fails() {
+    let test_tools = TestTools::new();
+    test_tools.herdr.fail_next(
+        "list_agents",
+        HerdrError::Failed("herdr is not running".to_owned()),
+    );
+    write_approved_run(&test_tools);
+
+    let outcome = run_auto_now(&test_tools.tools(), &test_tools.run()).unwrap();
+
+    assert_eq!(
+        outcome.lines,
+        [
+            "Auto run 2",
+            "DEMO-KB-001: not started",
+            "Questions for you: 0",
+            "could not put the hubs on top: herdr is not running; hub gather tries again",
+        ]
+    );
+    assert_eq!(
+        fs::read_to_string(test_tools.run_path().join("brief-now.md")).unwrap(),
+        "Auto run 2\nDEMO-KB-001: not started\nQuestions for you: 0\n"
+    );
 }

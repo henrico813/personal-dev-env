@@ -20,7 +20,7 @@ use std::sync::LazyLock;
 use jiff::Zoned;
 use regex::Regex;
 
-use super::Outcome;
+use super::{Outcome, sidebar};
 use crate::external::cards::{CardKey, CardNote};
 use crate::shared::decisions;
 use crate::shared::run_folder::{self, RunFolder};
@@ -168,13 +168,15 @@ pub fn run_auto_approve(
 /// A card's line is the first non-empty line of its worker's status
 /// file. It says `(needs you)` while `decisions.md` holds a question
 /// whose title starts with the card's key. The title of each question
-/// follows the count.
+/// follows the count. It then puts the hubs at the top of the sidebar,
+/// and a failure there adds a warning line to the output, never to the
+/// file.
 ///
 /// # Errors
 ///
 /// `HubError::NotDone` when the run has no `approved.md`, so a run the
 /// user never approved starts nothing.
-pub fn run_auto_now(run: &RunFolder) -> Result<Outcome, HubError> {
+pub fn run_auto_now(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubError> {
     let Some(approved) = run.read_file_if_exists("approved.md")? else {
         return Err(HubError::NotDone(
             "the run is not approved; start nothing".to_owned(),
@@ -213,6 +215,9 @@ pub fn run_auto_now(run: &RunFolder) -> Result<Outcome, HubError> {
     );
     let text = lines.join("\n") + "\n";
     run_folder::write_file_whole(&run.path().join("brief-now.md"), &text)?;
+    if let Some(warning) = sidebar::gather_after_hub_start(tools) {
+        lines.push(warning);
+    }
     Ok(Outcome { lines })
 }
 

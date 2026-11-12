@@ -57,7 +57,7 @@ mod gather {
 
     use super::common::{InMemoryHerdr, TestTools, make_agent, make_workspaces};
 
-    /// A hub runs `hub gather` from its own pane at each start, so the
+    /// `hub handoff`, `hub adopt` and `hub auto now` gather, so the
     /// hubs sit together at the top of the sidebar. Herdr refuses a
     /// block that names a workspace twice or goes before one of its own
     /// members. Without that refusal, a bad block would leave the hubs
@@ -180,8 +180,8 @@ mod gather {
         );
     }
 
-    /// A hub that starts alone runs `hub gather` while every workspace
-    /// holds a hub. Herdr refuses a block placed before one of its own
+    /// A hub that starts alone gathers while every workspace holds a
+    /// hub. Herdr refuses a block placed before one of its own
     /// members, so a move then would fail each such start.
     #[test]
     fn run_gather_leaves_hub_only_sidebar_alone() {
@@ -325,7 +325,7 @@ mod agent_filter {
     /// Runs one sidebar command and fails the test on its error.
     type RunCommand = fn(&Tools<'_>);
 
-    /// Each hub start runs `gather`, and the user runs `desk`. Both must
+    /// Each hub start gathers, and the user runs `desk`. Both must
     /// tag every hub and the desk, mark a flagged worker again and leave
     /// a plain worker alone, then filter the agent list once. A missing
     /// tag or mark drops that row from the user's "go to" list. A wrong
