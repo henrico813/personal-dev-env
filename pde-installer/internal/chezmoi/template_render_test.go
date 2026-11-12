@@ -242,6 +242,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".agents/skills/roadmap-run",
 		".agents/skills/rust-development",
 		".agents/skills/session-review",
+		".agents/skills/skill-development",
 		".agents/skills/typescript-development",
 		".config/opencode/commands/cleanup_plan.md",
 		".config/opencode/commands/create_plan.md",
