@@ -18,9 +18,10 @@ fail and review the final diff.
 
 ## Pick the models
 
-1. List the models you can use from cheapest to most expensive. A
-   local model, such as `goog/qwen3.8`, comes first, then cloud
-   models by price, with Opus last.
+1. Run `opencode models` to list the models this machine can use.
+   Order them from cheapest to most expensive. A local model, such as
+   `goog/qwen3.8`, comes first, then cloud models by price, with Opus
+   last.
 2. Send each one a one-line job, and drop each that does not answer:
 
    ```sh
@@ -68,6 +69,13 @@ changes, and gets the step's tree with `plan_tree` from roadmap-run's
 the check command, and writes `$D/job<n>/summary.txt`. A rerun after
 the commit skips it. The check output goes to `$D/job<n>/check.log`
 and the planner output to `$D/job<n>/planner.log`.
+
+Before the job starts, save the commit that HEAD points to. The pass
+check below calls it `<HEAD before>`:
+
+```sh
+git -C "$W" rev-parse HEAD
+```
 
 Start the step model from `$D` with the brief in roadmap-run's
 [Local model](../../roadmap-run/references/prompts.md#local-model)
