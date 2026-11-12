@@ -107,6 +107,7 @@ Vibe binaries plus repo-managed AI config.
 | Session review | `ai/skills/session-review/` | `~/.agents/skills/session-review/` | Shared workflow skill for reviewing a session's token use, lessons and local model jobs |
 | Conclude session | `ai/skills/conclude-session/` | `~/.agents/skills/conclude-session/` | Shared workflow skill for closing out a session after one pick from the user |
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/` | Shared test-writing guidance |
+| Model routing | `ai/skills/model-routing/` | `~/.agents/skills/model-routing/` | Shared guidance on which model runs each job and how local jobs are checked |
 | Code documentation | `ai/skills/code-documentation/` | `~/.agents/skills/code-documentation/` | Proportional source and test explanations |
 | Plain direct English | `ai/skills/plain-direct-english/` | `~/.agents/skills/plain-direct-english/` | Clear sentences in comments, docs and other prose, and breakdowns of hard ones |
 | Status updates | `ai/skills/status-updates/` | `~/.agents/skills/status-updates/` | Status updates and recaps a new reader understands on a phone |
@@ -187,14 +188,15 @@ loads `~/.agents/skills/`.
 | `auto-run` | Brief the user on ready cards, then have a separate hub work the approved list to PRs | "Set up an auto run" |
 | `session-review` | Review a session for token use, lessons to save and jobs a local model could run, then wait for your pick | "Review this session for token usage, skill lessons and local model handoff" |
 | `conclude-session` | Close out a session: review it, wait for your pick, then save lessons, open one skill PR and hand off or report | "conclude-session" |
+| `model-routing` | Pick the model for each agent job, and check and escalate local model jobs | "Which model should run these test jobs?" |
 | `review-plan` | Review a plan, PR, commit, or diff for architecture, bugs, completeness | "Use review-plan on docs/design-auth.md with focus on security" |
 
 The skills are installed to `~/.agents/skills/`, and the installer copies the
 shared `AGENTS.md` into `~/.codex/` and `~/.claude/` so the workflow defaults
 stay aligned with the rest of the tree. `install client` installs only
 `obsidian-zettel`, `obsidian-daily-note`, `plain-direct-english`,
-`behavior-focused-testing`, `delegate`, `skill-lessons` and
-`status-updates`; every other skill is full-only.
+`behavior-focused-testing`, `delegate`, `model-routing`,
+`skill-lessons` and `status-updates`; every other skill is full-only.
 
 ## Privacy Checks
 
