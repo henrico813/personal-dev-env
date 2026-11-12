@@ -69,9 +69,9 @@ Run `hub status` at the start and on each turn. Read its counts line
 and its `unread` line each time; never list the run folder. Tell the
 user what each `you` session waits on, and keep that in every later
 message until the session no longer waits on the user, as
-`status-updates` says. When such a session has never reported to you, bring it under
-the hub at once: send it the new rules that Rules gives for a worker
-the user hands you.
+`status-updates` says. When such a session has never reported to
+you, bring it under the hub at once: send it the new rules that Rules
+gives for a worker the user hands you.
 
 Before you send a worker new build work, check its CTX in
 `hub status`. A worker near 150k writes its handoff first, and the
