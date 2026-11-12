@@ -56,7 +56,7 @@ unread reports, then one row per session:
 
 STATE says who must act: `working` needs nothing, `hub` waits on you,
 `you` waits on the user, `kept` is finished but holds something (WHY
-says what), `to-close` and `to-park` are finished and `hub next` will
+says what), `to-close` and `to-park` are finished and `hub clean` will
 close or park them, and `parked` has no tab but can reopen. CTX is
 the session's context size, `-` when it cannot be read. A last
 `no session:` line names the active and review cards no session works
@@ -94,10 +94,11 @@ once the first session works:
     hub next --run "<run folder>"
 
 It waits until a session has news, prints one line and ends, so its
-end starts your turn. While it waits it sends held messages, and it
-closes and parks finished sessions as Cleanup says. Most lines end
-with your own context, such as `(hub 131k)`. Handle the line, then
-start it again:
+end starts your turn. While it waits it sends held messages. It never
+closes or parks a session; Cleanup says how. Add `--start-reviews`
+only when the user asks for session reviews of old hubs, since they
+are off by default. Most lines end with your own context, such as
+`(hub 131k)`. Handle the line, then start it again:
 
 - `report <name>`: run `hub read --run "<run folder>" <name>` and the
   next `hub next` as two tool calls in the same reply, since
@@ -124,6 +125,24 @@ start it again:
   the board's limit. Tell the user at once, with the board line, and
   start no new work until the count is back under the limit or the
   user says to go on.
+- `to-close <names>: <why>; run hub clean`, or the same with
+  `to-park`: those sessions finished. Run `hub clean` as Cleanup
+  says.
+- `old send file: <path>`: handle it as the `hub status` line of the
+  same name, above.
+- `no hub handoff for <old> -> hub adopt <old>`: an older hub of this
+  run is still open, and no `hub handoff` started you from it. Run
+  `hub adopt --run "<run folder>" <old>`. It writes the old hub's
+  review handoff. Once the old hub is idle, `hub next` lists it as
+  `to-close`, and `hub clean` closes its tab.
+- `review started <name>`: with `--start-reviews`, the old hub's
+  session review now runs. Bring its pick list to the user when it
+  reports.
+- `review not started for <old>: <reason>; start it from <file> with
+  herdr-handoff`: `hub next` tries no more. Start that review with
+  `herdr-handoff` from that file.
+- `timeout`: the `--timeout` you gave ran out with no news. Start it
+  again.
 - `replaced by a newer hub next`: start nothing, since a newer
   `hub next` runs.
 
@@ -292,14 +311,15 @@ you make any card.
 
 ## Cleanup
 
-The hub owns closing. `hub next` closes each `to-close` session's tab
-and parks each `to-park` session by itself, at most once a minute,
-and logs each to `notes.md`. A parked session's ID is kept, and a
+The hub owns closing. `hub next` names each session that turns
+`to-close` or `to-park` once, but closes nothing. Run
+`hub clean --dry-run` to see what it would do, and `hub clean` to
+close each `to-close` session's tab and park each `to-park` session.
+It logs each to `notes.md`. A parked session's ID is kept, and a
 message sent to it with `hub send` reopens it in a new tab. Run
-`hub clean --dry-run` to see what it would do, and `hub clean` to do
-it now. Run `hub park <name>` to park one `to-park` session now.
+`hub park <name>` to park one `to-park` session now.
 Never close a `kept` session; its WHY says what closing would lose.
-`hub next` never closes a worker whose handoff paused its card, since
+`hub clean` never closes a worker whose handoff paused its card, since
 its card is back in ready. Close its tab yourself once you have read
 that report. Never ask the user to close a worker.
 
@@ -383,8 +403,10 @@ It starts `<name>` in a tab of your workspace on the model of the last
 `--model '...'` line in `rules.md`, so keep the hub start command there
 in that form. The new hub's tab gets `HUB_RUN` set to the run folder.
 It checks its inputs before it starts anything. Before it
-sends the handoff, it writes your session review's handoff and adds to
-the new hub's handoff how to close your tab and start that review. It
+sends the handoff, it writes your session review's handoff. It adds to
+the new hub's handoff that `hub clean` closes your tab once you are
+idle, and that `hub next --start-reviews` starts that review if the
+user asks for it. It
 then reads back the reasoning effort of the new hub's first reply. Tell
 the user the effort it printed, never one you assume. When it exits 3
 with `started <name>, but`, the new hub runs: tell the user, who can
