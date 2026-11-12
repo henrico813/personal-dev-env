@@ -160,8 +160,7 @@ pub fn run_board(
                         }
                         Ok(going)
                     })?;
-                // A send fails only when the agent stopped waiting.
-                let _ = sent.reply.send(reply);
+                sent.answer(&reply);
                 if !going {
                     break 'board;
                 }

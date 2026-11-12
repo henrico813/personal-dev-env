@@ -138,7 +138,8 @@ pub(super) fn answer_sent_step(
 }
 
 /// Turns one `--control` line into the input it stands for. `tap ID`
-/// taps the first column of the element with that id, `tap COLUMN ROW`
+/// taps the first column of the element with that id, and refuses a
+/// hidden one with the step that shows it. `tap COLUMN ROW`
 /// taps that place, `press KEY` presses a key such as `q`, `esc` or
 /// `ctrl-c`, and `wheel up` or `wheel down` turns the wheel.
 fn parse_step(step: &str, board: &Board) -> Result<Event, String> {
@@ -163,7 +164,15 @@ fn parse_step(step: &str, board: &Board) -> Result<Event, String> {
                 .iter()
                 .find(|element| element.id == rest)
                 .ok_or_else(|| format!("the screen shows no {rest}"))?;
-            Ok(mouse(tap, element.column, element.row))
+            match (element.place, &element.hiding) {
+                (Some(place), _) => Ok(mouse(tap, place.column, place.row)),
+                (None, Some(hiding)) => Err(format!(
+                    "{rest} is hidden by {}; send {} first",
+                    hiding.hidden_by.word(),
+                    hiding.show
+                )),
+                (None, None) => Err(format!("the screen shows no {rest}")),
+            }
         }
         "press" => parse_key(rest)
             .map(Event::Key)

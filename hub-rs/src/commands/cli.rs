@@ -374,7 +374,9 @@ pub enum Command {
     /// too, and Esc goes back from a card. q
     /// quits. --print prints one screen as
     /// text, and --dump prints its elements
-    /// as JSON.
+    /// as JSON. Both draw a new board from
+    /// the run folder, not the board that
+    /// listens.
     ///
     /// To let an agent drive the board you
     /// watch, start it with --listen. Then
@@ -384,11 +386,13 @@ pub enum Command {
     /// screen that follows as JSON. They talk
     /// through board.sock in the run folder,
     /// which works on Linux and macOS but not
-    /// Windows. Tests use the hidden --control,
-    /// which reads the same steps, one per
-    /// line.
+    /// Windows. Until its first read ends,
+    /// the board shows no cards and its hint
+    /// says reading. Tests use the hidden
+    /// --control, which reads the same steps,
+    /// one per line.
     ///
-    /// A step is one of these:
+    /// Each step is one of these.
     ///   tap ID       tap an element by the id
     ///                --send prints for it
     ///   tap COL ROW  tap a place; 0 0 is the
@@ -399,8 +403,34 @@ pub enum Command {
     /// KEY is enter, esc, space, up, down,
     /// pageup, pagedown, ctrl-c, or one
     /// character, such as q, r, j or k.
+    ///
+    /// The JSON has step, the step sent, and
+    /// page, which is list, details or quit.
+    /// lines holds the screen as text, one
+    /// string per row. elements lists all
+    /// the page holds, top first. Each has
+    /// id, kind, text, tap (what a tap does)
+    /// and hidden. tap is jump, fold, unfold,
+    /// show all, open or back. A drawn
+    /// element also has column, row and
+    /// width, and chosen is true on the row
+    /// Enter acts on.
+    ///
+    /// Rows scrolled off, cards in a folded
+    /// group and cards behind + N more have
+    /// hidden true, hidden_by (scroll, fold
+    /// or more) and show, the step to send
+    /// next, such as press pagedown or tap
+    /// group:ready. Send show, then find the
+    /// element in the reply, until hidden is
+    /// false. That can take many sends, and
+    /// show may change on the way. tap ID on
+    /// a hidden element fails and names show.
     #[command(verbatim_doc_comment)]
     #[command(after_help = "\
+Example: hub board --listen
+Steps, keys and JSON are in --help.")]
+    #[command(after_long_help = "\
 Example: hub board --listen
 Then: hub board --send 'press j'")]
     #[command(group(ArgGroup::new("output").args(["print", "dump", "control"])))]

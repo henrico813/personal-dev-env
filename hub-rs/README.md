@@ -157,10 +157,11 @@ it in these ways.
   could not read. `board --print` prints one screen as text, 40x16
   unless `--size` says otherwise.
 - `board --dump` prints the screen's elements as one line of JSON.
-  The flags below take steps: `tap ID`, `tap COLUMN ROW`, `press KEY`,
-  `wheel up` and `wheel down`. KEY is `enter`, `esc`, `space`, `up`,
-  `down`, `pageup`, `pagedown`, `ctrl-c` or one character, such as
-  `q`, `r`, `j` or `k`.
+  `--print` and `--dump` draw a new board from the run folder, not the
+  board that listens. The flags below take steps: `tap ID`,
+  `tap COLUMN ROW`, `press KEY`, `wheel up` and `wheel down`. KEY is
+  `enter`, `esc`, `space`, `up`, `down`, `pageup`, `pagedown`, `ctrl-c`
+  or one character, such as `q`, `r`, `j` or `k`.
 - `board --listen` shows the live board and also takes steps from
   `board.sock` in the run folder. `board --send 'STEP'`, from another
   terminal, sends one step to it. The user sees the step happen, and
@@ -169,11 +170,12 @@ it in these ways.
   quits, `page` is `quit` and the board ends. A step the board cannot
   follow changes nothing and exits 2 with the reason. With no board
   listening, `--send` exits 3. The socket works on Linux and macOS,
-  not Windows, where both flags exit 2. The steps reach the board
+  not Windows. The steps reach the board
   through the same element lookup as the user's own taps, so an
   agent can check the board in tmux, over ssh or in any terminal.
   A step that reads, such as `press r` or a tap that opens a card,
-  replies before the read ends.
+  replies before the read ends. Until its first read ends, the board
+  shows no cards and its hint says `reading`.
 - `board --control`, hidden from help and kept for tests, reads one
   step per line from standard input. It prints one JSON line for the
   first screen and one after each step, and waits for each read. A
@@ -198,12 +200,24 @@ it in these ways.
 Every full-screen view the hub draws, such as `hub board`, follows
 these rules, so an agent sees and taps exactly what the user does.
 
-- Each draw also builds a list of the screen's elements, from the
-  scroll and area it drew. Each has an id that stays the same across
-  reads, such as `card:DEMO-KB-007`, a kind, its text, its column and
-  row, its width and what a tap on it does.
-- A tap finds the element under it in that list. The live screen,
-  `--send` and `--control` use the same lookup.
+- Each draw also builds a list of the page's elements, from the
+  scroll and area it drew. Each has an `id` that stays the same across
+  reads, such as `card:DEMO-KB-007`, a `kind`, its `text`, what a
+  `tap` on it does and `hidden`. A drawn element also has its
+  `column`, `row` and `width`, and `chosen` is true on the row Enter
+  acts on.
+- The list holds everything on the page, not only what fits. Rows
+  scrolled off, the cards of a folded group and the cards behind
+  `+ N more` have `hidden` true, `hidden_by` (`scroll`, `fold` or
+  `more`) and `show`, the step to send next, such as
+  `tap group:ready` or `press pagedown`. An agent sends `show` and
+  finds the element in the reply until `hidden` is false. A far row
+  can take many sends, one page each, and `show` can change on the
+  way, such as from `press pagedown` to `tap group:ready`. A hidden
+  element follows the line that hides it.
+- A tap finds the drawn element under it in that list. The live
+  screen, `--send` and `--control` use the same lookup. `tap ID` on a
+  hidden element fails and names its `show` step.
 - The screen offers `--dump`, which prints the list as JSON once,
   `--listen` and `--send`, which let an agent tap the screen the user
   watches and print the list and the screen's text after each step,

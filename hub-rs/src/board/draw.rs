@@ -1,5 +1,6 @@
 //! Draws the board's list page and details page, and lists the
-//! elements each drew. Read `draw_list` and `list_elements` first.
+//! elements each holds, drawn or hidden. Read `draw_list` and
+//! `list_elements` first.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -7,7 +8,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line as TextLine, Span};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
-use super::elements::{Action, Element, Kind};
+use super::elements::{Action, Element, HiddenBy, Kind, Place};
 use super::groups::{Group, Item};
 use super::view::{Details, Line};
 
@@ -68,6 +69,8 @@ pub(super) fn draw_details(frame: &mut Frame, details: &mut Details) {
 
 /// Returns the list page's elements as `draw_list` drew them in
 /// `area`, with `list` scrolled and chosen as the last draw left it.
+/// Rows scrolled off, the cards of a folded group and the cards behind
+/// `+ N more` come too, hidden, each after the line that hides it.
 pub(super) fn list_elements(screen: &ListScreen<'_>, area: Rect, list: &ListState) -> Vec<Element> {
     let [top, middle, bottom] = split_screen(area);
     let mut elements = Vec::new();
@@ -84,30 +87,71 @@ pub(super) fn list_elements(screen: &ListScreen<'_>, area: Rect, list: &ListStat
             id: format!("count:{}", group.slug()),
             kind: Kind::Count,
             text,
-            column,
-            row: top.y,
-            width,
+            place: Some(Place {
+                column,
+                row: top.y,
+                width,
+            }),
             tap: Some("jump"),
             chosen: false,
+            hidden: false,
+            hiding: None,
             action: Action::Jump(group),
         });
         column = column.saturating_add(width).saturating_add(GAP_WIDTH);
     }
     let width = usize::from(middle.width);
-    let shown = screen.lines.iter().enumerate().skip(list.offset());
-    for ((index, line), row) in shown.zip(middle.y..middle.bottom()) {
+    for (index, line) in screen.lines.iter().enumerate() {
         let (id, kind, tap) = describe_line(screen.groups, *line);
-        elements.push(Element {
+        let element = Element {
             id,
             kind,
             text: line_text(&list_line(screen, *line, width)),
-            column: middle.x,
-            row,
-            width: middle.width,
+            place: None,
             tap: Some(tap),
             chosen: list.selected() == Some(index),
+            hidden: false,
+            hiding: None,
             action: Action::Line(index),
-        });
+        };
+        let element = match row_or_scroll(index, list.offset(), middle) {
+            Ok(row) => Element {
+                place: Some(Place {
+                    column: middle.x,
+                    row,
+                    width: middle.width,
+                }),
+                ..element
+            },
+            Err(step) => element.hide(HiddenBy::Scroll, step.to_owned()),
+        };
+        // A card under a line scrolled off is first reached by the
+        // scroll that shows the line.
+        let reach = |own: String| {
+            element
+                .hiding
+                .as_ref()
+                .map_or(own, |hiding| hiding.show.clone())
+        };
+        let hidden_cards = match *line {
+            Line::Heading {
+                group,
+                is_open: false,
+            } => {
+                let show = reach(format!("tap group:{}", group.slug()));
+                hidden_items(screen, group, 0, HiddenBy::Fold, &show, width)
+            }
+            Line::More { group, hidden } => {
+                let show = reach(format!("tap more:{}", group.slug()));
+                let first = group_items(screen.groups, group)
+                    .len()
+                    .saturating_sub(hidden);
+                hidden_items(screen, group, first, HiddenBy::More, &show, width)
+            }
+            _ => Vec::new(),
+        };
+        elements.push(element);
+        elements.extend(hidden_cards);
     }
     let hint = format!("q quit  tap open  {}", screen.status);
     elements.push(text_element("hint", &hint, bottom));
@@ -115,7 +159,8 @@ pub(super) fn list_elements(screen: &ListScreen<'_>, area: Rect, list: &ListStat
 }
 
 /// Returns the details page's elements as `draw_details` drew them in
-/// `area`. A tap anywhere on the page goes back, so each says so.
+/// `area`, with the lines scrolled off hidden. A tap anywhere on the
+/// page goes back, so each says so.
 pub(super) fn details_elements(details: &Details, area: Rect) -> Vec<Element> {
     let [top, middle, bottom] = split_screen(area);
     let back = |element: Element| Element {
@@ -127,14 +172,13 @@ pub(super) fn details_elements(details: &Details, area: Rect) -> Vec<Element> {
         kind: Kind::Back,
         ..text_element("back", "< back", top)
     })];
-    let shown = shown_details(details, middle);
-    for (number, (text, row)) in shown.iter().zip(middle.y..).enumerate() {
-        let row_area = Rect { y: row, ..middle };
-        elements.push(back(text_element(
-            &format!("line:{number}"),
-            text,
-            row_area,
-        )));
+    for (number, text) in wrap_details(details, middle).iter().enumerate() {
+        let id = format!("line:{number}");
+        let element = match row_or_scroll(number, details.scroll, middle) {
+            Ok(row) => text_element(&id, text, Rect { y: row, ..middle }),
+            Err(step) => text_element(&id, text, middle).hide(HiddenBy::Scroll, step.to_owned()),
+        };
+        elements.push(back(element));
     }
     elements.push(back(text_element("hint", BACK_HINT, bottom)));
     elements
@@ -159,6 +203,64 @@ fn wrap_details(details: &Details, middle: Rect) -> Vec<String> {
         .collect()
 }
 
+/// Returns the row that line `index` is drawn on in `middle`, with
+/// line `first` on top. A line above or below gets the step that
+/// scrolls toward it instead. PageDown moves the list's choice or the
+/// details page by a page, so repeating the step always reaches it.
+fn row_or_scroll(index: usize, first: usize, middle: Rect) -> Result<u16, &'static str> {
+    if index < first {
+        return Err("press pageup");
+    }
+    u16::try_from(index - first)
+        .ok()
+        .filter(|&row| row < middle.height)
+        .map(|row| middle.y + row)
+        .ok_or("press pagedown")
+}
+
+/// Returns `group`'s items from `first` on as hidden elements, each
+/// with `hidden_by` and `show`.
+fn hidden_items(
+    screen: &ListScreen<'_>,
+    group: Group,
+    first: usize,
+    hidden_by: HiddenBy,
+    show: &str,
+    width: usize,
+) -> Vec<Element> {
+    group_items(screen.groups, group)
+        .iter()
+        .skip(first)
+        .map(|item| {
+            let element = Element {
+                id: item_id(item),
+                kind: Kind::Item,
+                text: line_text(&item_line(group, item, width, screen.color)),
+                place: None,
+                tap: Some("open"),
+                chosen: false,
+                hidden: false,
+                hiding: None,
+                action: Action::None,
+            };
+            element.hide(hidden_by, show.to_owned())
+        })
+        .collect()
+}
+
+/// Returns `group`'s items, or none when the read has no such group.
+fn group_items(groups: &[(Group, Vec<Item>)], group: Group) -> &[Item] {
+    groups
+        .iter()
+        .find(|(each, _)| *each == group)
+        .map_or(&[], |(_, items)| items)
+}
+
+/// Returns an item's element id, such as `card:DEMO-KB-007`.
+fn item_id(item: &Item) -> String {
+    format!("{}:{}", item.target.kind_word(), item.id)
+}
+
 /// Returns the wrapped details lines that fit in `middle`, from
 /// `details.scroll` on.
 fn shown_details(details: &Details, middle: Rect) -> Vec<String> {
@@ -173,18 +275,14 @@ fn shown_details(details: &Details, middle: Rect) -> Vec<String> {
 fn describe_line(groups: &[(Group, Vec<Item>)], line: Line) -> (String, Kind, &'static str) {
     match line {
         Line::Heading { group, is_open } => {
-            let tap = if is_open { "fold" } else { "open" };
+            let tap = if is_open { "fold" } else { "unfold" };
             (format!("group:{}", group.slug()), Kind::Heading, tap)
         }
         Line::More { group, .. } => (format!("more:{}", group.slug()), Kind::More, "show all"),
         Line::Item { group, index } => {
-            let item = groups
-                .iter()
-                .find(|(each, _)| *each == group)
-                .and_then(|(_, items)| items.get(index));
-            let id = item.map_or_else(String::new, |item| {
-                format!("{}:{}", item.target.kind_word(), item.id)
-            });
+            let id = group_items(groups, group)
+                .get(index)
+                .map_or_else(String::new, item_id);
             (id, Kind::Item, "open")
         }
     }
@@ -197,11 +295,15 @@ fn text_element(id: &str, text: &str, area: Rect) -> Element {
         id: id.to_owned(),
         kind: Kind::Text,
         text: text.trim_end().to_owned(),
-        column: area.x,
-        row: area.y,
-        width: area.width,
+        place: Some(Place {
+            column: area.x,
+            row: area.y,
+            width: area.width,
+        }),
         tap: None,
         chosen: false,
+        hidden: false,
+        hiding: None,
         action: Action::None,
     }
 }

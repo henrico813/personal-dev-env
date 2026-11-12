@@ -3,58 +3,54 @@
 //! `hub board --send` sends one and prints the screen it leads to. Read
 //! `StepListener::start` and `send_step` first.
 //!
-//! The socket is a Unix socket, so both flags work on Linux and macOS.
-//! On Windows they stop with an error.
-
-use std::sync::mpsc::Sender;
+//! The socket is a Unix socket, so both flags work on Linux and macOS,
+//! not Windows.
 
 use crate::commands::Outcome;
 use crate::shared::HubError;
 use crate::shared::run_folder::RunFolder;
 
-#[cfg(unix)]
 use std::fs;
-#[cfg(unix)]
 use std::io::{BufRead, BufReader, ErrorKind, Write};
-#[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
-#[cfg(unix)]
 use std::path::{Path, PathBuf};
-#[cfg(unix)]
-use std::sync::mpsc::{self, Receiver};
-#[cfg(unix)]
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
-#[cfg(unix)]
 use std::time::Duration;
 
 /// The socket's file name in the run folder.
-#[cfg(unix)]
 const SOCKET: &str = "board.sock";
 
 /// How long the listener waits for an agent's step line. An agent that
 /// connects and sends nothing would hold up every agent after it.
-#[cfg(unix)]
 const STEP_WAIT: Duration = Duration::from_secs(5);
 
-/// One step an agent sent, such as `press esc`, and where the board
-/// sends its reply line.
+/// One step an agent sent, such as `press esc`, with the agent's
+/// connection for the board's reply.
 pub(super) struct SentStep {
     pub text: String,
-    pub reply: Sender<String>,
+    agent: UnixStream,
+}
+
+impl SentStep {
+    /// Writes the board's reply line to the agent. The board writes it
+    /// before it quits, so a `press q` reply is never lost. An agent
+    /// that hung up misses its reply.
+    pub(super) fn answer(&self, reply: &str) {
+        let _ = writeln!(&self.agent, "{reply}");
+    }
 }
 
 /// Owns `board.sock` while the board listens. Dropping it removes the
 /// file.
 pub(super) struct StepListener {
-    #[cfg(unix)]
     path: PathBuf,
 }
 
-#[cfg(unix)]
 impl StepListener {
     /// Makes `board.sock` in `run`, and returns the listener with the
-    /// steps agents send. A thread takes one agent at a time and waits
-    /// for the board's reply before it takes the next.
+    /// steps agents send. A thread reads each agent's step in turn, and
+    /// the board answers them in that order.
     ///
     /// # Errors
     ///
@@ -79,26 +75,11 @@ impl StepListener {
         let (sender, steps) = mpsc::channel();
         // Like the reader thread, it is never joined. It waits for the
         // next agent until the process ends.
-        thread::spawn(move || answer_agents(&listener, &sender));
+        thread::spawn(move || pass_steps_to_board(&listener, &sender));
         Ok((StepListener { path }, steps))
     }
 }
 
-#[cfg(not(unix))]
-impl StepListener {
-    /// Stops with an error, since Windows has no Unix sockets.
-    ///
-    /// # Errors
-    ///
-    /// Always `HubError::Usage`.
-    pub(super) fn start(
-        _run: &RunFolder,
-    ) -> Result<(StepListener, std::sync::mpsc::Receiver<SentStep>), HubError> {
-        Err(needs_unix())
-    }
-}
-
-#[cfg(unix)]
 impl Drop for StepListener {
     fn drop(&mut self) {
         // A file left behind is removed by the next board that listens.
@@ -112,11 +93,16 @@ impl Drop for StepListener {
 /// # Errors
 ///
 /// `HubError::NotDone` when no board listens in `run` or the board
-/// quits before it takes the step. `HubError::Usage` when the board
-/// cannot follow the step, with its reason. `HubError::File` when the
-/// socket fails after it connects.
-#[cfg(unix)]
+/// quits before it takes the step. `HubError::Usage` when `step` is
+/// blank or the board cannot follow it, with the reason.
+/// `HubError::File` when the socket fails after it connects.
 pub fn send_step(run: &RunFolder, step: &str) -> Result<Outcome, HubError> {
+    // The board skips a blank line, so it would never reply.
+    if step.trim().is_empty() {
+        return Err(HubError::Usage(
+            "the step is blank; send one such as press j".to_owned(),
+        ));
+    }
     let path = run.path().join(SOCKET);
     let stream = UnixStream::connect(&path).map_err(|_| {
         HubError::NotDone(format!(
@@ -144,48 +130,31 @@ pub fn send_step(run: &RunFolder, step: &str) -> Result<Outcome, HubError> {
     })
 }
 
-/// Stops with an error, since Windows has no Unix sockets.
-///
-/// # Errors
-///
-/// Always `HubError::Usage`.
-#[cfg(not(unix))]
-pub fn send_step(_run: &RunFolder, _step: &str) -> Result<Outcome, HubError> {
-    Err(needs_unix())
-}
-
-/// Reads one step from each agent that connects, hands it to the board
-/// and writes the board's reply back. It stops once the board quits.
-#[cfg(unix)]
-fn answer_agents(listener: &UnixListener, steps: &Sender<SentStep>) {
-    for stream in listener.incoming().flatten() {
+/// Reads one step from each agent that connects and hands it to the
+/// board with the agent's connection. It stops once the board quits,
+/// and the agents still waiting then read no reply.
+fn pass_steps_to_board(listener: &UnixListener, steps: &Sender<SentStep>) {
+    for agent in listener.incoming().flatten() {
         let mut text = String::new();
-        let read = stream
+        let read = agent
             .set_read_timeout(Some(STEP_WAIT))
-            .and_then(|()| BufReader::new(&stream).read_line(&mut text));
+            .and_then(|()| BufReader::new(&agent).read_line(&mut text));
         // A board that checks whether another one listens connects and
         // sends nothing.
         if read.is_err() || text.trim().is_empty() {
             continue;
         }
-        let (reply, replies) = mpsc::channel();
         let sent = SentStep {
             text: text.trim().to_owned(),
-            reply,
+            agent,
         };
         if steps.send(sent).is_err() {
             return;
-        }
-        // No reply comes when the board quits before it takes the step,
-        // and an agent that hung up misses its reply.
-        if let Ok(line) = replies.recv() {
-            let _ = writeln!(&stream, "{line}");
         }
     }
 }
 
 /// Wraps a failure to make or use `board.sock` for `main` to print.
-#[cfg(unix)]
 fn socket_error(path: &Path, source: std::io::Error) -> HubError {
     HubError::File {
         path: path.to_owned(),
@@ -193,13 +162,7 @@ fn socket_error(path: &Path, source: std::io::Error) -> HubError {
     }
 }
 
-/// The error `--listen` and `--send` stop with on Windows.
-#[cfg(not(unix))]
-fn needs_unix() -> HubError {
-    HubError::Usage("--listen and --send need Linux or macOS".to_owned())
-}
-
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -250,7 +213,7 @@ mod tests {
         let sent = steps.recv_timeout(Duration::from_secs(5)).unwrap();
         let (going, reply) =
             answer_sent_step(&mut board, &sent.text, |_, step| Ok(step != Step::Quit)).unwrap();
-        sent.reply.send(reply).unwrap();
+        sent.answer(&reply);
 
         // The agent prints the details page the tap opened.
         let outcome = agent.join().unwrap().unwrap();
@@ -258,6 +221,26 @@ mod tests {
         assert!(going);
         assert_eq!(screen["step"], "tap card:DEMO-KB-001");
         assert_eq!(screen["page"], "details");
+    }
+
+    /// An agent that sends a step the board cannot follow must fail with
+    /// the board's reason. Printing the screen and exiting 0 would let
+    /// it report a tap that never happened.
+    #[test]
+    fn send_step_unknown_id_fails_with_reason() {
+        let temp = TempRun::new("send-unknown-id");
+        let (_listener, steps) = StepListener::start(&temp.run).unwrap();
+        let mut board = sample_board();
+        let run = RunFolder::open(temp.run.path()).unwrap();
+        let agent = thread::spawn(move || send_step(&run, "tap card:NOPE-1"));
+
+        let sent = steps.recv_timeout(Duration::from_secs(5)).unwrap();
+        let (_, reply) = answer_sent_step(&mut board, &sent.text, |_, _| Ok(true)).unwrap();
+        sent.answer(&reply);
+
+        let error = agent.join().unwrap().unwrap_err();
+        assert_eq!(error.exit_code(), 2);
+        assert_eq!(error.to_string(), "the screen shows no card:NOPE-1");
     }
 
     /// An agent that sends a step with no board listening must learn

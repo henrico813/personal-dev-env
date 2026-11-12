@@ -207,7 +207,8 @@ impl Board {
         }
     }
 
-    /// Returns every element of the last drawn frame, top first.
+    /// Returns every element the open page holds, top first, as the
+    /// last draw left it. Those the draw left out are hidden.
     pub(crate) fn elements(&self) -> Vec<Element> {
         match &self.page {
             Page::List => draw::list_elements(&self.list_screen(), self.area, &self.list),
@@ -216,7 +217,7 @@ impl Board {
     }
 
     /// Draws the open page at `columns` by `rows` and returns it as
-    /// elements and text, after the `--control` line `step`.
+    /// elements and text, after the `--control` or `--send` line `step`.
     pub(crate) fn dump(&mut self, columns: u16, rows: u16, step: Option<String>) -> ScreenDump {
         let lines = self.render_lines(columns, rows);
         let page = match self.page {
@@ -719,6 +720,7 @@ pub(super) mod tests {
         let ids: Vec<&str> = list
             .elements
             .iter()
+            .filter(|element| !element.hidden)
             .map(|element| element.id.as_str())
             .collect();
         let expected = [
@@ -744,11 +746,83 @@ pub(super) mod tests {
         assert_eq!(details.page, "details");
         for dump in [&list, &details] {
             for element in &dump.elements {
-                let row = &dump.lines[usize::from(element.row)];
-                let drawn: String = row.chars().skip(usize::from(element.column)).collect();
+                let Some(place) = element.place else {
+                    continue;
+                };
+                let row = &dump.lines[usize::from(place.row)];
+                let drawn: String = row.chars().skip(usize::from(place.column)).collect();
                 assert!(drawn.starts_with(&element.text), "{}", element.id);
             }
         }
+    }
+
+    /// An agent learns what to open from the elements, not the screen.
+    /// The cards of a folded group and behind `+ N more` must be listed,
+    /// hidden, after the line that hides them and with the step that
+    /// shows them. Without them an agent never opens those cards and
+    /// still reports that it opened everything.
+    #[test]
+    fn dump_lists_folded_and_more_cards_hidden() {
+        let mut board = sample_board();
+
+        let dump = serde_json::to_value(board.dump(40, 16, None)).unwrap();
+
+        let elements = dump["elements"].as_array().unwrap();
+        // Each hidden element with the element before it.
+        let hidden: Vec<[&serde_json::Value; 4]> = elements
+            .windows(2)
+            .filter(|pair| pair[1]["hidden"] == true)
+            .map(|pair| {
+                let element = &pair[1];
+                [
+                    &pair[0]["id"],
+                    &element["id"],
+                    &element["hidden_by"],
+                    &element["show"],
+                ]
+            })
+            .collect();
+        let expected = [
+            [
+                "more:in-progress",
+                "card:DEMO-KB-005",
+                "more",
+                "tap more:in-progress",
+            ],
+            ["group:ready", "card:DEMO-KB-020", "fold", "tap group:ready"],
+            ["group:draft", "card:OPS-KB-001", "fold", "tap group:draft"],
+        ];
+        assert_eq!(hidden, expected);
+        let hidden_places = elements
+            .iter()
+            .filter(|element| element["hidden"] == true)
+            .filter(|element| element.get("column").is_some());
+        assert_eq!(hidden_places.count(), 0);
+        assert_eq!(elements[0]["hidden"], false);
+    }
+
+    /// On a short screen the list scrolls. Each row scrolled off must
+    /// name the scroll toward it, and so must a card under a line
+    /// scrolled off, since a tap on that line fails. A wrong direction
+    /// sends an agent's steps away from the row forever.
+    #[test]
+    fn dump_names_scroll_toward_hidden_rows() {
+        let mut board = Board::new(false);
+        board.show_reading(Ok(sample_queue()));
+        let lines = board.render_lines(40, 6);
+        board.handle_input(&tap_on(&lines, "?2 you"));
+
+        let dump = board.dump(40, 6, None);
+
+        let hiding = |id: &str| {
+            let element = dump.elements.iter().find(|element| element.id == id);
+            let hiding = element.and_then(|element| element.hiding.as_ref()).unwrap();
+            (hiding.hidden_by.word(), hiding.show.as_str())
+        };
+        assert_eq!(hiding("card:DEMO-KB-001"), ("scroll", "press pageup"));
+        assert_eq!(hiding("card:DEMO-KB-005"), ("more", "press pageup"));
+        assert_eq!(hiding("group:draft"), ("scroll", "press pagedown"));
+        assert_eq!(hiding("card:OPS-KB-001"), ("fold", "press pagedown"));
     }
 
     /// Raw mode turns Ctrl-C into a key, so a board that misses it
