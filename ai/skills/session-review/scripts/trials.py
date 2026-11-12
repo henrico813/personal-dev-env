@@ -11,6 +11,7 @@ Example:
 """
 
 import argparse
+import contextlib
 import datetime
 import hashlib
 import json
@@ -29,6 +30,13 @@ OPTIONAL = {"fail"}
 # Denying every permission takes all tools away from the model, so a
 # case cannot act out the hub actions its prompt describes.
 NO_TOOLS = '{"permission": {"*": "deny"}}'
+# Without this note a model with no tools often writes a pretend tool call
+# as its answer. The rules hash covers it, so a new note reads as new rules.
+NO_TOOLS_NOTE = (
+    "You have no tools. Answer in text, and name any command you would run."
+)
+PRETEND_TOOL_CALL = re.compile(r"<tool_call>|<function=")
+CASE_ID = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 
 
 class CaseError(Exception):
@@ -51,10 +59,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"trials: {error}", file=sys.stderr)
         return 1
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    answers = args.trials / "answers" / stamp
-    answers.mkdir(parents=True, exist_ok=True)
+    (args.trials / "answers").mkdir(parents=True, exist_ok=True)
+    # The random suffix keeps two calls started in the same second apart.
+    answers = Path(
+        tempfile.mkdtemp(prefix=f"{stamp}-", dir=args.trials / "answers")
+    )
     total = 0
-    with open(args.trials / "results.jsonl", "a") as results:
+    with open(args.trials / "results.jsonl", "a", encoding="utf-8") as results:
         for case in cases:
             failures = []
             for number in range(1, args.n + 1):
@@ -129,7 +140,7 @@ def read_case(path: Path) -> dict:
         CaseError: The file is not a case, or a rules file is missing.
     """
     try:
-        case = json.loads(path.read_text())
+        case = json.loads(path.read_text(encoding="utf-8"))
     except ValueError as error:
         raise CaseError(f"{path}: {error}") from error
     if not isinstance(case, dict) or not REQUIRED <= set(case):
@@ -137,12 +148,17 @@ def read_case(path: Path) -> dict:
     unknown = sorted(set(case) - REQUIRED - OPTIONAL)
     if unknown:
         raise CaseError(f"{path}: unknown fields {unknown}")
+    # The ID names answer files, so ``../`` would write outside the folder.
+    if not isinstance(case["id"], str) or not CASE_ID.fullmatch(case["id"]):
+        raise CaseError(f"{path}: id must be lowercase letters, digits, -")
     for field in ("rules", "pass", "fail"):
         value = case.get(field, [])
         if not isinstance(value, list) or not all(
             isinstance(item, str) for item in value
         ):
             raise CaseError(f"{path}: {field} must be a list of strings")
+    if not case["pass"]:
+        raise CaseError(f"{path}: pass needs at least one pattern")
     try:
         for pattern in case["pass"] + case.get("fail", []):
             re.compile(pattern)
@@ -162,12 +178,13 @@ def read_rules(names: list[str]) -> tuple[str, str]:
     """Join the rules files into one text and hash them as listed.
 
     The hash covers each name as written, so it stays the same on
-    another computer with the same rules.
+    another computer with the same rules. It also covers the no-tools
+    note every prompt gets.
 
     Returns:
         The joined text and the first 12 hex digits of its sha256.
     """
-    digest = hashlib.sha256()
+    digest = hashlib.sha256(f"{NO_TOOLS_NOTE}\n".encode())
     parts = []
     for name in names:
         data = Path(name).expanduser().read_bytes()
@@ -197,7 +214,7 @@ def run_trial(
     if not reasons:
         reasons = grade(case, answer)
     path = answers / f"{case['id']}-{number}.txt"
-    path.write_text(answer)
+    path.write_text(answer, encoding="utf-8")
     return {
         "time": datetime.datetime.now().isoformat(timespec="seconds"),
         "case": case["id"],
@@ -224,13 +241,22 @@ def ask_model(
     model = args.model + (f"#{args.variant}" if args.variant else "")
     command = ["opencode", "run", "--standalone", "-m", model]
     command += ["--format", "json"]
-    command.append(f"{case['rules_text']}\n{case['prompt']}")
-    code, output, error = run_bounded(
-        command,
-        scratch,
-        os.environ | {"OPENCODE_CONFIG_CONTENT": NO_TOOLS},
-        args.timeout,
-    )
+    command.append(f"{case['rules_text']}\n{NO_TOOLS_NOTE}\n{case['prompt']}")
+    # A config file in a folder above the scratch folder, or one these
+    # variables name, could change the model or give tools back.
+    env = {
+        name: value
+        for name, value in os.environ.items()
+        if name not in ("OPENCODE_CONFIG", "OPENCODE_CONFIG_DIR")
+    }
+    env |= {
+        "OPENCODE_CONFIG_CONTENT": NO_TOOLS,
+        "OPENCODE_DISABLE_PROJECT_CONFIG": "1",
+        # OpenCode reads this newer name first, so an inherited value
+        # would turn parent-folder config back on.
+        "OPENCODE_CONFIG_PROJECT_DISABLE": "1",
+    }
+    code, output, error = run_bounded(command, scratch, env, args.timeout)
     if code != 0:
         return "", [f"opencode {describe_failure(code, error, args.timeout)}"]
     return read_answer(output), []
@@ -242,7 +268,9 @@ def run_bounded(
     """Run a command in the scratch folder, killing it after ``timeout``.
 
     The command gets its own process group, so the kill also stops any
-    process it started that still holds its output open.
+    process it started that still holds its output open. Ctrl-C does not
+    reach that group, so any error here kills the group and is raised
+    again.
 
     Returns:
         The exit code, or None after a timeout, then stdout and stderr.
@@ -262,6 +290,11 @@ def run_bounded(
             os.killpg(process.pid, signal.SIGKILL)
             process.communicate()
             return None, "", ""
+        except BaseException:
+            # A group that already exited must not hide the Ctrl-C.
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            raise
     return process.returncode, output, error
 
 
@@ -274,20 +307,33 @@ def describe_failure(code: int | None, error: str, timeout: int) -> str:
 
 
 def read_answer(output: str) -> str:
-    """Join the text parts of ``opencode run --format json`` output."""
+    """Join the text parts of ``opencode run --format json`` output.
+
+    Lines that are not a text event with text are skipped, so one odd
+    line cannot stop the whole batch.
+    """
     texts = []
     for line in output.splitlines():
         try:
             event = json.loads(line)
         except ValueError:
             continue
-        if event.get("type") == "text":
-            texts.append(event["part"]["text"])
+        if not isinstance(event, dict) or event.get("type") != "text":
+            continue
+        part = event.get("part")
+        if isinstance(part, dict) and isinstance(part.get("text"), str):
+            texts.append(part["text"])
     return "\n".join(texts)
 
 
 def grade(case: dict, answer: str) -> list[str]:
-    """List why the answer fails the case's patterns, ignoring case."""
+    """List why the answer fails the case's patterns, ignoring case.
+
+    A pretend tool call fails on its own, since its text can match a pass
+    pattern without the model answering at all.
+    """
+    if PRETEND_TOOL_CALL.search(answer):
+        return ["tool call instead of answer"]
     missed = [
         f"missed pass /{pattern}/"
         for pattern in case["pass"]

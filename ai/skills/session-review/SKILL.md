@@ -88,6 +88,8 @@ While cloud models are available, local models should do work that
 cuts cloud tokens. Answer both in two required sections, for each
 role the session used, workers as well as the hub. A list of jobs a
 script could check is not enough.
+The stored trials find the cheapest model, local or cloud, that does
+each job well.
 
 - Fallback map: for each role, such as hub, planner, implementer,
   reviewer or merge worker, the local model that would run it, what
@@ -99,8 +101,9 @@ script could check is not enough.
   the check that makes the local result safe to trust, and the
   saving, marked measured or estimate.
 
-Run the stored trials on the local model, at least three runs each,
-as [references/trials.md](references/trials.md) says. Give
+Run the stored trials on the cheapest model that might do the job,
+local or cloud, at least three runs each, as
+[references/trials.md](references/trials.md) says. Give
 each case's pass rate, with the model, effort and rules hash, in a
 Trials section. If you ran none, say so there and why.
 

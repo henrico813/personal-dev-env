@@ -1,10 +1,11 @@
 # Trials
 
-A trial checks whether a model can do one job of a role, such as the
-hub or a worker. Each case is the situation just before a mistake the
-user corrected, and the correction is its answer key. The script runs
-each case several times on the current rules and grades every answer
-the same way, so two reviews' pass rates can be compared.
+A trial checks whether a model can do one job of a role, such as the hub
+(the Herdr session that runs other sessions) or a worker (a session the
+hub starts for one task). Each case is the situation just before a
+mistake the user corrected, and the correction is its answer key. The
+script runs each case several times on the current rules and grades
+every answer the same way, so two reviews' pass rates can be compared.
 
 ## Run the trials
 
@@ -17,7 +18,9 @@ three times on `goog/qwen3.8` and prints one line per case:
 
 The line gives the passed runs, the hash of the rules files, and the
 first failure's reason. The model gets no tools, since a prompt
-describes real actions, such as merging, that it might try. Options:
+describes real actions, such as merging, that it might try. The
+prompt tells it so, and an answer that writes a tool call as text
+fails with "tool call instead of answer". Options:
 
 - `--case ID` runs one case; repeat it for more.
 - `-n 5` runs each case five times. Use at least 3, since one run
@@ -25,11 +28,15 @@ describes real actions, such as merging, that it might try. Options:
 - `--model` and `--variant` choose the model and its effort.
 - `--timeout` sets the seconds each run may take; the default is 600.
 
-Each answer is saved in `answers/<time>/`, and each run adds a line
-to `results.jsonl`, both in the trials folder. A line names the
-model, the effort, the rules hash and the case file's hash. Compare
-pass rates only between lines with the same rules hash, or say the
-rules changed.
+Run the same cases with `--model` set to the cheapest cloud model
+that might do the job, such as `openai/gpt-6-luna`, and compare the
+pass rates before picking a model for the job.
+
+Each answer is saved in `answers/<time>-<random suffix>/`, and each run
+adds a line to `results.jsonl`, both in the trials folder. A line names
+the model, the effort, the rules hash and the case file's hash. Compare
+pass rates only between lines with the same rules hash, or say the rules
+changed.
 
 ## Write a case
 
@@ -49,20 +56,32 @@ folder's `rules.md`, `notes.md` or `decisions.md`, and save it as
 }
 ```
 
-- `id`: the name the summary line and `--case` use.
+- `id`: the name the summary line and `--case` use, in lowercase
+  letters, digits and hyphens.
 - `source`: where the correction is logged, for people.
 - `rules`: the files the model reads first, in order. The script
   reads them as they are at run time.
 - `prompt`: the situation before the mistake, then one question.
   Leave out the correction and any hint of it.
-- `pass`: patterns that must all match the answer, ignoring case.
+- `pass`: one or more patterns that must all match the answer,
+  ignoring case.
   Match only what the corrected behavior says, such as "recheck".
 - `fail`: optional patterns that must not match. Match the logged
-  mistake, such as listing the ask without a check.
+  mistake, such as listing the ask without a check. A fail pattern
+  must not match an answer that refuses or rules out the wrong
+  action. Check each one against a correct answer that names the
+  action to refuse it, such as "I do not merge it now". This pattern
+  skips "merge" right after a negation, but still fails "I will not
+  wait; merging now". In JSON, double each backslash:
+
+  ```text
+  (?<!not )(?<!never )(?<!don't )(?<!won't )merg\w+ (it )?now
+  ```
 
 Never copy a secret from a run folder's notes into a case. Describe
 the situation without it.
 
 A bad file or a missing rules file stops the script before any model
-runs. Try a new case on a cloud model first: if a strong model fails
-it, the prompt or the patterns are wrong, not the local model.
+runs. Try a new case first on the cheapest cloud model that might do
+the job. If that model fails it, check the prompt and the patterns
+before you try other models.
