@@ -43,6 +43,9 @@ pub(crate) enum TidyAction<'a> {
     /// Deletes a parked record whose card is done or whose session is
     /// live again.
     Forget { name: String },
+    /// Leaves a `to-close` or `to-park` session open because closing
+    /// its tab would close another pane's work too.
+    Keep { facts: &'a SessionFacts },
 }
 
 /// What one action did, worded as `hub clean` prints it.
@@ -194,8 +197,9 @@ pub(crate) fn find_unsafe_problem(collected: &CollectedFacts) -> Option<&str> {
 /// stays when any pane in it is the hub's own pane, the focused pane,
 /// an agent that is not finished or has no name, or a shell that runs
 /// something. A tab of `to-close` agents closes. A tab whose one agent
-/// is `to-park` parks. A parked record whose state is `to-close` is
-/// forgotten, since its card is done.
+/// is `to-park` parks. Each finished session in a tab that stays is
+/// kept, so `hub clean` says why. A parked record whose state is
+/// `to-close` is forgotten, since its card is done.
 pub(crate) fn plan_tidy_actions<'a>(
     judged: &[(&'a SessionFacts, Verdict)],
     panes: &[Pane],
@@ -232,7 +236,16 @@ pub(crate) fn plan_tidy_actions<'a>(
                 keeps_tab = true;
             }
         }
-        if keeps_tab || finished.is_empty() {
+        if finished.is_empty() {
+            continue;
+        }
+        let keep_finished = |actions: &mut Vec<TidyAction<'a>>| {
+            for (facts, _) in &finished {
+                actions.push(TidyAction::Keep { facts });
+            }
+        };
+        if keeps_tab {
+            keep_finished(&mut actions);
             continue;
         }
         if let [(facts, verdict)] = finished.as_slice()
@@ -258,9 +271,11 @@ pub(crate) fn plan_tidy_actions<'a>(
                 sessions: finished.iter().map(|(facts, _)| *facts).collect(),
                 why: whys.join(", "),
             });
+        } else {
+            // A `to-park` agent beside another agent stays, since closing
+            // the tab would close the other one without its record or line.
+            keep_finished(&mut actions);
         }
-        // A `to-park` agent beside another agent stays, since closing the
-        // tab would close the other one without its record or line.
     }
     for (facts, verdict) in judged {
         if facts.agent.is_none() && verdict.state == Lifecycle::ToClose {
@@ -317,6 +332,7 @@ fn apply_tidy_action(
             Ok(()) => vec![TidyOutcome::Forgot { name: name.clone() }],
             Err(error) => vec![kept(name, error.to_string())],
         },
+        TidyAction::Keep { .. } => vec![describe_planned_action(action)],
     }
 }
 
@@ -453,6 +469,10 @@ fn describe_planned_action(action: &TidyAction<'_>) -> TidyOutcome {
             why: why.clone(),
         },
         TidyAction::Forget { name } => TidyOutcome::Forgot { name: name.clone() },
+        TidyAction::Keep { facts } => TidyOutcome::Kept {
+            name: facts.name.clone(),
+            reason: TAB_HOLDS_WORK.to_owned(),
+        },
     }
 }
 
@@ -536,6 +556,7 @@ mod tests {
                     format!("close {tab_id} {}: {why}", names.join(", "))
                 }
                 TidyAction::Forget { name } => format!("forget {name}"),
+                TidyAction::Keep { facts } => format!("keep {}", facts.name),
             })
             .collect()
     }
@@ -560,8 +581,11 @@ mod tests {
     /// tab would end the hub mid-run. Closing the focused tab would close
     /// the one the user reads. A tab with a working neighbour would cut
     /// off its turn. A tab with a busy shell would lose its job. A lone
-    /// shell tab is the user's own, so it stays too. Each row below
-    /// checks one such case.
+    /// shell tab is the user's own, so it stays too. A `to-park` worker
+    /// beside a `to-close` one stays, or the close would end the parked
+    /// session without its record. Each finished
+    /// session in a kept tab is kept, so `hub clean` can say why. Each
+    /// row below checks one such case.
     #[test]
     fn plan_tidy_actions_keeps_tab_losing_something() {
         struct Case {
@@ -570,6 +594,7 @@ mod tests {
             panes: Vec<Pane>,
             own_pane: Option<&'static str>,
             quiet: &'static [&'static str],
+            kept: &'static [&'static str],
         }
         let tab = "w1:t1";
         let worker = || make_closing_worker("demo-kb-001-impl", tab);
@@ -582,6 +607,14 @@ mod tests {
             };
             (facts, verdict)
         };
+        let parking_neighbour = {
+            let (facts, _) = make_closing_worker("demo-kb-007-impl", tab);
+            let verdict = Verdict {
+                state: Lifecycle::ToPark,
+                why: String::new(),
+            };
+            (facts, verdict)
+        };
         let cases = [
             Case {
                 name: "own-pane",
@@ -589,6 +622,7 @@ mod tests {
                 panes: vec![worker_pane(), make_pane("w1:p-hub", tab, false)],
                 own_pane: Some("w1:p-hub"),
                 quiet: &["w1:p-hub"],
+                kept: &["keep demo-kb-001-impl"],
             },
             Case {
                 name: "focused-pane",
@@ -602,6 +636,7 @@ mod tests {
                 ],
                 own_pane: None,
                 quiet: &["w1:p8"],
+                kept: &["keep demo-kb-001-impl"],
             },
             Case {
                 name: "working-neighbour",
@@ -609,6 +644,15 @@ mod tests {
                 panes: vec![worker_pane(), make_pane("w1:demo-kb-002-impl", tab, true)],
                 own_pane: None,
                 quiet: &[],
+                kept: &["keep demo-kb-001-impl"],
+            },
+            Case {
+                name: "parking-neighbour",
+                sessions: vec![worker(), parking_neighbour],
+                panes: vec![worker_pane(), make_pane("w1:demo-kb-007-impl", tab, true)],
+                own_pane: None,
+                quiet: &[],
+                kept: &["keep demo-kb-001-impl", "keep demo-kb-007-impl"],
             },
             Case {
                 name: "busy-shell",
@@ -616,6 +660,7 @@ mod tests {
                 panes: vec![worker_pane(), make_pane("w1:p8", tab, false)],
                 own_pane: None,
                 quiet: &[],
+                kept: &["keep demo-kb-001-impl"],
             },
             Case {
                 name: "lone-shell",
@@ -623,13 +668,14 @@ mod tests {
                 panes: vec![make_pane("w1:p9", "w1:t9", false)],
                 own_pane: None,
                 quiet: &["w1:p9"],
+                kept: &[],
             },
         ];
 
         for case in cases {
             let actions = plan_for(&case.sessions, &case.panes, case.own_pane, case.quiet);
 
-            assert!(actions.is_empty(), "{}: {actions:?}", case.name);
+            assert_eq!(actions, case.kept, "{}", case.name);
         }
     }
 
