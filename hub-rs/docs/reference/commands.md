@@ -53,6 +53,7 @@ The folder holds these files, among others:
   `## YYYY-MM-DD` heading for each day.
 - `events.jsonl`: what `hub` has done, one JSON object per line.
 - `sends/`: messages that wait or may not have arrived.
+- `timed/`: messages that `hub at` stores until their time.
 - `waits/`: one file per worker that waits on a long job.
 
 ## --machine
@@ -158,6 +159,9 @@ parks a session.
 - `blocked NAME (hub 131k)`: NAME waits for the user.
 - `not sent NAME: REASON (hub 131k)`: a held message did not arrive.
 - `unsure NAME: REASON (hub 131k)`: a held message may have arrived.
+- `timed message to N sessions: PATH (hub 131k)`: a message stored
+  with `at` reached its time and is held for each session. PATH is
+  the `--file` given to `at`.
 - `board over its limit: 25/8 (hub 131k)`: too many cards are active
   or in review.
 - `hand off now: hub at 152k`: the hub should hand off now.
@@ -174,7 +178,8 @@ parks a session.
 - `replaced by a newer hub next`: another `next` took over.
 - `timeout (hub 131k)`: nothing came before `--timeout`.
 
-Each report version, blocked state and board crossing prints once.
+Each report version, blocked state, timed message and board crossing
+prints once.
 `(hub -)` means the hub's context is unknown. `--json` prints one
 object with the same facts:
 
@@ -195,6 +200,20 @@ the session can take it, and otherwise holds the message for `next`.
 - `sent OTHER (NAME handed off to it)`: NAME handed off on its card.
 - Exits 1 with `not sent NAME: REASON`, or with
   `unsure NAME: REASON; see sends/FILE` when it may have arrived.
+
+### at
+
+`hub at [--run DIR] HH:MM (--to NAME... | --all) --file PATH` stores
+the message in `timed/` for HH:MM today, in this machine's local
+time. At that time, `next` holds it for each session and sends it as
+it sends other held messages. `--all` means every live worker found
+at that time: a session on a card or that has reported, never a hub.
+Deleting the stored file cancels the message.
+
+- `at 20:00 to NAMES: FILE`, or `at 20:00 to every live worker: FILE`:
+  stored, where FILE is the stored file.
+- Exits 2 with `20:00 has passed today; give a later time` for a time
+  not after now.
 
 ### read
 
