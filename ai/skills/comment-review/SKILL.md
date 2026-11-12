@@ -122,7 +122,10 @@ review's `status`, the `result`, an `error` with a `code` and a
    `glimmer dismiss` in the worktree, so Ctrl+b e stops
    showing it; `glimmer restore` brings it back. The user
    can also press `x` in Ctrl+b e's list. A `dismissed` status means
-   send nothing more unless the user asks for a new review.
+   send nothing more unless the user asks for a new review. Ctrl+b e
+   dismisses a review itself once its pull request is merged or
+   closed, or its worktree has another branch checked out, so do not
+   dismiss those by hand.
 
 ## When the tool is missing
 

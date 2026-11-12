@@ -154,7 +154,7 @@ fn nodes_starting_at(node: Node) -> impl Iterator<Item = Node> {
 
 /// Runs `command` as `run_with_input` does, and stops it and everything it
 /// started once `time_limit` passes, even while they hold its output open.
-fn run_for_at_most(
+pub(crate) fn run_for_at_most(
     command: &[&str],
     folder: &Path,
     input: &str,
