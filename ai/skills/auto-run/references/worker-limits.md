@@ -120,7 +120,7 @@ through your report file.
   checked which answer: `<models>`.
 - A local model runs only a job a script checks: your test and lint
   commands once per plan version, the deleted-test check above, and
-  the merge checks before a merge request, with
+  a reviewed pull request's merge, with
   `~/.agents/skills/herdr-hub/scripts/merge-worker.sh` as the
   script. Plans, reviews, pull request text and decisions stay on
   cloud models. Write each job as one script that sends long output

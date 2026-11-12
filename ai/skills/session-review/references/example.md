@@ -96,9 +96,11 @@ largest carried outputs
 
 ## Trials
 
-Reran the PR text cold read trial from the Lantern P2 review on
-`goog/qwen3.8`. It found the same two unclear sentences as
-`openai/gpt-6-luna`, in 9 seconds.
+Ran the stored trials on `goog/qwen3.8`, three runs each:
+
+- pr-text-cold-read 3/3, rules hash `9b0e47d2c1a5`.
+- pr-key-in-title 1/3, rules hash `5d83f0a6e214`. Added from this
+  session's correction; two runs kept the key in the title.
 
 ## Fresh check
 
@@ -128,7 +130,8 @@ Lessons to save, pick by number
 Fallback: the planner is least ready; a brief per plan step would
 fit qwen3.8's window.
 Efficiency: test runs on qwen3.8, about 1.1M tokens (estimate).
-Trials: PR text cold read on qwen3.8 matched luna, 9 s.
+Trials: pr-text-cold-read 3/3, new pr-key-in-title 1/3 on
+qwen3.8.
 
 Reply with the numbers to apply.
 ```

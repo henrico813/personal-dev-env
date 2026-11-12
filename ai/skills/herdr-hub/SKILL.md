@@ -288,8 +288,9 @@ you make any card.
   the run's first hub. `hub go` and `hub gather` find hubs by this
   name. If yours does not, rename your agent and its tab as the bullet
   on adopted sessions below shows.
-- Then run `hub gather`, which takes no `--run`. It moves every hub's
+- `hub handoff`, `hub adopt` and `hub auto now` move every hub's
   workspace on this machine into one block at the top of the sidebar.
+  `hub gather` makes the same move when the user runs it.
   The user presses `ctrl+b shift+h`, or runs `hub go`, to show the
   next hub in sidebar order, wrapping to the first.
 - The workspace labelled `desk` is the user's. Never open a tab or pane
@@ -377,20 +378,45 @@ holds only this brief, filled in, and none of the handoff template's
 sections. In a repository with several remotes, add
 `--remote <remote>` after the test command.
 
-    From <repository>, run this one command once:
+Start a merge worker only for a pull request whose Testing records that
+the change was deployed and tried, as `pull-request` Guardrail 4 asks.
+Otherwise hand the merge on as that skill's Merge says. When `rules.md`
+names an environment setting that pushes need, such as an SSH agent
+socket, put it before the command in the brief.
+
+    From <repository>, run this one command once, with no time
+    limit on the shell tool:
     bash ~/.agents/skills/herdr-hub/scripts/merge-worker.sh \
       <number> <folder> '<test command>'
     Then print <folder>/summary.txt exactly and stop. Never run it
     again, even when a check fails. Touch no other file and run
     nothing else. Never answer an approval request.
 
+The script merges the base into a branch that is behind it and pushes
+the merge as a new commit. It then runs `pull-request`'s merge checks
+and, when they pass, sends the merge request. The user approves it in
+the popup or on the phone, which shows the squash message. The script
+keeps running when the shell tool stops it.
+
 Read `<folder>/summary.txt` yourself. It counts only when its last
-line is `done`; never trust the worker's words about it. When it
-says `result: ready`, start a cloud session by `herdr-handoff` that
-follows `pull-request`'s Merge from step 4, with `<folder>/prep` as
-`$O`. Otherwise bring the problems it names to the user with the
-pull request's review entry. Close the merge worker's tab once you
-have read its summary.
+line is `done`; never trust the worker's words about it. The line
+before `exit:` says what happened:
+
+- `merged: <commit>`: handle it as a merged pull request, as Reports
+  from sessions says.
+- `result: conflict with <base>: <files>`: start a cloud session by
+  `herdr-handoff` that merges the base into the branch, resolves the
+  conflict and pushes one new commit, as `pull-request`'s Update
+  says. Set its `--model` to the cheapest cloud model that resolves
+  merges well, such as a Sonnet model, never Opus by default. Without
+  `--model` the session gets the default model, which may be Opus.
+  Then start a new merge worker with a new folder.
+- `result: not ready: ...`: bring the problems it names to the user
+  with the pull request's review entry.
+- Any other line, such as a declined request or an `error:` line:
+  tell the user.
+
+Close the merge worker's tab once you have read its summary.
 
 ## Hand off the hub
 

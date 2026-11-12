@@ -111,6 +111,7 @@ Vibe binaries plus repo-managed AI config.
 | Plain direct English | `ai/skills/plain-direct-english/` | `~/.agents/skills/plain-direct-english/` | Clear sentences in comments, docs and other prose, and breakdowns of hard ones |
 | Status updates | `ai/skills/status-updates/` | `~/.agents/skills/status-updates/` | Status updates and recaps a new reader understands on a phone |
 | Skill lessons skill | `ai/skills/skill-lessons/` | `~/.agents/skills/skill-lessons/` | How to follow and save the lessons in a skill's Lessons section |
+| Skill development | `ai/skills/skill-development/` | `~/.agents/skills/skill-development/` | Writing and reviewing skills so each rule has one owner and reads plainly |
 | Comment review skill | `ai/skills/comment-review/` | `~/.agents/skills/comment-review/` | Saves code comments as a review you answer one per screen |
 | Go development | `ai/skills/go-development/` | `~/.agents/skills/go-development/` | Shared Go development guidance |
 | Python development | `ai/skills/python-development/` | `~/.agents/skills/python-development/` | Shared Python development guidance |

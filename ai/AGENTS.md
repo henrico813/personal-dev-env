@@ -67,6 +67,9 @@
   the `herdr-handoff` skill.
 - When the user or a handoff makes this session the hub of other
   Herdr sessions, load and follow the `herdr-hub` skill.
+- When creating, changing or reviewing an agent skill, or
+  turning saved lessons into skill text, load and follow the
+  `skill-development` skill.
 - When delegating domain work, include an `Applicable skills:` line in the
   delegation prompt with each skill's exact name. Require the subagent to load
   available skills before working and to report required skills that are
@@ -118,6 +121,9 @@ pattern over the whole file.
 
 ## Planning Docs
 
+- `notes` (alias `n`) is the preferred tool for viewing plans and
+  cards. Give the user the command, such as `n p PDEV-468`, and
+  never run it yourself: it opens fzf and nvim.
 - Plans, issues, design docs, and research docs belong in the default
   vault. Find its folder with `nobs vault path` and documents in it with
   `nobs find`.
