@@ -28,6 +28,9 @@ link_herdr_plugins.sh
 .config/systemd/user/pde-prune-targets.service
 .config/systemd/user/pde-prune-targets.timer
 enable_prune_timer.sh
+# Only full installs build hub, which the watch unit runs.
+.config/systemd/user/hub-watch.service
+enable_hub_watch.sh
 {{- if not (has "workstation" .pde.tiers) }}
 # Terminal VMs have no editor or agents, so they skip these files.
 .config/alacritty

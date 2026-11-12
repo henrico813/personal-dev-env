@@ -58,6 +58,9 @@ enum News {
     Report {
         name: String,
         mtime_ns: u64,
+        /// Set when `hub watch` found this report waited 10 minutes
+        /// with no `hub next` line.
+        missed: bool,
     },
     Blocked {
         name: String,
@@ -426,6 +429,7 @@ fn choose_news(facts: &NewsFacts<'_>) -> Option<News> {
         return Some(News::Report {
             name: report.name.clone(),
             mtime_ns: report.mtime_ns,
+            missed: facts.memory.missed.get(&report.name) == Some(&report.mtime_ns),
         });
     }
     if let Some(agent) = find_new_blocked_states(facts.agents, facts.memory).first() {
@@ -521,7 +525,7 @@ fn find_new_blocked_states<'a>(agents: &'a [Agent], memory: &Memory) -> Vec<&'a 
 /// was delivered.
 fn record_news(news: &News) -> Option<EventKind> {
     match news {
-        News::Report { name, mtime_ns } => Some(EventKind::Announced {
+        News::Report { name, mtime_ns, .. } => Some(EventKind::Announced {
             name: name.clone(),
             mtime_ns: *mtime_ns,
         }),
@@ -570,6 +574,9 @@ fn make_outcome(news: &News, hub_tokens: Option<u64>, json: bool) -> Outcome {
 fn format_news_line(news: &News, hub_tokens: Option<u64>) -> String {
     let hub = format!("(hub {})", format_tokens(hub_tokens));
     match news {
+        News::Report {
+            name, missed: true, ..
+        } => format!("missed report {name} {hub}"),
         News::Report { name, .. } => format!("report {name} {hub}"),
         News::Blocked { name, .. } => format!("blocked {name} {hub}"),
         News::NotSent { name, reason } => format!("not sent {name}: {reason} {hub}"),
@@ -603,6 +610,9 @@ fn format_news_line(news: &News, hub_tokens: Option<u64>) -> String {
 /// `{"news":"report","name":"docs-fix","detail":null,"hub_context_tokens":131204}`.
 fn format_news_json(news: &News, hub_tokens: Option<u64>) -> String {
     let (word, name, detail) = match news {
+        News::Report {
+            name, missed: true, ..
+        } => ("missed_report", Some(name.clone()), None),
         News::Report { name, .. } => ("report", Some(name.clone()), None),
         News::Blocked { name, .. } => ("blocked", Some(name.clone()), None),
         News::NotSent { name, reason } => ("not_sent", Some(name.clone()), Some(reason.clone())),
@@ -794,6 +804,7 @@ mod tests {
                 News::Report {
                     name: "docs-fix".to_owned(),
                     mtime_ns: 100,
+                    missed: false,
                 },
                 Some(131_204),
                 r#"{"news":"report","name":"docs-fix","detail":null,"hub_context_tokens":131204}"#,

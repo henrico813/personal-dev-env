@@ -6,11 +6,25 @@ tidy them. It replaced the Python hub, which was deleted.
 
 pde-installer builds this folder on the Development tier and installs
 it as `~/.local/bin/hub`, so full machines get it and client laptops,
-which compile nothing, do not. It has `status`, `next`, `send`,
-`read`, `report`, `inbox`, `note`, `brief`, `handoff`, `adopt`,
-`clean`, `park`, `auto`, `flag`, `unflag`, `alive`, `go`, `gather`,
-`desk` and `board`. `hub COMMAND --help` says what a command does and
-when to use it, with an example.
+which compile nothing, do not. It has `status`, `next`, `watch`,
+`send`, `read`, `report`, `inbox`, `wait`, `note`, `brief`,
+`handoff`, `adopt`, `clean`, `park`, `auto`, `flag`, `unflag`,
+`alive`, `go`, `gather`, `desk` and `board`. `hub COMMAND --help`
+says what a command does and when to use it, with an example.
+
+`hub watch` is one program per machine that runs outside every chat,
+beside each hub's `hub next`. Every 5 seconds it reads each
+`~/.local/state/herdr-hub.*` run whose log names a hub. It prods a
+worker that sat idle 10 minutes owing a report, once in that state,
+and a worker whose `hub wait` ended. It marks a blocked worker "needs
+you". When a report waits 10 minutes with no `next` line, it writes
+a `report_missed` event, and the hub's next `next` prints
+`missed report NAME`. When the run's hub is gone from Herdr, it runs
+`moshi-hook notify` instead, for reports from the last day. It never
+types into a hub's pane. Its lock and log are in
+`~/.local/state/pde/hub/`. The `hub-watch` systemd user unit keeps it
+running on full installs, and `report` and `wait` start it again when
+it is not running.
 
 ```bash
 make build   # target/release/hub

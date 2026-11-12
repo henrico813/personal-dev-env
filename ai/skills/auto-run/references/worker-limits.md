@@ -198,6 +198,16 @@ step again.
   question gives 2 or
   3 choices, what each leads to, and your recommendation. Finished
   work gives the checks run, with results, and the checks not run.
+- Wait outside your chat on a long job you start yourself, such as
+  a build. A job a local model runs for you, as Subagents says, ends
+  before the model replies, so it needs no wait. First
+  run `hub wait --run "<run folder>" <your agent name>` with
+  `--file <summary file> --deadline <minutes>`. Then start the job
+  with `setsid nohup bash <script> > <log> 2>&1 &`, so it outlives
+  your tool call, and end your turn. A plain `&` job can end with the
+  tool call. The script writes its summary file in one step at its
+  end, and the watch prods you when that file changes or the
+  deadline passes.
 - Edit only your card through `card`, your plan note, your worktree
   and branch, and your own files in the run folder.
 - Near 150K context, write a handoff by `herdr-handoff` and report it

@@ -61,9 +61,9 @@ pub(crate) struct FinishedSession {
     pub why: String,
 }
 
-/// Holds `.watcher.lock` while a `hub next` runs. Dropping it, or the
-/// process ending, lets the next watcher in.
-pub(crate) struct WatcherLock {
+/// Holds a lock file, such as `.watcher.lock` while a `hub next` runs.
+/// Dropping it, or the process ending, lets the next holder in.
+pub(crate) struct FileLock {
     _file: File,
 }
 
@@ -148,6 +148,27 @@ impl RunFolder {
     /// Returns the text of NAME's newest report, read or not, by file
     /// time. Returns `None` when NAME never reported.
     pub(crate) fn read_newest_report(&self, name: &str) -> Result<Option<String>, HubError> {
+        let Some((_, path)) = self.find_newest_report(name)? else {
+            return Ok(None);
+        };
+        match fs::read_to_string(&path) {
+            Ok(text) => Ok(Some(text)),
+            Err(source) => Err(HubError::File { path, source }),
+        }
+    }
+
+    /// Returns when NAME last wrote a report, read or not, or `None`
+    /// when NAME never reported.
+    pub(crate) fn find_newest_report_time(
+        &self,
+        name: &str,
+    ) -> Result<Option<SystemTime>, HubError> {
+        Ok(self.find_newest_report(name)?.map(|(modified, _)| modified))
+    }
+
+    /// Returns the time and path of NAME's newest report file, read or
+    /// not.
+    fn find_newest_report(&self, name: &str) -> Result<Option<(SystemTime, PathBuf)>, HubError> {
         let mut newest: Option<(SystemTime, PathBuf)> = None;
         for file_name in self.list_file_names()? {
             let is_names_report = file_name
@@ -168,13 +189,7 @@ impl RunFolder {
                 newest = Some((modified, path));
             }
         }
-        let Some((_, path)) = newest else {
-            return Ok(None);
-        };
-        match fs::read_to_string(&path) {
-            Ok(text) => Ok(Some(text)),
-            Err(source) => Err(HubError::File { path, source }),
-        }
+        Ok(newest)
     }
 
     /// Lists the Python hub's message files, `send-NAME.json`,
@@ -292,34 +307,14 @@ impl RunFolder {
     }
 
     /// Waits for the lock on `.watcher.lock` and holds it.
-    pub(crate) fn take_watcher_lock(&self) -> Result<WatcherLock, HubError> {
-        let path = self.path.join(".watcher.lock");
-        let locked = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(false)
-            .open(&path)
-            .and_then(|file| file.lock().map(|()| file));
-        match locked {
-            Ok(file) => Ok(WatcherLock { _file: file }),
-            Err(source) => Err(HubError::File { path, source }),
-        }
+    pub(crate) fn take_watcher_lock(&self) -> Result<FileLock, HubError> {
+        take_file_lock(&self.path.join(".watcher.lock"))
     }
 
     /// Tells whether a `hub next` holds the watcher lock now, by trying
     /// it.
     pub(crate) fn is_watcher_running(&self) -> Result<bool, HubError> {
-        let path = self.path.join(".watcher.lock");
-        let file = match File::open(&path) {
-            Ok(file) => file,
-            Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(false),
-            Err(source) => return Err(HubError::File { path, source }),
-        };
-        match file.try_lock() {
-            Ok(()) => Ok(false),
-            Err(TryLockError::WouldBlock) => Ok(true),
-            Err(TryLockError::Error(source)) => Err(HubError::File { path, source }),
-        }
+        is_file_locked(&self.path.join(".watcher.lock"))
     }
 
     /// Tells whether a newer `hub next` claimed the watcher.
@@ -365,6 +360,43 @@ impl RunFolder {
             path: self.path.clone(),
             source,
         }
+    }
+}
+
+/// Waits for the lock on the file at `path`, making the file when it
+/// is missing, and holds it.
+pub(crate) fn take_file_lock(path: &Path) -> Result<FileLock, HubError> {
+    let locked = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(path)
+        .and_then(|file| file.lock().map(|()| file));
+    match locked {
+        Ok(file) => Ok(FileLock { _file: file }),
+        Err(source) => Err(HubError::File {
+            path: path.to_owned(),
+            source,
+        }),
+    }
+}
+
+/// Tells whether a process holds the lock on the file at `path` now,
+/// by trying it. A missing file is not locked.
+pub(crate) fn is_file_locked(path: &Path) -> Result<bool, HubError> {
+    let file_error = |source| HubError::File {
+        path: path.to_owned(),
+        source,
+    };
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(source) => return Err(file_error(source)),
+    };
+    match file.try_lock() {
+        Ok(()) => Ok(false),
+        Err(TryLockError::WouldBlock) => Ok(true),
+        Err(TryLockError::Error(source)) => Err(file_error(source)),
     }
 }
 

@@ -84,14 +84,37 @@ in `working`, `finished` or `stopped`. Report it dead only on
 When you hand work to a new session with `herdr-handoff`, its
 Coordination section names you as the one session it reports to,
 gives its report file, `<run folder>/report-<name>.md`, and names no
-other owner. Workers never message each other.
+other owner. Its template also tells the session to wait on a long
+job with `hub wait`. Workers never message each other.
 
 ## Wake on news
+
+At the start, run this once in your own pane:
+
+    hub watch start --run "<run folder>"
+
+It names you as the run's hub and starts `hub watch` when none runs
+on this machine. The watch runs outside every chat and never types
+into your pane. It prods a worker that sat idle 10 minutes owing a
+report and marks a blocked worker "needs you". When a report waits
+10 minutes with no `hub next` line, your next `hub next` prints it as
+`missed report <name>`. Only when you are gone does the watch alert
+the user's phone. A
+worker that waits on a long job registers it with `hub wait` and
+ends its turn. The watch prods it when the job ends and never counts
+it as stalled meanwhile, so you do nothing for it. When
+`hub watch start` exits 3, tell the user its reason once, and go on
+with `hub next`. An auto hub, which never messages the user, lists the
+reason in its end brief instead.
 
 Keep one `hub next` running in the background at all times, started
 once the first session works:
 
-    hub next --run "<run folder>"
+    hub next --run "<run folder>" --timeout 2700
+
+The timeout ends it within 45 minutes, before OpenCode drops an idle
+folder's background commands, and its `timeout` line wakes you to
+start it again.
 
 It waits until a session has news, prints one line and ends, so its
 end starts your turn. While it waits it sends held messages. It never
@@ -110,6 +133,8 @@ are off by default. Most lines end with your own context, such as
   `notes.md`, and `--card` adds it to the session's card Log as well.
   When `unread:` names another report, read that one in the step that
   acts on this one, with a note on what you did.
+- `missed report <name>`: handle it as a `report` line. No
+  `hub next` ran for 10 minutes before it, so keep one running.
 - `blocked <name>`: the session waits at an approval or question in
   its pane. Handle it as Waiting on the user says.
 - `not sent <name>: <reason>`: Herdr turned a held message down, or
