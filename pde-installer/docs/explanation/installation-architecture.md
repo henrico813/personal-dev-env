@@ -24,7 +24,8 @@ on a later failure, and makes the update permanent when installation commits.
 
 The full order is:
 
-1. Install missing Ubuntu dependencies with apt.
+1. Install missing Ubuntu dependencies with apt, or Homebrew formulae on
+   macOS.
 2. Check the host compiler, build tools, Ubuntu release, repository metadata,
    and writable destinations.
 3. Download and activate the existing amd64-only direct tmux 3.7b binary. On

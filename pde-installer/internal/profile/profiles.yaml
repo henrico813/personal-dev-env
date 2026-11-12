@@ -39,7 +39,7 @@ apt_groups:
 
 # macOS installs these Homebrew formulae instead of the apt groups. The
 # Linux pins of tmux, fd, bat and eza have no Apple Silicon build, and
-# skill-lessons and hub need python@3.13 because macOS's own Python is
+# skill-lessons needs python@3.13 because macOS's own Python is
 # older than 3.10.
 brew_groups:
   base: [bat, eza, fd, git, tmux]
