@@ -113,7 +113,8 @@ cloud model that does it well.
    It fetches and works from the PR's current title and description,
    not a local copy. In a repository with several remotes, add
    `--remote <remote>`. It prints at most 20 lines. In later
-   commands, use the folder on its `out:` line as `$O`.
+   commands, use the folder on its `out:` line as `$O`. A local model
+   may run these checks, as the `model-routing` skill says.
 2. It runs the tests on the PR merged into its base, in a scratch
    clone, so no checkout changes. It also lists the changed files and
    counts GitHub's checks. When its last line starts with

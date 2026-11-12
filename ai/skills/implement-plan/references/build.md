@@ -77,8 +77,9 @@ check below calls it `<HEAD before>`:
 git -C "$W" rev-parse HEAD
 ```
 
-Start the step model from `$D` with the brief in roadmap-run's
-[Local model](../../roadmap-run/references/prompts.md#local-model)
+Start the step model from `$D` with the brief in the `model-routing`
+skill's
+[Brief a local model](../../model-routing/SKILL.md#brief-a-local-model)
 section, with `bash $D/step<n>.sh` as the script and
 `$D/job<n>/summary.txt` as the summary file:
 
@@ -106,8 +107,8 @@ Never trust the model's own words about the result.
    more. Undo nothing first, since the script resumes.
 2. On the second failure, move the step one tier up. Start a
    subagent on the next model in your list, skipping local models.
-   A fix changes the plan, and roadmap-run's Local model section keeps
-   plan work on cloud models. Give it the step, the summary,
+   A fix changes the plan, and the `model-routing` skill's Guardrails
+   keep plan work off local models. Give it the step, the summary,
    `check.log`, `planner.log`, the worktree path, and an
    `Applicable skills:` line with each loaded skill the step needs. It
    finds the cause and never edits worktree files by hand.

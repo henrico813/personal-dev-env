@@ -16,11 +16,11 @@ bring it to the user.
 
 ## Steps
 
-1. Brief a subagent. Use the model the user names, or the one their
-   notes give for that kind of work. Give it the goal, the inputs,
-   what to leave alone, which instructions it must load, and the report
-   it must return. When the report counts things, give the count you
-   expect, such as "expect 2 clones".
+1. Brief a subagent. Use the model the user names, or else the one
+   the `model-routing` skill gives for the job. Give it the goal, the
+   inputs, what to leave alone, which instructions it must load, and
+   the report it must return. When the report counts things, give the
+   count you expect, such as "expect 2 clones".
 2. When it reports, check that it loaded the instructions you named,
    and check its claims against the real files, tests and systems
    before trusting them.
