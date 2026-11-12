@@ -493,9 +493,10 @@ pub fn parse_command() -> Result<Cli, HubError> {
 ///
 /// `HubError::Usage` when the folder does not exist. Without `--run`
 /// and `HUB_RUN`, also when `local_state` is `None`, when two or more
-/// hubs run, or when none runs and no folder has an `events.jsonl`.
-/// `HubError::File` when `local_state`, a lock file or an
-/// `events.jsonl` cannot be read.
+/// hubs run and skipping auto runs does not leave exactly one, or when
+/// none runs and no folder has an `events.jsonl`.
+/// `HubError::File` when `local_state`, a lock file, an `approved.md`
+/// or an `events.jsonl` cannot be read.
 pub fn find_run_folder(
     given: Option<&Path>,
     hub_run: Option<&OsStr>,
@@ -520,8 +521,14 @@ pub fn find_run_folder(
 ///
 /// A hub has no `hub next` running while it handles a line. With no
 /// lock held, the search takes the folder whose `events.jsonl` changed
-/// last, since `hub next` writes there, and names it on stderr. Two
-/// or more running hubs are an error that names each folder.
+/// last, since `hub next` writes there, and names it on stderr.
+///
+/// During an auto run the user's hub and the auto hub both run. The
+/// search then skips folders with an `approved.md`, which only auto
+/// runs have, and names the one left on stderr. When skipping them
+/// leaves no folder or more than one, the search stops with an error
+/// that names each running folder. The skip needs two locks held, so
+/// while the user's hub handles a line the search takes the auto run.
 fn find_hub_folder(local_state: &Path) -> Result<RunFolder, HubError> {
     let file_error = |source| HubError::File {
         path: local_state.to_path_buf(),
@@ -574,11 +581,26 @@ fn find_hub_folder(local_state: &Path) -> Result<RunFolder, HubError> {
         }
         1 => Ok(running.remove(0)),
         count => {
-            running.sort_by(|left, right| left.path().cmp(right.path()));
-            let folders: Vec<String> = running
+            let mut own_hubs = Vec::new();
+            let mut auto_runs = Vec::new();
+            for run in running {
+                if run.read_file_if_exists("approved.md")?.is_some() {
+                    auto_runs.push(run);
+                } else {
+                    own_hubs.push(run);
+                }
+            }
+            if own_hubs.len() == 1 {
+                let run = own_hubs.remove(0);
+                eprintln!("hub: skipping auto runs, so using {}", run.path().display());
+                return Ok(run);
+            }
+            let mut folders: Vec<String> = own_hubs
                 .iter()
+                .chain(&auto_runs)
                 .map(|run| run.path().display().to_string())
                 .collect();
+            folders.sort();
             Err(HubError::Usage(format!(
                 "no run folder; {count} hubs run here, so pass --run with one of {}",
                 folders.join(", ")
