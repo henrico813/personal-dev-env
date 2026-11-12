@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use hub::board;
 use hub::commands::auto::AutoApproval;
-use hub::commands::cli::{self, AutoStep, Cli, Command, RunArg};
+use hub::commands::cli::{self, AutoRunArg, AutoStep, Cli, Command, RunArg};
 use hub::commands::next::NextOptions;
 use hub::commands::reports::{CardChoice, ReadRequest};
 use hub::commands::send::SendRequest;
@@ -93,7 +93,12 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
     };
     let tools = owned_tools.lend();
     let hub_run = env::var_os("HUB_RUN");
-    let find_run = |run: &RunArg| cli::find_run_folder(run.run.as_deref(), hub_run.as_deref());
+    let local_state = home.join(".local/state");
+    let find_run = |run: &RunArg| {
+        cli::find_run_folder(run.run.as_deref(), hub_run.as_deref(), Some(&local_state))
+    };
+    let find_auto_run =
+        |run: &AutoRunArg| cli::find_run_folder(run.run.as_deref(), hub_run.as_deref(), None);
     let now = Zoned::now();
     match &cli.command {
         Command::Status { run, json } => status::run_status(&tools, &find_run(run)?, *json, &now),
@@ -180,15 +185,15 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         }
         Command::Park { run, name } => clean::run_park(&tools, &find_run(run)?, name, &now),
         Command::Auto { step } => match step {
-            AutoStep::Ready { run } => auto::run_auto_ready(&tools, &find_run(run)?),
-            AutoStep::Check { run } => auto::run_auto_check(&tools, &find_run(run)?),
+            AutoStep::Ready { run } => auto::run_auto_ready(&tools, &find_auto_run(run)?),
+            AutoStep::Check { run } => auto::run_auto_check(&tools, &find_auto_run(run)?),
             AutoStep::Approve {
                 run,
                 given,
                 number,
                 reply,
             } => {
-                let run = find_run(run)?;
+                let run = find_auto_run(run)?;
                 let approval = AutoApproval {
                     number: *number,
                     reply: reply.clone(),
@@ -196,7 +201,7 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
                 };
                 auto::run_auto_approve(&tools, &run, &approval, &now)
             }
-            AutoStep::Now { run } => auto::run_auto_now(&tools, &find_run(run)?),
+            AutoStep::Now { run } => auto::run_auto_now(&tools, &find_auto_run(run)?),
         },
         Command::Flag { name } => flag::run_flag(&tools, name),
         Command::Unflag { name } => flag::run_unflag(&tools, name),
