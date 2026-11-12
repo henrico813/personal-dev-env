@@ -418,11 +418,10 @@ Use the committed plan fixtures and literal invocations in
 Run the OpenCode scenarios once with each required OpenCode model. A broad plan
 may use the existing architecture, bug, and completeness reviewers, with source
 documentation assigned to completeness; bounded plans must not fan out only to
-check documentation. For implementation, inspect the saved Vibe `prompt.txt`,
-event stream, status, commit, and parent verification. Require every applicable
-worker-visible skill in the prompt, reject unavailable required skills before
-delegation, and use the existing completion gate rather than another review
-pass.
+check documentation. For implementation, inspect each step's
+`summary.txt` and `check.log` in the build's run folder, the step
+commits, the report lines and the parent verification. Use the
+existing completion gate rather than another review pass.
 
 For fresh review-only and no-change rows, compare the Git-visible worktree-state
 fingerprint before and after and require `git status --short` to be empty. A
