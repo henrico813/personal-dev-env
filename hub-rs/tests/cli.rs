@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use hub::commands::cli::find_run_folder;
 use hub::shared::HubError;
@@ -18,7 +18,9 @@ use common::{TempFolder, read_script_calls};
 /// shows Herdr's or `card`'s own words. The `no-report` case finds its
 /// run folder through `HUB_RUN` alone, as a worker's pane gives it.
 /// The `auto-other-reply` case also checks that `hub auto approve`
-/// takes the run number before the reply.
+/// takes the run number before the reply. The `auto-no-run` case
+/// checks that `hub auto` steps never search for a folder, since a
+/// search would write into the user's usual hub's folder.
 #[test]
 fn hub_exit_code_follows_failure_kind() {
     struct Case {
@@ -120,6 +122,15 @@ fn hub_exit_code_follows_failure_kind() {
             args: &["note", "merged #9"],
             hub_run: false,
             exit_code: 2,
+            says: "hub: no run folder; no hub here wrote events yet, so pass --run DIR\n",
+        },
+        Case {
+            name: "auto-no-run",
+            herdr_stdout: "",
+            herdr_exit_code: 0,
+            args: &["auto", "now"],
+            hub_run: false,
+            exit_code: 2,
             says: "hub: no run folder; pass --run DIR or set HUB_RUN\n",
         },
         Case {
@@ -130,15 +141,6 @@ fn hub_exit_code_follows_failure_kind() {
             hub_run: true,
             exit_code: 1,
             says: "hub: card: no default vault\n",
-        },
-        Case {
-            name: "auto-check-no-list",
-            herdr_stdout: "",
-            herdr_exit_code: 0,
-            args: &["auto", "check"],
-            hub_run: true,
-            exit_code: 3,
-            says: "hub: run.md does not exist\n",
         },
         Case {
             name: "auto-other-reply",
@@ -232,43 +234,159 @@ fn hub_next_newer_watcher_replaces_older() {
 }
 
 /// A worker's `hub report` that writes to the wrong run folder never
-/// reaches its hub, and a silent default would hide that. `--run` wins
-/// over `HUB_RUN`, and a missing or wrong folder is wrong usage.
+/// reaches its hub. So `--run` wins over `HUB_RUN`, and both win over
+/// the folder of the hub running on this machine.
 #[test]
-fn find_run_folder_prefers_flag_over_env() {
+fn find_run_folder_prefers_flag_then_env() {
     let folder = TempFolder::new();
     let flag_run = folder.path().join("flag-run");
     let env_run = folder.path().join("env-run");
     fs::create_dir(&flag_run).unwrap();
     fs::create_dir(&env_run).unwrap();
-    let missing = folder.path().join("missing");
+    let local_state = folder.path().join("state");
+    fs::create_dir(&local_state).unwrap();
+    let _live = hold_watcher_lock(&local_state.join("herdr-hub.live"));
     let cases = [
         (
             "flag-and-env",
             Some(flag_run.as_path()),
             Some(env_run.as_os_str()),
-            Some(&flag_run),
+            &flag_run,
         ),
-        ("env-only", None, Some(env_run.as_os_str()), Some(&env_run)),
-        ("neither", None, None, None),
-        ("missing-folder", Some(missing.as_path()), None, None),
+        ("env-only", None, Some(env_run.as_os_str()), &env_run),
     ];
 
     for (case_name, given, hub_run, expected) in cases {
-        let found = find_run_folder(given, hub_run);
+        let found = find_run_folder(given, hub_run, Some(&local_state))
+            .unwrap_or_else(|error| panic!("{case_name}: {error}"));
 
-        match (found, expected) {
-            (Ok(run), Some(expected)) => {
-                assert_eq!(
-                    run.path(),
-                    std::path::absolute(expected).unwrap(),
-                    "{case_name}"
-                );
-            }
-            (Err(HubError::Usage(_)), None) => {}
-            (found, _) => panic!("{case_name}: {:?}", found.map(|run| run.path().to_owned())),
-        }
+        assert_eq!(
+            found.path(),
+            std::path::absolute(expected).unwrap(),
+            "{case_name}"
+        );
     }
+}
+
+/// A mistyped `--run` is wrong usage, so the command stops with exit 2
+/// rather than use the folder of the hub running on this machine.
+#[test]
+fn find_run_folder_rejects_missing_folder() {
+    let folder = TempFolder::new();
+    let missing = folder.path().join("missing");
+    let local_state = folder.path().join("state");
+    fs::create_dir(&local_state).unwrap();
+    let _live = hold_watcher_lock(&local_state.join("herdr-hub.live"));
+
+    let found = find_run_folder(Some(&missing), None, Some(&local_state));
+
+    assert!(
+        matches!(found, Err(HubError::Usage(_))),
+        "{:?}",
+        found.map(|run| run.path().to_owned())
+    );
+}
+
+/// The desk's `hub board` pane has no `HUB_RUN`. The search must take
+/// the folder whose `hub next` holds the lock, even when another run
+/// wrote events later. Between `hub next` runs no lock is held, and
+/// the board must still show the hub that worked last, not an older
+/// finished run or an error. The two no-lock cases swap the ages, so
+/// the order the folders are listed in cannot decide the answer.
+#[test]
+fn find_run_folder_picks_running_else_newest() {
+    const HOUR: u64 = 60 * 60;
+    struct Case {
+        name: &'static str,
+        running: Option<&'static str>,
+        a_age_secs: u64,
+        b_age_secs: u64,
+        expected: &'static str,
+    }
+    let cases = [
+        Case {
+            name: "one-running",
+            running: Some("herdr-hub.live"),
+            a_age_secs: HOUR,
+            b_age_secs: 2 * HOUR,
+            expected: "herdr-hub.live",
+        },
+        Case {
+            name: "a-newest",
+            running: None,
+            a_age_secs: HOUR,
+            b_age_secs: 2 * HOUR,
+            expected: "herdr-hub.a",
+        },
+        Case {
+            name: "b-newest",
+            running: None,
+            a_age_secs: 2 * HOUR,
+            b_age_secs: HOUR,
+            expected: "herdr-hub.b",
+        },
+    ];
+
+    for case in cases {
+        let local_state = TempFolder::new();
+        make_finished_run(&local_state.path().join("herdr-hub.a"), case.a_age_secs);
+        make_finished_run(&local_state.path().join("herdr-hub.b"), case.b_age_secs);
+        let _lock = case
+            .running
+            .map(|name| hold_watcher_lock(&local_state.path().join(name)));
+
+        let found = find_run_folder(None, None, Some(local_state.path()))
+            .unwrap_or_else(|error| panic!("{}: {error}", case.name));
+
+        assert_eq!(
+            found.path(),
+            local_state.path().join(case.expected),
+            "{}",
+            case.name
+        );
+    }
+}
+
+/// During an auto run two hubs run, each with its own folder, and
+/// picking one could show the wrong run. So the search names both
+/// folders and asks for `--run`, rather than taking the folder used
+/// last.
+#[test]
+fn find_run_folder_rejects_two_running_hubs() {
+    let local_state = TempFolder::new();
+    make_finished_run(&local_state.path().join("herdr-hub.last"), 60 * 60);
+    let _auto = hold_watcher_lock(&local_state.path().join("herdr-hub.auto"));
+    let _front = hold_watcher_lock(&local_state.path().join("herdr-hub.front"));
+
+    let found = find_run_folder(None, None, Some(local_state.path()));
+
+    match found {
+        Err(HubError::Usage(message)) => {
+            assert!(message.contains("herdr-hub.auto"), "{message}");
+            assert!(message.contains("herdr-hub.front"), "{message}");
+        }
+        found => panic!("{:?}", found.map(|run| run.path().to_owned())),
+    }
+}
+
+/// Makes the run folder `path` and locks its `.watcher.lock` as a
+/// running `hub next` does, until the returned file closes.
+fn hold_watcher_lock(path: &Path) -> fs::File {
+    fs::create_dir(path).unwrap();
+    let lock = fs::File::create(path.join(".watcher.lock")).unwrap();
+    lock.lock().unwrap();
+    lock
+}
+
+/// Makes a finished run folder at `path`, with a lock file nothing
+/// holds and an `events.jsonl` last changed `age_secs` ago.
+fn make_finished_run(path: &Path, age_secs: u64) {
+    fs::create_dir(path).unwrap();
+    fs::File::create(path.join(".watcher.lock")).unwrap();
+    fs::File::create(path.join("events.jsonl"))
+        .unwrap()
+        .set_modified(SystemTime::now() - Duration::from_secs(age_secs))
+        .unwrap();
 }
 
 /// A remote hub's `hub --machine laptop flag NAME` must mark the
