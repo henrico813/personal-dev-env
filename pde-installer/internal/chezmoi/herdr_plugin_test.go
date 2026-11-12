@@ -130,6 +130,64 @@ func TestHerdrScriptReloadsRunningServerConfig(t *testing.T) {
 	}
 }
 
+// When the Herdr server's PATH lacks ~/.local/bin, a key that runs a bare
+// `hub go` does nothing, because neither hub nor the herdr and card it runs
+// are found.
+func TestHerdrShellKeysFindInstalledTools(t *testing.T) {
+	home := t.TempDir()
+	keys := readHerdrShellKeys(t)
+	if len(keys) == 0 {
+		t.Fatal("found no shell keys in the Herdr config")
+	}
+
+	for _, key := range keys {
+		t.Run(key.key, func(t *testing.T) {
+			program := findShellKeyProgram(key.command)
+			if program == "" {
+				t.Fatalf("shell key %s has no command", key.key)
+			}
+			tool := filepath.Join(
+				home,
+				".local",
+				"bin",
+				filepath.Base(program),
+			)
+			// The fake counts as run only when the tools it calls in turn,
+			// such as herdr and card, are on PATH too.
+			testfile.WriteExecutable(
+				t,
+				tool,
+				"#!/bin/sh\ncase \":$PATH:\" in *\":$HOME/.local/bin:\"*) : >\"$0.ran\" ;; esac\n",
+			)
+			// Herdr runs `sh -lc`, but the test leaves out -l so the host's
+			// /etc/profile cannot add ~/.local/bin and hide a bare name.
+			command := exec.Command(
+				"/bin/sh",
+				"-c",
+				key.command,
+			)
+			command.Env = buildServerEnvironment(home)
+
+			output, err := command.CombinedOutput()
+
+			if err != nil {
+				t.Fatalf(
+					"command failed without ~/.local/bin on PATH: %v\n%s",
+					err,
+					output,
+				)
+			}
+			if _, err := os.Stat(tool + ".ran"); err != nil {
+				t.Errorf(
+					"%s did not run with ~/.local/bin on its PATH: %v",
+					tool,
+					err,
+				)
+			}
+		})
+	}
+}
+
 // Runs the script for home against a fake herdr in herdrState, found as
 // herdrIn says, and returns its output and the herdr calls it made. Fails
 // the test when the script exits nonzero, which would fail the install.
@@ -244,6 +302,75 @@ func renderHerdrSetup(t *testing.T, home string) string {
 		t.Fatal(err)
 	}
 	return output.String()
+}
+
+// One shell key in the managed Herdr config.
+type herdrShellKey struct {
+	key     string
+	command string
+}
+
+// Returns each shell key in the managed Herdr config. Each one is expected
+// to start a tool installed in ~/.local/bin.
+func readHerdrShellKeys(t *testing.T) []herdrShellKey {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(
+		repoRoot(t),
+		"chezmoi",
+		"dot_config",
+		"herdr",
+		"config.toml",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keys []herdrShellKey
+	for _, block := range strings.Split(string(data), "[[keys.command]]")[1:] {
+		block, _, _ = strings.Cut(block, "\n[")
+		values := map[string]string{}
+		for _, line := range strings.Split(block, "\n") {
+			if key, value, found := strings.Cut(line, " = "); found {
+				values[key] = strings.Trim(value, `"'`)
+			}
+		}
+		if values["type"] == "shell" {
+			keys = append(keys, herdrShellKey{
+				key:     values["key"],
+				command: values["command"],
+			})
+		}
+	}
+	return keys
+}
+
+// Returns the program a shell key starts, the first word that does not set
+// a variable.
+func findShellKeyProgram(command string) string {
+	for _, word := range strings.Fields(command) {
+		if !strings.Contains(word, "=") {
+			return word
+		}
+	}
+	return ""
+}
+
+// Returns this test's environment with the test home as HOME and ZDOTDIR
+// and only the system folders on PATH, like a Herdr server started over ssh.
+func buildServerEnvironment(home string) []string {
+	var environment []string
+	for _, value := range os.Environ() {
+		if strings.HasPrefix(value, "HOME=") ||
+			strings.HasPrefix(value, "ZDOTDIR=") ||
+			strings.HasPrefix(value, "PATH=") {
+			continue
+		}
+		environment = append(environment, value)
+	}
+	return append(environment,
+		"HOME="+home,
+		"ZDOTDIR="+home,
+		"PATH=/usr/bin:/bin",
+	)
 }
 
 const fakeHerdr = `#!/bin/sh
