@@ -38,17 +38,23 @@ pub fn run_go(tools: &Tools<'_>) -> Result<Outcome, HubError> {
 /// block at the top of the sidebar. Kanban hubs come first, then the
 /// desk, then the other hubs. It then fills the "go to" agent list.
 pub fn run_gather(tools: &Tools<'_>) -> Result<Outcome, HubError> {
-    let agents = tools.herdr.list_agents()?;
-    let workspaces = tools.herdr.list_workspaces()?;
-    let hubs = list_hubs(&agents, &workspaces);
-    if hubs.is_empty() {
+    let Some(block) = gather_hubs(tools)? else {
         return Err(HubError::NotDone("no hub is running".to_owned()));
-    }
-    let desk_id = find_desk(&workspaces).map(|desk| desk.workspace_id.as_str());
-    let block = list_top_block(&hubs, desk_id);
-    move_block_to_top(tools, &block, &workspaces)?;
-    show_go_to_list(tools, &agents, &hubs, desk_id)?;
+    };
     Ok(Outcome::line(format!("at the top: {}", block.join(" "))))
+}
+
+/// Does what `hub gather` does, for a command that just started or
+/// took over a hub. Returns a warning line when that fails, since a
+/// sidebar problem must never fail the command. Returns `None` when it
+/// worked or when no hub runs.
+pub(crate) fn gather_after_hub_start(tools: &Tools<'_>) -> Option<String> {
+    match gather_hubs(tools) {
+        Ok(_) => None,
+        Err(error) => Some(format!(
+            "could not put the hubs on top: {error}; hub gather tries again"
+        )),
+    }
 }
 
 /// Makes the desk when it is missing, with the board in its first tab
@@ -67,6 +73,22 @@ pub fn run_desk(tools: &Tools<'_>, home: &Path) -> Result<Outcome, HubError> {
     move_block_to_top(tools, &block, &workspaces)?;
     show_go_to_list(tools, &agents, &hubs, Some(&desk_id))?;
     Ok(Outcome::line(line))
+}
+
+/// Moves the top block and fills the "go to" agent list, then returns
+/// the block. Returns `None` and changes nothing when no hub runs.
+fn gather_hubs(tools: &Tools<'_>) -> Result<Option<Vec<String>>, HubError> {
+    let agents = tools.herdr.list_agents()?;
+    let workspaces = tools.herdr.list_workspaces()?;
+    let hubs = list_hubs(&agents, &workspaces);
+    if hubs.is_empty() {
+        return Ok(None);
+    }
+    let desk_id = find_desk(&workspaces).map(|desk| desk.workspace_id.as_str());
+    let block = list_top_block(&hubs, desk_id);
+    move_block_to_top(tools, &block, &workspaces)?;
+    show_go_to_list(tools, &agents, &hubs, desk_id)?;
+    Ok(Some(block))
 }
 
 /// Makes the desk workspace in `home` and returns its ID.

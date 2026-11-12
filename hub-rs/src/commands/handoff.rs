@@ -13,7 +13,7 @@ use std::time::{Duration, Instant, SystemTime};
 use jiff::Zoned;
 use jiff::civil::Date;
 
-use super::Outcome;
+use super::{Outcome, sidebar};
 use crate::external::herdr::{Agent, AgentStart, Herdr, HerdrError, NewPlace};
 use crate::shared::events::{self, Event, EventKind, Memory};
 use crate::shared::lifecycle;
@@ -122,6 +122,7 @@ pub fn run_handoff(
         .herdr
         .prompt(name.as_str(), &make_handoff_prompt(&handoff))
         .map_err(|error| started_but(error.into()))?;
+    let gather_warning = sidebar::gather_after_hub_start(tools);
     let effort = wait_for_reply_effort(tools, name, poll).map_err(started_but)?;
 
     let expected = model
@@ -142,15 +143,17 @@ pub fn run_handoff(
             name.as_str()
         )));
     }
-    Ok(Outcome {
-        lines: vec![
-            format!(
-                "started {} on {model}; its first reply ran at {effort}",
-                name.as_str()
-            ),
-            format!("review handoff {}", review.display()),
-        ],
-    })
+    let mut lines = vec![
+        format!(
+            "started {} on {model}; its first reply ran at {effort}",
+            name.as_str()
+        ),
+        format!("review handoff {}", review.display()),
+    ];
+    if let Some(warning) = gather_warning {
+        lines.push(warning);
+    }
+    Ok(Outcome { lines })
 }
 
 /// Makes this hub take over `old`, an older hub of the run that no
@@ -209,11 +212,15 @@ pub fn run_adopt(
         },
     };
     events::append_event(run, &adopted)?;
-    Ok(Outcome::line(format!(
+    let mut outcome = Outcome::line(format!(
         "adopted {}; hub clean closes its tab once it is idle, then hub next --start-reviews starts {}",
         old_hub.name,
         name_reviewer(&old_hub.name)
-    )))
+    ));
+    if let Some(warning) = sidebar::gather_after_hub_start(tools) {
+        outcome.lines.push(warning);
+    }
+    Ok(outcome)
 }
 
 /// Starts the session review of an old hub once its tab has closed,

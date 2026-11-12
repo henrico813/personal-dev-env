@@ -10,7 +10,8 @@ use hub::shared::{AgentName, HubError};
 use serde_json::json;
 
 use common::{
-    OpenCodeRow, TestTools, make_agent, make_refusal, make_time, read_events, write_opencode_db,
+    OpenCodeRow, TestTools, make_agent, make_refusal, make_time, make_workspaces, read_events,
+    write_opencode_db,
 };
 
 /// The model the newest `rules.md` line names.
@@ -264,6 +265,55 @@ fn run_handoff_records_old_hub_and_review() {
     );
 }
 
+/// Two hubs once started without anyone running `hub gather`, and the
+/// run's workspace sat at the bottom of the sidebar. A handoff puts the
+/// hubs' workspace above the workers' and tags the next hub for the
+/// "go to" list, with no extra line when that works.
+#[test]
+fn run_handoff_gathers_hubs_silently() {
+    let (mut test_tools, handoff) = make_handoff_tools();
+    test_tools.herdr.workspaces = make_workspaces(&["w2", "w1"]);
+    write_first_reply(&test_tools, "medium");
+
+    let lines = run_next_hub(&test_tools, &handoff).unwrap();
+
+    assert_eq!(
+        *test_tools.herdr.moves.borrow(),
+        [(vec!["w1".to_owned()], "w2".to_owned())]
+    );
+    let tagged_hubs = test_tools.herdr.tagged_hubs.borrow();
+    assert!(
+        tagged_hubs
+            .iter()
+            .any(|(pane_id, _)| pane_id == "w1:kanban-hub-2")
+    );
+    assert_eq!(test_tools.herdr.agent_filters.get(), 1);
+    assert_eq!(lines.len(), 2);
+}
+
+/// A handoff that reported a sidebar problem as a failure would make
+/// the hub run it again and start a second hub. The handoff still
+/// reports success, with one line that names the problem.
+#[test]
+fn run_handoff_warns_when_gather_fails() {
+    let (mut test_tools, handoff) = make_handoff_tools();
+    test_tools.herdr.workspaces = make_workspaces(&["w2", "w1"]);
+    test_tools.herdr.fail_next(
+        "move_workspaces",
+        make_refusal(HerdrCode::Other(String::new())),
+    );
+    write_first_reply(&test_tools, "medium");
+
+    let lines = run_next_hub(&test_tools, &handoff).unwrap();
+
+    assert!(lines[0].starts_with("started kanban-hub-2 on "));
+    assert_eq!(
+        lines[2],
+        "could not put the hubs on top: Herdr said no; hub gather tries again"
+    );
+    assert_eq!(lines.len(), 3);
+}
+
 /// A hub started without `hub handoff` leaves the older hub open with
 /// no review. Adopting it records the same `handoff` event a handoff
 /// writes, so the tidy pass closes the old hub and
@@ -315,4 +365,56 @@ fn run_adopt_refuses_newer_hub() {
 
     assert!(matches!(error, HubError::NotDone(_)), "{error:?}");
     assert!(read_events(&test_tools.run_path()).is_empty());
+}
+
+/// A hub `kanban-hub-4` in its own pane that can adopt `kanban-hub-3`,
+/// both in workspace `w1`, below a worker's workspace `w2`.
+fn make_adopt_tools() -> TestTools {
+    let mut test_tools = TestTools::new();
+    test_tools.herdr.agents = vec![
+        make_agent("kanban-hub-4", AgentStatus::Working),
+        Agent {
+            session_id: Some("ses_old".to_owned()),
+            ..make_agent("kanban-hub-3", AgentStatus::Working)
+        },
+    ];
+    test_tools.herdr.workspaces = make_workspaces(&["w2", "w1"]);
+    test_tools.own_pane = Some("w1:kanban-hub-4".to_owned());
+    test_tools
+}
+
+/// A hub the user started by hand runs `hub adopt` first. Adopting
+/// puts the hubs' workspace above the workers', so that hub's sidebar
+/// is right without anyone running `hub gather`.
+#[test]
+fn run_adopt_gathers_hubs_silently() {
+    let test_tools = make_adopt_tools();
+
+    let lines = adopt_hub(&test_tools, "kanban-hub-3").unwrap();
+
+    assert_eq!(
+        *test_tools.herdr.moves.borrow(),
+        [(vec!["w1".to_owned()], "w2".to_owned())]
+    );
+    assert_eq!(lines.len(), 1);
+}
+
+/// The adoption is recorded before the gather runs, so a sidebar
+/// problem must not read as a failed adoption that the hub retries.
+#[test]
+fn run_adopt_warns_when_gather_fails() {
+    let test_tools = make_adopt_tools();
+    test_tools.herdr.fail_next(
+        "move_workspaces",
+        make_refusal(HerdrCode::Other(String::new())),
+    );
+
+    let lines = adopt_hub(&test_tools, "kanban-hub-3").unwrap();
+
+    assert!(lines[0].starts_with("adopted kanban-hub-3; "));
+    assert_eq!(
+        lines[1],
+        "could not put the hubs on top: Herdr said no; hub gather tries again"
+    );
+    assert_eq!(read_events(&test_tools.run_path()).len(), 1);
 }
