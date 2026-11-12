@@ -1,14 +1,9 @@
 """Check a checkout's skills for mistakes that break them.
 
-Prints one line per problem and exits 1 when any problem is an error.
-Errors are a link to a file that does not exist, a skill name with no
-skill folder, a reference file SKILL.md does not link, a frontmatter
-name that differs from the folder, and a Lessons section skill-lessons
-cannot fill. With ``--base``, the lines added since that commit are
-checked too. An added line over 72 columns that could wrap is an
-error, and eight words in a row that another skill also has are
-reported for the author to judge. Files Git ignores are skipped. Read
-``check_skills`` first.
+Prints up to ten errors and ten repeats, then a count line, and exits
+1 when any problem is an error. Files Git ignores are skipped. Read
+``check_skills`` first. Its docstring lists each check in the order
+it runs.
 
 Example:
     python3 ~/.agents/skills/skill-development/scripts/skill_check.py
@@ -61,12 +56,53 @@ class Problem:
     message: str
 
 
-def check_skills(skills_dir: Path, base: str | None) -> list[Problem]:
-    """Run every check on the skills in skills_dir.
+@dataclass(frozen=True)
+class Skills:
+    """The skills in a skills folder and the Markdown files to check.
 
-    Only files from ``list_skill_files`` are read. The ``AGENTS.md``
-    next to skills_dir, when present, is checked for skill names, and
-    its added lines for width and repeats.
+    The checked files are each skill's Markdown files and the
+    ``AGENTS.md`` next to the skills folder.
+
+    Attributes:
+        folders: Each skill's folder, sorted.
+        files: Every file from ``list_skill_files``, Markdown or not.
+        names: Skills in the checkout or installed in
+            ``~/.agents/skills``.
+        prose: Lines of each checked file from ``blank_code_lines``.
+        owners: The skill, or ``AGENTS.md``, each checked file belongs
+            to.
+    """
+
+    folders: list[Path]
+    files: list[Path]
+    names: set[str]
+    prose: dict[Path, list[str]]
+    owners: dict[Path, str]
+
+
+def check_skills(skills_dir: Path, base: str | None) -> list[Problem]:
+    """Run every check on the skills in skills_dir, in this order.
+
+    1. A link to a file that does not exist is an error.
+    2. A skill name with no skill folder is an error.
+    3. A reference file that SKILL.md does not link is an error.
+    4. A frontmatter name that is missing or differs from the folder
+       is an error.
+    5. A Lessons section that skill-lessons cannot fill, or that is
+       missing from a skill whose Remembering corrections line names
+       a skill, is an error.
+    6. A Remembering corrections line that names another skill, or
+       that is missing from a skill with a Lessons section, is an
+       error.
+
+    With base, two more checks report only on lines added since base.
+
+    7. An added line over 72 columns that could wrap is an error.
+    8. Eight words in a row that another skill or ``AGENTS.md`` also
+       has are a repeat, for the author to judge.
+
+    Checks 1, 2, 7 and 8 also read the ``AGENTS.md`` next to
+    skills_dir.
 
     Args:
         skills_dir: Folder with one subfolder per skill.
@@ -74,24 +110,63 @@ def check_skills(skills_dir: Path, base: str | None) -> list[Problem]:
             added lines.
 
     Returns:
-        Errors first, then repeats.
+        The problems in the order of the checks, so errors come before
+        repeats.
 
     Raises:
         subprocess.CalledProcessError: When git fails, such as outside
             a checkout or for a base that does not exist.
     """
+    skills = read_skills(skills_dir)
+    problems = (
+        check_links(skills)
+        + check_skill_names(skills)
+        + check_references_linked(skills)
+        + check_frontmatter_names(skills)
+        + check_lessons_sections(skills)
+        + check_corrections_names(skills)
+    )
+    if base is None:
+        return problems
+    added = find_added_lines(skills_dir, base, list(skills.prose))
+    return (
+        problems
+        + check_line_widths(skills, added)
+        + find_repeats(skills, added)
+    )
+
+
+def read_skills(skills_dir: Path) -> Skills:
+    """Read the skills in skills_dir and the prose of their files.
+
+    Only files from ``list_skill_files`` are read. Skills installed in
+    ``~/.agents/skills`` count as known names, since a skill may name
+    one that another repository holds.
+
+    Args:
+        skills_dir: Folder with one subfolder per skill.
+
+    Returns:
+        The skills, with each checked file's lines from
+        ``blank_code_lines`` and the skill, or ``AGENTS.md``, it
+        belongs to.
+
+    Raises:
+        subprocess.CalledProcessError: When skills_dir is not in a Git
+            checkout.
+    """
     files = list_skill_files(skills_dir)
-    skills = sorted(
+    folders = sorted(
         path.parent
         for path in files
         if path.name == "SKILL.md" and path.parent.parent == skills_dir
     )
-    names = {skill.name for skill in skills}
+    names = {folder.name for folder in folders}
     names |= {p.parent.name for p in INSTALLED_SKILLS.glob("*/SKILL.md")}
     owners = {}
     for path in files:
         folder = skills_dir / path.relative_to(skills_dir).parts[0]
-        if path.suffix == ".md" and folder in skills:
+        if path.suffix == ".md" and folder in folders:
             owners[path] = folder.name
     agents = skills_dir.parent / "AGENTS.md"
     if agents.is_file():
@@ -100,21 +175,7 @@ def check_skills(skills_dir: Path, base: str | None) -> list[Problem]:
         path: blank_code_lines(path.read_text(encoding="utf-8"))
         for path in owners
     }
-    errors = []
-    for path, lines in prose.items():
-        errors += check_links(path, lines)
-        errors += check_skill_names(path, lines, names)
-    for skill in skills:
-        text = (skill / "SKILL.md").read_text(encoding="utf-8")
-        errors += check_frontmatter_name(skill, text)
-        errors += check_references(skill, prose[skill / "SKILL.md"], files)
-        errors += check_lessons(skill, text)
-    if base is None:
-        return errors
-    added = find_added_lines(skills_dir, base, list(owners))
-    for path, lines in prose.items():
-        errors += find_wide_lines(path, lines, added.get(path, set()))
-    return errors + find_repeats(prose, owners, added)
+    return Skills(folders, files, names, prose, owners)
 
 
 def list_skill_files(skills_dir: Path) -> list[Path]:
@@ -186,22 +247,21 @@ def blank_code_lines(text: str) -> list[str]:
     return kept
 
 
-def check_links(path: Path, lines: list[str]) -> list[Problem]:
+def check_links(skills: Skills) -> list[Problem]:
     """Report each relative link whose file does not exist.
 
     Args:
-        path: Markdown file the lines come from.
-        lines: The file's prose lines from ``blank_code_lines``.
+        skills: The skills from ``read_skills``.
 
     Returns:
         One error per broken link.
     """
     problems = []
-    for target, line in find_link_targets(lines):
-        if not (path.parent / target).exists():
-            problems.append(
-                Problem(path, line, "error", f"links to missing {target}")
-            )
+    for path, lines in skills.prose.items():
+        for target, line in find_link_targets(lines):
+            if not (path.parent / target).exists():
+                message = f"links to missing {target}"
+                problems.append(Problem(path, line, "error", message))
     return problems
 
 
@@ -230,130 +290,195 @@ def find_link_targets(lines: list[str]) -> list[tuple[str, int]]:
     return targets
 
 
-def check_skill_names(
-    path: Path, lines: list[str], names: set[str]
-) -> list[Problem]:
+def check_skill_names(skills: Skills) -> list[Problem]:
     """Report each skill the prose names that has no skill folder.
 
-    Only names written as skill names count, such as "the
-    `code-documentation` skill" or a link to ``../<name>/SKILL.md``.
+    A name is known when it is in the checkout or installed.
 
     Args:
-        path: Markdown file the lines come from.
-        lines: The file's prose lines from ``blank_code_lines``.
-        names: Skills in the checkout or installed.
+        skills: The skills from ``read_skills``.
 
     Returns:
         One error per unknown name.
     """
     problems = []
-    for number, line in enumerate(lines, 1):
-        for match in SKILL_NAME.finditer(line):
-            name = next(group for group in match.groups() if group)
-            if name not in names:
-                problems.append(
-                    Problem(path, number, "error", f"no skill named {name}")
-                )
+    for path, lines in skills.prose.items():
+        for name, line in find_skill_names(lines):
+            if name not in skills.names:
+                message = f"no skill named {name}"
+                problems.append(Problem(path, line, "error", message))
     return problems
 
 
-def check_frontmatter_name(skill: Path, text: str) -> list[Problem]:
-    """Report a frontmatter name that differs from the skill's folder.
+def find_skill_names(lines: list[str]) -> list[tuple[str, int]]:
+    """List the skill names in prose.
 
-    Agents load a skill by its frontmatter name, and the installer and
-    skill-lessons find it by its folder.
+    Only names written as skill names count, such as "the
+    `code-documentation` skill" or a link to ``../<name>/SKILL.md``.
 
     Args:
-        skill: The skill's folder.
-        text: Contents of its SKILL.md.
+        lines: Prose lines from ``blank_code_lines``.
 
     Returns:
-        One error when the name differs or is missing, else nothing.
+        Each name with its line number.
     """
-    lines = text.splitlines()
-    closed = lines[:1] == ["---"] and "---" in lines[1:]
-    end = lines.index("---", 1) if closed else 0
-    for line in lines[1:end]:
-        if line.startswith("name:"):
-            name = line.removeprefix("name:").strip()
-            if name == skill.name:
-                return []
-            break
-    message = f"frontmatter name must be {skill.name}"
-    return [Problem(skill / "SKILL.md", 1, "error", message)]
+    names = []
+    for number, line in enumerate(lines, 1):
+        for match in SKILL_NAME.finditer(line):
+            name = next(group for group in match.groups() if group)
+            names.append((name, number))
+    return names
 
 
-def check_references(
-    skill: Path, lines: list[str], files: list[Path]
-) -> list[Problem]:
-    """Report each reference file that SKILL.md does not link.
+def check_references_linked(skills: Skills) -> list[Problem]:
+    """Report each reference file that its SKILL.md does not link.
 
     An agent reads only what SKILL.md points to, so an unlinked
     reference is never read.
 
     Args:
-        skill: The skill's folder.
-        lines: Prose lines of its SKILL.md from ``blank_code_lines``.
-        files: Files from ``list_skill_files``.
+        skills: The skills from ``read_skills``.
 
     Returns:
         One error per unlinked file in ``references/`` or
         ``reference/``.
     """
-    linked = {
-        (skill / target).resolve() for target, _ in find_link_targets(lines)
-    }
-    folders = (skill / "references", skill / "reference")
     problems = []
-    for path in files:
-        in_folder = any(path.is_relative_to(folder) for folder in folders)
-        if in_folder and path.resolve() not in linked:
-            message = "SKILL.md does not link this reference"
+    for skill in skills.folders:
+        targets = find_link_targets(skills.prose[skill / "SKILL.md"])
+        linked = {(skill / target).resolve() for target, _ in targets}
+        folders = (skill / "references", skill / "reference")
+        for path in skills.files:
+            in_folder = any(path.is_relative_to(folder) for folder in folders)
+            if in_folder and path.resolve() not in linked:
+                message = "SKILL.md does not link this reference"
+                problems.append(Problem(path, 1, "error", message))
+    return problems
+
+
+def check_frontmatter_names(skills: Skills) -> list[Problem]:
+    """Report each frontmatter name that is missing or differs from its folder.
+
+    Agents load a skill by its frontmatter name, and the installer and
+    skill-lessons find it by its folder.
+
+    Args:
+        skills: The skills from ``read_skills``.
+
+    Returns:
+        One error per skill whose name differs or is missing.
+    """
+    problems = []
+    for skill in skills.folders:
+        path = skill / "SKILL.md"
+        name = read_frontmatter_name(path.read_text(encoding="utf-8"))
+        if name != skill.name:
+            message = f"frontmatter name must be {skill.name}"
             problems.append(Problem(path, 1, "error", message))
     return problems
 
 
-def check_lessons(skill: Path, text: str) -> list[Problem]:
-    """Report a Lessons section that skill-lessons cannot fill.
+def read_frontmatter_name(text: str) -> str | None:
+    """Return the first ``name:`` value in a SKILL.md's frontmatter.
+
+    Args:
+        text: Contents of a SKILL.md.
+
+    Returns:
+        The name, or None when the frontmatter is missing, is not
+        closed, or has no name.
+    """
+    lines = text.splitlines()
+    if lines[:1] != ["---"] or "---" not in lines[1:]:
+        return None
+    for line in lines[1 : lines.index("---", 1)]:
+        if line.startswith("name:"):
+            return line.removeprefix("name:").strip()
+    return None
+
+
+def check_lessons_sections(skills: Skills) -> list[Problem]:
+    """Report each Lessons section that skill-lessons cannot fill.
 
     skill-lessons refuses a skill without the marker line under its
     Lessons heading, and the installer would overwrite text written
-    under it. A Remembering corrections line that names another skill
-    sends the user's corrections to that skill.
+    under it. A missing section is reported only for a skill whose
+    Remembering corrections line names a skill.
 
     Args:
-        skill: The skill's folder.
-        text: Contents of its SKILL.md.
+        skills: The skills from ``read_skills``.
 
     Returns:
-        One error per problem, or nothing for a skill without lessons.
+        The errors of ``check_lessons_section`` for every skill.
+    """
+    problems = []
+    for skill in skills.folders:
+        path = skill / "SKILL.md"
+        text = path.read_text(encoding="utf-8")
+        problems += check_lessons_section(path, text)
+    return problems
+
+
+def check_lessons_section(path: Path, text: str) -> list[Problem]:
+    """Report why one SKILL.md's Lessons section cannot be filled.
+
+    A skill whose Remembering corrections line names a skill needs a
+    Lessons section. A skill with neither is fine.
+
+    Args:
+        path: The SKILL.md.
+        text: Its contents.
+
+    Returns:
+        One error per problem found.
     """
     lines = text.splitlines()
-    named = set(LESSONS_NAME.findall(text))
-    if "## Lessons" not in lines and not named:
-        return []
-    path = skill / "SKILL.md"
-    problems = []
     if "## Lessons" not in lines:
-        problems.append(Problem(path, 1, "error", "no ## Lessons section"))
-    else:
-        start = lines.index("## Lessons") + 1
-        if not lines[start:] or not lines[start].startswith(LESSONS_MARKER):
-            message = "the skill-lessons marker must follow ## Lessons"
-            problems.append(Problem(path, start, "error", message))
-        for number, line in enumerate(lines[start + 1 :], start + 2):
-            if line.startswith("## "):
-                break
-            if line.strip():
-                message = "Lessons must stay empty; skill-lessons fills it"
-                problems.append(Problem(path, number, "error", message))
-                break
-    if named != {skill.name}:
-        message = (
-            "Remembering corrections must say "
-            f'"with the skill name `{skill.name}`"'
-        )
-        problems.append(Problem(path, 1, "error", message))
+        if LESSONS_NAME.search(text):
+            return [Problem(path, 1, "error", "no ## Lessons section")]
+        return []
+    problems = []
+    start = lines.index("## Lessons") + 1
+    if not lines[start:] or not lines[start].startswith(LESSONS_MARKER):
+        message = "the skill-lessons marker must follow ## Lessons"
+        problems.append(Problem(path, start, "error", message))
+    for number, line in enumerate(lines[start + 1 :], start + 2):
+        if line.startswith("## "):
+            break
+        if line.strip():
+            message = "Lessons must stay empty; skill-lessons fills it"
+            problems.append(Problem(path, number, "error", message))
+            break
+    return problems
+
+
+def check_corrections_names(skills: Skills) -> list[Problem]:
+    """Report each Remembering corrections line that is wrong or missing.
+
+    skill-lessons saves the user's corrections to the skill this line
+    names, so a line copied from another skill sends them there. A
+    skill with a Lessons section needs this line. A skill with neither
+    is fine.
+
+    Args:
+        skills: The skills from ``read_skills``.
+
+    Returns:
+        One error per skill whose line is missing or names another
+        skill.
+    """
+    problems = []
+    for skill in skills.folders:
+        path = skill / "SKILL.md"
+        text = path.read_text(encoding="utf-8")
+        named = set(LESSONS_NAME.findall(text))
+        has_lessons = "## Lessons" in text.splitlines()
+        if (has_lessons or named) and named != {skill.name}:
+            message = (
+                "Remembering corrections must say "
+                f'"with the skill name `{skill.name}`"'
+            )
+            problems.append(Problem(path, 1, "error", message))
     return problems
 
 
@@ -416,40 +541,48 @@ def find_added_lines(
     return added
 
 
-def find_wide_lines(
-    path: Path, lines: list[str], added: set[int]
+def check_line_widths(
+    skills: Skills, added: dict[Path, set[int]]
 ) -> list[Problem]:
     """Report each added prose line over 72 columns that could wrap.
 
-    Tables and headings are skipped, and so is a line whose only space
-    before column 72 is in its indent or list marker, such as one long
-    link.
-
     Args:
-        path: Markdown file the lines come from.
-        lines: The file's prose lines from ``blank_code_lines``.
-        added: Line numbers added since the base commit.
+        skills: The skills from ``read_skills``.
+        added: Line numbers added since the base commit, by file.
 
     Returns:
         One error per line to wrap.
     """
     problems = []
-    for number in sorted(added):
-        line = lines[number - 1]
-        if len(line) <= MAX_WIDTH or line.lstrip().startswith(("|", "#")):
-            continue
-        head = LIST_MARKER.sub("", line[: MAX_WIDTH + 1], count=1)
-        if " " in head:
-            message = f"{len(line)} columns; wrap at {MAX_WIDTH}"
-            problems.append(Problem(path, number, "error", message))
+    for path, lines in skills.prose.items():
+        for number in sorted(added.get(path, set())):
+            line = lines[number - 1]
+            if needs_wrapping(line):
+                message = f"{len(line)} columns; wrap at {MAX_WIDTH}"
+                problems.append(Problem(path, number, "error", message))
     return problems
 
 
-def find_repeats(
-    prose: dict[Path, list[str]],
-    owners: dict[Path, str],
-    added: dict[Path, set[int]],
-) -> list[Problem]:
+def needs_wrapping(line: str) -> bool:
+    """Return whether a prose line is over 72 columns and could wrap.
+
+    Tables and headings cannot wrap, and neither can a line whose only
+    space before column 72 is in its indent or list marker, such as
+    one long link.
+
+    Args:
+        line: A prose line from ``blank_code_lines``.
+
+    Returns:
+        True when the line should be wrapped.
+    """
+    if len(line) <= MAX_WIDTH or line.lstrip().startswith(("|", "#")):
+        return False
+    head = LIST_MARKER.sub("", line[: MAX_WIDTH + 1], count=1)
+    return " " in head
+
+
+def find_repeats(skills: Skills, added: dict[Path, set[int]]) -> list[Problem]:
     """Report each added run of words another skill also has.
 
     A run is eight or more words in a row that another skill or
@@ -457,14 +590,14 @@ def find_repeats(
     drifts apart when one copy changes.
 
     Args:
-        prose: Prose lines of each file from ``blank_code_lines``.
-        owners: The skill, or ``AGENTS.md``, that owns each file.
+        skills: The skills from ``read_skills``.
         added: Line numbers added since the base commit, by file.
 
     Returns:
         One repeat per run that touches an added line.
     """
-    words = {path: read_words(lines) for path, lines in prose.items()}
+    owners = skills.owners
+    words = {path: read_words(lines) for path, lines in skills.prose.items()}
     runs = {path: list_runs(items) for path, items in words.items()}
     found_in: defaultdict[tuple[str, ...], set[str]] = defaultdict(set)
     for path, path_runs in runs.items():

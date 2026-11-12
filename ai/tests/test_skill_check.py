@@ -149,9 +149,9 @@ class TestSkillText:
         """The skills in this repository have no error.
 
         CI runs this test, so a change that breaks a link, a skill
-        name, a reference, a frontmatter name or a Lessons section
-        fails before it merges, whoever wrote it and whatever skill
-        they loaded.
+        name, a reference, a frontmatter name, a Lessons section or a
+        Remembering corrections line fails before it merges, whoever
+        wrote it and whatever skill they loaded.
         """
         result = subprocess.run(
             [sys.executable, str(SCRIPT)],
@@ -222,6 +222,21 @@ class TestSkillText:
                 "",
                 "the skill-lessons marker must follow",
                 id="lessons-marker-gone",
+            ),
+            pytest.param(
+                GARDEN,
+                "## Lessons\n<!-- skill-lessons: filled from the local "
+                "store; do not edit -->\n",
+                "",
+                "no ## Lessons section",
+                id="lessons-section-gone",
+            ),
+            pytest.param(
+                GARDEN,
+                "with the skill name `garden`",
+                "under `garden`",
+                'must say "with the skill name `garden`"',
+                id="lessons-without-skill-name",
             ),
         ],
     )

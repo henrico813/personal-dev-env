@@ -234,8 +234,9 @@ When a guide and this skill differ, follow this skill.
 ## When a tool is missing
 
 - If the check script cannot run, or exits 2 because the checkout has
-  no `ai/skills` or `skills` folder, say so. Then check links, skill
-  names, reference links and line widths by hand.
+  no `ai/skills` or `skills` folder, say so. Then check by hand each
+  error that the `check_skills` docstring in `scripts/skill_check.py`
+  lists. The consistency reviewer reports repeats.
 - If you cannot start another agent, do as step 6 of "Change a skill"
   says.
 - If `skill-lessons` is not installed, turn no lessons into skill
