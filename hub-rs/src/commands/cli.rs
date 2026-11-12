@@ -409,9 +409,10 @@ pub enum Command {
     /// lines holds the screen as text, one
     /// string per row. elements lists all
     /// the page holds, top first. Each has
-    /// id, kind, text, tap (what a tap does)
-    /// and hidden. tap is jump, fold, unfold,
-    /// show all, open or back. A drawn
+    /// id, kind, text and hidden, and tap
+    /// when a tap does something. tap is
+    /// jump, fold, unfold, show all, open or
+    /// back. A drawn
     /// element also has column, row and
     /// width, and chosen is true on the row
     /// Enter acts on.

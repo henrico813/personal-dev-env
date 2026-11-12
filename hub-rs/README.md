@@ -202,19 +202,19 @@ these rules, so an agent sees and taps exactly what the user does.
 
 - Each draw also builds a list of the page's elements, from the
   scroll and area it drew. Each has an `id` that stays the same across
-  reads, such as `card:DEMO-KB-007`, a `kind`, its `text`, what a
-  `tap` on it does and `hidden`. A drawn element also has its
-  `column`, `row` and `width`, and `chosen` is true on the row Enter
-  acts on.
+  reads, such as `card:DEMO-KB-007`, a `kind`, its `text` and
+  `hidden`, and `tap` when a tap on it does something. A drawn
+  element also has its `column`, `row` and `width`, and `chosen` is
+  true on the row Enter acts on.
 - The list holds everything on the page, not only what fits. Rows
   scrolled off, the cards of a folded group and the cards behind
   `+ N more` have `hidden` true, `hidden_by` (`scroll`, `fold` or
   `more`) and `show`, the step to send next, such as
   `tap group:ready` or `press pagedown`. An agent sends `show` and
   finds the element in the reply until `hidden` is false. A far row
-  can take many sends, one page each, and `show` can change on the
-  way, such as from `press pagedown` to `tap group:ready`. A hidden
-  element follows the line that hides it.
+  can take many sends, and `show` can change on the way, such as
+  from `press pagedown` to `tap group:ready`. The cards of a folded
+  group or behind `+ N more` follow that line.
 - A tap finds the drawn element under it in that list. The live
   screen, `--send` and `--control` use the same lookup. `tap ID` on a
   hidden element fails and names its `show` step.

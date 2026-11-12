@@ -762,7 +762,7 @@ pub(super) mod tests {
     /// shows them. Without them an agent never opens those cards and
     /// still reports that it opened everything.
     #[test]
-    fn dump_lists_folded_and_more_cards_hidden() {
+    fn dump_lists_hidden_cards_with_show_steps() {
         let mut board = sample_board();
 
         let dump = serde_json::to_value(board.dump(40, 16, None)).unwrap();
@@ -798,7 +798,6 @@ pub(super) mod tests {
             .filter(|element| element["hidden"] == true)
             .filter(|element| element.get("column").is_some());
         assert_eq!(hidden_places.count(), 0);
-        assert_eq!(elements[0]["hidden"], false);
     }
 
     /// On a short screen the list scrolls. Each row scrolled off must

@@ -70,7 +70,7 @@ pub(super) fn draw_details(frame: &mut Frame, details: &mut Details) {
 /// Returns the list page's elements as `draw_list` drew them in
 /// `area`, with `list` scrolled and chosen as the last draw left it.
 /// Rows scrolled off, the cards of a folded group and the cards behind
-/// `+ N more` come too, hidden, each after the line that hides it.
+/// `+ N more` come too, hidden. Folded and more cards follow their line.
 pub(super) fn list_elements(screen: &ListScreen<'_>, area: Rect, list: &ListState) -> Vec<Element> {
     let [top, middle, bottom] = split_screen(area);
     let mut elements = Vec::new();

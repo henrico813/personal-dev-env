@@ -136,8 +136,11 @@ pub fn send_step(run: &RunFolder, step: &str) -> Result<Outcome, HubError> {
 fn pass_steps_to_board(listener: &UnixListener, steps: &Sender<SentStep>) {
     for agent in listener.incoming().flatten() {
         let mut text = String::new();
+        // The board writes the reply on its own loop, so an agent that
+        // stops reading must not hold it.
         let read = agent
             .set_read_timeout(Some(STEP_WAIT))
+            .and_then(|()| agent.set_write_timeout(Some(STEP_WAIT)))
             .and_then(|()| BufReader::new(&agent).read_line(&mut text));
         // A board that checks whether another one listens connects and
         // sends nothing.
@@ -225,22 +228,47 @@ mod tests {
 
     /// An agent that sends a step the board cannot follow must fail with
     /// the board's reason. Printing the screen and exiting 0 would let
-    /// it report a tap that never happened.
+    /// it report a tap that never happened, and a hidden card's reason
+    /// is the only place it learns which step shows that card.
     #[test]
-    fn send_step_unknown_id_fails_with_reason() {
-        let temp = TempRun::new("send-unknown-id");
-        let (_listener, steps) = StepListener::start(&temp.run).unwrap();
-        let mut board = sample_board();
-        let run = RunFolder::open(temp.run.path()).unwrap();
-        let agent = thread::spawn(move || send_step(&run, "tap card:NOPE-1"));
+    fn send_step_refused_tap_fails_with_reason() {
+        let cases = [
+            ("tap card:NOPE-1", "the screen shows no card:NOPE-1"),
+            (
+                "tap card:DEMO-KB-020",
+                "card:DEMO-KB-020 is hidden by fold; send tap group:ready first",
+            ),
+        ];
+        for (step, reason) in cases {
+            let temp = TempRun::new("send-refused-tap");
+            let (_listener, steps) = StepListener::start(&temp.run).unwrap();
+            let mut board = sample_board();
+            let run = RunFolder::open(temp.run.path()).unwrap();
+            let agent = thread::spawn(move || send_step(&run, step));
 
-        let sent = steps.recv_timeout(Duration::from_secs(5)).unwrap();
-        let (_, reply) = answer_sent_step(&mut board, &sent.text, |_, _| Ok(true)).unwrap();
-        sent.answer(&reply);
+            let sent = steps.recv_timeout(Duration::from_secs(5)).unwrap();
+            let (_, reply) = answer_sent_step(&mut board, &sent.text, |_, _| Ok(true)).unwrap();
+            sent.answer(&reply);
 
-        let error = agent.join().unwrap().unwrap_err();
+            let error = agent.join().unwrap().unwrap_err();
+            assert_eq!(error.exit_code(), 2, "{step}");
+            assert_eq!(error.to_string(), reason);
+        }
+    }
+
+    /// The board skips a blank line and never replies, so `--send ''`
+    /// would wait forever. It must stop at once and say what to send.
+    #[test]
+    fn send_step_blank_step_fails_with_example() {
+        let temp = TempRun::new("send-blank");
+
+        let error = send_step(&temp.run, "  ").unwrap_err();
+
         assert_eq!(error.exit_code(), 2);
-        assert_eq!(error.to_string(), "the screen shows no card:NOPE-1");
+        assert_eq!(
+            error.to_string(),
+            "the step is blank; send one such as press j"
+        );
     }
 
     /// An agent that sends a step with no board listening must learn
