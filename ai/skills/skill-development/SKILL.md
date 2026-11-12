@@ -198,9 +198,20 @@ reviewer of the same kind once more.
 
 The consistency reviewer, and anyone who reviews a skill change under
 the `review-plan` skill, checks the change against "Where a rule
-goes", "Write for a person" and Final checks. It uses the check
-script output that came with the change, and reports a missing one as
-a finding.
+goes", "Write for a person", Final checks and the guide checks
+below. It uses the check script output that came with the change,
+and reports a missing one as a finding.
+
+Also check these rules from the guides in References:
+
+- The SKILL.md body stays under 500 lines. Detail past that goes to
+  `references/`.
+- No paragraph explains what the agent already knows, such as what a
+  PDF is.
+- Each example is concrete, not abstract.
+- Each script handles its errors and says what went wrong.
+
+When a guide and this skill differ, follow this skill.
 
 ## Output format
 
@@ -238,6 +249,7 @@ a finding.
   to it.
 - Each reference file is linked from SKILL.md with when to read it.
 - Each prose line you added is at most 72 columns.
+- The change meets the guide checks in "Review a skill change".
 - Both reviews ran, or your report says they did not.
 - The skill names no plan, card or pull request, and no repository a
   step does not run in.
@@ -246,6 +258,19 @@ a finding.
 
 - [references/evaluation.md](references/evaluation.md): read only
   when testing or revising this skill.
+
+The guide checks in "Review a skill change" come from these guides.
+Read one when a check is unclear:
+
+- Anthropic's "The Complete Guide to Building Skills for Claude", at
+  <https://resources.anthropic.com/hubfs/The-Complete-Guide-to-Building-Skill-for-Claude.pdf>.
+  Its checklist is "Reference A: Quick checklist".
+- Anthropic's "Skill authoring best practices", at
+  <https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices>.
+  Its checklist is "Checklist for effective Skills".
+- OpenAI Academy's "Using skills", at
+  <https://openai.com/academy/skills/>. Its section "What's a
+  SKILL.md file?" lists the parts of a skill.
 
 ## Remembering corrections
 
