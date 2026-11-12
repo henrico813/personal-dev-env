@@ -23,7 +23,7 @@ use hub::external::herdr::HerdrCli;
 use hub::external::opencode::OpenCodeDb;
 use hub::external::requests::RequestFolder;
 use hub::shared::parking::ParkedFolder;
-use hub::shared::{HubError, Tools};
+use hub::shared::{HubError, OwnedTools};
 use jiff::Zoned;
 
 /// How often `hub next` checks for news, and `hub handoff` for the
@@ -76,27 +76,22 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         )));
     }
     let home = PathBuf::from(env::var_os("HOME").unwrap_or_default());
-    let herdr = HerdrCli::new(
-        PathBuf::from("herdr"),
-        cli.machine.clone(),
-        find_socket(&home),
-    );
-    let cards = CardCli::new(PathBuf::from("card"));
-    let opencode = OpenCodeDb::new(home.join(".local/share/opencode/opencode.db"));
-    let own_pane = env::var("HERDR_PANE_ID").ok();
     let state_folder = home.join(".local/state/pde");
-    let requests = RequestFolder::new(find_request_folder(&home));
-    let parked = ParkedFolder::new(state_folder.join("hub/parked"));
-    let tools = Tools {
-        herdr: &herdr,
-        cards: &cards,
-        opencode: &opencode,
-        requests: &requests,
-        parked: &parked,
-        own_pane: own_pane.as_deref(),
-        state_folder: &state_folder,
+    let owned_tools = OwnedTools {
+        herdr: HerdrCli::new(
+            PathBuf::from("herdr"),
+            cli.machine.clone(),
+            find_socket(&home),
+        ),
+        cards: CardCli::new(PathBuf::from("card")),
+        opencode: OpenCodeDb::new(home.join(".local/share/opencode/opencode.db")),
+        requests: RequestFolder::new(find_request_folder(&home)),
+        parked: ParkedFolder::new(state_folder.join("hub/parked")),
+        own_pane: env::var("HERDR_PANE_ID").ok(),
+        state_folder,
         reopen_poll: REOPEN_POLL,
     };
+    let tools = owned_tools.lend();
     let hub_run = env::var_os("HUB_RUN");
     let find_run = |run: &RunArg| cli::find_run_folder(run.run.as_deref(), hub_run.as_deref());
     let now = Zoned::now();
@@ -209,7 +204,15 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         Command::Go => sidebar::run_go(&tools),
         Command::Gather => sidebar::run_gather(&tools),
         Command::Desk => sidebar::run_desk(&tools, &home),
-        Command::Board => board::run_board(),
+        Command::Board { run, print, size } => {
+            let run = find_run(run)?;
+            let time_zone = now.time_zone().clone();
+            if *print {
+                board::print_board(&tools, &run, &time_zone, *size)
+            } else {
+                board::run_board(owned_tools, run, time_zone)
+            }
+        }
     }
 }
 
