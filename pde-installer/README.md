@@ -38,7 +38,7 @@ Pick the profile for the machine:
   command-line tools.
 - `client`: a laptop that edits files, runs OpenCode, and shows herdr sessions
   from other machines, with nothing compiled by the installer. Full without Go,
-  Rust, local builds other than `skill-lessons` and `hub`, the PR approval
+  Rust, local builds other than `skill-lessons`, the PR approval
   tools, or most skills. Client installs no Go itself, so the machine still
   needs Go 1.21 or newer to build the installer, for example from `sudo apt
   install golang-go` on Ubuntu 24.04.
@@ -62,7 +62,7 @@ configuration, and PDE Git configuration.
 Terminal excludes runtimes, Neovim, LSPs, npm/AI tools, fonts, Keychain, local
 builds, Alacritty, WezTerm, and editor/AI configuration. Client adds
 `fontconfig`, `python3`, the managed fonts, Neovim and its plugins, Node, the
-npm tools, herdr, nobs, `skill-lessons`, `hub`, and the Alacritty, WezTerm,
+npm tools, herdr, nobs, `skill-lessons`, and the Alacritty, WezTerm,
 herdr, Neovim, and OpenCode configuration with the shared agent guidance. Its
 skills are only `obsidian-zettel`, `obsidian-daily-note`,
 `plain-direct-english`, `behavior-focused-testing`, `delegate`, and

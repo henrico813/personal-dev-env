@@ -9,7 +9,8 @@ against the case's checks, one point each.
 No case may reach a real Herdr session. Every run has the `HERDR_*`
 variables unset, a fake `herdr` first on `PATH`, and Bash limited to a
 few commands. The installed `hub` runs against the fake `herdr`, and
-a fake `card` that lists no cards, so no run reads the real vault.
+a fake `card` that lists no cards and an empty board, so no run reads
+the real vault.
 Merges are not covered, since a merge files a real approval request.
 
 ## How to run
@@ -36,12 +37,31 @@ case "$1 $2" in
 esac
 EOF
 chmod +x "$E/bin/herdr"
-printf '#!/bin/sh\necho "0 cards"\n' >"$E/bin/card"
+cat >"$E/bin/card" <<'EOF'
+#!/bin/sh
+case "$1" in
+board) printf '%s\n' 'draft 0  ready 0  active 0' \
+  'review 0  accepted 0  dropped 0' 'active+review 0 of 8' ;;
+*) echo "0 cards" ;;
+esac
+EOF
 chmod +x "$E/bin/card"
+mkdir -p "$E/home"
+cat >"$E/bin/hub" <<EOF
+#!/bin/sh
+HOME="$E/home" exec "$(command -v hub)" "\$@"
+EOF
+chmod +x "$E/bin/hub"
 ```
 
-Each agent in `agents.json` has `name`, `agent_status`, `pane_id` and
-`state_change_seq`, as `herdr agent list` prints them.
+The `hub` wrapper runs the installed `hub` with an empty HOME, so it
+reads no real OpenCode database and no parked sessions. Claude Code
+keeps the real HOME, where its login lives.
+
+Each agent in `agents.json` has `name`, `agent` (`opencode`),
+`agent_status`, `pane_id`, `tab_id`, `workspace_id`, `focused`
+(`false`) and `state_change_seq`, as `herdr agent list` prints them.
+`hub` exits 1 for an agent that lacks one of them.
 
 Second, each run's folder holds `run/rules.md`, the case's
 `agents.json` and `screen.txt`, and the case's
