@@ -69,7 +69,14 @@ writes them to its report file instead.>
   own pane.>
 - <When a hub runs: the hub's agent name in place of this session's
   name in the line above, a report file in the hub's run folder, and
-  that the new session reports only to the hub. The new session never
+  that the new session reports only to the hub. To wait on a long
+  job, such as a test run, it first runs `hub wait` with
+  `--run "<run folder>"`, its agent name, `--file <summary file>` and
+  `--deadline <minutes>`. Then it starts the job with
+  `setsid nohup bash <script> > <log> 2>&1 &`, so the job outlives
+  the tool call, and ends its turn. The script writes the summary
+  file in one step at its end. The hub's watch prods the new session
+  when that file changes or the deadline passes. The new session never
   uses an interactive question tool, since Herdr then rejects every
   message to it. It sends a merge or pull request edit request only
   after the hub tells it the user reviewed that pull request. When its

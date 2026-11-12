@@ -577,6 +577,11 @@ impl TestTools {
         RunFolder::open(&self.run_path()).unwrap()
     }
 
+    /// Writes a stand-in program as `TempFolder::write_script` does.
+    pub fn write_script(&self, name: &str, stdout: &str, stderr: &str, exit_code: i32) -> PathBuf {
+        self.folder.write_script(name, stdout, stderr, exit_code)
+    }
+
     /// The state folder that stands in for `~/.local/state/pde`.
     pub fn state_folder(&self) -> &Path {
         &self.state_folder

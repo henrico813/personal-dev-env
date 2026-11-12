@@ -146,6 +146,35 @@ fn run_next_records_report_it_prints() {
     assert_eq!(events[0]["name"], "docs-fix");
 }
 
+/// A report `hub watch` found missed tells the hub that no `hub next`
+/// ran for 10 minutes. It prints once as `missed report`, in place of
+/// the plain report line, and counts as announced, so the hub is not
+/// woken twice for it.
+#[test]
+fn run_next_prints_missed_report_once() {
+    let test_tools = TestTools::new();
+    write_old_report(&test_tools, "docs-fix");
+    let report = test_tools.run_path().join("report-docs-fix.md");
+    let modified = fs::metadata(&report).unwrap().modified().unwrap();
+    let mtime_ns = modified
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let missed = json!({"at": "2026-11-12T08:12:00Z", "event": "report_missed",
+        "name": "docs-fix", "mtime_ns": u64::try_from(mtime_ns).unwrap()});
+    fs::write(
+        test_tools.run_path().join("events.jsonl"),
+        format!("{missed}\n"),
+    )
+    .unwrap();
+
+    let first = check_once(&test_tools);
+    let second = check_once(&test_tools);
+
+    assert_eq!(first, "missed report docs-fix (hub -)");
+    assert_eq!(second, "timeout (hub -)");
+}
+
 /// A session that stays blocked must wake the hub once, not every 5
 /// seconds, and must wake it again when it blocks a second time.
 #[test]

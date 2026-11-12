@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Turns on the user unit that keeps hub watch running.
+# The hash below makes chezmoi run this again when the unit file changes.
+# service {{ include "dot_config/systemd/user/hub-watch.service" | sha256sum }}
+set -euo pipefail
+
+# systemctl --user only works when a systemd user manager is running, which
+# Docker smoke tests and macOS lack.
+if ! command -v systemctl >/dev/null 2>&1 || ! systemctl --user show-environment >/dev/null 2>&1; then
+    exit 0
+fi
+systemctl --user daemon-reload
+systemctl --user enable --now hub-watch.service

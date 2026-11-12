@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use hub::board;
 use hub::commands::auto::AutoApproval;
-use hub::commands::cli::{self, AutoRunArg, AutoStep, Cli, Command, RunArg};
+use hub::commands::cli::{self, AutoRunArg, AutoStep, Cli, Command, RunArg, WatchStep};
 use hub::commands::next::NextOptions;
 use hub::commands::reports::{CardChoice, ReadRequest};
 use hub::commands::send::SendRequest;
@@ -23,11 +23,15 @@ use hub::external::herdr::HerdrCli;
 use hub::external::opencode::OpenCodeDb;
 use hub::external::requests::RequestFolder;
 use hub::shared::parking::ParkedFolder;
+use hub::shared::run_folder::RunFolder;
 use hub::shared::{HubError, OwnedTools};
+use hub::watch::wait::{self, WaitRequest};
+use hub::watch::{self, WatchOptions, WatchStart};
 use jiff::Zoned;
 
-/// How often `hub next` checks for news, and `hub handoff` for the
-/// next hub's first reply, when `HUB_POLL_SECONDS` is not set.
+/// How often `hub next` checks for news, `hub watch` checks the
+/// workers, and `hub handoff` checks for the next hub's first reply,
+/// when `HUB_POLL_SECONDS` is not set.
 const DEFAULT_POLL: Duration = Duration::from_secs(5);
 
 /// The wait between reads of a reopened agent's session ID.
@@ -125,6 +129,27 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
             };
             next::run_next(&tools, &run, &options)
         }
+        Command::Watch { step } => match step {
+            WatchStep::Start { run } => {
+                let run = find_run(run)?;
+                let start = WatchStart {
+                    program: find_this_program()?,
+                    session_id: env::var("OPENCODE_SESSION_ID").ok(),
+                    runs_folder: local_state.clone(),
+                };
+                watch::run_watch_start(&tools, &run, &start, &now)
+            }
+            WatchStep::Run => {
+                let options = WatchOptions {
+                    poll: read_poll_interval()?,
+                    checks: None,
+                    runs_folder: local_state.clone(),
+                    notifier: PathBuf::from("moshi-hook"),
+                };
+                // The watch log, or systemd's journal, gets this output.
+                watch::run_watch(&tools, &options, &mut io::stderr())
+            }
+        },
         Command::Send {
             run,
             name,
@@ -148,6 +173,26 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
             send::run_send(&tools, &run, &request, &now)
         }
         Command::Inbox { run, name } => send::run_inbox(&find_run(run)?, name, &now),
+        Command::Wait {
+            run,
+            name,
+            pid,
+            file,
+            deadline,
+        } => {
+            let run = find_run(run)?;
+            let request = WaitRequest {
+                name: name.clone(),
+                pid: *pid,
+                file: file.clone(),
+                deadline_minutes: *deadline,
+            };
+            let mut outcome = wait::run_wait(&run, &request, &now)?;
+            outcome
+                .lines
+                .extend(restart_watch(&run, tools.state_folder));
+            Ok(outcome)
+        }
         Command::Read {
             run,
             name,
@@ -169,7 +214,11 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         Command::Report { run, name, file } => {
             let run = find_run(run)?;
             let text = read_report_text(file.as_deref())?;
-            reports::run_report(&run, name, &text)
+            let mut outcome = reports::run_report(&run, name, &text)?;
+            outcome
+                .lines
+                .extend(restart_watch(&run, tools.state_folder));
+            Ok(outcome)
         }
         Command::Note { run, text } => reports::run_note(&find_run(run)?, text, &now),
         Command::Brief { run } => brief::run_brief(&tools, &find_run(run)?),
@@ -271,6 +320,23 @@ fn read_current_folder() -> Result<PathBuf, HubError> {
         path: PathBuf::from("."),
         source,
     })
+}
+
+/// Returns this program's path, which `hub watch start` runs again in
+/// the background as `hub watch run`.
+fn find_this_program() -> Result<PathBuf, HubError> {
+    env::current_exe().map_err(|source| HubError::File {
+        path: PathBuf::from("hub"),
+        source,
+    })
+}
+
+/// Starts a dead watch again for the run, as `hub report` and
+/// `hub wait` do after their work. A program path that cannot be read
+/// only skips the restart, since that work is already saved.
+fn restart_watch(run: &RunFolder, state_folder: &Path) -> Option<String> {
+    let program = env::current_exe().ok()?;
+    watch::restart_stopped_watch(run, state_folder, &program)
 }
 
 /// Returns `HUB_POLL_SECONDS` as a duration, such as `0.5` for half a
