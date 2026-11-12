@@ -138,10 +138,10 @@ fn run_handoff_gives_new_tab_run_folder() {
     );
 }
 
-/// Every hub that hands off gets a session review. The reviewer finds
-/// the old hub by its session ID, and the next hub learns from its own
-/// handoff, the one its only prompt names, which reviewer starts and
-/// from which file.
+/// Every hub that hands off gets a session review handoff, used when
+/// reviews are on. The reviewer finds the old hub by its session ID,
+/// and the next hub learns from its own handoff, the one its only
+/// prompt names, which reviewer starts and from which file.
 #[test]
 fn run_handoff_tells_next_hub_review_steps() {
     let (test_tools, handoff) = make_handoff_tools();
@@ -266,8 +266,8 @@ fn run_handoff_records_old_hub_and_review() {
 
 /// A hub started without `hub handoff` leaves the older hub open with
 /// no review. Adopting it records the same `handoff` event a handoff
-/// writes, so the tidy pass closes the old hub and `hub next` starts
-/// its review, which finds the old hub by its session ID.
+/// writes, so the tidy pass closes the old hub and
+/// `hub next --start-reviews` starts its review, which finds the old hub by its session ID.
 #[test]
 fn run_adopt_records_handoff_with_review() {
     let mut test_tools = TestTools::new();

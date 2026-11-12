@@ -87,18 +87,21 @@ code.
 - `next` prints `old send file: PATH (hub 131k)` once for each old
   `send-NAME.*` file in the run folder, which it never sends, after
   every other line but `no hub handoff`.
-- `next` starts the session review of an old hub that handed off,
-  once that hub's tab has closed, in a new tab on the `rules.md`
-  model at high effort. It prints `review started NAME (hub 131k)`,
-  or `review not started for OLD: REASON; start it from FILE with
-  herdr-handoff (hub 131k)` and tries no more. For an older hub of
-  the run that no handoff names, it prints
+- Session reviews are off by default. `next --start-reviews` starts
+  the session review of an old hub that handed off, once that hub's
+  tab has closed, in a new tab on the `rules.md` model at high
+  effort. It also starts reviews still due from earlier handoffs in
+  the run. It prints `review started NAME (hub 131k)`, or
+  `review not started for OLD: REASON; start it from FILE with
+  herdr-handoff (hub 131k)` and tries no more. Plain `next` starts
+  no review.
+- For an older hub of the run that no handoff names, `next` prints
   `no hub handoff for OLD -> hub adopt OLD (hub 131k)` once, and
   `status` lists the same words as a problem.
 - `adopt OLD` is new. It makes the hub take over OLD, an older hub
   left open without `handoff`: it writes OLD's review handoff and
-  records a handoff, so `clean` closes OLD once it is idle and `next`
-  then starts its review.
+  records a handoff, so `clean` closes OLD once it is idle and
+  `next --start-reviews` then starts its review.
 - `next` runs a minute pass at most once a minute, and only after a
   session's state changed or a report was read. It reads `card board`.
   Each time the board crosses into its limit, it wakes the hub once

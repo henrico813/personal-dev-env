@@ -91,6 +91,9 @@ pub enum Command {
         /// Print the news as JSON
         #[arg(long)]
         json: bool,
+        /// Start old hubs' session reviews, which are off by default
+        #[arg(long)]
+        start_reviews: bool,
     },
     /// Deliver now, or hold until free
     #[command(after_help = "Example: hub send docs-fix --file /tmp/msg.md")]

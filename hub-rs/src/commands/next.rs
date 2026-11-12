@@ -5,9 +5,9 @@
 //! reads the board, finds finished sessions and asks workers to hand
 //! off. It never closes or parks a session, which only `hub clean`
 //! does. The one session it starts is an old hub's session review,
-//! once that hub's tab has closed.
+//! once that hub's tab has closed, and only with `--start-reviews`.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -47,6 +47,9 @@ pub struct NextOptions {
     pub process_id: u32,
     /// The folder an old hub's session review starts in.
     pub cwd: PathBuf,
+    /// Starts old hubs' session reviews, from `--start-reviews`. Off by
+    /// default, since the user wants reviews only on the runs they pick.
+    pub start_reviews: bool,
 }
 
 /// The one line `hub next` prints.
@@ -134,7 +137,7 @@ pub fn run_next(
         }
         let now = Zoned::now();
         let hub = facts::read_hub_line(tools);
-        if let Some(news) = check_for_news(tools, run, &hub, &options.cwd, &now)? {
+        if let Some(news) = check_for_news(tools, run, &hub, options, &now)? {
             // A newer watcher that took over during the check finds this
             // news again, so this one records nothing.
             if run.is_replaced(options.process_id)? {
@@ -164,14 +167,15 @@ pub fn run_next(
 }
 
 /// Runs one check. Runs the minute pass when it is due, starts an old
-/// hub's session review when it is due, delivers held messages and
-/// returns the news to print, if any. Records nothing about the news
-/// itself, since `run_next` does that before printing.
+/// hub's session review when one is due and reviews are on, delivers
+/// held messages and returns the news to print, if any. Records
+/// nothing about the news itself, since `run_next` does that before
+/// printing.
 fn check_for_news(
     tools: &Tools<'_>,
     run: &RunFolder,
     hub: &HubLine,
-    cwd: &Path,
+    options: &NextOptions,
     now: &Zoned,
 ) -> Result<Option<News>, HubError> {
     let memory = events::load_memory(run)?;
@@ -187,7 +191,11 @@ fn check_for_news(
         board = run_minute_pass(tools, run, &agents, &memory, now)?;
         mark = run.read_minute_mark()?;
     }
-    let review = handoff::start_due_review(tools, run, &memory, &agents, cwd, now)?;
+    let review = if options.start_reviews {
+        handoff::start_due_review(tools, run, &memory, &agents, &options.cwd, now)?
+    } else {
+        None
+    };
     let outcome = messages::deliver_held_messages(tools, run, &agents, now)?;
     Ok(choose_news(&NewsFacts {
         outcome: outcome.as_ref(),

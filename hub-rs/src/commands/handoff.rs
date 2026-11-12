@@ -1,8 +1,8 @@
 //! Runs `hub handoff`, which starts the next hub and checks its
 //! effort, and `hub adopt`, which takes over a hub started some other
 //! way. `start_due_review` starts the old hub's session review for
-//! `hub next`. Read `run_handoff` first. A hub once told the user the
-//! wrong effort because nothing checked it.
+//! `hub next --start-reviews`. Read `run_handoff` first. A hub once
+//! told the user the wrong effort because nothing checked it.
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -156,8 +156,8 @@ pub fn run_handoff(
 /// Makes this hub take over `old`, an older hub of the run that no
 /// `hub handoff` named. Writes the handoff for `old`'s session review
 /// and records a `handoff` event, so `hub clean` closes `old` once it
-/// is idle and `hub next` then starts the review. Changes nothing in
-/// Herdr.
+/// is idle and `hub next --start-reviews` then starts the review.
+/// Changes nothing in Herdr.
 ///
 /// # Errors
 ///
@@ -210,7 +210,7 @@ pub fn run_adopt(
     };
     events::append_event(run, &adopted)?;
     Ok(Outcome::line(format!(
-        "adopted {}; hub clean closes its tab once it is idle, then hub next starts {}",
+        "adopted {}; hub clean closes its tab once it is idle, then hub next --start-reviews starts {}",
         old_hub.name,
         name_reviewer(&old_hub.name)
     )))
@@ -427,17 +427,19 @@ fn name_reviewer(old: &str) -> String {
     format!("review-{old}").chars().take(32).collect()
 }
 
-/// Adds to the next hub's handoff how the old hub's tab closes and its
-/// session review starts.
+/// Adds to the next hub's handoff how the old hub's tab closes and how
+/// its session review starts when reviews are on.
 fn append_old_hub_steps(handoff: &Path, old: &Agent, review: &Path) -> Result<(), HubError> {
     let steps = format!(
         r#"
 ## The old hub
 
 `{old}` handed off to you. Once it is idle or done, `hub next` lists
-it as to-close; run `hub clean` to close its tab. After that, `hub next`
-starts its session review `{reviewer}` from `{review}`. Bring the
-review's pick list to the user.
+it as to-close; run `hub clean` to close its tab. Session reviews are
+off unless the user asks for them. If the user does, run
+`hub next --start-reviews`, which starts `{reviewer}` from `{review}`
+once that tab has closed, and bring the review's pick list to the
+user.
 "#,
         old = old.name,
         reviewer = name_reviewer(&old.name),

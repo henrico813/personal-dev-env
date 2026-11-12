@@ -17,12 +17,23 @@ use common::{
 
 /// Runs one `hub next` check and returns its line.
 fn check_once(test_tools: &TestTools) -> String {
+    run_one_check(test_tools, false)
+}
+
+/// Runs one `hub next --start-reviews` check and returns its line.
+fn check_once_starting_reviews(test_tools: &TestTools) -> String {
+    run_one_check(test_tools, true)
+}
+
+/// Runs one check, with `--start-reviews` when `start_reviews` is set.
+fn run_one_check(test_tools: &TestTools, start_reviews: bool) -> String {
     let options = NextOptions {
         timeout: Some(Duration::ZERO),
         poll: Duration::ZERO,
         json: false,
         process_id: 1,
         cwd: test_tools.path().to_owned(),
+        start_reviews,
     };
     let outcome = run_next(&test_tools.tools(), &test_tools.run(), &options).unwrap();
     outcome.lines.join("\n")
@@ -402,10 +413,25 @@ fn run_next_skips_handoff_of_finished_worker() {
     assert!(test_tools.herdr.prompts.borrow().is_empty());
 }
 
-/// Every hub that hands off gets a session review, which hubs used to
-/// start by hand at high effort. The review waits until the old hub's
-/// tab is gone, since its handoff tells the reviewer so, and starts
-/// only once. A second start would review the same hub twice.
+/// Session reviews are off by default, since the user does not want
+/// every hub starting new sessions. With no `--start-reviews`, a due
+/// review must start nothing.
+#[test]
+fn run_next_starts_no_review_without_flag() {
+    let mut test_tools = TestTools::new();
+    add_due_review(&mut test_tools);
+
+    let line = check_once(&test_tools);
+
+    assert_eq!(line, "timeout (hub -)");
+    assert!(test_tools.herdr.created_tabs.borrow().is_empty());
+}
+
+/// With `--start-reviews`, every hub that hands off gets a session
+/// review, which hubs used to start by hand at high effort. The review
+/// waits until the old hub's tab is gone, since its handoff tells the
+/// reviewer so, and starts only once. A second start would review the
+/// same hub twice.
 #[test]
 fn run_next_starts_review_once_old_closes() {
     let mut test_tools = TestTools::new();
@@ -415,13 +441,13 @@ fn run_next_starts_review_once_old_closes() {
         .agents
         .push(make_agent("kanban-hub-1", AgentStatus::Working));
 
-    let while_open = check_once(&test_tools);
+    let while_open = check_once_starting_reviews(&test_tools);
     test_tools
         .herdr
         .agents
         .retain(|agent| agent.name != "kanban-hub-1");
-    let after_close = check_once(&test_tools);
-    let next_check = check_once(&test_tools);
+    let after_close = check_once_starting_reviews(&test_tools);
+    let next_check = check_once_starting_reviews(&test_tools);
 
     assert_eq!(while_open, "timeout (hub -)");
     assert_eq!(after_close, "review started review-kanban-hub-1 (hub -)");
@@ -455,8 +481,8 @@ fn run_next_reports_failed_review_start_once() {
         .herdr
         .fail_next("create_tab", make_refusal(HerdrCode::Other(String::new())));
 
-    let failed = check_once(&test_tools);
-    let next_check = check_once(&test_tools);
+    let failed = check_once_starting_reviews(&test_tools);
+    let next_check = check_once_starting_reviews(&test_tools);
 
     assert_eq!(
         failed,
@@ -480,7 +506,7 @@ fn run_next_skips_review_already_running() {
         .agents
         .push(make_agent("review-kanban-hub-1", AgentStatus::Working));
 
-    let line = check_once(&test_tools);
+    let line = check_once_starting_reviews(&test_tools);
 
     assert_eq!(line, "timeout (hub -)");
     assert!(test_tools.herdr.created_tabs.borrow().is_empty());

@@ -101,7 +101,12 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
     let now = Zoned::now();
     match &cli.command {
         Command::Status { run, json } => status::run_status(&tools, &find_run(run)?, *json, &now),
-        Command::Next { run, timeout, json } => {
+        Command::Next {
+            run,
+            timeout,
+            json,
+            start_reviews,
+        } => {
             let run = find_run(run)?;
             let timeout = match timeout {
                 Some(seconds) => Some(Duration::try_from_secs_f64(*seconds).map_err(|_| {
@@ -115,6 +120,7 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
                 json: *json,
                 process_id: std::process::id(),
                 cwd: read_current_folder()?,
+                start_reviews: *start_reviews,
             };
             next::run_next(&tools, &run, &options)
         }

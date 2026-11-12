@@ -83,8 +83,8 @@ pub(crate) enum EventKind {
     OldSendSeen { path: PathBuf },
     /// `hub handoff` started `new` after `old`, whose tab is `tab`, or
     /// `hub adopt` made `new` take over `old`. `review` is the handoff
-    /// for the session review of `old`, which `hub next` starts once
-    /// that tab closes. Logs written before reviews started this way
+    /// for the session review of `old`, which `hub next --start-reviews`
+    /// starts once that tab closes. Logs written before reviews started this way
     /// have none.
     Handoff {
         old: String,
