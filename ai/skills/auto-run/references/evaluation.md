@@ -1,6 +1,6 @@
 # Evaluation
 
-Three cases check whether the skill changes how a front hub starts
+Four cases check whether the skill changes how a front hub starts
 and reports an auto run. Run each case twice, each time in a fresh
 session on the same model: once with only `herdr-hub` in the system
 prompt, and once with this skill added. Score each run against the
@@ -23,6 +23,8 @@ list) echo "DEMO-KB-007 ready    build    Retry failed uploads"
       echo "1 cards" ;;
 show) printf -- '---\nstage: ready\nproject: Lantern\n---\n\n'
       printf '# DEMO-KB-007 Retry failed uploads\n' ;;
+board) printf '%s\n' 'draft 0  ready 1  active 0' \
+  'review 0  accepted 0  dropped 0' 'active+review 0 of 8' ;;
 *) exit 1 ;;
 esac
 EOF
@@ -32,9 +34,23 @@ chmod +x "$E/bin/opencode"
 ```
 
 The fake `opencode` fails for every model, as if no model answered.
-Add `Bash(opencode *),Bash(mktemp *)` to the allowed commands. For
-the run with the skill, also add `$(cat auto-run/SKILL.md)` to
-`$sys`.
+After
+herdr-hub's `sys` and `ok` lines, add these for both runs:
+
+```bash
+sys="$sys The auto run's folder is ./auto."
+ok="$ok"',Bash(opencode *),Bash(mktemp *)'
+```
+
+For the run with the skill, also add "Follow this skill too. Its
+folder is ./auto-run." and `$(cat auto-run/SKILL.md)` to `$sys`.
+
+## Contents
+
+- Case 1: a loose reply to the briefing
+- Case 2: status update during a run
+- Case 3: a briefing while no model can sort the cards
+- Case 4: a briefing with an away window and a run tier
 
 ## Case 1: a loose reply to the briefing
 
@@ -80,18 +96,43 @@ this case. It checks that rule as much as this skill.
 `auto/` is empty. The prompt is:
 
 ```text
-The user writes: "Set up auto run 2 with what is ready."
+The user writes: "Set up auto run 2 with what is ready. I am away
+until 07:00 tomorrow, and no rule ends at a set time."
 ```
 
 Checks:
 
 1. The run runs `hub auto ready --run auto`.
-2. When `opencode` fails, it sorts the card itself and writes
-   `auto/run.md` with DEMO-KB-007 under one heading.
-3. It runs `hub auto check --run auto`, and fixes `run.md` until the
+2. It runs `opencode run` to sort the card.
+3. It writes `auto/run.md` with DEMO-KB-007 under one heading.
+4. It runs `hub auto check --run auto`, and fixes `run.md` until the
    check exits 0.
-4. The reply ends with "approve run 2" as the reply phrase, and says
+5. The reply ends with "approve run 2" as the reply phrase, and says
    who approves the pull request requests and when.
+
+## Case 4: a briefing with an away window and a run tier
+
+`auto/` is empty. The prompt is:
+
+```text
+The user writes: "Set up auto run 2 with what is ready. I am away
+until 07:00 tomorrow, and planners may use Opus only until 02:00."
+```
+
+Checks:
+
+1. It writes `auto/run.md` with DEMO-KB-007 under one heading, and
+   a `Run tier:` line between the title and the first `## ` heading.
+2. The briefing says the user is away until 07:00, and that the
+   Opus rule ends at 02:00.
+3. The briefing names the same run tier as `run.md`, and says only a
+   plan that changes the hub's `rules.md` waits for the user's plan
+   review. When the tier is T2 or T3, it also says a plan that
+   changes what the user sees daily, or adds a name, stops as a
+   question in `decisions.md`.
+4. It says requests made while the user is away wait in
+   `requests.sh`, and gives the command to run them,
+   `bash auto/requests.sh`.
 
 Delete `$E` afterwards. Record each case's two scores and what each
 run got wrong in the pull request's Testing section.

@@ -47,7 +47,7 @@ tokens written 60,118 (output 44,900, reasoning 15,218)
 user messages 6, model steps 120, steps logged with zero tokens 6
 peak context about 171,400 tokens at seq 990
 compactions 1 (seq 612 auto)
-skills loaded roadmap-run (seq 8), create-plan (seq 8), review-plan (seq 8), status-updates (seq 8)
+skills loaded auto-run (seq 8), create-plan (seq 8), review-plan (seq 8), status-updates (seq 8)
 subagents 2
   claude-code/claude-opus-5-5[1m] count 2 read 5,214,660 written 29,120
 largest subagents by tokens read

@@ -54,7 +54,7 @@ cd "<worktree>" &&
 ```
 
 The script runs `planner check`, stops when the worktree has
-changes, and gets the step's tree with `plan_tree` from roadmap-run's
+changes, and gets the step's tree with `plan_tree` from auto-run's
 `scripts/fns.sh`. It commits that tree on HEAD with the message, runs
 the check command, and writes `$D/job<n>/summary.txt`. A rerun after
 the commit skips it. The check output goes to `$D/job<n>/check.log`
