@@ -23,6 +23,11 @@ README.md
 link_herdr_plugins.sh
 # The planner link points at a build that only full installs.
 .config/opencode/bin/planner
+# Only full installs run agents, whose copies leave Rust build folders.
+.local/bin/pde-prune-targets
+.config/systemd/user/pde-prune-targets.service
+.config/systemd/user/pde-prune-targets.timer
+enable_prune_timer.sh
 {{- if not (has "workstation" .pde.tiers) }}
 # Terminal VMs have no editor or agents, so they skip these files.
 .config/alacritty

@@ -39,6 +39,10 @@ func TestIgnoreListMatchesEachProfile(t *testing.T) {
 		".local/share/pde/herdr-plugins/**",
 		"link_herdr_plugins.sh",
 		".config/opencode/bin/planner",
+		".local/bin/pde-prune-targets",
+		".config/systemd/user/pde-prune-targets.service",
+		".config/systemd/user/pde-prune-targets.timer",
+		"enable_prune_timer.sh",
 	}
 	terminalIgnores := []string{
 		".config/alacritty",
