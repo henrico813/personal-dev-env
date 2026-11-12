@@ -8,8 +8,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use clap::Parser;
 use clap::error::ErrorKind;
+use clap::{ArgGroup, Parser};
 
 use crate::board::ScreenSize;
 use crate::external::cards::CardKey;
@@ -364,18 +364,25 @@ pub enum Command {
     /// Choose a row with j, k, the arrows or a tap to see more of it. q
     /// quits. --print prints one screen and exits.
     #[command(after_help = "Example: hub board --print --size 40x16")]
+    #[command(group(ArgGroup::new("output").args(["print", "dump", "control"])))]
     Board {
         #[command(flatten)]
         run: RunArg,
         /// Print one screen as text and exit
         #[arg(long)]
         print: bool,
-        /// The printed screen's size
+        /// Print one screen's elements as JSON and exit
+        #[arg(long)]
+        dump: bool,
+        /// Read taps and keys, one per line, and print JSON after each
+        #[arg(long)]
+        control: bool,
+        /// The size of the screen printed
         #[arg(
             long,
             value_name = "COLSxROWS",
             default_value = "40x16",
-            requires = "print"
+            requires = "output"
         )]
         size: ScreenSize,
     },

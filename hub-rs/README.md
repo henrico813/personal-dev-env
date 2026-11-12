@@ -141,12 +141,30 @@ it in these ways.
   saves a record in `~/.local/state/pde/hub/parked/`, adds the
   session to its card, and closes its tab. It exits 3 with
   `NAME stays: REASON` otherwise.
-- `board` is new. It shows what waits on the user and on the hub,
-  sized for a 40x16 phone screen, and reads again every 10 seconds or
-  when r is pressed. j, k, the arrow and page keys, the wheel or a
-  tap choose a row, whose full text shows below the list. q quits.
-  `board --print` prints one screen as text, 40x16 unless `--size`
-  says otherwise.
+- `board` is new. It lists the cards by stage, sized for a 40x16
+  phone screen: In progress, In review, Needs you, Ready and Draft.
+  Needs you holds the questions in `decisions.md` and the sessions
+  that wait on the user. An open group shows four rows, then
+  `+ N more`; Ready and Draft start folded. A tap on a count in the
+  top line jumps to its group, a tap on a heading folds or opens it,
+  and a tap on a row opens its details. On a details page, any tap,
+  Enter, space, q or Esc goes back.
+  j, k, the arrow and page keys or the wheel move the choice, and
+  Enter or space acts on it. It reads again every 10 seconds or when
+  r is pressed, and q quits from the list. `NO_COLOR` turns colors
+  off. Each row starts with an ASCII mark for its group: `*` in
+  progress, `@` in review, `?` needs you, `o` ready, `.` draft and `!`
+  could not read. `board --print` prints one screen as text, 40x16
+  unless `--size` says otherwise.
+- `board --dump` prints the screen's elements as one line of JSON.
+  `board --control` reads one step per line from standard input:
+  `tap ID`, `tap COLUMN ROW`, `press KEY` (such as `q`, `r`, `j`,
+  `enter`, `esc`, `space`, `pagedown` or `ctrl-c`), or `wheel up` and
+  `wheel down`. It prints one JSON line for the first screen and one
+  after each step, with the step in `step`. After a step that quits,
+  `page` is `quit` and it stops. A step it cannot follow, such as a
+  tap on an id the screen does not show, exits 2 with
+  `line N: REASON`.
 - `send` to a parked session opens a new tab and resumes its OpenCode
   session there. It holds the message until the session starts.
 - `status` shows each session's lifecycle state in its STATE column,
@@ -161,3 +179,20 @@ it in these ways.
 - `status` looks for unsaved work only in linked worktrees. An agent
   that works in the main checkout gets no file check there, so its
   uncommitted files in the main checkout do not keep it.
+
+## Screens agents can see and tap
+
+Every full-screen view the hub draws, such as `hub board`, follows
+these rules, so an agent sees and taps exactly what the user does.
+
+- Each draw also builds a list of the screen's elements, from the
+  scroll and area it drew. Each has an id that stays the same across
+  reads, such as `card:DEMO-KB-007`, a kind, its text, its column and
+  row, its width and what a tap on it does.
+- A tap finds the element under it in that list. The live screen and
+  `--control` use the same lookup.
+- The screen offers `--dump`, which prints the list as JSON once, and
+  `--control`, which reads taps and key presses and prints the list
+  and the screen's text after each.
+- Marks and labels a tap can hit are plain ASCII, so each takes one
+  column in every terminal and a tap's column is exact.

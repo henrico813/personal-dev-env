@@ -1,12 +1,18 @@
-//! Runs `hub board`, a full-screen list of what waits on the user and
-//! on the hub, sized for a phone first. Read `run_board` and
-//! `print_board` first.
+//! Runs `hub board`, a full-screen list of the user's cards grouped by
+//! stage, with what waits on the user, sized for a phone first. Read
+//! `run_board` and `print_board` first, and `control.rs` for the JSON
+//! that agents read.
 //!
 //! A second thread reads the hub's state every 10 seconds, or at once
 //! when the user presses r. A read calls Herdr, `card` and OpenCode
 //! and takes about a second, so the keys and the mouse would freeze if
-//! the drawing thread waited for it.
+//! the drawing thread waited for it. For the same reason, a details
+//! page reads its card's note on a thread of its own.
 
+mod control;
+mod draw;
+mod elements;
+mod groups;
 mod queue;
 mod terminal;
 mod view;
@@ -25,11 +31,14 @@ use jiff::tz::TimeZone;
 use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
 
 use crate::commands::Outcome;
+use crate::external::cards::{CardCli, CardKey, CardNote, Cards};
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{HubError, OwnedTools, Tools};
 use queue::{Queue, read_queue};
 use terminal::Screen;
 use view::{Board, Step};
+
+pub use control::{control_board, dump_board};
 
 /// How long the board waits for input before it checks for a stop
 /// signal or a new read again.
@@ -38,7 +47,7 @@ const POLL: Duration = Duration::from_millis(200);
 /// How long the reader waits between reads when nobody presses r.
 const REFRESH: Duration = Duration::from_secs(10);
 
-/// The size `--print` draws, given as `40x16`.
+/// The size `--print`, `--dump` and `--control` draw, given as `40x16`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ScreenSize {
     pub columns: u16,
@@ -85,6 +94,8 @@ pub fn run_board(
     }
     let (reading_sender, readings) = mpsc::channel();
     let (wake, wake_receiver) = mpsc::channel();
+    let (note_sender, notes) = mpsc::channel();
+    let cards = tools.cards.clone();
     // The thread is never joined, so q quits at once even while a read
     // runs. The thread ends at its next send or wait after the
     // channels close, or with the process.
@@ -92,11 +103,18 @@ pub fn run_board(
         read_until_closed(&tools, &run, &time_zone, &reading_sender, &wake_receiver);
     });
 
-    let mut board = Board::new();
+    // NO_COLOR set to any value but empty turns colors off, as
+    // https://no-color.org asks.
+    let color = std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty());
+    let mut board = Board::new(color);
     let mut screen = Screen::start().map_err(terminal_error)?;
     screen.draw(&mut board).map_err(terminal_error)?;
     while !stop.load(Ordering::Relaxed) {
         let mut changed = false;
+        while let Ok((key, note)) = notes.try_recv() {
+            board.show_card_note(&key, note);
+            changed = true;
+        }
         loop {
             match readings.try_recv() {
                 Ok(reading) => {
@@ -120,6 +138,7 @@ pub fn run_board(
                     // A send fails only when the reader has stopped.
                     let _ = wake.send(());
                 }
+                Step::ReadCard(key) => read_card_aside(&cards, key, &note_sender),
                 Step::Stay => {}
             }
             changed = true;
@@ -145,7 +164,8 @@ pub fn print_board(
     time_zone: &TimeZone,
     size: ScreenSize,
 ) -> Result<Outcome, HubError> {
-    let mut board = Board::new();
+    // Text output carries no colors.
+    let mut board = Board::new(false);
     board.show_reading(Ok(read_queue(tools, run, time_zone)?));
     Ok(Outcome {
         lines: board.render_lines(size.columns, size.rows),
@@ -173,6 +193,22 @@ fn read_until_closed(
             Err(RecvTimeoutError::Disconnected) => return,
         }
     }
+}
+
+/// Reads one card's note on a new thread and sends it with its key.
+/// Like the reading thread, it is never joined, so q quits at once.
+fn read_card_aside(
+    cards: &CardCli,
+    key: CardKey,
+    notes: &Sender<(CardKey, Result<CardNote, String>)>,
+) {
+    let cards = cards.clone();
+    let notes = notes.clone();
+    thread::spawn(move || {
+        let note = cards.read_card(&key).map_err(|error| error.to_string());
+        // A send fails only after the board has quit.
+        let _ = notes.send((key, note));
+    });
 }
 
 /// Wraps a terminal read or write failure for `main` to print.

@@ -258,6 +258,9 @@ vault. A hub never reports to a hub on another machine.
   even when more work follows. When the user has answered or
   reviewed and more work follows, move it back to `active` with
   `--user`, since the user's review is the go-ahead.
+  When you move a card to `review`, add the user's one next step with
+  `card note KEY "next: <step>"`, such as `next: review PR #498`.
+  `hub board` shows it on the card's details page.
 - Only the user moves a card from `draft` to `ready`, adopts work
   already under way, or drops a card. Never release a card the user
   described in a sentence: it stays in `draft` until the user has

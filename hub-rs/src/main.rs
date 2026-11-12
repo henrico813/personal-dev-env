@@ -209,11 +209,23 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         Command::Go => sidebar::run_go(&tools),
         Command::Gather => sidebar::run_gather(&tools),
         Command::Desk => sidebar::run_desk(&tools, &home),
-        Command::Board { run, print, size } => {
+        Command::Board {
+            run,
+            print,
+            dump,
+            control,
+            size,
+        } => {
             let run = find_run(run)?;
             let time_zone = now.time_zone().clone();
             if *print {
                 board::print_board(&tools, &run, &time_zone, *size)
+            } else if *dump {
+                board::dump_board(&tools, &run, &time_zone, *size)
+            } else if *control {
+                let mut input = std::io::stdin().lock();
+                let mut output = std::io::stdout().lock();
+                board::control_board(&tools, &run, &time_zone, *size, &mut input, &mut output)
             } else {
                 board::run_board(owned_tools, run, time_zone)
             }
