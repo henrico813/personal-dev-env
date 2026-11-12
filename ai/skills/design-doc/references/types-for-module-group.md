@@ -15,8 +15,8 @@ topics:
 Part of [[DESIGN-<Title>]]. Read its index first.
 
 <Make one such page per group of source folders, such as one for
-commands and steps, one for core types, and one for errors, outside
-tools and saved state.>
+commands and steps, one for core types, and a third for errors,
+outside tools and saved state.>
 
 ## Types and Functions
 ---

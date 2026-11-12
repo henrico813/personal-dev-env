@@ -19,27 +19,33 @@ Part of [[DESIGN-<Title>]]. Read its index first.
 
 ### Steps and checkpoints
 
-<A numbered list of build steps in order. Each names what to build and
-in which files, then a measurable check that proves it before the
-next step, such as matching today's tool on real data or timing an
-install. The last item says how, after release, to tell the problem
-is gone, with a measure two people would agree on, such as the
-number of failures in the first month of real use.>
+<A numbered list of build steps in order. Each step names what to
+build and in which files. Then it gives a measurable check that
+proves the step works before the next one starts, such as matching
+today's tool on real data or timing an install. The last item says
+how to tell, after release, that the problem is gone. Use a measure
+two people would agree on, such as the number of failures in the
+first month of real use.>
 
 ## Implementation Tickets
 ---
 
 <One paragraph: how many tickets, how they group into pull requests,
 who builds and who reviews, and whether the tickets are real issues
-yet. Then: `Each PR's "Reads" line names the parts of this design its
+yet. Give each PR a short name, such as P1 and P2. Number the PRs in
+the order you first planned them. Use these names on every page.
+Then copy these two sentences as plain text, without the backticks:
+`Each PR's "Reads" line names the parts of this design its
 PR touches. Its agents read those parts after the index and this
 part, with each Design Edits entry those parts point to.`>
 
 ### Phase <n>: <name>
 
-<One heading per phase, in build order. For each PR, a Ticket and Does
-table, or a PR and Tickets table for several PRs. Then what the PR
-needs from earlier PRs, the types or error codes it adds, and a
+<One heading per phase, in build order. A phase is a group of PRs
+that build one piece of the design, such as the foundation. Give each
+PR a Ticket and Does table, or give several PRs one shared table with
+the columns PR and Tickets. Then, for each PR, say what it needs from
+earlier PRs and which types or error codes it adds. Give each PR a
 "Reads:" line of part links separated by semicolons. With no phases
 yet, drop this heading and say why in one line under
 `## Implementation Tickets`.>
@@ -47,13 +53,13 @@ yet, drop this heading and say why in one line under
 ### Build order
 
 <One order that meets every dependency above, then bullets of which
-PRs can be built side by side once their dependencies land.>
+PRs can be built side by side once their dependencies merge.>
 
 ### Where the user reviews closely
 
-<Bullets: each risky PR the owner reads closely, what could go wrong
-there, and the promise it keeps. Then how the other PRs are checked,
-such as trying a screen on the phone.>
+<Bullets: each risky PR the user reads closely, what could go wrong
+there, and what it must not break. Then how the other PRs are
+checked, such as trying a screen on the phone.>
 
 ### Defaults the tickets start from
 
@@ -68,8 +74,10 @@ the change fails.>
 
 ### Who builds and who reviews
 
-<Bullets: who builds the PRs, which ones the owner reads closely, how
-review effort matches risk, and when the owner reviews the comments.>
+<Bullets: who builds the PRs and how review effort matches risk. The
+section "Where the user reviews closely" lists the PRs the user reads
+closely. When the user reviews code comments as a separate step, say
+when.>
 
 ### Still to do before these become real tickets
 

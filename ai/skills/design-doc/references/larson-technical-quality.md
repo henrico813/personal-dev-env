@@ -28,9 +28,9 @@ fails under scale. Real teams also move back down.
    at a time, trying it with a few teams before everyone.
 3. **Leverage points.** Interfaces, saved state and data models are
    where extra care keeps quality as the software changes. Try an
-   interface against several real callers, a data model against
-   several real cases, and state against its failures, consistency
-   and speed.
+   interface against several real callers and a data model against
+   several real cases. Check saved state for its failures,
+   consistency and speed.
 4. **Technical vectors.** Point the whole organization's decisions
    the same way, through direct feedback, a written strategy, tooling,
    onboarding, team structure and architecture review.
@@ -41,31 +41,32 @@ fails under scale. Real teams also move back down.
    them.
 
 The skill asks a design to name one of the first four as its problem
-type, in the first Decisions bullet, and calls the fourth "vector
-alignment". Measurement, a quality team and a quality program work
-across an organization and are rarely one design's subject. Their
-idea of a precise measure shows up as the after-release measure in
-Building It and Tickets.
+type, in the first Decisions bullet. The skill calls the fourth
+"vector alignment". Measurement, a quality team and a quality
+program each work across a whole organization. A single design rarely
+covers any of them. Larson's idea of a precise measure shows up as the
+after-release measure in Building It and Tickets.
 
 ## Short term against long term
 
-Quality has to be balanced across timeframes whose needs conflict,
-such as shipping by next week against a platform that speeds up next
-quarter. The skill asks each design to name that trade-off, in each
-Decisions bullet's cost and in Step 5's timeframe check.
+A team has to balance quality across timeframes whose needs
+conflict, such as shipping by next week against building a platform
+that speeds up next quarter. Each Decisions bullet names the cost it
+accepts. Step 5's timeframe check looks for that trade-off.
 
 ## Quality is learned in small steps
 
 Larson says there is no winning, only learning and the chance to keep
 going. Start small, iterate until it works, then add the next thing.
-The skill's feedback-loop check asks for checkpoints, and Steps and
-checkpoints gives each build step a check before the next.
+The skill's feedback-loop check asks for checkpoints. The Steps and
+checkpoints section gives each build step a check before the next
+one starts.
 
 ## Feedback inside the loop creates quality
 
-The later essay says feedback the engineer gets while writing the
-code creates quality. Feedback after the engineer hands the code off
-mostly measures it, and a problem found late tends to get a local fix
-instead of a redesign. That is why a design doc pauses before code,
-and why Tests and Samples gives the first expected results before the
-code exists.
+The later essay says that feedback the engineer gets while writing
+the code creates quality. Feedback after the engineer hands the code
+off mostly measures it. A problem found that late tends to get a
+local fix instead of a redesign. That is why a design doc pauses before
+code, and why the Tests and Samples page gives the first expected
+results before the code exists.

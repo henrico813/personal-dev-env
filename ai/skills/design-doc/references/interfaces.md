@@ -24,8 +24,9 @@ Part of [[DESIGN-<Title>]]. Read its index first.
   it.
 - The UI: what the user sees and runs, and every other tool that
   reads its state.
-Then one line naming the outside tools that are not interfaces here,
-and the file that hides each one.>
+Then one line naming the outside tools the program calls but treats
+as details, not interfaces, such as git. Name the file that wraps
+each one.>
 
 ### MCP/CLI interface design
 
@@ -39,8 +40,8 @@ commands. Keep out of each reply what its callers do not need.>
 
 <One heading per saved file, such as Review or Approvals. Say where it
 lives and when it goes away. Then a Field and Holds table, one JSON
-example, a table for each set of values such as statuses, and its
-rules, with an example for each rule that is not obvious. Show how
-the fields rule out bad states, and what happens to a field from a
-newer version. When the change adds or changes no saved file, drop
-this heading and say why in one line under `## Interfaces`.>
+example, and a table for each set of values, such as statuses. Then
+the file's rules, with an example for each rule that is not obvious.
+Show how the fields rule out bad states, and what happens to a field
+from a newer version. When the change adds or changes no saved file,
+drop this heading and say why in one line under `## Interfaces`.>

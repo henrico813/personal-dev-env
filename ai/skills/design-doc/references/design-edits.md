@@ -26,7 +26,10 @@ This note lists each change that building the <program> makes to the design.
 An entry may name more than one passage when one change touches several. When a later merged pull request changed the same item, the entry gives the code as it is now and names both pull requests. "<PR> adds it" marks a part of the design that a later pull request still builds. Entry IDs never change, so an entry added later sits beside its pull request's entries with a higher number, such as E82 after E9.
 
 <Keep the paragraph above. Fill in `<PR>` with a pull request's
-short name, such as P12.>
+short name from the Building It and Tickets page, such as P12. The
+sentence with `<PR>` shows how to mark design text that a later pull
+request still builds. Any page may use that mark, such as "P5 adds
+it" beside a signature.>
 
 ## Edits
 ---
@@ -35,9 +38,14 @@ short name, such as P12.>
 
 ### E<n> <Short title>
 
-<One heading per edit, numbered from E1. Bullets: PR (its number,
-merged or open, and its plan), Replaces (the part, the section and
-the exact text), New text, and Source (the plan decision or code it
-comes from). Beside each replaced passage, add "(changed: see
-[[DESIGN-<Title> - Design Edits#E<n> <Short title>|E<n>]])", or a
-"Changed: see ..." line under the heading of a block that changed.>
+<One heading per edit, numbered from E1. Give each entry four
+bullets:
+- PR: its number, its plan, and whether it is merged, open or parked.
+  A parked PR was set aside without merging.
+- Replaces: the part, the section and the exact text.
+- New text.
+- Source: the plan decision or code it comes from.
+Beside each replaced passage, add "(changed:
+see [[DESIGN-<Title> - Design Edits#E<n> <Short title>|E<n>]])". For
+a block that changed, such as a table, add a "Changed: see ..." line
+under its heading instead.>

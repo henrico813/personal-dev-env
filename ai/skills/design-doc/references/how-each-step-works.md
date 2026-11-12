@@ -17,8 +17,9 @@ Part of [[DESIGN-<Title>]]. Read its index first.
 ## How Each Step Works
 ---
 
-<One or two sentences: what every step returns, such as a `Result` so
-a refusal is a value and not a crash, and a link to the Types pages.>
+<One or two sentences on what every step returns, such as a `Result`,
+so a refusal is a value and not a crash. Then a link to the Types
+pages.>
 
 ### Call Stacks
 

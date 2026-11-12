@@ -18,15 +18,19 @@ Part of [[DESIGN-<Title>]]. Read its index first.
 ---
 
 <Name the page after the rules the program checks, such as Style
-Rules. Say what is checked against what, with one failing example,
-which rules today's tool runs, which file holds the rules, and why
-that file has its name.>
+Rules. Say what input the program checks and which rules it checks
+that input against. Give one failing example. Then say which rules
+today's tool runs, which file holds the rules, and why that file has
+its name.>
 
 ### The rules
 
 <How each rule is named in replies and what it quotes. A Rule, "Breaks
-when" and <Cases> table, one row per rule. Then what a finding's
-detail holds, and any values in the rule type that are not rules.>
+when" and <Cases> table, one row per rule. The <Cases> column lists
+the cases that use the rule, such as Go, Python, Rust. Then what a
+finding's detail holds. When the code keeps the rules in one type,
+such as an enum, name each value of that type that is not a rule,
+such as a failure another step reports.>
 
 ### Which <cases> use which rules
 
@@ -36,8 +40,10 @@ out.>
 
 ### Failing or only reporting
 
-<When a finding fails and when it is only reported. Then a numbered
-list of report notes in the order they apply, each with its reason.>
+<When a finding fails and when it is only reported. A reported
+finding carries a note that says why it does not fail, such as
+`approved` for text the user approved. Then a numbered list of these
+notes, in the order the check tests them, each with its reason.>
 
 ### What the check reads
 

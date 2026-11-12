@@ -23,8 +23,8 @@ design replaces a tool the skills use, say why the old tool cannot
 stay beside the new one. Weigh at least two options
 for each choice that came up. Say which won, why, and the cost it
 accepts. For each option that lost, say what it would look like, what
-it gets right, and why it lost, in terms of trade-offs. End with the
-release the skills change in, when they ship in a release.>
+it gets right, and why it lost, in terms of trade-offs. If the
+changes to the skills ship in a release, end with which release.>
 
 ### How the <Name> Process exposes CLI calls to the skills
 
