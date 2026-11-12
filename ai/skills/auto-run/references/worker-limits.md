@@ -190,12 +190,12 @@ step again.
   on "status update". Add a `card note` at each milestone, one
   `card` call per shell call, since each writes to the vault on the
   network drive and can be slow.
-- Write a question, a blocker or finished work to
-  `<run folder>/report-<your agent name>.md`, replacing its old
-  text, then end your turn at once. Update your status file and card
-  before the report, never after: a message the hub sends while you
-  still work waits, and blocks its next one. Never prompt the hub,
-  and never use an interactive question tool. A question gives 2 or
+- Write a question, a blocker or finished work with
+  `hub report --run "<run folder>" <your agent name> <file>`, which
+  replaces your old report whole, then end your turn at once. Update
+  your status file and card before the report, never after. Never
+  prompt the hub, and never use an interactive question tool. A
+  question gives 2 or
   3 choices, what each leads to, and your recommendation. Finished
   work gives the checks run, with results, and the checks not run.
 - Edit only your card through `card`, your plan note, your worktree
@@ -203,6 +203,5 @@ step again.
 - Near 150K context, write a handoff by `herdr-handoff` and report it
   to the hub instead of starting a session yourself.
 - When the hub says your card is accepted or dropped, check that you
-  hold nothing unsaved, then close your own tab with
-  `herdr tab close <tab>`, the tab being `.result.agent.tab_id` of
-  `herdr agent get "$HERDR_PANE_ID"`.
+  hold nothing unsaved, then end your turn. Never close your own tab;
+  the hub closes or parks it.

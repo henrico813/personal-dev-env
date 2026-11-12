@@ -1,15 +1,14 @@
 # hub in Rust
 
-The `hub` command, rewritten in Rust. A hub is the Herdr session that
+The `hub` command, written in Rust. A hub is the Herdr session that
 other sessions report to, and it runs `hub` to watch, message and
-tidy them. The Python hub in `../hub/` stays the one agents and skills
-use until this program replaces it.
+tidy them. It replaced the Python hub, which was deleted.
 
 pde-installer builds this folder on the Development tier and installs
-it as `~/.local/bin/hub-next`, so you can try it beside the Python
-`hub`. So far it has `status`, `next`, `send`, `read`, `report`,
-`inbox`, `note`, `brief`, `handoff`, `clean`, `park`, `auto`, `flag`,
-`unflag`, `alive`, `go`, `gather` and `desk`.
+it as `~/.local/bin/hub`, so full machines get it and client laptops,
+which compile nothing, do not. It has `status`, `next`, `send`,
+`read`, `report`, `inbox`, `note`, `brief`, `handoff`, `clean`,
+`park`, `auto`, `flag`, `unflag`, `alive`, `go`, `gather` and `desk`.
 
 ```bash
 make build   # target/release/hub
@@ -20,16 +19,18 @@ make test
 Exit codes: 0 done, 1 an external system such as Herdr failed, 2 wrong
 usage, 3 not done, such as when no hub is running. Each failure prints
 its reason. When the reader of the output stops early, as
-`hub-next go | head` does, the hub stops printing and keeps its exit
+`hub go | head` does, the hub stops printing and keeps its exit
 code.
 
-## Differences from hub
+## Changes from the Python hub
 
-- `hub-next --version` prints `hub 0.2.0`, since the binary already
-  calls itself `hub`. The Python hub prints `hub 0.1.0`.
-- `hub-next go` and `hub-next gather` exit 3, not 2, when no hub is
+For anyone who used the deleted Python hub, this program differs from
+it in these ways.
+
+- `hub --version` prints `hub 0.2.0`. The Python hub printed `0.1.0`.
+- `hub go` and `hub gather` exit 3, not 2, when no hub is
   running, so a script can tell this from a mistyped command.
-- `hub-next flag` on a working session marks it on idle and done, so
+- `hub flag` on a working session marks it on idle and done, so
   "needs you" shows once it stops. The Python hub marked the working
   state, which showed "needs you" while the session still worked.
 - `status`, `next`, `send`, `read`, `report`, `inbox`, `note`,
@@ -60,7 +61,7 @@ code.
   step takes the run folder from `--run DIR`, else from `HUB_RUN`.
   `auto check` prints `hub: ` before its first problem only, one
   problem per line.
-- `hub-next --machine LABEL alive` exits 2 with
+- `hub --machine LABEL alive` exits 2 with
   `alive works on this machine only`, the same words as `go`.
 - `send` sends at once to an OpenCode or Claude Code session that is
   working, idle or done, when the user is not in its pane. Another
