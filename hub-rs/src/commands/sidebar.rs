@@ -1,10 +1,25 @@
-//! Runs `hub go` and `hub gather`, which find the hubs in Herdr's
-//! sidebar. A hub is an agent whose name ends in `-hub-<n>`.
+//! Runs `hub go`, `hub gather` and `hub desk`, which find the hubs in
+//! Herdr's sidebar. A hub is an agent whose name ends in `-hub-<n>`.
+//! The desk is the user's own workspace, which holds no session.
+//! `gather` and `desk` put the kanban hubs at the top, then the desk,
+//! then the other hubs. They also cut Herdr's agent list down to a "go
+//! to" list in that order, followed by the sessions that wait on the
+//! user.
+
+use std::path::Path;
 
 use super::Outcome;
-use crate::external::herdr::{Agent, Workspace};
+use crate::external::herdr::{Agent, AgentStatus, HubKind, NewPlace, Workspace};
 use crate::shared::lifecycle::is_hub_name;
 use crate::shared::{HubError, Tools};
+
+/// The desk workspace's label, which is how `hub desk` and `hub gather`
+/// find it.
+const DESK_LABEL: &str = "desk";
+/// Typed into the desk's first tab.
+const BOARD_COMMAND: &str = "hub board";
+/// Starts the name of each hub the user works the kanban board with.
+const KANBAN_HUB_PREFIX: &str = "kanban-hub-";
 
 /// Shows the hub after the one the user looks at, in sidebar order,
 /// wrapping to the first.
@@ -19,9 +34,9 @@ pub fn run_go(tools: &Tools<'_>) -> Result<Outcome, HubError> {
     Ok(Outcome::line(format!("showing {}", next_hub.name)))
 }
 
-/// Moves every hub's workspace into one block at the top of the
-/// sidebar. Two hubs can share a workspace, and Herdr refuses a
-/// repeated ID, so each workspace is moved once.
+/// Moves the desk, when it is open, and every hub's workspace into one
+/// block at the top of the sidebar. Kanban hubs come first, then the
+/// desk, then the other hubs. It then fills the "go to" agent list.
 pub fn run_gather(tools: &Tools<'_>) -> Result<Outcome, HubError> {
     let agents = tools.herdr.list_agents()?;
     let workspaces = tools.herdr.list_workspaces()?;
@@ -29,25 +44,132 @@ pub fn run_gather(tools: &Tools<'_>) -> Result<Outcome, HubError> {
     if hubs.is_empty() {
         return Err(HubError::NotDone("no hub is running".to_owned()));
     }
+    let desk_id = find_desk(&workspaces).map(|desk| desk.workspace_id.as_str());
+    let block = list_top_block(&hubs, desk_id);
+    move_block_to_top(tools, &block, &workspaces)?;
+    show_go_to_list(tools, &agents, &hubs, desk_id)?;
+    Ok(Outcome::line(format!("at the top: {}", block.join(" "))))
+}
+
+/// Makes the desk when it is missing, with the board in its first tab
+/// and a shell in its second, so the board shows first on a phone.
+/// It then moves the desk to the top, right below the kanban hubs, and
+/// fills the "go to" agent list. It never focuses the desk.
+pub fn run_desk(tools: &Tools<'_>, home: &Path) -> Result<Outcome, HubError> {
+    let agents = tools.herdr.list_agents()?;
+    let workspaces = tools.herdr.list_workspaces()?;
+    let (desk_id, line) = match find_desk(&workspaces) {
+        Some(desk) => (desk.workspace_id.clone(), "desk is open"),
+        None => (make_desk(tools, home)?, "made desk: board, then shell"),
+    };
+    let hubs = list_hubs(&agents, &workspaces);
+    let block = list_top_block(&hubs, Some(&desk_id));
+    move_block_to_top(tools, &block, &workspaces)?;
+    show_go_to_list(tools, &agents, &hubs, Some(&desk_id))?;
+    Ok(Outcome::line(line))
+}
+
+/// Makes the desk workspace in `home` and returns its ID.
+fn make_desk(tools: &Tools<'_>, home: &Path) -> Result<String, HubError> {
+    let place = |label: &str| NewPlace {
+        label: label.to_owned(),
+        cwd: home.to_owned(),
+        env: Vec::new(),
+    };
+    let desk = tools.herdr.create_workspace(&place(DESK_LABEL))?;
+    tools.herdr.run_in_pane(&desk.root_pane_id, BOARD_COMMAND)?;
+    tools
+        .herdr
+        .create_tab(&desk.workspace_id, &place("shell"))?;
+    Ok(desk.workspace_id)
+}
+
+/// Returns the first workspace labelled `desk`.
+fn find_desk(workspaces: &[Workspace]) -> Option<&Workspace> {
+    workspaces
+        .iter()
+        .find(|workspace| workspace.label == DESK_LABEL)
+}
+
+/// Returns the workspace IDs that belong at the top, each once. The
+/// kanban hubs' come first, then the desk, then the other hubs'. Two
+/// hubs can share a workspace, and Herdr refuses a repeated ID.
+fn list_top_block(hubs: &[&Agent], desk_id: Option<&str>) -> Vec<String> {
+    let (kanban_hubs, other_hubs): (Vec<&Agent>, Vec<&Agent>) = hubs
+        .iter()
+        .copied()
+        .partition(|hub| find_hub_kind(hub) == HubKind::Kanban);
+    let ids = kanban_hubs
+        .iter()
+        .map(|hub| hub.workspace_id.as_str())
+        .chain(desk_id)
+        .chain(other_hubs.iter().map(|hub| hub.workspace_id.as_str()));
     let mut block: Vec<String> = Vec::new();
-    for hub in &hubs {
-        if !block.contains(&hub.workspace_id) {
-            block.push(hub.workspace_id.clone());
+    for id in ids {
+        if !block.iter().any(|kept| kept == id) {
+            block.push(id.to_owned());
         }
     }
-    // Herdr also refuses a block placed before one of its own members.
+    block
+}
+
+fn find_hub_kind(hub: &Agent) -> HubKind {
+    if hub.name.starts_with(KANBAN_HUB_PREFIX) {
+        HubKind::Kanban
+    } else {
+        HubKind::Other
+    }
+}
+
+/// Moves `block` above every other workspace in `workspaces`.
+fn move_block_to_top(
+    tools: &Tools<'_>,
+    block: &[String],
+    workspaces: &[Workspace],
+) -> Result<(), HubError> {
+    // Herdr refuses a block placed before one of its own members, so a
+    // sidebar that holds only the block stays as it is.
     let first_other = workspaces
         .iter()
         .find(|workspace| !block.contains(&workspace.workspace_id));
     if let Some(first_other) = first_other {
         tools
             .herdr
-            .move_workspaces(&block, &first_other.workspace_id)?;
+            .move_workspaces(block, &first_other.workspace_id)?;
     }
-    Ok(Outcome::line(format!(
-        "hubs at the top: {}",
-        block.join(" ")
-    )))
+    Ok(())
+}
+
+/// Tags each hub's pane and the desk's board pane, then makes Herdr's
+/// agent list show only them and the sessions that wait on the user.
+/// Another machine's hubs show there once a hub on that machine runs
+/// `gather` too, since each machine tags only its own panes. Herdr
+/// forgets pane tokens and the filter when its server restarts, so each
+/// hub start sets them again.
+fn show_go_to_list(
+    tools: &Tools<'_>,
+    agents: &[Agent],
+    hubs: &[&Agent],
+    desk_id: Option<&str>,
+) -> Result<(), HubError> {
+    for hub in hubs {
+        tools.herdr.tag_hub_pane(&hub.pane_id, find_hub_kind(hub))?;
+    }
+    if let Some(desk_id) = desk_id {
+        tools.herdr.show_desk_as_agent(desk_id)?;
+    }
+    // An older `hub flag` set the "needs you" label but not the token
+    // the filter reads, so a flagged session gets its mark again.
+    let flagged_idle = agents.iter().filter(|agent| {
+        agent.marked && matches!(agent.status, AgentStatus::Idle | AgentStatus::Done)
+    });
+    for agent in flagged_idle {
+        tools
+            .herdr
+            .mark_needs_you(&agent.pane_id, &[AgentStatus::Idle, AgentStatus::Done])?;
+    }
+    tools.herdr.filter_agent_list()?;
+    Ok(())
 }
 
 /// Returns the hubs ordered by their workspace's place, then by name.
