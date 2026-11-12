@@ -287,6 +287,7 @@ you make any card.
   on adopted sessions below shows.
 - `hub handoff`, `hub adopt` and `hub auto now` move every hub's
   workspace on this machine into one block at the top of the sidebar.
+  `hub gather` makes the same move when the user runs it.
   The user presses `ctrl+b shift+h`, or runs `hub go`, to show the
   next hub in sidebar order, wrapping to the first.
 - The workspace labelled `desk` is the user's. Never open a tab or pane
