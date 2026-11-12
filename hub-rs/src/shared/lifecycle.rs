@@ -213,7 +213,7 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
     }
     // Rule 6. An old hub closes only once `hub handoff` named it, and
     // not while the user types in it or its approval waits.
-    if is_hub_name(&facts.name) && !facts.name.starts_with(REVIEW_PREFIX) {
+    if is_hub_name(&facts.name) {
         return if facts.is_predecessor {
             make_close_unless_user_waits(facts, agent, "handed off")
         } else {
@@ -260,9 +260,33 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
 
 /// Tells whether a name belongs to a hub, such as `kanban-hub-13`.
 pub(crate) fn is_hub_name(name: &str) -> bool {
-    name.rsplit_once("-hub-").is_some_and(|(_, number)| {
-        !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit())
-    })
+    !name.starts_with(REVIEW_PREFIX)
+        && name.rsplit_once("-hub-").is_some_and(|(_, number)| {
+            !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit())
+        })
+}
+
+/// Tells whether `name` is a hub older than `own` that no `handoff`
+/// event named, such as `kanban-hub-3` left open when the user started
+/// `kanban-hub-4` by hand. Only hubs of the same run count, which share
+/// the word before `-hub-`. `predecessor` is the old hub of the run's
+/// last `handoff` event.
+pub(crate) fn is_unadopted_hub(own: &str, name: &str, predecessor: Option<&str>) -> bool {
+    let (Some((own_word, own_number)), Some((word, number))) =
+        (split_hub_name(own), split_hub_name(name))
+    else {
+        return false;
+    };
+    word == own_word && number < own_number && predecessor != Some(name)
+}
+
+/// Splits a hub name such as `kanban-hub-13` into `kanban` and 13.
+fn split_hub_name(name: &str) -> Option<(&str, u64)> {
+    if !is_hub_name(name) {
+        return None;
+    }
+    let (word, number) = name.rsplit_once("-hub-")?;
+    Some((word, number.parse().ok()?))
 }
 
 /// Returns the first check that keeps a finished session open. The
@@ -724,16 +748,38 @@ mod tests {
     /// for a hub, would be moved to the top by `gather`, shown by `go`
     /// and kept open by `hub status` as another hub.
     #[test]
-    fn is_hub_name_needs_number_after_hub() {
+    fn is_hub_name_rejects_workers_and_reviews() {
         let cases = [
             ("hub", "kanban-hub-13", true),
             ("no-number", "kanban-hub-", false),
             ("text-after-number", "kanban-hub-13-notes", false),
             ("worker", "demo-kb-001-impl", false),
+            ("old-hub-review", "review-kanban-hub-16", false),
         ];
 
         for (case_name, name, expected) in cases {
             assert_eq!(is_hub_name(name), expected, "{case_name}");
+        }
+    }
+
+    /// `hub next` and `hub status` tell the hub to adopt each hub this
+    /// returns, and an adopted hub gets closed and reviewed. A wrong
+    /// match would close the hub that properly handed off, a newer hub,
+    /// another run's hub or a running review.
+    #[test]
+    fn is_unadopted_hub_matches_older_unnamed_hubs() {
+        let cases = [
+            ("older-same-run", "kanban-hub-3", None, true),
+            ("predecessor", "kanban-hub-3", Some("kanban-hub-3"), false),
+            ("other-run", "auto-hub-3", None, false),
+            ("newer", "kanban-hub-5", None, false),
+            ("review", "review-kanban-hub-3", None, false),
+        ];
+
+        for (case_name, name, predecessor, expected) in cases {
+            let unadopted = is_unadopted_hub("kanban-hub-4", name, predecessor);
+
+            assert_eq!(unadopted, expected, "{case_name}");
         }
     }
 }

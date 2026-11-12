@@ -50,6 +50,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	manager := newFixtureManager(t, home, repoRoot, logPath)
 
 	// Files from the previous install, including a plain-file pde-pr-approve.
+	// hub-next is a dropped name, so the rollback also restores a deleted file.
 	for _, name := range []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "glimmer", "hub-next",
 		"skill-lessons", "hub", "prs",
@@ -285,7 +286,7 @@ func TestClientBlinkPinMatchesBuildPin(t *testing.T) {
 }
 
 // A failed check of a built tool must put back every old tool. A broken
-// glimmer stops Ctrl+b e opening, and a broken hub-next stays installed.
+// glimmer stops Ctrl+b e opening, and a broken hub stops every hub command.
 func TestFailedToolCheckRestoresEveryTool(t *testing.T) {
 	tests := []struct {
 		tool, source string
@@ -295,7 +296,7 @@ func TestFailedToolCheckRestoresEveryTool(t *testing.T) {
 			source: "glimmer",
 		},
 		{
-			tool:   "hub-next",
+			tool:   "hub",
 			source: "hub-rs",
 		},
 	}
@@ -331,8 +332,8 @@ func TestFailedToolCheckRestoresEveryTool(t *testing.T) {
 	}
 }
 
-// A client laptop has no Go or Rust, so any build but skill-lessons and hub,
-// which only zip Python files, would fail every client install.
+// A client laptop has no Go or Rust, so any build but skill-lessons, which
+// only zips Python files, would fail every client install.
 func TestClientBuildsOnlyPythonTools(t *testing.T) {
 	home, repoRoot := t.TempDir(), t.TempDir()
 	writeBuildSources(t, repoRoot)
@@ -347,8 +348,49 @@ func TestClientBuildsOnlyPythonTools(t *testing.T) {
 	if err := journal.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	if got := readBuildLog(t, logPath); got != "python\npython\n" {
-		t.Fatalf("build log = %q, want two python builds", got)
+	if got := readBuildLog(t, logPath); got != "python\n" {
+		t.Fatalf("build log = %q, want one python build", got)
+	}
+}
+
+// A hub-next left on a full machine keeps running an old Rust hub that no
+// install updates.
+func TestReconcileRemovesLeftoverHubNext(t *testing.T) {
+	home, repoRoot := t.TempDir(), t.TempDir()
+	writeBuildSources(t, repoRoot)
+	manager := newFixtureManager(t, home, repoRoot, filepath.Join(t.TempDir(), "build.log"))
+	hubNext := filepath.Join(home, ".local", "bin", "hub-next")
+	writeBuildFile(t, hubNext, "old hub-next\n", 0o755)
+
+	journal, err := manager.Reconcile("full")
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if err := journal.Commit(); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+
+	if _, err := os.Lstat(hubNext); !os.IsNotExist(err) {
+		t.Fatalf("Lstat(hub-next) error = %v, want not exist", err)
+	}
+}
+
+// A client laptop keeps the build state of its last install, and client no
+// longer builds hub. A hub left behind would never be updated again.
+func TestReconcileOnClientRemovesFullHub(t *testing.T) {
+	manager, _, _ := newCommittedManager(t)
+	hub := filepath.Join(manager.Home, ".local", "bin", "hub")
+
+	journal, err := manager.Reconcile("client")
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if err := journal.Commit(); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+
+	if _, err := os.Lstat(hub); !os.IsNotExist(err) {
+		t.Fatalf("Lstat(hub) error = %v, want not exist", err)
 	}
 }
 
@@ -371,6 +413,7 @@ func newCommittedManager(t *testing.T) (manager Manager, repoRoot, logPath strin
 	return manager, repoRoot, logPath
 }
 
+// Writes a small source tree for each build the fake tools run.
 func writeBuildSources(t *testing.T, repoRoot string) {
 	t.Helper()
 	for _, source := range []string{
@@ -382,9 +425,6 @@ func writeBuildSources(t *testing.T, repoRoot string) {
 	writeBuildFile(t, filepath.Join(root, "build.py"), "build\n", 0o644)
 	writeBuildFile(t, filepath.Join(root, "src", "skill_lessons", "cli.py"), "cli\n", 0o644)
 	writeBuildFile(t, filepath.Join(root, "tests", "test_cli.py"), "tests\n", 0o644)
-	hub := filepath.Join(repoRoot, "hub")
-	writeBuildFile(t, filepath.Join(hub, "build.py"), "build\n", 0o644)
-	writeBuildFile(t, filepath.Join(hub, "src", "hub", "cli.py"), "cli\n", 0o644)
 }
 
 func newFixtureManager(t *testing.T, home, repoRoot, logPath string) Manager {
@@ -707,6 +747,7 @@ func writeBuildFile(t *testing.T, path, content string, mode os.FileMode) {
 	}
 }
 
+// Checks that each full-profile tool in ~/.local/bin came from its fake build.
 func assertBuildOutputs(t *testing.T, home string) {
 	t.Helper()
 	for name, tool := range map[string]string{
@@ -715,9 +756,8 @@ func assertBuildOutputs(t *testing.T, home string) {
 		"vibe":                 "cargo",
 		"pde-gh-write":         "go",
 		"glimmer":              "cargo",
-		"hub-next":             "cargo",
+		"hub":                  "cargo",
 		"skill-lessons":        "python",
-		"hub":                  "python",
 		"prs":                  "go",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "#!/bin/sh\nexit 0\n# built by "+tool+"\n")

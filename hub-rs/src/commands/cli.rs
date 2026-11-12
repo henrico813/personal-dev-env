@@ -41,6 +41,7 @@ $HUB_RUN.
   note*    add a timed line to notes.md
   brief*   what waits on the user
   handoff* start the next hub
+  adopt*   take over a hub left without handoff
   clean*   close and park finished tabs
   park*    park one finished session
   auto     the steps of an auto run
@@ -48,7 +49,8 @@ $HUB_RUN.
   unflag   clear the mark
   alive    is an OpenCode session alive
   go       show the next hub
-  gather   put hubs at the top
+  gather   hubs on top, filter agents
+  desk     make the user's workspace
 
 {after-help}",
     after_help = "Exit: 0 done, 1 a tool failed,\n2 wrong usage, 3 not done."
@@ -92,6 +94,9 @@ pub enum Command {
         /// Print the news as JSON
         #[arg(long)]
         json: bool,
+        /// Start old hubs' session reviews, which are off by default
+        #[arg(long)]
+        start_reviews: bool,
     },
     /// Deliver now, or hold until free
     #[command(after_help = "Example: hub send docs-fix --file /tmp/msg.md")]
@@ -165,6 +170,14 @@ pub enum Command {
         /// The handoff file for the next hub
         handoff: PathBuf,
     },
+    /// Take over a hub left without handoff
+    #[command(after_help = "Example: hub adopt kanban-hub-3")]
+    Adopt {
+        #[command(flatten)]
+        run: RunArg,
+        /// The older hub's agent name
+        old: AgentName,
+    },
     /// Close and park finished tabs
     #[command(after_help = "Example: hub clean --dry-run")]
     Clean {
@@ -209,9 +222,12 @@ pub enum Command {
     /// Show the next hub
     #[command(after_help = "Example: hub go")]
     Go,
-    /// Put hubs at the top
+    /// Put hubs on top, filter agents
     #[command(after_help = "Example: hub gather")]
     Gather,
+    /// Make the user's workspace
+    #[command(after_help = "Example: hub desk")]
+    Desk,
 }
 
 // The steps run in the order the `auto-run` skill gives.
@@ -264,6 +280,7 @@ impl Command {
             Command::Note { .. } => "note",
             Command::Brief { .. } => "brief",
             Command::Handoff { .. } => "handoff",
+            Command::Adopt { .. } => "adopt",
             Command::Clean { .. } => "clean",
             Command::Park { .. } => "park",
             Command::Auto { .. } => "auto",
@@ -272,6 +289,7 @@ impl Command {
             Command::Alive { .. } => "alive",
             Command::Go => "go",
             Command::Gather => "gather",
+            Command::Desk => "desk",
         }
     }
 }
@@ -330,12 +348,14 @@ pub fn takes_machine(command: &Command) -> bool {
         | Command::Note { .. }
         | Command::Brief { .. }
         | Command::Handoff { .. }
+        | Command::Adopt { .. }
         | Command::Clean { .. }
         | Command::Park { .. }
         | Command::Auto { .. }
         | Command::Alive { .. }
         | Command::Go
-        | Command::Gather => false,
+        | Command::Gather
+        | Command::Desk => false,
     }
 }
 
@@ -401,6 +421,7 @@ mod tests {
             ),
             ("go", Command::Go, false),
             ("gather", Command::Gather, false),
+            ("desk", Command::Desk, false),
         ];
 
         for (case_name, command, expected) in cases {
