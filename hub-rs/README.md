@@ -9,7 +9,8 @@ it as `~/.local/bin/hub`, so full machines get it and client laptops,
 which compile nothing, do not. It has `status`, `next`, `send`,
 `read`, `report`, `inbox`, `note`, `brief`, `handoff`, `adopt`,
 `clean`, `park`, `auto`, `flag`, `unflag`, `alive`, `go`, `gather`,
-`desk` and `board`.
+`desk` and `board`. `hub COMMAND --help` says what a command does and
+when to use it, with an example.
 
 ```bash
 make build   # target/release/hub
@@ -28,16 +29,23 @@ code.
 For anyone who used the deleted Python hub, this program differs from
 it in these ways.
 
-- `hub --version` prints `hub 0.2.0`. The Python hub printed `0.1.0`.
+- `hub --version` prints the version of the newest `hub-v` release
+  tag, such as `hub 0.2.0`. The Python hub printed `0.1.0`.
 - `hub go` and `hub gather` exit 3, not 2, when no hub is
   running, so a script can tell this from a mistyped command.
+- `desk` is new. `gather` also cuts Herdr's agent list down to the
+  hubs and the sessions that wait on the user. The Python `gather`
+  only moved hubs.
 - `hub flag` on a working session marks it on idle and done, so
   "needs you" shows once it stops. The Python hub marked the working
   state, which showed "needs you" while the session still worked.
 - `status`, `next`, `send`, `read`, `report`, `inbox`, `note`,
-  `brief`, `handoff`, `adopt`, `clean` and `park` take the run folder
-  from `--run DIR`, else from `HUB_RUN`. With neither, or with a
-  folder that does not exist, they exit 2.
+  `brief`, `handoff`, `adopt`, `clean`, `park` and `board` take the
+  run folder from `--run DIR`, else from `HUB_RUN`, else from the one
+  `~/.local/state/herdr-hub.*` folder whose `hub next` runs now. With
+  no `hub next` running, they use the folder whose `events.jsonl`
+  changed last and name it on stderr. With no folder found, two or
+  more running, or a folder that does not exist, they exit 2.
 - `read` exits 3, not 2, when the session has no unread report.
   `read --note TEXT --card [KEY]` also adds the note to the card's Log,
   with the key in the session's name or the KEY given. If a step
@@ -106,7 +114,7 @@ it in these ways.
   `next --start-reviews` then starts its review.
 - `next` runs a minute pass at most once a minute, and only after a
   session's state changed or a report was read. It reads `card board`.
-  Each time the board crosses into its limit, it wakes the hub once
+  Each time the board goes over its limit, it wakes the hub once
   with `board over its limit: 25/8 (hub 131k)`. A board already over
   its limit at the run's first pass prints nothing. It never closes or
   parks a session. It lists each session that becomes `to-close` or
