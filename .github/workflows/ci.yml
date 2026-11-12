@@ -129,6 +129,7 @@ jobs:
           go vet ./...
           node test/opencode-herdr-subagents.test.mjs
           node test/opencode-secret-redaction.test.mjs
+          node test/opencode-usage.test.mjs
           bash -n test/*.sh
           test/nvim-obsidian-sync.sh
           test/nvim-clipboard.sh
