@@ -5,7 +5,7 @@ use std::fs;
 use hub::commands::auto::{
     AutoApproval, run_auto_approve, run_auto_check, run_auto_now, run_auto_ready,
 };
-use hub::external::cards::CardNote;
+use hub::external::cards::{CardNote, Stage};
 use hub::external::herdr::{AgentStatus, HerdrError};
 use hub::shared::HubError;
 
@@ -17,6 +17,10 @@ fn make_ready_cards(keys: &[&str]) -> TestTools {
     let mut test_tools = TestTools::new();
     for key in keys {
         test_tools.cards.ready.push((*key).to_owned());
+        test_tools
+            .cards
+            .stages
+            .insert((*key).to_owned(), Stage::Ready);
         test_tools.cards.card_notes.insert(
             (*key).to_owned(),
             CardNote {
@@ -119,7 +123,7 @@ fn run_auto_check_prints_problems_or_count() {
                   - DEMO-KB-009 demo: export",
             rest: "",
             expected: Err("DEMO-KB-001 is listed more than once\n\
-                           DEMO-KB-009 is not a ready card; only the user moves a card to ready\n\
+                           DEMO-KB-009 is not on the board\n\
                            ready card DEMO-KB-002 is missing from run.md"),
         },
     ];

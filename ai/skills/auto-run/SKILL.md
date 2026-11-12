@@ -80,7 +80,8 @@ The user's rules for every run:
 
    It exits 3, with one problem per line, when the list fails its
    check.
-   A card the user wants that is still a draft stays out until the
+   A card the user picks may be ready, active or review. A card the
+   user wants that is still a draft stays out until the
    user moves it to ready, or tells you to.
 6. Send the briefing, by `status-updates`, as that turn's only
    message:
@@ -172,7 +173,8 @@ before the user reviews that pull request.
    to it, and adds only the card and anything the card needs.
 4. Move each card under `## Run` to active with
    `card move <key> active --user --why "auto run <N>, approved
-   <time in approved.md>"`, one `card` call per shell call: each
+   <time in approved.md>"`. Skip a card that `card show <key>`
+   reports as active. Make one `card` call per shell call: each
    writes to the vault on the network drive and can be slow, so a
    call that times out is the only one in doubt.
 5. Start one worker per card by `herdr-handoff`, as agent
