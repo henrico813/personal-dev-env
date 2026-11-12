@@ -11,7 +11,7 @@ use super::messages;
 use super::parking::ParkedRecord;
 use super::run_folder::{ReportedNames, RunFolder};
 use super::{HubError, Tools};
-use crate::external::cards::{CardError, CardKey, CardNote, Stage};
+use crate::external::cards::{CardError, CardKey, CardNote, ListedCard, Stage};
 use crate::external::git::{self, Unsaved};
 use crate::external::herdr::{Agent, AgentKind, AgentStatus};
 use crate::external::requests::PrRequest;
@@ -28,6 +28,12 @@ pub(crate) struct CollectedFacts {
     /// The names of parked records whose session is live again, left by
     /// a failed close or a reopen. The tidy pass deletes them.
     pub live_records: Vec<String>,
+    /// Every card in `card list` order, or none when `card list`
+    /// failed.
+    pub cards: Vec<ListedCard>,
+    /// What `card show` gave for each open card a session, a parked
+    /// record or a report names. A card that failed to read is left out.
+    pub notes: BTreeMap<CardKey, CardNote>,
     /// One line per failed source, such as `cards: ...`.
     pub problems: Vec<String>,
 }
@@ -45,8 +51,10 @@ pub(crate) struct HubLine {
 /// every parked session that is not live again. A card, database,
 /// report or request file failure becomes a problem line, not an
 /// error. A request file that does not parse also keeps every live
-/// session. A worker whose own card is done, but whose newest report
-/// names a draft, ready or active card, gets that card as its card.
+/// session. A worker keeps its own card while that card is draft, ready
+/// or active and no newer live session took it over. Otherwise it takes
+/// the first other draft, ready, active or in-review card its newest
+/// report names, if any.
 pub(crate) fn collect_session_facts(
     tools: &Tools<'_>,
     run: &RunFolder,
@@ -65,13 +73,17 @@ pub(crate) fn collect_session_facts(
         .list_parked_records()?
         .into_iter()
         .partition(|record| live_names.contains(record.name.as_str()));
-    let (stages, stages_failed) = match tools.cards.list_stages() {
-        Ok(stages) => (stages, false),
+    let (cards, stages_failed) = match tools.cards.list_cards() {
+        Ok(cards) => (cards, false),
         Err(error) => {
             add_card_problem(&mut problems, &error);
-            (BTreeMap::new(), true)
+            (Vec::new(), true)
         }
     };
+    let stages: BTreeMap<CardKey, Stage> = cards
+        .iter()
+        .map(|card| (card.key.clone(), card.stage))
+        .collect();
     let reported = run.list_reported_names()?;
     // A worker may move on to another card, as when it merges several
     // pull requests, so the cards its newest report names are its too.
@@ -87,23 +99,26 @@ pub(crate) fn collect_session_facts(
         .filter_map(|agent| CardKey::find_in_name(&agent.name))
         .chain(parked.iter().map(|record| record.card.clone()))
         .chain(report_keys.values().flatten().flatten().cloned());
+    let open_keys: Vec<CardKey> = named_keys
+        .filter(|key| {
+            matches!(
+                stages.get(key),
+                Some(Stage::Draft | Stage::Ready | Stage::Active | Stage::Review)
+            )
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
     let mut notes = BTreeMap::new();
     let mut failed_keys = BTreeSet::new();
-    for key in named_keys {
-        let is_open = matches!(
-            stages.get(&key),
-            Some(Stage::Draft | Stage::Ready | Stage::Active | Stage::Review)
-        );
-        if !is_open || notes.contains_key(&key) {
-            continue;
-        }
-        match tools.cards.read_card(&key) {
+    for (key, note) in open_keys.iter().zip(tools.cards.read_cards(&open_keys)) {
+        match note {
             Ok(note) => {
-                notes.insert(key, note);
+                notes.insert(key.clone(), note);
             }
             Err(error) => {
                 add_card_problem(&mut problems, &error);
-                failed_keys.insert(key);
+                failed_keys.insert(key.clone());
             }
         }
     }
@@ -253,6 +268,8 @@ pub(crate) fn collect_session_facts(
         unread: reported.unread.into_iter().collect(),
         no_session,
         live_records: live_records.into_iter().map(|record| record.name).collect(),
+        cards,
+        notes,
         problems,
     })
 }

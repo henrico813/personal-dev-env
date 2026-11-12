@@ -8,8 +8,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use clap::Parser;
 use clap::error::ErrorKind;
+use clap::{ArgGroup, Parser};
 
 use crate::board::ScreenSize;
 use crate::external::cards::CardKey;
@@ -67,7 +67,7 @@ one used last.
   go       Show the next hub
   gather   Put hubs at the sidebar top
   desk     Make the user's desk
-  board*   What waits, sized for a phone{after-help}",
+  board*   Cards by stage, for a phone{after-help}",
     after_help = "\
 hub COMMAND --help says what one does,
 when to use it, and gives an example.
@@ -356,26 +356,119 @@ pub enum Command {
     /// set up the workspace you watch from a phone.
     #[command(after_help = "Example: hub desk")]
     Desk,
-    /// What waits, sized for a phone
+    // `verbatim_doc_comment` keeps the step list's columns, so every
+    // line below is wrapped by hand at 40 columns.
+    /// Cards by stage, for a phone
     ///
-    /// Shows what waits on you and on the hub as a list that fits a
-    /// 40x16 phone screen. Keep it open on a phone to see what needs
-    /// you. It reads again every 10 seconds, or when you press r.
-    /// Choose a row with j, k, the arrows or a tap to see more of it. q
-    /// quits. --print prints one screen and exits.
-    #[command(after_help = "Example: hub board --print --size 40x16")]
+    /// Shows your cards in groups that fit a
+    /// 40x16 phone screen. The top line counts
+    /// the cards in progress and in review, and
+    /// what waits on you. Below it are five
+    /// groups, and Could not read on top when
+    /// a read fails. In progress, In review,
+    /// Ready and Draft hold cards, and Needs
+    /// you holds the questions in decisions.md
+    /// and the sessions that wait on you. Ready
+    /// and Draft start folded. It reads again
+    /// every 10 seconds, or when you press r.
+    ///
+    /// Tap a count to jump to its group, a
+    /// group to fold or open it, + N more to
+    /// see the rest, or a row to see the card
+    /// in full. j and k move the choice, and
+    /// Enter or space taps it. q quits from the
+    /// list. On a card, q, Esc or any tap goes
+    /// back. --print prints one screen as text,
+    /// and --dump prints its elements as JSON.
+    /// Both draw a new board from the run
+    /// folder, not the board that listens.
+    ///
+    /// To let an agent drive the board you
+    /// watch, start it with --listen. Then
+    /// hub board --send STEP, from another
+    /// terminal on the same run folder, does
+    /// one step on your screen and prints the
+    /// screen that follows as JSON. --send
+    /// exits 2 when the board refuses the step
+    /// and 3 when no board listens. They talk
+    /// through board.sock in the run folder,
+    /// which works on Linux and macOS but not
+    /// Windows. Until its first read ends, the
+    /// board shows no cards and its hint says
+    /// reading. Tests use the hidden --control,
+    /// which reads the same steps one per line.
+    ///
+    /// Each step is one of these.
+    ///   tap ID       tap an element by the id
+    ///                --send prints for it
+    ///   tap COL ROW  tap a place; 0 0 is the
+    ///                top left
+    ///   press KEY    press a key
+    ///   wheel up     scroll up
+    ///   wheel down   scroll down
+    /// KEY is enter, esc, space, up, down,
+    /// pageup, pagedown, ctrl-c, or one
+    /// character, such as q, r, j or k.
+    ///
+    /// The JSON has step, the step sent, and
+    /// page, which is list, details or quit.
+    /// lines holds the screen as text, one
+    /// string per row. elements lists all the
+    /// page holds, top first. Each has id,
+    /// kind, text and hidden, and tap when a
+    /// tap does something. kind is count,
+    /// heading, item, more, back or text. tap
+    /// is jump, fold, unfold, show all, open
+    /// or back. A drawn element also has
+    /// column, row and width, and chosen is
+    /// true on the row Enter acts on.
+    ///
+    /// Rows scrolled off, cards in a folded
+    /// group and cards behind + N more have
+    /// hidden true, hidden_by (scroll, fold or
+    /// more) and show, the step to send next,
+    /// such as tap group:ready or press
+    /// pagedown. Send show, then find the
+    /// element in the reply, until hidden is
+    /// false. That can take many sends, and
+    /// show may change on the way. tap ID on a
+    /// hidden element fails and names show.
+    #[command(verbatim_doc_comment)]
+    #[command(after_help = "\
+Example: hub board --listen
+Steps, keys and JSON are in --help.")]
+    #[command(after_long_help = "\
+Example: hub board --listen
+Then: hub board --send 'press j'")]
+    #[command(group(ArgGroup::new("output").args(["print", "dump", "control"])))]
     Board {
         #[command(flatten)]
         run: RunArg,
         /// Print one screen as text and exit
         #[arg(long)]
         print: bool,
-        /// The printed screen's size
+        /// Print one screen's elements as JSON and exit
+        #[arg(long)]
+        dump: bool,
+        /// Read steps, one per line, and print JSON after each
+        #[arg(long, hide = true)]
+        control: bool,
+        /// Also take steps from --send
+        #[arg(long, conflicts_with = "output")]
+        listen: bool,
+        /// Do one step on the board that listens, and print its screen as JSON
+        #[arg(
+            long,
+            value_name = "STEP",
+            conflicts_with_all = ["output", "listen"]
+        )]
+        send: Option<String>,
+        /// The screen size --print, --dump and --control draw
         #[arg(
             long,
             value_name = "COLSxROWS",
             default_value = "40x16",
-            requires = "print"
+            requires = "output"
         )]
         size: ScreenSize,
     },

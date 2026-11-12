@@ -10,7 +10,7 @@ use std::process::Command;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use hub::external::cards::{BoardCounts, CardError, CardKey, CardNote, Cards, Stage};
+use hub::external::cards::{BoardCounts, CardError, CardKey, CardNote, Cards, ListedCard, Stage};
 use hub::external::herdr::{
     Agent, AgentKind, AgentStart, AgentStatus, Herdr, HerdrCode, HerdrError, HubKind, NewPlace,
     Pane, PlaceIds, ProcessInfo, Workspace,
@@ -58,6 +58,10 @@ pub struct InMemoryHerdr {
     /// The panes whose shell runs nothing. `read_process_info` names the
     /// test process as their shell, and it starts no job of its own.
     pub quiet_shells: Vec<String>,
+    /// The panes whose shell has a program in front, such as an editor.
+    /// `read_process_info` gives them a process group in front that is
+    /// not the shell's.
+    pub program_in_front: Vec<String>,
     /// The workspaces in sidebar order, top first.
     pub workspaces: Vec<Workspace>,
     /// Each `mark_needs_you` call, as its pane ID and states.
@@ -241,15 +245,20 @@ impl Herdr for InMemoryHerdr {
         Ok(panes)
     }
 
-    /// Fails for a pane not in `quiet_shells`.
+    /// Fails for a pane in neither `quiet_shells` nor `program_in_front`.
     fn read_process_info(&self, pane_id: &str) -> Result<ProcessInfo, HerdrError> {
-        if !self.quiet_shells.iter().any(|quiet| quiet == pane_id) {
-            return Err(HerdrError::Failed(format!("no shell in pane {pane_id}")));
-        }
+        let is_listed = |panes: &[String]| panes.iter().any(|listed| listed == pane_id);
         let shell_pid = std::process::id();
+        let foreground_group = if is_listed(&self.quiet_shells) {
+            shell_pid
+        } else if is_listed(&self.program_in_front) {
+            shell_pid + 1
+        } else {
+            return Err(HerdrError::Failed(format!("no shell in pane {pane_id}")));
+        };
         Ok(ProcessInfo {
             shell_pid,
-            foreground_group: shell_pid,
+            foreground_group,
         })
     }
 
@@ -443,7 +452,7 @@ pub struct InMemoryCards {
     /// Runs inside each `link_session` call that succeeds, as another
     /// process acting while the card is linked.
     pub on_link: Option<Box<dyn Fn()>>,
-    /// When set, `list_stages` and `read_card` fail with this message,
+    /// When set, `list_cards` and `read_card` fail with this message,
     /// as `card` does without a vault.
     pub read_error: Option<String>,
 }
@@ -459,12 +468,16 @@ impl InMemoryCards {
 }
 
 impl Cards for InMemoryCards {
-    fn list_stages(&self) -> Result<BTreeMap<CardKey, Stage>, CardError> {
+    fn list_cards(&self) -> Result<Vec<ListedCard>, CardError> {
         self.check_read_error()?;
         Ok(self
             .stages
             .iter()
-            .map(|(key, stage)| (key.parse().unwrap(), *stage))
+            .map(|(key, stage)| ListedCard {
+                key: key.parse().unwrap(),
+                stage: *stage,
+                title: String::new(),
+            })
             .collect())
     }
 
@@ -708,6 +721,7 @@ pub struct TempFolder {
 }
 
 impl TempFolder {
+    /// Makes an empty folder and takes the process lock.
     pub fn new() -> Self {
         // A test that panicked while holding the lock must not fail the
         // tests after it.
@@ -721,6 +735,7 @@ impl TempFolder {
         }
     }
 
+    /// Returns the folder's path.
     pub fn path(&self) -> &Path {
         &self.path
     }

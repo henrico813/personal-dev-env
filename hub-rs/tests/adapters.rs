@@ -113,7 +113,7 @@ mod herdr_cli {
     /// `flag` outright. Each agent must carry the machine, since
     /// `hub status` keeps a remote session open only by it.
     #[test]
-    fn herdr_cli_sends_each_command_to_machine() {
+    fn herdr_cli_sends_machine_and_tags_agents() {
         let folder = TempFolder::new();
         let agent = json!({
             "name": "docs-fix",
@@ -551,6 +551,9 @@ mod herdr_cli {
 }
 
 mod card_cli {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+
     use hub::external::cards::{CardCli, CardKey, Cards};
 
     use super::common::{TempFolder, read_script_calls};
@@ -598,6 +601,44 @@ mod card_cli {
 
         assert_eq!(note.sessions, ["ses_0a1b2c3d4e5f", "ses_9f8e7d6c5b4a"]);
         assert_eq!(read_script_calls(&script), [["show", "DEMO-KB-007"]]);
+    }
+
+    /// The hub pairs each note with its key by position, to decide
+    /// whether a session waits on the user. A note in the wrong position
+    /// gives a session another card's question, and a failure in the
+    /// wrong position hides a card's note. Ten keys need two batches of
+    /// side-by-side calls.
+    #[test]
+    fn card_cli_read_cards_keeps_key_order() {
+        let folder = TempFolder::new();
+        // The fake `card show KEY` prints a note titled `Card KEY`, and
+        // fails for the fifth key.
+        let script = folder.path().join("card");
+        let body = "#!/bin/sh\n\
+                    [ \"$2\" = DEMO-KB-005 ] && { echo \"card: no card $2\" >&2; exit 1; }\n\
+                    printf -- '---\\n---\\n\\n# %s Card %s\\n' \"$2\" \"$2\"\n";
+        fs::write(&script, body).unwrap();
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+        let keys: Vec<CardKey> = (1..=10)
+            .map(|number| format!("DEMO-KB-{number:03}").parse().unwrap())
+            .collect();
+
+        let notes = CardCli::new(script).read_cards(&keys);
+
+        let titles: Vec<String> = notes
+            .iter()
+            .map(|note| match note {
+                Ok(note) => note.title.clone(),
+                Err(error) => error.to_string(),
+            })
+            .collect();
+        let expected: Vec<String> = (1..=10)
+            .map(|number| match number {
+                5 => "card: no card DEMO-KB-005".to_owned(),
+                _ => format!("Card DEMO-KB-{number:03}"),
+            })
+            .collect();
+        assert_eq!(titles, expected);
     }
 
     /// `hub auto ready` and `hub auto check` work from this list. A
@@ -668,7 +709,7 @@ mod git {
     /// files from a plain `git status`, as large repositories often do,
     /// and the check must still find them.
     #[test]
-    fn check_unsaved_finds_files_and_commits() {
+    fn check_unsaved_finds_work_in_card_worktree() {
         struct Case {
             name: &'static str,
             leave_work: fn(&Path),
@@ -833,7 +874,7 @@ mod processes {
     /// with job control puts it. A child in the shell's own group is
     /// no job, or every quiet shell would keep its tab.
     #[test]
-    fn has_shell_jobs_finds_stopped_job() {
+    fn has_shell_jobs_counts_only_other_groups() {
         let _folder = TempFolder::new();
         // `setsid` gives the job a group of its own before it stops.
         let (stopped, stopped_job) = start_shell("setsid sh -c 'echo $$; kill -STOP $$'");

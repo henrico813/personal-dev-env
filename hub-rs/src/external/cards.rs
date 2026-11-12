@@ -2,13 +2,13 @@
 //! and parses its text. Read the `Cards` trait first. `card` has no
 //! JSON output, so this is the only file that reads card text.
 
-use std::collections::BTreeMap;
 use std::fmt;
 use std::io;
 use std::path::PathBuf;
 use std::process::Command;
 use std::str::FromStr;
 use std::sync::LazyLock;
+use std::thread;
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -28,16 +28,26 @@ static KEY_IN_TEXT: LazyLock<Regex> =
 /// cards what the work needs.
 const CRITERIA_SECTIONS: [&str; 2] = ["Context", "Acceptance Criteria"];
 
+/// The most `card show` calls `CardCli::read_cards` runs at once. Each
+/// call starts Python and runs `nobs vault path`, and nobody has checked
+/// how many of those the vault's helper takes at once.
+const MAX_PARALLEL_SHOWS: usize = 8;
+
 /// Calls the `card` command. `CardCli` runs the real one; tests use
 /// `InMemoryCards` from `tests/common`.
 pub trait Cards {
-    /// Returns every card's stage from one `card list` call.
-    fn list_stages(&self) -> Result<BTreeMap<CardKey, Stage>, CardError>;
+    /// Returns every card from one `card list` call, in its order.
+    fn list_cards(&self) -> Result<Vec<ListedCard>, CardError>;
     /// Returns the keys of ready cards in `card list` order.
     fn list_ready(&self) -> Result<Vec<CardKey>, CardError>;
     /// Returns a card's title, project, session IDs, open needs-you note
     /// and criteria.
     fn read_card(&self, key: &CardKey) -> Result<CardNote, CardError>;
+    /// Reads each card in `keys` and returns the results in the same
+    /// order. This default reads one card at a time.
+    fn read_cards(&self, keys: &[CardKey]) -> Vec<Result<CardNote, CardError>> {
+        keys.iter().map(|key| self.read_card(key)).collect()
+    }
     /// Returns the board's counts and its limit.
     fn read_board(&self) -> Result<BoardCounts, CardError>;
     /// Adds one line to the card's Log.
@@ -48,6 +58,7 @@ pub trait Cards {
 }
 
 /// Runs the `card` command.
+#[derive(Clone)]
 pub struct CardCli {
     program: PathBuf,
 }
@@ -82,22 +93,46 @@ impl CardCli {
 }
 
 impl Cards for CardCli {
-    fn list_stages(&self) -> Result<BTreeMap<CardKey, Stage>, CardError> {
+    fn list_cards(&self) -> Result<Vec<ListedCard>, CardError> {
         let printed = self.run_card(&["list"])?;
-        Ok(parse_card_list(&printed).into_iter().collect())
+        Ok(parse_card_list(&printed))
     }
 
     fn list_ready(&self) -> Result<Vec<CardKey>, CardError> {
         let printed = self.run_card(&["list", "--stage", "ready"])?;
         Ok(parse_card_list(&printed)
             .into_iter()
-            .map(|(key, _)| key)
+            .map(|card| card.key)
             .collect())
     }
 
     fn read_card(&self, key: &CardKey) -> Result<CardNote, CardError> {
         let printed = self.run_card(&["show", key.as_str()])?;
         Ok(parse_card_note(key, &printed))
+    }
+
+    /// Runs up to `MAX_PARALLEL_SHOWS` `card show` calls side by side,
+    /// so 8 calls take about as long as one.
+    fn read_cards(&self, keys: &[CardKey]) -> Vec<Result<CardNote, CardError>> {
+        let mut notes = Vec::with_capacity(keys.len());
+        for batch in keys.chunks(MAX_PARALLEL_SHOWS) {
+            // Scoped threads may borrow `self` and the keys, since the
+            // scope waits for every thread before it returns.
+            thread::scope(|scope| {
+                let readers: Vec<_> = batch
+                    .iter()
+                    .map(|key| scope.spawn(move || self.read_card(key)))
+                    .collect();
+                for reader in readers {
+                    // A reader only panics on a bug, so pass the panic on.
+                    let note = reader
+                        .join()
+                        .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+                    notes.push(note);
+                }
+            });
+        }
+        notes
     }
 
     fn read_board(&self) -> Result<BoardCounts, CardError> {
@@ -215,6 +250,16 @@ impl Stage {
     }
 }
 
+/// One line of `card list`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ListedCard {
+    pub key: CardKey,
+    pub stage: Stage,
+    /// The title as `card list` prints it. `card` cuts a long one to
+    /// about 30 characters and ends it with `…`.
+    pub title: String,
+}
+
 /// What `card show` gives.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CardNote {
@@ -230,6 +275,13 @@ pub struct CardNote {
     pub needs_you_open: bool,
     /// The bullets of Context and Acceptance Criteria, in note order.
     pub criteria: Vec<String>,
+    /// The front matter's plan notes, such as `DEMO-12 Retry uploads`.
+    pub plans: Vec<String>,
+    /// The front matter's pull request links.
+    pub prs: Vec<String>,
+    /// The newest Log line that starts `next: `, such as `review PR
+    /// #498`, which the hub writes when it moves the card to review.
+    pub next_step: Option<String>,
 }
 
 /// What `card board` gives.
@@ -251,7 +303,7 @@ pub enum CardError {
     Failed(String),
 }
 
-/// Writes card's own message.
+/// Writes the message `main` prints after `hub: `.
 impl fmt::Display for CardError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -264,37 +316,61 @@ impl fmt::Display for CardError {
 /// Lets `HubError::source` return it.
 impl std::error::Error for CardError {}
 
-/// Reads the key and stage of `card list` lines, which look like
-/// `DEMO-KB-007 ready    task     Retry failed uploads`. The last line,
-/// `N cards`, holds no key.
-fn parse_card_list(text: &str) -> Vec<(CardKey, Stage)> {
+/// Reads `card list` lines, such as
+/// `DEMO-KB-007 ready    task     Retry failed uploads`, skipping the
+/// third word, the card's kind. The last line, `N cards`, holds no key.
+fn parse_card_list(text: &str) -> Vec<ListedCard> {
     text.lines()
         .filter_map(|line| {
-            let mut words = line.split_whitespace();
-            let key = words.next()?.parse().ok()?;
-            let stage = Stage::from_word(words.next()?)?;
-            Some((key, stage))
+            let (key, rest) = split_first_word(line)?;
+            let (stage, rest) = split_first_word(rest)?;
+            let title = split_first_word(rest).map_or("", |(_kind, title)| title);
+            Some(ListedCard {
+                key: key.parse().ok()?,
+                stage: Stage::from_word(stage)?,
+                title: title.trim_end().to_owned(),
+            })
         })
         .collect()
 }
 
-/// Reads `card show` text. The `sessions:` items of the front matter
-/// look like `- "opencode ses_0a1b2c3d4e5f"` with the ID last, and the
-/// title is the first `# KEY ...` heading after it. Log lines look
-/// like `- 2026-11-10 needs-you: which bucket?`.
+/// Returns the first word of `text` and the text after it, with the
+/// spaces between them dropped.
+fn split_first_word(text: &str) -> Option<(&str, &str)> {
+    let text = text.trim_start();
+    let end = text.find(char::is_whitespace).unwrap_or(text.len());
+    let (word, rest) = text.split_at(end);
+    (!word.is_empty()).then(|| (word, rest.trim_start()))
+}
+
+/// Reads `card show` text, whose title is the first `# KEY ...` heading
+/// after the front matter. Its `sessions:` items look like
+/// `- "opencode ses_0a1b2c3d4e5f"` with the ID last, its `plans:`
+/// items like `- "[[DEMO-12 Retry uploads]]"`, and its log lines like
+/// `- 2026-11-10 needs-you: which bucket?`.
 fn parse_card_note(key: &CardKey, text: &str) -> CardNote {
     let mut note = CardNote::default();
     let mut lines = text.lines().skip(1);
-    let mut in_sessions = false;
+    // The list a `- ` line belongs to, such as `sessions`.
+    let mut list = "";
     // The front matter ends at the second `---` line.
     for line in lines.by_ref().take_while(|line| line.trim() != "---") {
-        if line.trim() == "sessions:" {
-            in_sessions = true;
-        } else if let Some(item) = line.trim().strip_prefix("- ").filter(|_| in_sessions) {
-            let id = item.trim_matches('"').split_whitespace().last();
-            note.sessions.extend(id.map(str::to_owned));
+        if let Some(item) = line.trim().strip_prefix("- ") {
+            let item = item.trim_matches('"');
+            match list {
+                "sessions" => note
+                    .sessions
+                    .extend(item.split_whitespace().last().map(str::to_owned)),
+                "plans" => note.plans.push(
+                    item.trim_start_matches("[[")
+                        .trim_end_matches("]]")
+                        .to_owned(),
+                ),
+                "prs" => note.prs.push(item.to_owned()),
+                _ => {}
+            }
         } else {
-            in_sessions = false;
+            list = line.trim().strip_suffix(':').unwrap_or("");
             if let Some(project) = line.strip_prefix("project:") {
                 note.project = project.trim().to_owned();
             }
@@ -323,6 +399,13 @@ fn parse_card_note(key: &CardKey, text: &str) -> CardNote {
                 note.needs_you_open = true;
             } else if words.starts_with("answered: ") {
                 note.needs_you_open = false;
+            }
+            // A `card note` line reads `note (who): next: ...`.
+            let text = words.split_once("): ").map_or(words, |(_, text)| text);
+            if section == "Log"
+                && let Some(step) = text.strip_prefix("next: ")
+            {
+                note.next_step = Some(step.trim().to_owned());
             }
         }
     }
@@ -365,7 +448,7 @@ mod tests {
     /// misleads the user, and `hub status --json` also gives the active
     /// count to scripts.
     #[test]
-    fn parse_board_counts_reads_busy_and_limit() {
+    fn parse_board_counts_reads_counts_or_none() {
         let board = "draft 79  ready 7  active 9\n\
                      review 24  accepted 43  dropped 4\n\
                      active+review 33 of 8\n\
@@ -434,27 +517,66 @@ mod tests {
                     "- Uploads fail on a slow link.".to_owned(),
                     "- [ ] A failed upload retries.".to_owned(),
                 ],
+                ..CardNote::default()
             }
         );
     }
 
-    /// Every session's lifecycle starts from its card's stage, read
-    /// from one `card list` line. A stage read from the wrong word, or
-    /// the count line read as a card, gives sessions the wrong state,
-    /// such as `to-close` for a worker whose card is still active.
+    /// `hub board` tells the user what to do next on each card in
+    /// review from these links and Log lines. A link read from the
+    /// wrong list, or an older `next:` line winning, sends the user to
+    /// the wrong plan or PR.
     #[test]
-    fn parse_card_list_reads_key_and_stage() {
+    fn parse_card_note_reads_plans_prs_next() {
+        let card_show = "---\n\
+                         plans:\n  \
+                           - \"[[DEMO-12 Retry failed uploads]]\"\n\
+                         prs:\n  \
+                           - \"https://github.com/demo/app/pull/498\"\n\
+                         sessions:\n  \
+                           - \"opencode ses_1\"\n\
+                         ---\n\
+                         \n\
+                         # DEMO-KB-001 Retry failed uploads\n\
+                         ---\n\
+                         \n\
+                         ## Log\n\
+                         ---\n\
+                         \n\
+                         - 2026-11-10 note (hub): next: read plan DEMO-12\n\
+                         - 2026-11-11 note (hub): next: review PR #498\n";
+
+        let note = parse_card_note(&"DEMO-KB-001".parse().unwrap(), card_show);
+
+        assert_eq!(note.plans, ["DEMO-12 Retry failed uploads"]);
+        assert_eq!(note.prs, ["https://github.com/demo/app/pull/498"]);
+        assert_eq!(note.next_step.as_deref(), Some("review PR #498"));
+    }
+
+    /// Every session's lifecycle starts from its card's stage, read
+    /// from one `card list` line, and `hub board` shows the title as
+    /// the card's row. A stage read from the wrong word, or the count
+    /// line read as a card, gives sessions the wrong state, such as
+    /// `to-close` for a worker whose card is still active. A title cut
+    /// at its first space, or holding the kind, misnames the row.
+    #[test]
+    fn parse_card_list_reads_key_stage_title() {
         let listing = "DEMO-KB-004 active   task     Fix the docs\n\
                        DEMO-KB-007 accepted task     Retry failed uploads\n\
                        2 cards\n";
 
         let cards = parse_card_list(listing);
 
+        let card = |key: &str, stage, title: &str| ListedCard {
+            key: key.parse().unwrap(),
+            stage,
+            title: title.to_owned(),
+        };
         assert_eq!(
             cards,
             [
-                ("DEMO-KB-004".parse().unwrap(), Stage::Active),
-                ("DEMO-KB-007".parse().unwrap(), Stage::Accepted),
+                card("DEMO-KB-004", Stage::Active, "Fix the docs"),
+                card("DEMO-KB-007", Stage::Accepted, "Retry failed uploads"),
             ]
         );
     }
