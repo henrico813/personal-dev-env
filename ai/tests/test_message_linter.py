@@ -527,8 +527,8 @@ class TestDocsType:
 class TestCodeSpans:
     """Keep inline code in backticks on one line.
 
-    The PR Overview becomes the squash commit body. Three PR descriptions
-    had inline code split over two lines, such as "`hub" then "board`",
+    The PR Overview becomes the squash commit body. PR descriptions had
+    inline code split over two lines, such as "`hub" then "board`",
     because fmt wrapped inside the span and lint passed it. The split
     then stayed in git history.
     """

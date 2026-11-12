@@ -160,7 +160,7 @@ def hide_code_span_spaces(text: str) -> str:
 
 
 def has_open_code_span(line: str) -> bool:
-    """Return whether a line opens a code span that it does not close.
+    """Return whether a line has a backtick outside any closed code span.
 
     Args:
         line: One message line outside a code fence.
