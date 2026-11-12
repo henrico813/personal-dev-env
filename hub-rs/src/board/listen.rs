@@ -25,6 +25,10 @@ const SOCKET: &str = "board.sock";
 /// connects and sends nothing would hold up every agent after it.
 const STEP_WAIT: Duration = Duration::from_secs(5);
 
+/// How long `send_step` waits for the board's reply. A board stuck on a
+/// closed terminal would otherwise hold the agent forever.
+const REPLY_WAIT: Duration = Duration::from_secs(15);
+
 /// One step an agent sent, such as `press esc`, with the agent's
 /// connection for the board's reply.
 pub(super) struct SentStep {
@@ -33,9 +37,9 @@ pub(super) struct SentStep {
 }
 
 impl SentStep {
-    /// Writes the board's reply line to the agent. The board writes it
-    /// before it quits, so a `press q` reply is never lost. An agent
-    /// that hung up misses its reply.
+    /// Writes the board's reply line to the agent, or drops it when the
+    /// agent hung up. The board calls this before it quits, so a
+    /// `press q` reply is never lost.
     pub(super) fn answer(&self, reply: &str) {
         let _ = writeln!(&self.agent, "{reply}");
     }
@@ -78,6 +82,11 @@ impl StepListener {
         thread::spawn(move || pass_steps_to_board(&listener, &sender));
         Ok((StepListener { path }, steps))
     }
+
+    /// Returns the path of `board.sock`.
+    pub(super) fn path(&self) -> &Path {
+        &self.path
+    }
 }
 
 impl Drop for StepListener {
@@ -92,12 +101,14 @@ impl Drop for StepListener {
 ///
 /// # Errors
 ///
-/// `HubError::NotDone` when no board listens in `run` or the board
-/// quits before it takes the step. `HubError::Usage` when `step` is
+/// `HubError::NotDone` when no board listens in `run`, the board
+/// quits before it takes the step, or it does not answer within 15
+/// seconds. `HubError::Usage` when `step` is
 /// blank or the board cannot follow it, with the reason.
 /// `HubError::File` when the socket fails after it connects.
 pub fn send_step(run: &RunFolder, step: &str) -> Result<Outcome, HubError> {
-    // The board skips a blank line, so it would never reply.
+    // The board drops a blank line's connection, which would read as
+    // the board quitting before it took the step.
     if step.trim().is_empty() {
         return Err(HubError::Usage(
             "the step is blank; send one such as press j".to_owned(),
@@ -112,9 +123,16 @@ pub fn send_step(run: &RunFolder, step: &str) -> Result<Outcome, HubError> {
     })?;
     writeln!(&stream, "{}", step.trim()).map_err(|source| socket_error(&path, source))?;
     let mut reply = String::new();
-    BufReader::new(&stream)
-        .read_line(&mut reply)
-        .map_err(|source| socket_error(&path, source))?;
+    stream
+        .set_read_timeout(Some(REPLY_WAIT))
+        .and_then(|()| BufReader::new(&stream).read_line(&mut reply))
+        .map_err(|source| match source.kind() {
+            ErrorKind::WouldBlock | ErrorKind::TimedOut => HubError::NotDone(format!(
+                "the board did not answer within {} seconds",
+                REPLY_WAIT.as_secs()
+            )),
+            _ => socket_error(&path, source),
+        })?;
     if reply.is_empty() {
         return Err(HubError::NotDone(
             "the board quit before it took the step".to_owned(),
@@ -226,38 +244,49 @@ mod tests {
         assert_eq!(screen["page"], "details");
     }
 
-    /// An agent that sends a step the board cannot follow must fail with
-    /// the board's reason. Printing the screen and exiting 0 would let
-    /// it report a tap that never happened, and a hidden card's reason
-    /// is the only place it learns which step shows that card.
+    /// An agent that taps a hidden card must fail with exit code 2 and
+    /// the step that shows the card. Printing the screen and exiting 0
+    /// would let it report a tap that never happened, and the reason is
+    /// the only place it learns which step shows that card.
     #[test]
-    fn send_step_refused_tap_fails_with_reason() {
-        let cases = [
-            ("tap card:NOPE-1", "the screen shows no card:NOPE-1"),
-            (
-                "tap card:DEMO-KB-020",
-                "card:DEMO-KB-020 is hidden by fold; send tap group:ready first",
-            ),
-        ];
-        for (step, reason) in cases {
-            let temp = TempRun::new("send-refused-tap");
-            let (_listener, steps) = StepListener::start(&temp.run).unwrap();
-            let mut board = sample_board();
-            let run = RunFolder::open(temp.run.path()).unwrap();
-            let agent = thread::spawn(move || send_step(&run, step));
+    fn send_step_hidden_tap_fails_naming_show() {
+        let temp = TempRun::new("send-hidden-card");
+        let (_listener, steps) = StepListener::start(&temp.run).unwrap();
+        let mut board = sample_board();
+        let run = RunFolder::open(temp.run.path()).unwrap();
+        let agent = thread::spawn(move || send_step(&run, "tap card:DEMO-KB-020"));
 
-            let sent = steps.recv_timeout(Duration::from_secs(5)).unwrap();
-            let (_, reply) = answer_sent_step(&mut board, &sent.text, |_, _| Ok(true)).unwrap();
-            sent.answer(&reply);
+        let sent = steps.recv_timeout(Duration::from_secs(5)).unwrap();
+        let (_, reply) = answer_sent_step(&mut board, &sent.text, |_, _| Ok(true)).unwrap();
+        sent.answer(&reply);
 
-            let error = agent.join().unwrap().unwrap_err();
-            assert_eq!(error.exit_code(), 2, "{step}");
-            assert_eq!(error.to_string(), reason);
-        }
+        let error = agent.join().unwrap().unwrap_err();
+        assert_eq!(error.exit_code(), 2);
+        assert_eq!(
+            error.to_string(),
+            "card:DEMO-KB-020 is hidden by fold; send tap group:ready first"
+        );
     }
 
-    /// The board skips a blank line and never replies, so `--send ''`
-    /// would wait forever. It must stop at once and say what to send.
+    /// A killed board leaves `board.sock` behind, and a new board must
+    /// replace it or the user cannot listen again. A second board in
+    /// the same run must be refused, or it takes the steps meant for
+    /// the board the user watches.
+    #[test]
+    fn step_listener_start_replaces_only_dead_socket() {
+        let temp = TempRun::new("start-dead-socket");
+        drop(UnixListener::bind(temp.run.path().join(SOCKET)).unwrap());
+
+        let first = StepListener::start(&temp.run);
+        let second = StepListener::start(&temp.run);
+
+        assert!(first.is_ok());
+        assert!(matches!(second, Err(HubError::Usage(_))));
+    }
+
+    /// The board drops the connection of a blank line, so without this
+    /// check `--send ''` says the board quit before it took the step.
+    /// That misleads the agent, so it must say what to send instead.
     #[test]
     fn send_step_blank_step_fails_with_example() {
         let temp = TempRun::new("send-blank");

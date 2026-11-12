@@ -294,9 +294,9 @@ impl Board {
         Step::Stay
     }
 
-    /// Acts on the element under a tap. A count jumps to its group and
-    /// a list line acts as Enter does. Any tap on the details page goes
-    /// back, even on an empty row.
+    /// Acts on the element under a tap, so a count jumps to its group
+    /// and a list line acts as Enter does. Any tap on the details page
+    /// goes back, even on an empty row.
     fn tap(&mut self, column: u16, row: u16) -> Step {
         if let Page::Details(_) = self.page {
             self.page = Page::List;
@@ -616,7 +616,8 @@ pub(super) mod tests {
 
     /// Each count on the top line jumps to its group. With many cards
     /// in work, what needs the user starts below the first screen, so
-    /// the tap must scroll its group into view.
+    /// the tap must scroll its group into view, or the user never sees
+    /// what waits on them.
     #[test]
     fn handle_input_count_tap_shows_its_group() {
         let mut board = Board::new(false);

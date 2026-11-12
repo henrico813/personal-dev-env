@@ -316,10 +316,9 @@ impl fmt::Display for CardError {
 /// Lets `HubError::source` return it.
 impl std::error::Error for CardError {}
 
-/// Reads `card list` lines, which look like
-/// `DEMO-KB-007 ready    task     Retry failed uploads`. The third word
-/// is the card's kind, which the hub does not use. The last line,
-/// `N cards`, holds no key.
+/// Reads `card list` lines, such as
+/// `DEMO-KB-007 ready    task     Retry failed uploads`, skipping the
+/// third word, the card's kind. The last line, `N cards`, holds no key.
 fn parse_card_list(text: &str) -> Vec<ListedCard> {
     text.lines()
         .filter_map(|line| {
@@ -344,11 +343,11 @@ fn split_first_word(text: &str) -> Option<(&str, &str)> {
     (!word.is_empty()).then(|| (word, rest.trim_start()))
 }
 
-/// Reads `card show` text. The `sessions:` items of the front matter
-/// look like `- "opencode ses_0a1b2c3d4e5f"` with the ID last, and
-/// `plans:` items are links like `- "[[DEMO-12 Retry uploads]]"`. The
-/// title is the first `# KEY ...` heading after the front matter. Log
-/// lines look like `- 2026-11-10 needs-you: which bucket?`.
+/// Reads `card show` text, whose title is the first `# KEY ...` heading
+/// after the front matter. Its `sessions:` items look like
+/// `- "opencode ses_0a1b2c3d4e5f"` with the ID last, its `plans:`
+/// items like `- "[[DEMO-12 Retry uploads]]"`, and its log lines like
+/// `- 2026-11-10 needs-you: which bucket?`.
 fn parse_card_note(key: &CardKey, text: &str) -> CardNote {
     let mut note = CardNote::default();
     let mut lines = text.lines().skip(1);

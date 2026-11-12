@@ -52,10 +52,9 @@ pub(crate) struct HubLine {
 /// report or request file failure becomes a problem line, not an
 /// error. A request file that does not parse also keeps every live
 /// session. A worker keeps its own card while that card is draft, ready
-/// or active and no newer live session took it over. Otherwise the
-/// first other card its newest report names that is draft, ready,
-/// active or in review becomes its card, and without one it keeps its
-/// own.
+/// or active and no newer live session took it over. Otherwise it takes
+/// the first other draft, ready, active or in-review card its newest
+/// report names, if any.
 pub(crate) fn collect_session_facts(
     tools: &Tools<'_>,
     run: &RunFolder,

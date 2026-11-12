@@ -19,6 +19,7 @@ mod queue;
 mod terminal;
 mod view;
 
+use std::fs;
 use std::io::{self, IsTerminal};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -50,6 +51,10 @@ const POLL: Duration = Duration::from_millis(200);
 
 /// How long the reader waits between reads when nobody presses r.
 const REFRESH: Duration = Duration::from_secs(10);
+
+/// How long the board has to end after a stop signal before
+/// `exit_if_stuck` ends the process.
+const STOP_WAIT: Duration = Duration::from_secs(1);
 
 /// The size `--print`, `--dump` and `--control` draw, given as `40x16`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -105,6 +110,10 @@ pub fn run_board(
     for signal in [SIGTERM, SIGHUP, SIGINT] {
         signal_hook::flag::register(signal, Arc::clone(&stop)).map_err(terminal_error)?;
     }
+    let socket = listener
+        .as_ref()
+        .map(|(listener, _)| listener.path().to_owned());
+    exit_if_stuck(Arc::clone(&stop), socket);
     let (reading_sender, readings) = mpsc::channel();
     let (wake, wake_receiver) = mpsc::channel();
     let (note_sender, notes) = mpsc::channel();
@@ -193,6 +202,26 @@ pub fn print_board(
     Ok(Outcome {
         lines: board.render_lines(size.columns, size.rows),
     })
+}
+
+/// Ends the process when the board has not ended `STOP_WAIT` after
+/// `stop` is set, removing `socket` first. Once the terminal closes,
+/// crossterm 0.29 spins inside `event::poll`, so the loop never sees
+/// `stop` and would hold `board.sock` at full CPU.
+fn exit_if_stuck(stop: Arc<AtomicBool>, socket: Option<PathBuf>) {
+    // A board that ends in time exits with the process, so this thread
+    // is never joined.
+    thread::spawn(move || {
+        while !stop.load(Ordering::Relaxed) {
+            thread::sleep(POLL);
+        }
+        thread::sleep(STOP_WAIT);
+        if let Some(path) = socket {
+            let _ = fs::remove_file(path);
+        }
+        terminal::restore_terminal();
+        std::process::exit(1);
+    });
 }
 
 /// Does what `step` asks beyond the board itself, such as a read, and

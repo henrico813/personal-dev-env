@@ -51,10 +51,9 @@ impl Group {
         }
     }
 
-    /// Returns the mark each row of the group starts with. The marks
-    /// differ, so a row's group shows without color. Each is one ASCII
-    /// character, one column wide in every terminal, so a tap's column
-    /// finds the count it meant.
+    /// Returns the ASCII mark each row of the group starts with, so a
+    /// row's group shows without color. Each mark is one column wide in
+    /// every terminal, so a tap's column finds the count it meant.
     pub(super) fn mark(self) -> &'static str {
         match self {
             Group::Problems => "!",

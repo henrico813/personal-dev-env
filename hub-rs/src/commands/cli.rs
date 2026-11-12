@@ -362,35 +362,40 @@ pub enum Command {
     ///
     /// Shows your cards in groups that fit a
     /// 40x16 phone screen. The top line counts
-    /// the cards in progress, in review and
-    /// waiting on you. Below it, five groups
-    /// hold the cards in progress, in review,
-    /// waiting on you, ready and draft. It
-    /// reads again every 10 seconds, or when
-    /// you press r. Tap a count to jump to its
-    /// group, a group to fold it, + N more to
+    /// the cards in progress and in review, and
+    /// what waits on you. Below it are five
+    /// groups. In progress, In review, Ready
+    /// and Draft hold cards, and Needs you
+    /// holds the questions in decisions.md and
+    /// the sessions that wait on you. Ready and
+    /// Draft start folded. It reads again every
+    /// 10 seconds, or when you press r.
+    ///
+    /// Tap a count to jump to its group, a
+    /// group to fold or open it, + N more to
     /// see the rest, or a row to see the card
-    /// in full. j, k and Enter choose a row
-    /// too, and Esc goes back from a card. q
-    /// quits. --print prints one screen as
-    /// text, and --dump prints its elements
-    /// as JSON. Both draw a new board from
-    /// the run folder, not the board that
-    /// listens.
+    /// in full. j and k move the choice, and
+    /// Enter or space taps it. q quits from the
+    /// list. On a card, q, Esc or any tap goes
+    /// back. --print prints one screen as text,
+    /// and --dump prints its elements as JSON.
+    /// Both draw a new board from the run
+    /// folder, not the board that listens.
     ///
     /// To let an agent drive the board you
     /// watch, start it with --listen. Then
     /// hub board --send STEP, from another
     /// terminal on the same run folder, does
     /// one step on your screen and prints the
-    /// screen that follows as JSON. They talk
+    /// screen that follows as JSON. --send
+    /// exits 2 when the board refuses the step
+    /// and 3 when no board listens. They talk
     /// through board.sock in the run folder,
     /// which works on Linux and macOS but not
-    /// Windows. Until its first read ends,
-    /// the board shows no cards and its hint
-    /// says reading. Tests use the hidden
-    /// --control, which reads the same steps,
-    /// one per line.
+    /// Windows. Until its first read ends, the
+    /// board shows no cards and its hint says
+    /// reading. Tests use the hidden --control,
+    /// which reads the same steps one per line.
     ///
     /// Each step is one of these.
     ///   tap ID       tap an element by the id
@@ -407,26 +412,26 @@ pub enum Command {
     /// The JSON has step, the step sent, and
     /// page, which is list, details or quit.
     /// lines holds the screen as text, one
-    /// string per row. elements lists all
-    /// the page holds, top first. Each has
-    /// id, kind, text and hidden, and tap
-    /// when a tap does something. tap is
-    /// jump, fold, unfold, show all, open or
-    /// back. A drawn
-    /// element also has column, row and
-    /// width, and chosen is true on the row
-    /// Enter acts on.
+    /// string per row. elements lists all the
+    /// page holds, top first. Each has id,
+    /// kind, text and hidden, and tap when a
+    /// tap does something. kind is count,
+    /// heading, item, more, back or text. tap
+    /// is jump, fold, unfold, show all, open
+    /// or back. A drawn element also has
+    /// column, row and width, and chosen is
+    /// true on the row Enter acts on.
     ///
     /// Rows scrolled off, cards in a folded
     /// group and cards behind + N more have
-    /// hidden true, hidden_by (scroll, fold
-    /// or more) and show, the step to send
-    /// next, such as press pagedown or tap
-    /// group:ready. Send show, then find the
+    /// hidden true, hidden_by (scroll, fold or
+    /// more) and show, the step to send next,
+    /// such as tap group:ready or press
+    /// pagedown. Send show, then find the
     /// element in the reply, until hidden is
     /// false. That can take many sends, and
-    /// show may change on the way. tap ID on
-    /// a hidden element fails and names show.
+    /// show may change on the way. tap ID on a
+    /// hidden element fails and names show.
     #[command(verbatim_doc_comment)]
     #[command(after_help = "\
 Example: hub board --listen
@@ -457,7 +462,7 @@ Then: hub board --send 'press j'")]
             conflicts_with_all = ["output", "listen"]
         )]
         send: Option<String>,
-        /// The size of the screen printed
+        /// The screen size --print, --dump and --control draw
         #[arg(
             long,
             value_name = "COLSxROWS",

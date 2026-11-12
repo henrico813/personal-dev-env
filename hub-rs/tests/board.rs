@@ -53,12 +53,11 @@ fn print_board_shows_card_failure_on_top() {
     assert_eq!(outcome.lines[1], "> Could not read 1");
 }
 
-/// An agent checks the board by tapping what the user taps. Each step
-/// must print the screen it leads to, and a ready card, whose note the
-/// read skips, must show its criteria, or the agent reports a screen the
-/// user never sees.
-#[test]
-fn control_board_prints_screen_after_each_step() {
+/// The one criterion in the note of `tools_with_ready_card`.
+const CRITERION: &str = "- [ ] A failed upload retries.";
+
+/// A hub with one ready card, DEMO-KB-007, whose note holds `CRITERION`.
+fn tools_with_ready_card() -> TestTools {
     let mut test_tools = TestTools::new();
     test_tools
         .cards
@@ -68,10 +67,19 @@ fn control_board_prints_screen_after_each_step() {
         "DEMO-KB-007".to_owned(),
         CardNote {
             title: "Retry failed uploads".to_owned(),
-            criteria: vec!["- [ ] A failed upload retries.".to_owned()],
+            criteria: vec![CRITERION.to_owned()],
             ..CardNote::default()
         },
     );
+    test_tools
+}
+
+/// An agent checks the board by tapping what the user taps. Each step
+/// must print the screen it leads to, or the agent reports a screen the
+/// user never sees.
+#[test]
+fn control_board_prints_screen_after_each_step() {
+    let test_tools = tools_with_ready_card();
 
     let steps = "tap group:ready\ntap card:DEMO-KB-007\npress q\npress q\n";
     let (result, screens) = control(&test_tools, steps);
@@ -92,12 +100,24 @@ fn control_board_prints_screen_after_each_step() {
         ("press q", "quit"),
     ];
     assert_eq!(pages, expected);
+}
+
+/// The hub's read skips the notes of ready cards, so opening one must
+/// read its note. Otherwise the details page shows no criteria and the
+/// user cannot tell what the card has to do.
+#[test]
+fn control_board_open_card_reads_unread_note() {
+    let test_tools = tools_with_ready_card();
+
+    let (result, screens) = control(&test_tools, "tap group:ready\ntap card:DEMO-KB-007\n");
+
+    result.unwrap();
     let details = &screens[2]["lines"];
     assert!(
         details
             .as_array()
             .unwrap()
-            .contains(&Value::from("- [ ] A failed upload retries."))
+            .contains(&Value::from(CRITERION))
     );
 }
 

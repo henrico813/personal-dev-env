@@ -43,10 +43,9 @@ pub fn dump_board(
 }
 
 /// Writes the board's first screen to `output` as one JSON line, then
-/// one more after each step it reads from `input`. It stops at the end
-/// of `input`, after a step that quits, or when the reader of `output`
-/// closes it. r reads the hub's state again, and opening a card that
-/// the read did not get reads it before the screen prints.
+/// one more after each step in `input`, once any read the step starts
+/// ends. It stops at the end of `input`, after a step that quits, or
+/// when the reader of `output` closes it.
 ///
 /// # Errors
 ///
@@ -104,12 +103,10 @@ pub fn control_board(
     Ok(done)
 }
 
-/// Follows a step an agent sent to the live board, as the user's own
-/// tap or key, and returns false once the board quits, with the reply
-/// line. `follow` does the rest of the step, such as a read, draws the
-/// screen and returns false on a quit, so the reply shows what the user
-/// sees. A step the board cannot follow changes nothing, and its reply
-/// holds the reason as `error`.
+/// Follows an agent's step as the user's own tap or key, and returns
+/// whether the board goes on, with the reply line, which holds `error`
+/// when the board refuses the step. `follow` does the rest of the step,
+/// such as a read, then draws the screen and returns false on a quit.
 ///
 /// # Errors
 ///
@@ -137,11 +134,9 @@ pub(super) fn answer_sent_step(
     Ok((going, to_json(&dump)?))
 }
 
-/// Turns one `--control` line into the input it stands for. `tap ID`
-/// taps the first column of the element with that id, and refuses a
-/// hidden one with the step that shows it. `tap COLUMN ROW`
-/// taps that place, `press KEY` presses a key such as `q`, `esc` or
-/// `ctrl-c`, and `wheel up` or `wheel down` turns the wheel.
+/// Turns one step, such as `tap card:DEMO-KB-007` or `press esc`, into
+/// the input it stands for. `tap ID` taps the first column of that
+/// element, and refuses a hidden one with the step that shows it.
 fn parse_step(step: &str, board: &Board) -> Result<Event, String> {
     let (verb, rest) = step.split_once(' ').unwrap_or((step, ""));
     let rest = rest.trim();

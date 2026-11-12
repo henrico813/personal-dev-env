@@ -69,8 +69,8 @@ pub(super) fn draw_details(frame: &mut Frame, details: &mut Details) {
 
 /// Returns the list page's elements as `draw_list` drew them in
 /// `area`, with `list` scrolled and chosen as the last draw left it.
-/// Rows scrolled off, the cards of a folded group and the cards behind
-/// `+ N more` come too, hidden. Folded and more cards follow their line.
+/// Rows scrolled off come too, hidden, and so do the cards of a folded
+/// group or behind `+ N more`, which come right after that line.
 pub(super) fn list_elements(screen: &ListScreen<'_>, area: Rect, list: &ListState) -> Vec<Element> {
     let [top, middle, bottom] = split_screen(area);
     let mut elements = Vec::new();
@@ -203,10 +203,10 @@ fn wrap_details(details: &Details, middle: Rect) -> Vec<String> {
         .collect()
 }
 
-/// Returns the row that line `index` is drawn on in `middle`, with
-/// line `first` on top. A line above or below gets the step that
-/// scrolls toward it instead. PageDown moves the list's choice or the
-/// details page by a page, so repeating the step always reaches it.
+/// Returns the row that line `index` is drawn on in `middle` with line
+/// `first` on top, or for a line off screen the step that scrolls
+/// toward it. Repeating that step always reaches the line, because
+/// PageDown moves the list's choice or the details page by a page.
 fn row_or_scroll(index: usize, first: usize, middle: Rect) -> Result<u16, &'static str> {
     if index < first {
         return Err("press pageup");
