@@ -67,6 +67,8 @@
   the `herdr-handoff` skill.
 - When the user or a handoff makes this session the hub of other
   Herdr sessions, load and follow the `herdr-hub` skill.
+- When choosing the model for a subagent, a new session, a worker or
+  a job script, load and follow the `model-routing` skill.
 - When delegating domain work, include an `Applicable skills:` line in the
   delegation prompt with each skill's exact name. Require the subagent to load
   available skills before working and to report required skills that are
@@ -85,7 +87,8 @@
   cannot take that model, or the call fails, run the lookup without
   setting a model.
 - Subagents that review, plan, decide or write code keep the
-  session's model.
+  session's model, except for jobs that `model-routing` gives to a
+  cheaper model.
 
 ## Code Search
 
