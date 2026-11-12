@@ -70,6 +70,9 @@
 - When choosing the model for a subagent, a new session, a worker or
   a job script, load and follow the `model-routing` skill. Its choices
   count as the user's explicit request to set a subagent's model.
+- When creating, changing or reviewing an agent skill, or
+  turning saved lessons into skill text, load and follow the
+  `skill-development` skill.
 - When delegating domain work, include an `Applicable skills:` line in the
   delegation prompt with each skill's exact name. Require the subagent to load
   available skills before working and to report required skills that are

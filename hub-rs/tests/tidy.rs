@@ -262,6 +262,62 @@ fn run_clean_keeps_tab_of_new_agent() {
     assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
 }
 
+/// A finished worker's tab can hold a shell the user opened. The tab
+/// may close with the worker only while that shell sits at its prompt,
+/// or the user loses the editor or program running in it.
+#[test]
+fn run_clean_closes_only_quiet_shell_tabs() {
+    let user_pane = || vec!["w1:p-user".to_owned()];
+    let cases = [
+        (
+            "quiet-shell",
+            user_pane(),
+            Vec::new(),
+            vec!["closed demo-kb-001-impl: DEMO-KB-001 accepted"],
+            vec!["w1:t-demo-kb-001-impl"],
+        ),
+        (
+            "editor-in-front",
+            Vec::new(),
+            user_pane(),
+            vec![
+                "kept demo-kb-001-impl: its tab holds other work",
+                "nothing to close",
+            ],
+            Vec::new(),
+        ),
+    ];
+
+    for (case_name, quiet_shells, program_in_front, expected_lines, expected_closed) in cases {
+        let mut test_tools = TestTools::new();
+        add_finished_worker(
+            &mut test_tools,
+            "demo-kb-001-impl",
+            "DEMO-KB-001",
+            Stage::Accepted,
+        );
+        test_tools.herdr.quiet_shells = quiet_shells;
+        test_tools.herdr.program_in_front = program_in_front;
+        test_tools.herdr.on_list_panes = Some(Box::new(|| {
+            vec![Pane {
+                pane_id: "w1:p-user".to_owned(),
+                tab_id: "w1:t-demo-kb-001-impl".to_owned(),
+                focused: false,
+                has_agent: false,
+            }]
+        }));
+
+        let outcome = clean(&test_tools, false);
+
+        assert_eq!(outcome.lines, expected_lines, "{case_name}");
+        assert_eq!(
+            *test_tools.herdr.closed_tabs.borrow(),
+            expected_closed,
+            "{case_name}"
+        );
+    }
+}
+
 /// `hub status` and `hub next` call a session `to-close` whose tab a
 /// busy shell keeps, such as an editor beside an old hub. Without a line
 /// saying why, `hub clean` prints only `nothing to close`, and the user

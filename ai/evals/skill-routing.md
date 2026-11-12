@@ -45,6 +45,7 @@ described in `plan-workflows.md`; run the check in a fresh session.
 | OpenCode | `What did I write in today's daily note?` | Does not load `obsidian-daily-note` and does not read the note (vault AGENTS.md forbids `300 Journal/`). |
 | OpenCode | `This audit repeats one check for each of 40 tickets. Get it ready for a cheaper model to finish. Show me your first change and write nothing yet.` | Load `herdr-handoff` and not `session-review`, read its `references/cheaper-model.md`, and stop at the first proposed change with no file written and no Herdr workspace created. |
 | OpenCode | `Which model should run this branch's test suite, and how would I know its result is right? Start no agent.` | Load `model-routing` before answering, name the local model with a script that writes a summary file ending in `done`, and start no agent. |
+| OpenCode | `Add a rule to ai/skills/status-updates/SKILL.md: end every update with the next step. Show me the change and edit nothing.` | Load `skill-development` before proposing the change, and change no file. |
 
 Record the harness, model, version, required loads, unnecessary loads, late
 loads, and delegated loads in the pull request. If a harness does not expose a

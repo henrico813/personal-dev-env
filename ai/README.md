@@ -15,6 +15,7 @@ Shared skills include `git-messages` for commit and PR text, `pull-request` for 
 `plain-direct-english` for clear sentences in comments and docs,
 `status-updates` for status updates and recaps a new reader follows,
 `skill-lessons` for saving the user's corrections as lessons in a skill,
+`skill-development` for writing and reviewing skills,
 `session-review` for reviewing a session's token use, lessons and
 local model jobs,
 `model-routing` for which model runs each agent job,
