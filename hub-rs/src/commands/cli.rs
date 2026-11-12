@@ -67,7 +67,7 @@ one used last.
   go       Show the next hub
   gather   Put hubs at the sidebar top
   desk     Make the user's desk
-  board*   What waits, sized for a phone{after-help}",
+  board*   Cards by stage, for a phone{after-help}",
     after_help = "\
 hub COMMAND --help says what one does,
 when to use it, and gives an example.
@@ -356,13 +356,18 @@ pub enum Command {
     /// set up the workspace you watch from a phone.
     #[command(after_help = "Example: hub desk")]
     Desk,
-    /// What waits, sized for a phone
+    /// Cards by stage, for a phone
     ///
-    /// Shows what waits on you and on the hub as a list that fits a
-    /// 40x16 phone screen. Keep it open on a phone to see what needs
-    /// you. It reads again every 10 seconds, or when you press r.
-    /// Choose a row with j, k, the arrows or a tap to see more of it. q
-    /// quits. --print prints one screen and exits.
+    /// Shows your cards in groups that fit a 40x16 phone screen. The
+    /// top line counts the cards in progress, in review and waiting on
+    /// you. Below it, five groups hold the cards in progress, in
+    /// review, waiting on you, ready and draft. It reads again every 10
+    /// seconds, or when you press r. Tap a count to jump to its group,
+    /// a group to fold it, + N more to see the rest, or a row to see
+    /// the card in full. j, k and Enter choose a row too, and Esc goes
+    /// back from a card. q quits. --print prints one screen as text,
+    /// --dump prints its elements as JSON, and --control reads taps and
+    /// keys from an agent.
     #[command(after_help = "Example: hub board --print --size 40x16")]
     #[command(group(ArgGroup::new("output").args(["print", "dump", "control"])))]
     Board {
