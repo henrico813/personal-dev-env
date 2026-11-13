@@ -1,5 +1,11 @@
 # hub commands
 
+The Steward (the hub) is the agent session that runs `hub`. It sends
+runners (workers) to do each piece of work, reads what they report,
+and tells the Founder (you, the user) what needs a decision. The
+commands below are grouped by who runs them: runners, the Steward,
+and the Founder at the screen.
+
 `hub --help` lists the commands, and `hub COMMAND --help` gives each
 one's flags and an example. This page adds what each one prints and
 when it exits with a code other than 0.
@@ -70,7 +76,7 @@ take it. The others exit 2 with `COMMAND works on this machine only`.
 - `HERDR_SOCKET_PATH`: Herdr's socket, else
   `~/.config/herdr/herdr.sock`.
 
-## Commands for workers
+## Commands for runners (workers)
 
 ### report
 
@@ -108,7 +114,7 @@ The prod starts with `hub watch: `, such as
 `hub watch: your wait ended, since pid 4242 ended. Check the job and
 go on.`
 
-## Commands for the hub
+## Commands for the Steward (the hub)
 
 ### status
 
@@ -376,7 +382,7 @@ The steps of an auto run, in order. Each takes `--run DIR`.
   line per card and `Questions for you: N`. Exits 3 with
   `the run is not approved; start nothing`.
 
-## Commands for the user's screen
+## Commands for the Founder's screen
 
 - `hub flag NAME` marks NAME's pane "needs you" and prints
   `flagged NAME`. `hub unflag NAME` clears it and prints

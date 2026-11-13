@@ -1,9 +1,9 @@
 # hub
 
-`hub` is the command a hub runs. A hub is an AI agent session in
-Herdr that starts other sessions and keeps track of them. `hub`
-watches those sessions, sends them messages, reads their reports and
-closes their tabs when they finish.
+The Steward (the hub) is an AI agent session in the Hold (Herdr)
+that starts other sessions and keeps track of them. It watches
+those sessions, sends them messages, reads their reports and
+closes their tabs when they finish. `hub` is the command it runs.
 
 `pde-installer install full` builds this folder with cargo and
 installs it as `~/.local/bin/hub`. Client laptops, which compile
@@ -29,8 +29,9 @@ speed-up or a breaking change.
 
 ## Screens agents can see and tap
 
-Every full-screen view the hub draws, such as `hub board`, follows
-these rules, so an agent sees and taps exactly what the user does.
+Every full-screen view the hub draws, such as the Map Room
+(`hub board`), follows these rules, so an agent sees and taps
+exactly what the user does.
 
 - The screen works out a list of the page's elements from the area
   and scroll of its last draw. Each has an `id` that stays the same

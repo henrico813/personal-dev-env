@@ -1,15 +1,17 @@
-# Your first hub session
+# Your first night in the Hold
 
-In this tutorial you act as a hub by hand. You start one worker,
-send it a message, read its report and see which tab `hub` would
-close. It takes about ten minutes.
-
-A **hub** is an AI agent session that starts other sessions, called
-**workers**, and keeps track of them. **Herdr** is the terminal app
-that runs these sessions in tabs and tells `hub` what state each one
-is in. `hub` is the command the hub runs to watch, message and tidy
-its workers. A real hub runs these commands for you; doing them once
+Herdr is the Hold: the terminal app that runs each session in a
+chamber (a Herdr tab) and tells `hub` what state it is in. The
+Steward is what this project calls the hub: an AI agent session that
+starts other sessions, called workers, and keeps track of them.
+`hub` is the command the Steward runs to watch, message and tidy its
+workers. A real Steward runs these commands for you; doing them once
 yourself shows what it does.
+
+Tonight the Founder (you, the user) stands in as the Steward, acting
+as a hub by hand. You open a chamber for one worker, send it word,
+wait for its report, read it, and see which chamber `hub` would close.
+It takes about ten minutes.
 
 You need a shell in a Herdr pane on a machine set up with
 pde-installer.
@@ -54,7 +56,7 @@ hub status
 In the table, if any row's WHY ends in `hand off`, stop here:
 `hub next` would ask that session to hand off.
 
-## 4. Start a worker
+## 4. Open a chamber
 
 Make a tab for the worker and start an OpenCode session in it named
 `demo-docs`. `--env` gives the worker the same `HUB_RUN`:
@@ -95,7 +97,7 @@ board line reads `board: REASON` when `card` is not set up. STATE
 `kept` with WHY `yours` means the session never reported, so `hub`
 treats it as yours and leaves it open.
 
-## 5. Send it a message
+## 5. Send word
 
 Write the message to a file, then send it:
 
@@ -135,7 +137,7 @@ about another session, such as `blocked docs-fix (hub -)` or
 worker's `hub report` command. Approve it in the `demo-docs` tab,
 then run `hub next` again.
 
-## 7. Read the report
+## 7. Read it
 
 ```sh
 hub read demo-docs --note "read the demo report"
@@ -145,7 +147,10 @@ It prints the report, then `unread: -`, which lists any other unread
 reports. It renames the report to
 `report-demo-docs.HHMM.read` and adds your note to `notes.md`.
 
-## 8. Tidy up
+## 8. Close the chamber
+
+One law of the Hold holds here: a worker never closes its own
+chamber. Only the Steward does, once the worker's report is read.
 
 If you are in the `demo-docs` tab, switch back to your own tab first.
 `hub` keeps open a session whose pane you are in, and the dry run

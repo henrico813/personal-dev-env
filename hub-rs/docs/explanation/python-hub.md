@@ -1,5 +1,25 @@
 # What changed from the Python hub
 
+Before the Steward (to 2026-11-04), a person who wanted to hand work
+to a new agent session wrote out the context by hand each time. A
+skill for handing off between sessions grew from that habit.
+
+During the Steward's Age (2026-11-04 to 2026-11-10), that skill grew
+into the Steward (the hub): first a set of rules a session could
+follow, then a Python command of its own. It learned to keep a worker's
+finished work as a file, to use one rule book for every card, and to
+check a session's real state instead of trusting its last report.
+The Apprentice, a low-cost model used for mechanical work, took over
+the chores that did not need a skilled hand.
+
+During the Casting (2026-11-11), the Steward was built again from
+nothing: the Rust `hub` grew beside the Python one, which kept
+working. Once the Rust hub matched the Python hub closely enough, it
+took over the same day.
+
+During the Steadying (2026-11-12), the work was making the new
+Steward easier to live with, not giving it new powers.
+
 `hub` was first written in Python. The Rust `hub` replaced it, and
 the Python hub was deleted. This page lists what works differently,
 for people and skills that used the Python one.

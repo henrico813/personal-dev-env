@@ -1,7 +1,10 @@
 # Steps for an agent
 
 This page tells an AI agent what to run, what it will see and what to
-do next. Follow the part for your role. Each part stands alone.
+do next. In the Hold (Herdr), you serve either as a runner (a worker)
+sent to do one piece of work, or as the Steward (a hub) who watches
+many runners at once. Follow the part for your role. Each part
+stands alone.
 
 Every `hub` command ends with an exit code. Act on it the same way
 every time:
@@ -15,7 +18,7 @@ every time:
 - `3`: it did not do the work. The error that starts with `hub:` says
   why. Do what the step says for it.
 
-## You are a worker
+## You are a runner (a worker)
 
 A worker is a session that a hub started. You need two things:
 
@@ -70,6 +73,10 @@ A worker is a session that a hub started. You need two things:
 4. When your work is done, or you are stuck, write your report to a
    file, such as `/tmp/report-demo-kb-001-impl.md`. Then send it:
 
+   *A law of the Hold: a runner's finished
+   work travels as a file, never only a message that a dropped
+   connection could lose.*
+
    ```sh
    hub report demo-kb-001-impl /tmp/report-demo-kb-001-impl.md
    ```
@@ -95,7 +102,7 @@ A worker is a session that a hub started. You need two things:
    A new report replaces your last one whole. Put everything the hub
    needs in it.
 
-## You are a hub
+## You are the Steward (a hub)
 
 You watch workers and act on their news. Run each command from your
 own Herdr pane, with `HUB_RUN` set to your run folder.
@@ -209,6 +216,9 @@ own Herdr pane, with `HUB_RUN` set to your run folder.
 
 6. After a `to-close` or `to-park` line, see what would change, then
    close and park:
+
+   *A law of the Hold: a worker never closes its own chamber (its
+   Herdr tab); the hub closes it.*
 
    ```sh
    hub clean --dry-run
