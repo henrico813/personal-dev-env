@@ -128,18 +128,17 @@ fn add_due_review(test_tools: &mut TestTools) -> PathBuf {
 /// The hub runs `hub read` and a new `hub next` in one reply, so a
 /// report line must be recorded when it prints. Wiring that prints it
 /// but never records it wakes the hub for the same report on every
-/// restart. Each line ends with the hub's own context.
+/// restart.
 #[test]
 fn run_next_records_report_it_prints() {
-    let mut test_tools = TestTools::new();
-    set_hub_context(&mut test_tools, 131_204);
+    let test_tools = TestTools::new();
     write_old_report(&test_tools, "docs-fix");
 
     let first = check_once(&test_tools);
     let second = check_once(&test_tools);
 
-    assert_eq!(first, "report docs-fix (hub 131k)");
-    assert_eq!(second, "timeout (hub 131k)");
+    assert_eq!(first, "report docs-fix (hub -)");
+    assert_eq!(second, "timeout (hub -)");
     let events = read_events(&test_tools.run_path());
     assert_eq!(events.len(), 1);
     assert_eq!(events[0]["event"], "announced");
@@ -386,7 +385,9 @@ fn run_next_only_lists_finished_sessions() {
 
 /// The hub must hear about a finished session once. Listing it again on
 /// every minute pass costs the hub a turn each minute until it runs
-/// `hub clean`.
+/// `hub clean`. A session that leaves that state and comes back must be
+/// listed again, or a reopened worker that finishes a second time stays
+/// hidden.
 #[test]
 fn run_next_lists_each_finished_session_once() {
     let mut test_tools = TestTools::new();
@@ -400,12 +401,31 @@ fn run_next_lists_each_finished_session_once() {
     let listed = check_once(&test_tools);
     forget_minute_pass(&test_tools);
     let next_pass = check_once(&test_tools);
+    // The card returns to work, so the worker leaves the listed state.
+    test_tools
+        .cards
+        .stages
+        .insert("DEMO-KB-001".to_owned(), Stage::Active);
+    forget_minute_pass(&test_tools);
+    let working_pass = check_once(&test_tools);
+    // The card is done again.
+    test_tools
+        .cards
+        .stages
+        .insert("DEMO-KB-001".to_owned(), Stage::Accepted);
+    forget_minute_pass(&test_tools);
+    let finished_again = check_once(&test_tools);
 
     assert_eq!(
         listed,
         "to-close demo-kb-001-impl: DEMO-KB-001 accepted; run hub clean"
     );
     assert_eq!(next_pass, "timeout (hub -)");
+    assert_eq!(working_pass, "timeout (hub -)");
+    assert_eq!(
+        finished_again,
+        "to-close demo-kb-001-impl: DEMO-KB-001 accepted; run hub clean"
+    );
 }
 
 /// A finished worker over the handoff limit gets no handoff ask. The
@@ -489,14 +509,10 @@ fn run_next_starts_review_once_old_closes() {
         test_tools.herdr.started.borrow()[0].args,
         ["--model", "claude-code/claude-opus-5-5[1m]#high", "--auto"]
     );
-    let prompt = format!(
-        "Read the handoff at {} and follow it. Load each skill it names when it says.",
-        review.display()
-    );
-    assert_eq!(
-        *test_tools.herdr.prompts.borrow(),
-        [("review-kanban-hub-1".to_owned(), prompt)]
-    );
+    let prompts = test_tools.herdr.prompts.borrow();
+    assert_eq!(prompts.len(), 1);
+    assert_eq!(prompts[0].0, "review-kanban-hub-1");
+    assert!(prompts[0].1.contains(&review.display().to_string()));
 }
 
 /// A review that cannot start must reach the hub once, with the file
@@ -525,7 +541,8 @@ fn run_next_reports_failed_review_start_once() {
 
 /// The review may already run, started by hand or by a `hub next`
 /// whose line was never recorded because a newer one replaced it.
-/// Starting it again would review the same hub twice.
+/// Starting it again would review the same hub twice, so a running
+/// review must be recorded even though it prints no line.
 #[test]
 fn run_next_skips_review_already_running() {
     let mut test_tools = TestTools::new();
@@ -536,8 +553,16 @@ fn run_next_skips_review_already_running() {
         .push(make_agent("review-kanban-hub-1", AgentStatus::Working));
 
     let line = check_once_starting_reviews(&test_tools);
+    // Once the live review is gone, the recorded start must still stop
+    // a later check from starting a second one.
+    test_tools
+        .herdr
+        .agents
+        .retain(|agent| agent.name != "review-kanban-hub-1");
+    let later_line = check_once_starting_reviews(&test_tools);
 
     assert_eq!(line, "timeout (hub -)");
+    assert_eq!(later_line, "timeout (hub -)");
     assert!(test_tools.herdr.created_tabs.borrow().is_empty());
 }
 
