@@ -4,10 +4,13 @@ merge-worker.sh runs this in its own session and saves what it prints
 as the summary the hub reads. It brings a branch that is behind its
 base up to date with a merge commit, runs merge_prep.py, sends the
 merge request through pde-gh-write, waits for the user's answer and
-prints the merge commit. Read ``merge_pull_request`` first.
+prints the merge commit. With ``--install``, it then runs the install,
+so one local worker does the whole chore. Read ``merge_pull_request``
+first.
 
 Example:
-    python3 merge_worker.py 453 /tmp/job 'cd ai && uv run pytest'
+    python3 merge_worker.py 453 /tmp/job 'cd ai && uv run pytest' \
+        --install 'git pull --ff-only && pde-installer install'
 """
 
 import argparse
@@ -39,23 +42,30 @@ RESULTS = {
 
 
 def merge_pull_request(
-    number: int, folder: Path, commands: list[str], remote: str | None
+    number: int,
+    folder: Path,
+    commands: list[str],
+    remote: str | None,
+    install: str | None,
 ) -> int:
     """Update, check and merge PR number, printing each outcome.
 
     Stops at the first step that fails, so a conflict or a failed
-    check sends no merge request.
+    check sends no merge request, and an unmerged PR installs nothing.
 
     Args:
         number: Pull request number on GitHub.
-        folder: Existing folder for ``prep/`` and ``merge.log``.
+        folder: Existing folder for ``prep/``, ``merge.log`` and
+            ``install.log``.
         commands: Test commands for merge_prep.py.
         remote: Git remote given with ``--remote``, or None for the
             repository's only remote.
+        install: Shell command to run after the merge, or None.
 
     Returns:
-        0 when the pull request merged, 1 when it did not, and
-        merge_prep.py's code when it failed.
+        0 when the pull request merged and any install passed, 1 when
+        it did not merge or the install failed, and merge_prep.py's
+        code when it failed.
 
     Raises:
         subprocess.CalledProcessError: When git or gh fails.
@@ -81,7 +91,31 @@ def merge_pull_request(
         return 1
     commit = view_pr(number, "mergeCommit")["mergeCommit"] or {}
     print(f"merged: {commit.get('oid', 'unknown')}")
-    return 0
+    if install is None:
+        return 0
+    return run_install(install, folder / "install.log")
+
+
+def run_install(command: str, log: Path) -> int:
+    """Run the install command with bash and print whether it passed.
+
+    Args:
+        command: Shell command, such as
+            ``git pull --ff-only && pde-installer install``.
+        log: File that gets the command's output.
+
+    Returns:
+        0 when it passed, otherwise 1.
+    """
+    with log.open("w") as output:
+        code = subprocess.run(
+            ["bash", "-c", command], stdout=output, stderr=output
+        ).returncode
+    if code == 0:
+        print("install: passed")
+        return 0
+    print(f"install: failed with exit {code}; see install.log")
+    return 1
 
 
 def update_branch(number: int, remote: str) -> str | None:
@@ -305,20 +339,26 @@ def main() -> int:
     """Merge the pull request and print what happened.
 
     Returns:
-        0 when it merged, 1 when it did not, merge_prep.py's code when
-        it failed, and 2 when git or gh fails.
+        0 when it merged and any install passed, 1 when it did not
+        merge or the install failed, merge_prep.py's code when it
+        failed, and 2 when git or gh fails.
     """
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("number", type=int, help="pull request number")
     parser.add_argument("folder", type=Path, help="folder for the results")
     parser.add_argument("commands", nargs="+", help="test commands")
     parser.add_argument("--remote", help="git remote of the PR")
+    parser.add_argument("--install", help="shell command to run once merged")
     args = parser.parse_args()
     # merge_prep.py writes to the same summary, so lines go out in order.
     sys.stdout.reconfigure(line_buffering=True)
     try:
         return merge_pull_request(
-            args.number, args.folder, args.commands, args.remote
+            args.number,
+            args.folder,
+            args.commands,
+            args.remote,
+            args.install,
         )
     except subprocess.CalledProcessError as error:
         detail = (error.stderr or "").strip().splitlines() or ["no output"]
