@@ -482,6 +482,7 @@ impl Cards for InMemoryCards {
             .map(|(key, stage)| ListedCard {
                 key: key.parse().unwrap(),
                 stage: *stage,
+                project: String::new(),
                 title: String::new(),
             })
             .collect())

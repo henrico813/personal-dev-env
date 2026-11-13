@@ -56,7 +56,9 @@ the implementation direction is already clear.
 When this skill is invoked:
 
 1. **If parameters were provided**:
-   - If a file path, ticket reference, or document path was provided, read it fully.
+   - If a file path, ticket reference, or document path was provided,
+     read it. Read an existing plan one part at a time, as Step 1
+     says. Read anything else in full.
    - Apply the skill gate, then begin broader research immediately.
 2. **If no parameters were provided**, ask for the task, material constraints,
    and related references, then stop and wait for the user.
@@ -72,8 +74,10 @@ When this skill is invoked:
 - For plan-authoring delegation, use a numbered decision list. Label each
   `user-decided`, `orchestrator-proposed` (not confirmed by the user), or
   `inferred from code`; never present a proposal as decided.
-- Read every mentioned file fully before the final proposal. Read directly
-  related callers, tests, config, and docs when they affect the change.
+- Before the final proposal, read every file the user mentions. Read
+  an existing plan one part at a time, as Step 1 says. Read every
+  other file in full. Read directly related callers, tests, config,
+  and docs when they affect the change.
 - Scale research to the task. Do not run a fixed multi-agent or multi-track
   workflow merely because the task is repo-backed.
 - Search with `rg`, or `git grep <pattern> <commit>` at the plan's base
@@ -118,7 +122,21 @@ When this skill is invoked:
 
 ### Step 1: Read and Gather Context
 
-1. Read all files mentioned by the user fully.
+1. Read all files mentioned by the user fully, except an existing
+   plan. Read a plan one part at a time, where a part is one step or
+   one section. Start with `planner outline`.
+   - `planner outline <plan.md>` lists each section, step and file
+     change with the lines it covers, such as
+     `54-193 ### 1. Add a deploy check`.
+   - `planner show <plan.md> --step N` prints step N under
+     Implementation. `--section NAME` prints the section whose heading
+     is NAME, in any letter case. Show cannot print one file change.
+   - To read one file change, or a section whose name two headings
+     share, print the lines outline gives for it, such as
+     `sed -n '58,106p' <plan.md>`.
+   - When show finds no part, check the name in the outline.
+   - To find a name, such as a function, in every part, run
+     `rg -n NAME <plan.md>`.
 2. Read directly related requirements, design docs, prior plans, and data files.
 3. Resolve plan, issue, doc, and vault references using the loaded shared
    Planning Docs guidance.

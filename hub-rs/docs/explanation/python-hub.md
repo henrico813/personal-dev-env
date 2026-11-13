@@ -17,13 +17,16 @@ for people and skills that used the Python one.
 
 ## The run folder
 
-- `status`, `next`, `send`, `at`, `read`, `report`, `inbox`, `note`,
-  `brief`, `handoff`, `adopt`, `clean`, `park` and `board` take the
+- `status`, `next`, `send`, `at`, `read`, `report`, `inbox`,
+  `note`, `brief`, `handoff`, `adopt`, `clean` and `park` take the
   run folder from `--run DIR`, else from `HUB_RUN`, else from the one
   `~/.local/state/herdr-hub.*` folder whose `hub next` runs now. With
   no `hub next` running, they use the folder whose `events.jsonl`
-  changed last and name it on stderr. With no folder found, two or
-  more running, or a folder that does not exist, they exit 2.
+  changed last and name it on stderr. When only auto runs have
+  `hub next` running, they use the newest folder without
+  `approved.md` the same way. With no folder found, two of the user's
+  own hubs running, or a folder that does not exist, they exit 2.
+  `board` needs no run folder.
 - Every `auto` step takes the run folder from `--run DIR`, else from
   `HUB_RUN`.
 - `read`, `handoff` and `adopt` add a line to `events.jsonl` in the

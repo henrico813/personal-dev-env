@@ -353,14 +353,21 @@ record, adds the session to its card and closes its tab. Prints
 
 ### board
 
-`hub board [--run DIR]` shows the cards by stage, sized for a 40x16
-phone screen: In progress, In review, Needs you, Ready and Draft.
-Needs you holds the questions in `decisions.md` and the sessions that
-wait on the user. A Could not read group shows on top when a read
-fails. An open group shows four rows, then `+ N more`; Ready and
-Draft start folded. Each row starts with a mark for its group: `*`
-in progress, `@` in review, `?` needs you, `o` ready, `.` draft and
-`!` could not read.
+`hub board` shows the cards by stage, sized for a 40x16 phone
+screen: In progress, In review, Needs you, Ready and Draft.
+The cards come from `card list`. Needs you holds the questions in
+each `decisions.md` and the sessions that wait on the user, from
+every hub on this machine that Herdr lists: each
+`~/.local/state/herdr-hub.*` folder whose hub `hub watch start`
+named, auto runs included. Each question's tag is its hub's name,
+cut to 6 letters, and its details page names the hub in full. With
+no hub running, Needs you shows `no hub running`.
+It ignores `HUB_RUN`, and the hidden `--run DIR` shows one run only.
+A Could not read group shows on top when a read fails. An open
+group shows four rows, then `+ N more`; Ready and Draft start
+folded. Each row starts with a mark for its group: `*` in progress,
+`@` in review, `?` needs you, `o` ready, `.` draft and `!` could
+not read.
 
 - A tap on a count jumps to its group, a tap on a heading folds or
   opens it, and a tap on a row opens its details. On a details page,

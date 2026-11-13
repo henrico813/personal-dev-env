@@ -71,7 +71,7 @@ one used last.
   go       Show the next hub
   gather   Put hubs at the sidebar top
   desk     Make the user's desk
-  board*   Cards by stage, for a phone{after-help}",
+  board    Cards by stage, for a phone{after-help}",
     after_help = "\
 hub COMMAND --help says what one does,
 when to use it, and gives an example.
@@ -457,10 +457,13 @@ pub enum Command {
     /// what waits on you. Below it are five
     /// groups, and Could not read on top when
     /// a read fails. In progress, In review,
-    /// Ready and Draft hold cards, and Needs
-    /// you holds the questions in decisions.md
-    /// and the sessions that wait on you. Ready
-    /// and Draft start folded. It reads again
+    /// Ready and Draft hold cards from card
+    /// list. Needs you holds the questions in
+    /// decisions.md and the sessions that wait
+    /// on you, from every hub running on this
+    /// machine, each tagged with its hub. With
+    /// no hub running, it says so. Ready and
+    /// Draft start folded. It reads again
     /// every 10 seconds, or when you press r.
     ///
     /// Tap a count to jump to its group, a
@@ -471,23 +474,24 @@ pub enum Command {
     /// list. On a card, q, Esc or any tap goes
     /// back. --print prints one screen as text,
     /// and --dump prints its elements as JSON.
-    /// Both draw a new board from the run
-    /// folder, not the board that listens.
+    /// Both draw a new board, not the board
+    /// that listens.
     ///
     /// To let an agent drive the board you
     /// watch, start it with --listen. Then
     /// hub board --send STEP, from another
-    /// terminal on the same run folder, does
-    /// one step on your screen and prints the
-    /// screen that follows as JSON. --send
-    /// exits 2 when the board refuses the step
-    /// and 3 when no board listens. They talk
-    /// through board.sock in the run folder,
-    /// which works on Linux and macOS but not
-    /// Windows. Until its first read ends, the
-    /// board shows no cards and its hint says
-    /// reading. Tests use the hidden --control,
-    /// which reads the same steps one per line.
+    /// terminal, does one step on your screen
+    /// and prints the screen that follows as
+    /// JSON. --send exits 2 when the board
+    /// refuses the step and 3 when no board
+    /// listens. Only one board listens at a
+    /// time. They talk through board.sock in
+    /// ~/.local/state/pde/hub, which works on
+    /// Linux and macOS but not Windows. Until
+    /// its first read ends, the board shows no
+    /// cards and its hint says reading. Tests
+    /// use the hidden --control, which reads
+    /// the same steps one per line.
     ///
     /// Each step is one of these.
     ///   tap ID       tap an element by the id
@@ -533,8 +537,9 @@ Example: hub board --listen
 Then: hub board --send 'press j'")]
     #[command(group(ArgGroup::new("output").args(["print", "dump", "control"])))]
     Board {
-        #[command(flatten)]
-        run: RunArg,
+        /// Show only this run's questions and sessions
+        #[arg(long = "run", value_name = "DIR", hide = true)]
+        only_run: Option<PathBuf>,
         /// Print one screen as text and exit
         #[arg(long)]
         print: bool,
@@ -699,8 +704,9 @@ pub fn parse_command() -> Result<Cli, HubError> {
 ///
 /// `HubError::Usage` when the folder does not exist. Without `--run`
 /// and `HUB_RUN`, also when `local_state` is `None`, when two or more
-/// hubs run and skipping auto runs does not leave exactly one, or when
-/// none runs and no folder has an `events.jsonl`.
+/// hubs run and neither skipping auto runs nor the newest folder
+/// without one leaves exactly one, or when none runs and no folder has
+/// an `events.jsonl`.
 /// `HubError::File` when `local_state`, a lock file, an `approved.md`
 /// or an `events.jsonl` cannot be read.
 pub fn find_run_folder(
@@ -731,10 +737,13 @@ pub fn find_run_folder(
 ///
 /// During an auto run the user's hub and the auto hub both run. The
 /// search then skips folders with an `approved.md`, which only auto
-/// runs have, and names the one left on stderr. When skipping them
-/// leaves no folder or more than one, the search stops with an error
-/// that names each running folder. The skip needs two locks held, so
-/// while the user's hub handles a line the search takes the auto run.
+/// runs have, and names the one left on stderr. When only auto runs
+/// hold a lock, the user's hub is handling a line, so the search takes
+/// the newest folder without an `approved.md`, as it does with no lock
+/// held. When that finds none, or two of the user's hubs run, the
+/// search stops with an error that names each running folder. The skip
+/// needs two locks held, so while the user's hub handles a line during
+/// a single auto run the search takes the auto run.
 fn find_hub_folder(local_state: &Path) -> Result<RunFolder, HubError> {
     let file_error = |source| HubError::File {
         path: local_state.to_path_buf(),
@@ -751,7 +760,8 @@ fn find_hub_folder(local_state: &Path) -> Result<RunFolder, HubError> {
     };
 
     let mut running = Vec::new();
-    let mut newest: Option<(SystemTime, RunFolder)> = None;
+    // Folders with no `hub next` running, and when `events.jsonl` changed.
+    let mut resting = Vec::new();
     for path in paths {
         let is_hub_name = path
             .file_name()
@@ -765,16 +775,16 @@ fn find_hub_folder(local_state: &Path) -> Result<RunFolder, HubError> {
         };
         if run.is_watcher_running()? {
             running.push(run);
-        } else if let Some(modified) = read_events_time(&run)?
-            && newest.as_ref().is_none_or(|(time, _)| modified > *time)
-        {
-            newest = Some((modified, run));
+        } else if let Some(modified) = read_events_time(&run)? {
+            resting.push((modified, run));
         }
     }
+    // Newest first, so the first match is the folder written to last.
+    resting.sort_by_key(|(modified, _)| std::cmp::Reverse(*modified));
 
     match running.len() {
         0 => {
-            let Some((_, run)) = newest else {
+            let Some((_, run)) = resting.into_iter().next() else {
                 return Err(HubError::Usage(
                     "no run folder; no hub here wrote events yet, so pass --run DIR".to_owned(),
                 ));
@@ -790,7 +800,7 @@ fn find_hub_folder(local_state: &Path) -> Result<RunFolder, HubError> {
             let mut own_hubs = Vec::new();
             let mut auto_runs = Vec::new();
             for run in running {
-                if run.read_file_if_exists("approved.md")?.is_some() {
+                if is_auto_run(&run)? {
                     auto_runs.push(run);
                 } else {
                     own_hubs.push(run);
@@ -800,6 +810,17 @@ fn find_hub_folder(local_state: &Path) -> Result<RunFolder, HubError> {
                 let run = own_hubs.remove(0);
                 eprintln!("hub: skipping auto runs, so using {}", run.path().display());
                 return Ok(run);
+            }
+            if own_hubs.is_empty() {
+                for (_, run) in resting {
+                    if !is_auto_run(&run)? {
+                        eprintln!(
+                            "hub: only auto runs have hub next running, so using {}",
+                            run.path().display()
+                        );
+                        return Ok(run);
+                    }
+                }
             }
             let mut folders: Vec<String> = own_hubs
                 .iter()
@@ -813,6 +834,12 @@ fn find_hub_folder(local_state: &Path) -> Result<RunFolder, HubError> {
             )))
         }
     }
+}
+
+/// Tells whether `run` is an auto run's folder, which alone holds an
+/// `approved.md`.
+fn is_auto_run(run: &RunFolder) -> Result<bool, HubError> {
+    Ok(run.read_file_if_exists("approved.md")?.is_some())
 }
 
 /// Returns when the run's `events.jsonl` last changed, or `None` when

@@ -46,13 +46,13 @@ peak context about 171,400 tokens at seq 990
 The review file is ~/.local/state/pde/session-reviews/20261105-tally-p5.md.
 
 The review found:
-- Proposal: print only failing tests in roadmap-run's test step, a
+- Proposal: print only failing tests in auto-run's test step, a
   skill PR. Saves about 1.4M tokens (estimate: 4,000 tokens read
   again by 90 steps, 4 times).
 - Proposal: tell agents to print test failures only, in AGENTS.md.
   AGENTS.md here belongs to the hub session tally-hub.
 - Lesson: "Print test failures, never whole test logs" ->
-  roadmap-run.
+  auto-run.
 
 Conversation notes:
 - The P6 build is not started. This session runs in Herdr.
@@ -72,9 +72,9 @@ Checks:
 
 ```text
 You sent this list after a session review:
-1. Print only failing tests in roadmap-run's test step (skill PR).
+1. Print only failing tests in auto-run's test step (skill PR).
 2. Lesson: "Print test failures, never whole test logs" ->
-   roadmap-run.
+   auto-run.
 3. Hand the P6 build to a new Herdr session.
 4. Status update.
 
@@ -89,7 +89,7 @@ write the last message to the user.
 Checks:
 
 1. Saves the lesson with `skill-lessons add` before the pull request.
-2. Edits roadmap-run only on a new branch from main in
+2. Edits auto-run only on a new branch from main in
    personal-dev-env, not on feat/tally-p5 or in ~/.agents/skills.
 3. Opens one pull request with the pull-request skill and does not
    merge it.
