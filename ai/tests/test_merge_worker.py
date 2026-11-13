@@ -10,6 +10,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "ai/skills/herdr-hub/scripts"
 FAILING_PREP = """\
@@ -179,17 +181,26 @@ def push_to_main(job: Job, name: str, text: str) -> str:
     return run_git(job.repo, "rev-parse", "HEAD")
 
 
-def run_worker(job: Job) -> subprocess.CompletedProcess:
+def run_worker(job: Job, *options: str) -> subprocess.CompletedProcess:
     """Run merge-worker.sh for PR 453 from the job's repository.
 
     Args:
         job: The run to start.
+        options: Options after the test command, such as
+            ``--install``.
 
     Returns:
         The finished script.
     """
     return subprocess.run(
-        ["bash", str(job.script), "453", str(job.folder), "make test"],
+        [
+            "bash",
+            str(job.script),
+            "453",
+            str(job.folder),
+            "make test",
+            *options,
+        ],
         cwd=job.repo,
         env=job.env,
         capture_output=True,
@@ -361,3 +372,52 @@ def test_merge_worker_stops_when_user_declines(tmp_path: Path) -> None:
     assert summary.endswith(
         "result: the user declined the merge request\nexit: 1\ndone\n"
     )
+
+
+@pytest.mark.parametrize(
+    ("install_exit", "code", "last_line"),
+    [
+        (0, 0, "install: passed"),
+        (7, 1, "install: failed with exit 7; see install.log"),
+    ],
+)
+def test_merge_worker_installs_after_merge(
+    tmp_path: Path, install_exit: int, code: int, last_line: str
+) -> None:
+    """With --install, the same run installs once the PR has merged.
+
+    The hub once started separate cloud sessions to install after a
+    local merge, which cost over a million tokens on one day. The hub
+    trusts only the summary, so it must show the merge and whether the
+    install passed, and the exit code must show a failed install. The
+    install runs with the repository as its working directory, which
+    the ran.txt assertion checks.
+    """
+    job = make_job(tmp_path, READY_PREP)
+
+    result = run_worker(
+        job, "--install", f"pwd > ../ran.txt; echo log; exit {install_exit}"
+    )
+
+    assert result.returncode == code
+    assert (tmp_path / "ran.txt").read_text() == f"{job.repo}\n"
+    assert (job.folder / "install.log").read_text() == "log\n"
+    summary = (job.folder / "summary.txt").read_text()
+    assert summary.endswith(
+        f"merged: 5eed\n{last_line}\nexit: {code}\ndone\n"
+    )
+
+
+def test_merge_worker_skips_install_without_merge(tmp_path: Path) -> None:
+    """A declined merge installs nothing.
+
+    Installing an unmerged branch would put code the user turned down
+    on the machine.
+    """
+    job = make_job(tmp_path, READY_PREP, exits="4 0")
+
+    result = run_worker(job, "--install", "touch ../ran.txt")
+
+    assert result.returncode == 1
+    assert not (tmp_path / "ran.txt").exists()
+    assert "install:" not in (job.folder / "summary.txt").read_text()

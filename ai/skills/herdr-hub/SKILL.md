@@ -209,6 +209,8 @@ tools, so you never read half a report.
 - A merged pull request: check the merge, and its install where there
   is one, then accept the work yourself, such as by moving its card to
   accepted. Do not ask the user, who already approved the merge.
+  A merge worker's summary shows the merge and the install, so start
+  no other session to check either.
 - Status-only news, such as a passed rehearsal: send the worker
   nothing, and tell the user nothing about it.
 - A change of owner: note it on the card with `card note`, and tell
@@ -300,6 +302,8 @@ vault. A hub never reports to a hub on another machine.
   user lets one skip it, case by case.
 - Work data stays on the machine that holds it. Never send it to
   another machine or put it in public text.
+- To sort a pile of cards, such as every card in `review`, follow
+  [references/sort-card-pile.md](references/sort-card-pile.md).
 
 When sessions run with no card, such as on a machine where the hub
 starts among earlier sessions, follow
@@ -404,6 +408,11 @@ says for a local job. In that brief, put the command below in place
 of `bash <script>`, and name `<folder>/summary.txt` as the summary
 file. In a repository with
 several remotes, add `--remote <remote>` after the test command.
+When the merge changes what an install puts on this machine, add
+`--install '<install command>'` after the test command, so the same
+worker installs once the pull request has merged. For
+personal-dev-env, the install command is
+`git pull --ff-only && pde-installer install`.
 
 Start a merge worker only for a pull request whose Testing records that
 the change was deployed and tried, as `pull-request` Guardrail 4 asks.
@@ -429,6 +438,11 @@ merge request. The line before `exit:` says what happened:
 
 - `merged: <commit>`: handle it as a merged pull request, as Reports
   from sessions says.
+- `install: passed`: the merged line comes just before it. Handle it
+  as a merged pull request whose install you have checked.
+- `install: failed with exit <code>; see install.log`: the pull
+  request merged but its install failed. Tell the user, with the last
+  lines of `<folder>/install.log`.
 - `result: conflict with <base>: <files>`: resolving a conflict
   writes code, so it is a local job. Hand it to a worker as
   `herdr-handoff`'s "Hand a local job to a worker" says, with an edit
@@ -488,6 +502,9 @@ switch its effort in that session, and never run `hub handoff` again.
 - Never do a worker's task yourself, even when the user asks you to
   manage it. Send it to the worker that owns it. When you need a
   tool, have a worker build it.
+- Hand a small chore that `model-routing` counts as a local job to a
+  worker on the local model, as that skill says. Never hand it to a
+  cloud subagent.
 - When the user hands you a worker that was told to wait for the
   user's yes on routine steps, send it new rules at once: do routine
   steps without asking, report to the hub, and bring other questions

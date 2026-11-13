@@ -35,15 +35,17 @@ weakest to strongest.
 
 1. Local: a script checks the result. Examples are running tests,
    linters, git commands, merge checks or `planner check`, and quoting
-   lines that a script finds in their source file. The model only has
+   lines that a script finds in their source file or web page. Small
+   chores are local jobs too, such as checking whether a file exists
+   or what its mode and size are. The model only has
    to follow a short brief and call tools. Such a job is a local job.
    Writing code is a local job too, inside or outside a plan step.
    A script runs tests and linters to check the code.
 2. Cheap: either the job needs little judgment, or a stronger model
-   or the session checks the output. Examples are web lookups that only
-   quote pages, long prose drafts that a stronger model then checks,
-   and sorting or labelling by meaning when the session reads each
-   line.
+   or the session checks the output. Examples are web lookups that
+   failed their check twice or that the local model could not fetch,
+   long prose drafts that a stronger model then checks, and sorting
+   or labelling by meaning when the session reads each line.
 3. Review: the job needs judgment over a bounded input. Its model
    runs at medium reasoning. Examples are reviews of plans, diffs,
    comments and tests, including `code-documentation` and
@@ -132,7 +134,8 @@ Each Claude Code alias follows the newest model of its kind.
    configuration sets. Never pick a cheaper model on your own to save
    tokens.
 5. When a role fits, take the first available model in its list. A
-   web lookup is the one exception, as Web lookups says.
+   web lookup that falls back to the cheap role is the one exception,
+   as Web lookups says.
 6. When no model of the role is available, step up to the next
    stronger role. Never step down. A job that writes code skips the
    cheap and review roles and steps from local to strongest. When no
@@ -167,15 +170,28 @@ Each Claude Code alias follows the newest model of its kind.
    its check only when the file's last line is `done`. For an edit
    job, run its check script yourself after the model stops. For a
    reading or search job, run a check script on the answer file
-   yourself, such as one that finds each quote in its source file. A
-   quote often joins wrapped lines, so the check collapses runs of
-   whitespace in the quote and the source before it compares them.
+   yourself. When the answer lines quote files or web pages, use
+   `scripts/check_quotes.py`. Each line needs `quote` and either
+   `file` or `url`. The script writes the lines it found to a table
+   file:
+
+   ```sh
+   python3 ~/.agents/skills/model-routing/scripts/check_quotes.py \
+     <answer file> <table file>
+   ```
+
    Never trust the model's own report on any local job.
 
 ## Web lookups
 
-A subagent that only searches the web and quotes pages has the cheap
-role. It is the one exception to taking the first model in the list.
+A web lookup that only quotes pages is a local reading job. Brief it
+as step 4 of Brief a local model says. Use one JSON line per answer,
+holding `url` and `quote`. Check it as step 5 says. The script
+fetches each page itself.
+
+When the check fails twice, or the local model cannot fetch pages,
+run the lookup on a subagent of the cheap role. It is the one
+exception to taking the first model in the list.
 Pick the cheap model from the provider of the session's own model,
 since that provider is known to work. Set the subagent tool's `model`
 to it. In OpenCode, also pick the `web-search-researcher` agent. If
@@ -235,8 +251,10 @@ did not answer".
 ## Final checks
 
 - Each job ran on the first available model of its role, or its
-  report says why not. A web lookup ran on the cheap model of the
-  session's own provider.
+  report says why not. A web lookup ran on the local model first.
+  It ran on the cheap model of the session's own provider only
+  when the check failed twice or the local model could not fetch
+  pages.
 - No job moved to a weaker role.
 - Each local job passed its check. A script job's summary file ends
   in `done`. For an edit job or a reading or search job, its check
