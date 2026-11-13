@@ -146,6 +146,45 @@ on that failure, so no name is ever built without it:
 K=$(planner key "$P") || exit 1
 ```
 
+## planner outline
+
+```text
+planner outline <plan.md> [--json-errors]
+```
+
+Prints each `##` and `###` heading and each file change of the plan, one per
+line, with the lines it covers. Steps and file changes are indented under their
+section:
+
+```text
+15-19     ## Overview
+51-951    ## Implementation
+54-193      ### 1. Add a deploy check
+58-106        `scripts/deploy-check.sh`
+```
+
+A part runs from its heading to the line before the next part at its level or
+higher. Headings inside code blocks are skipped. It reads any Markdown file, so
+it also works on a design doc or a plan that does not pass `planner check`. A
+code block that never closes would hide every later heading, so outline exits 1
+and names the line where the block opened.
+
+## planner show
+
+```text
+planner show <plan.md> (--step N | --section NAME) [--json-errors]
+```
+
+Prints the lines of one part, as outline lists them. `--step 2` prints the step
+under `## Implementation` whose heading starts with `### 2.`. `--section NAME`
+prints the `##` or `###` part whose heading is NAME in any letter case, such as
+`--section "notes for agents"`.
+
+It exits 1 when no part matches, or when two sections share the name. Then read
+the one you want by its line range from outline, such as
+`sed -n 15,19p plan.md`. It also exits 1 on a code block that never closes, as
+outline does.
+
 ## planner inspect
 
 ```text

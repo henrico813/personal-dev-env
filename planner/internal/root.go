@@ -29,12 +29,17 @@ Usage:
   planner inspect <plan.md> --target SELECTOR [--repo DIR]
       [--base-commit COMMIT] [--code-out NEWFILE [--before]] [--json-errors]
   planner key <plan.md> [--json-errors]
+  planner outline <plan.md> [--json-errors]
   planner patch <plan.md> --target SELECTOR --expect TOKEN [--repo DIR]
       [--base-commit COMMIT] (--after-file FILE | --diff-file FILE)
       [--dry-run] [--diff] [--json-errors]
+  planner show <plan.md> (--step N | --section NAME) [--json-errors]
 
 List JSON provides overview, project, and detail views. Status filters accept
 the standard statuses and known legacy aliases.
+
+Outline prints each section, step and file change with its line range. Show
+prints one step, or the section with that heading in any letter case.
 
 Global flags:
   --json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).
@@ -93,8 +98,12 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 		return runInspect(args[1:], stdout, stderr)
 	case "key":
 		return runKey(args[1:], stdout, stderr)
+	case "outline":
+		return runOutline(args[1:], stdout, stderr)
 	case "patch":
 		return runGuardedPatch(args[1:], stdout, stderr)
+	case "show":
+		return runShow(args[1:], stdout, stderr)
 	default:
 		reportError(stderr, "planner", newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("unknown command: %s", args[0])))
 		// Help text is verbose human-oriented prose; under --json-errors the

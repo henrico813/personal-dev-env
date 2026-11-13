@@ -5,6 +5,10 @@ documents that describe code changes as unified diffs. Some commands read and
 write the plan Markdown only; others check a proposed diff against a recorded
 source commit before anything is written or reported ready.
 
+To read one part of a long plan, `planner outline` lists its sections, steps
+and file changes with their line ranges, and `planner show` prints one step or
+section.
+
 ## Documentation
 
 - **Tutorial**: [Create and check your first plan](docs/tutorials/create-and-check-a-plan.md)

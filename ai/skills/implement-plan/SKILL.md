@@ -32,8 +32,18 @@ If no plan reference is provided, ask for one and stop.
 
 ## Getting Started
 
-- Read the complete plan, existing checkmarks, original requirements, and other
-  directly referenced context.
+- Read the plan as Step 1 of the `create-plan` skill says. First read
+  these four sections: `Overview`, `Definition of Done`,
+  `Verification`, and `Notes for agents`. The checked boxes in Goals
+  and Verification show what is done.
+- Steps have no boxes. The build commits each finished step. To find
+  where to resume, match the titles in
+  `git log --oneline <base commit>..HEAD` to the steps. A step fixed
+  after its commit has two commits. When unsure, rerun the earlier
+  step's script, since it skips a step that HEAD already holds. Read
+  each remaining step when you start it.
+- Also read the original requirements and other directly referenced
+  context.
 - Resolve the plan using the loaded shared Planning Docs guidance.
 - Identify affected domains and load matching skills before reading broader
   source, tests, or configuration.
