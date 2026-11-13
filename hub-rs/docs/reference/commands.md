@@ -273,6 +273,39 @@ idle, then hub next --start-reviews starts review-OLD`.
 as `gather` does. When that fails, they add
 `could not put the hubs on top: REASON; hub gather tries again`.
 
+### launch
+
+`hub launch [--run DIR] NAME HANDOFF --model MODEL [--workspace LABEL]`
+starts a worker named NAME on MODEL in the current folder, prompts it
+to read HANDOFF, and records the start. A card key at the start of
+NAME, such as `demo-kb-007-impl`, makes it that card's worker. The
+worker opens in a new tab of the workspace whose label starts with
+the key, else in a new workspace such as `demo-kb-007 impl`. Work
+with no card opens in the hub's workspace, so run it in the hub's
+own pane. `--workspace LABEL` opens it in that workspace, and makes
+the workspace if none has that label. A ready card moves to active
+first, so `card` checks the work limit before anything starts. After
+the start, the card gets a `Handoff PATH` note and the worker's
+session, and `notes.md` gets a line. Prints:
+
+```text
+started NAME (PANE) on MODEL
+new workspace LABEL
+```
+
+The second line comes only when it made a workspace.
+
+- Exits 3 before it changes anything when HANDOFF does not exist, a
+  live agent is named NAME, `card list` shows no card for the key, or
+  work with no card runs outside the hub's pane.
+- Exits 1 with `card`'s message, and changes nothing, when `card`
+  refuses the move to active, such as past the work limit.
+- A failure after the move begins `moved KEY to active, but REASON`.
+  One after the start begins `started NAME` and lists each later step
+  that finished, such as `started NAME, sent the handoff prompt,
+  added the card note, but REASON`, so the hub does the rest by hand.
+  Running it again after a start refuses, since NAME already runs.
+
 ### watch
 
 `hub watch start [--run DIR]` names this hub as the run's hub and
