@@ -596,6 +596,29 @@ class TestAttach:
         assert photo.read_bytes() == b"made-up image bytes"
 
 
+class TestList:
+    """The list prints one line per card, for people and for scripts."""
+
+    def test_list_tabs_keeps_whole_title(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """With --tabs, a long title stays whole and the project shows.
+
+        The hub's board draws rows from these lines on screens of any
+        width. A title cut to fit 60 characters stays cut on a wide
+        screen, and a missing project leaves the row without its tag.
+        """
+        title = "See subagent tokens, cost, model and usage in the sidebar"
+        run_card(projects, "new", "DevEnv", title, "--by", "user")
+        capsys.readouterr()
+
+        code = run_card(projects, "list", "--tabs")
+
+        assert code == 0
+        first_line = capsys.readouterr().out.splitlines()[0]
+        assert first_line == f"PDEV-KB-001\tdraft\tbuild\tDevEnv\t{title}"
+
+
 class TestBoard:
     """The board shows what waits on the user, oldest first."""
 
