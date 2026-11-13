@@ -49,6 +49,18 @@ Cards have no tool yet.
 
 - 2026-11-06 draft: created by user
 """
+# A file for card new --from, with one heading in lower case.
+CARD_FILE = """---
+title: Retry failed uploads
+kind: research
+---
+
+## Context
+- Uploads fail on a slow link.
+
+## acceptance criteria
+- [ ] A failed upload retries.
+"""
 
 
 class FixedDate(date):
@@ -173,6 +185,97 @@ class TestNew:
             "--by",
             "general-staff",
         )
+
+        assert code == 1
+        assert not list((projects / "DevEnv").glob("*-KB-*"))
+
+    def test_new_from_copies_title_kind_sections(
+        self, projects: Path, tmp_path: Path
+    ) -> None:
+        """A --from file gives the card its title, kind and section text.
+
+        An agent or the user makes a card from one file instead of a
+        card add per line. Text under the wrong heading or a lost kind
+        would hand a worker the wrong brief, and a broken layout would
+        leave a card that card check flags.
+        """
+        card_file = tmp_path / "card.md"
+        card_file.write_text(CARD_FILE)
+
+        code = run_card(
+            projects, "new", "DevEnv", "--from", str(card_file), "--by", "user"
+        )
+
+        assert code == 0
+        path = projects / "DevEnv" / f"{KEY} Retry failed uploads.md"
+        text = path.read_text()
+        assert "kind: research\n" in text
+        assert card.read_section(text, "Context") == (
+            "\n- Uploads fail on a slow link.\n"
+        )
+        assert card.read_section(text, card.CRITERIA) == (
+            "\n- [ ] A failed upload retries.\n"
+        )
+        assert run_card(projects, "check") == 0
+
+    @pytest.mark.parametrize(
+        ("file_text", "args"),
+        [
+            pytest.param(
+                CARD_FILE.replace("## Context", "## Criteria"),
+                ["--from", "FILE"],
+                id="unknown-heading",
+            ),
+            pytest.param(
+                CARD_FILE.replace("## Context\n", ""),
+                ["--from", "FILE"],
+                id="text-before-heading",
+            ),
+            pytest.param(
+                CARD_FILE + "\n## Context\n- Again.\n",
+                ["--from", "FILE"],
+                id="duplicate-section",
+            ),
+            pytest.param(
+                CARD_FILE.replace("kind: research", "kind: chore"),
+                ["--from", "FILE"],
+                id="unknown-kind",
+            ),
+            pytest.param(
+                CARD_FILE,
+                ["Other title", "--from", "FILE"],
+                id="title-and-file",
+            ),
+            pytest.param(
+                CARD_FILE,
+                ["--from", "FILE", "--kind", "build"],
+                id="kind-and-file",
+            ),
+            pytest.param(None, ["--from", "FILE"], id="missing-file"),
+            pytest.param(None, [], id="no-title-or-file"),
+        ],
+    )
+    def test_new_from_refusal_writes_no_card(
+        self,
+        projects: Path,
+        tmp_path: Path,
+        file_text: str | None,
+        args: list[str],
+    ) -> None:
+        """A bad --from file, or arguments that clash with it, write no card.
+
+        A typo such as ## Criteria, or a section written twice, would
+        otherwise drop that text from the card without notice, and the
+        worker would build without it. A TITLE or --kind beside the file
+        leaves unclear which one the user meant. FILE in args stands for
+        the card file, which is not written when file_text is None.
+        """
+        card_file = tmp_path / "card.md"
+        if file_text is not None:
+            card_file.write_text(file_text)
+        args = [str(card_file) if arg == "FILE" else arg for arg in args]
+
+        code = run_card(projects, "new", "DevEnv", *args, "--by", "user")
 
         assert code == 1
         assert not list((projects / "DevEnv").glob("*-KB-*"))
