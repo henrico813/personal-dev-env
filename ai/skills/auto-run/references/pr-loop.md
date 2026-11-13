@@ -80,7 +80,7 @@ reviewer never wrote the plan or code it reviews:
 | Tier | Plan review, before build | Code review, after build and before the request is filed |
 | --- | --- | --- |
 | T1 | One reviewer for `review-plan`, `code-documentation`, `behavior-focused-testing` and the domain skills, on the review model. | One reviewer for `review-plan` and the language skills, on the review model. |
-| T2, T3 | One reviewer per skill, every one on the strongest model: `review-plan` with the language skills, `code-documentation`, `behavior-focused-testing`, and each other domain skill the change names, such as `skill-development` for skill text. | The same reviewers, every one on the strongest model. The `review-plan` reviewer checks data safety. |
+| T2, T3 | One reviewer per skill, every one on the strongest model: `review-plan` with the language skills, `code-documentation`, `behavior-focused-testing`, and each other domain skill the change names. Skill text gets the reviewers in `skill-development`'s "Review a skill change" instead of one `skill-development` reviewer. | The same reviewers, every one on the strongest model. The `review-plan` reviewer checks data safety. |
 
 Every pull request, in any tier, gets a fresh
 `code-documentation` reviewer and a fresh `behavior-focused-testing`

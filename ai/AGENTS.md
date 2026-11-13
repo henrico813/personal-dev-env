@@ -55,6 +55,9 @@
 - When asked for an auto run, or to build several pull requests of
   an approved roadmap without the user reviewing each step, load and
   follow the `auto-run` skill.
+- When asked to build a new skill or tool through a plan the user
+  reviews, a build on the local model and a test in prod, load and
+  follow the `plan-to-prod` skill.
 - When asked to review a session for token use, efficiency, skill
   lessons or local model handoff, load and follow the
   `session-review` skill.

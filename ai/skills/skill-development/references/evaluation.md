@@ -139,7 +139,9 @@ Checks:
 4. `promote-check plot-planner` runs before the commit, the reply
    checks the test-style text by hand for words copied from L2, and
    the check script runs with `--base`.
-5. Two fresh reviews run before the pull request opens.
+5. Each changed skill gets two fresh reviews before the pull request
+   opens. One reviewer loads `skill-development`, and the other
+   loads `plain-direct-english`.
 6. L1 and L2 are retired only after the pull request merges, with
    `--after-push`.
 7. Nothing is written into a Lessons section by hand.
