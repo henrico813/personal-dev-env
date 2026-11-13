@@ -7,10 +7,10 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 [[ -x /usr/bin/sudo ]]
 
 help="$(pde-installer --help)"
-for command_name in install doctor list; do
+for command_name in install doctor list update; do
 	[[ "$help" == *"  $command_name "* ]]
 done
-for command_name in update config; do
+for command_name in config; do
 	[[ "$help" != *"  $command_name "* ]]
 	! pde-installer "$command_name" --repo-root "$REPO_ROOT"
 done

@@ -36,6 +36,7 @@ func NewCommand() *cobra.Command {
 	root.AddCommand(readCommand("doctor", "Check host prerequisites and managed paths", &repoRoot, doctor))
 	root.AddCommand(readCommand("list", "List ownership and installed state", &repoRoot, list))
 	root.AddCommand(newVersionCommand())
+	root.AddCommand(newUpdateCommand(&repoRoot))
 	return root
 }
 

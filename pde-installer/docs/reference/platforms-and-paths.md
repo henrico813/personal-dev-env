@@ -21,7 +21,7 @@ Mutating commands reject UID 0. `doctor` also reports UID 0 as a problem.
 | `~/.local/share/pde/npm/` | npm package prefix (client and full) |
 | `~/.local/share/pde/tmux/<version>/` | Existing amd64-only direct tmux 3.7b binary |
 | `~/.local/share/fonts/pde/` | Managed fonts (client and full) |
-| `~/.local/state/pde/` | Installer lock, journals, build state, and `install.json`, the installed build that `version` prints |
+| `~/.local/state/pde/` | Installer and update locks, journals, build state, `install.json`, the installed build that `version` prints, and `update.json`, the last `update` result |
 | `~/.config/pde/config.json` | Install path, component/color profiles, and migrated vault settings |
 | `~/.config/herdr/config.toml` | Client and full Herdr workspace UI configuration |
 | `~/.config/` and other home paths | Chezmoi-managed configuration |

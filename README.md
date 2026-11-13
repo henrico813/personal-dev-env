@@ -33,16 +33,17 @@ The independent `--color-profile` setting accepts `tokyo-night`,
 machine, and coordinates terminal, tmux, shell, and client or full Neovim and
 OpenCode configuration included by the selected component profile.
 
-The installer does not clone or update the repository. Run it from anywhere
+`install` does not clone or update the repository. Run it from anywhere
 inside the checkout, pass `--repo-root /path/to/personal-dev-env`, or set
 `PDE_REPO_ROOT`.
 
-The installer exposes three commands:
+The installer's main commands are:
 
 ```bash
 pde-installer install
 pde-installer doctor
 pde-installer list
+pde-installer update
 ```
 
 - `install [terminal|client|full]` reconciles tools and managed home
@@ -52,6 +53,8 @@ pde-installer list
   profile (or full on a fresh `HOME`).
 - `list` reports ownership and installed status for the saved profile (or full
   on a fresh `HOME`).
+- `update` fast-forwards a checkout on `main` with no changes to tracked files
+  to the newest `main`, then installs it.
 Run `pde-installer install --help` before maintaining an existing installation.
 See the
 [command reference](pde-installer/docs/reference/commands.md) for details.
@@ -247,7 +250,7 @@ process on supported Ubuntu releases:
 ./pde-installer/test/run-tests.sh smoke
 ```
 
-The smoke runs all three commands as an unprivileged user on Ubuntu 22.04 and
+The smoke runs `install`, `doctor`, and `list` as an unprivileged user on Ubuntu 22.04 and
 24.04 and confirms that root execution is rejected. Go tests cover managed
 configuration transactions and rollback. Install is a dry run in the full
 smoke; the terminal suite performs a real installation.
