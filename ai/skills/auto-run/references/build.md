@@ -169,13 +169,16 @@ model, as `model-routing` picks. Give it the command
 `<PR folder>/suites.txt`. Then name that file in each reviewer's
 brief.
 
-suites.sh exports the plan's tree through its last step, commits it
-on `B` without touching any checkout, and runs `CHECK` on it in a
-scratch clone with the pull-request skill's `merge-check.sh`. The
-first line of `suites.txt` is `plan: <hash>`, the plan file's
-`git hash-object`; the summary holds only for that version of the
-plan, and only when its last line is `done`. Each `exit` line gives
-the exit code and the last output line; the full output is in
+suites.sh exports the plan's tree through its last step and commits
+it on `B` without touching any checkout. It then runs `CHECK` on that
+commit with `pde-check`, in a scratch clone where tests get their own
+`XDG_STATE_HOME`. The first line of `suites.txt` is `plan: <hash>`,
+where the hash is the plan file's `git hash-object`. The summary is
+valid only for that version of the plan, and only when its last line
+is `done`. The second line is a `pass` or `fail` line with the exit
+code and the log's path. Up to three lines from a failed log come
+next, each starting with the log name and line number, such as
+`test1.log:42:`. The full output is in
 `<PR folder>/suites/<key>/test1.log`, where the key hashes the plan
 and `CHECK`. A rerun for the same plan version and `CHECK` prints the
 saved summary and runs nothing.
