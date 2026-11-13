@@ -5,7 +5,8 @@
 Description=Install the newest main on a schedule
 
 [Timer]
-OnBootSec=15min
+# Counts from when the timer starts, so enabling it during an install waits.
+OnActiveSec=15min
 # update_interval in ~/.config/pde/config.json sets this at the next install.
 OnUnitActiveSec={{ .pde.updateInterval }}
 
