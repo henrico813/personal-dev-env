@@ -52,12 +52,15 @@ that step.
    plan, a summary of at most 15 lines, and the open questions, each
    with your recommendation.
 4. An agent builds it with `implement-plan` on the local model.
-5. Fresh agents review the change with `review-plan`. Code also gets
-   `code-documentation` and `behavior-focused-testing` reviewers.
-   Skill text gets the reviews in "Review a skill change" of
-   `skill-development`.
+5. Start fresh agents to review the change. The agent that built it
+   reviews none of it. One reviewer loads `review-plan`. Code also
+   gets a `code-documentation` reviewer and a
+   `behavior-focused-testing` reviewer. Skill text gets the reviews
+   in "Review a skill change" of `skill-development`.
 6. Test it as Guardrail 4 of `pull-request` says.
-7. Open the pull request with `pull-request`.
+7. Open the pull request with `pull-request`. Before you open it,
+   check that each review in step 5 ran. Name each one in your
+   report to the user.
 
 To build without the user's plan review, use `auto-run` instead.
 
