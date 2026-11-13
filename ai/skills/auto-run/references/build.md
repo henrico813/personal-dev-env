@@ -290,8 +290,9 @@ Put `bash <PR folder>/ship.sh` on the item's page. Rerunning it
 reads the request's result, and never files again after a decline:
 
 - `0`, or `already ran <id>, exit 0`: the PR is open.
-- `3`: it waits for the user; say so once and move on. ship.sh still
-  prints the status line.
+- `3`: it waits for the user; move on, and keep it in your updates
+  as the `pull-request` skill says. ship.sh still prints the status
+  line.
 - `4`, `declined <id>`: park this PR and its children.
 - `6`, `interrupted <id>`: it is never retried; ask the hub.
 - `2`: the command was refused; fix it, then rerun ship.sh, which

@@ -29,17 +29,13 @@ board) printf '%s\n' 'draft 0  ready 1  active 0' \
 esac
 EOF
 chmod +x "$E/bin/card"
-printf '#!/bin/sh\nexit 1\n' >"$E/bin/opencode"
-chmod +x "$E/bin/opencode"
 ```
 
-The fake `opencode` fails for every model, as if no model answered.
-After
-herdr-hub's `sys` and `ok` lines, add these for both runs:
+After herdr-hub's `sys` and `ok` lines, add these for both runs:
 
 ```bash
 sys="$sys The auto run's folder is ./auto."
-ok="$ok"',Bash(opencode *),Bash(mktemp *)'
+ok="$ok"',Bash(mktemp *)'
 ```
 
 For the run with the skill, also add "Follow this skill too. Its
@@ -49,7 +45,7 @@ folder is ./auto-run." and `$(cat auto-run/SKILL.md)` to `$sys`.
 
 - Case 1: a loose reply to the briefing
 - Case 2: status update during a run
-- Case 3: a briefing while no model can sort the cards
+- Case 3: a briefing with one ready card
 - Case 4: a briefing with an away window and a run tier
 
 ## Case 1: a loose reply to the briefing
@@ -91,7 +87,7 @@ Checks:
 herdr-hub holds the same "status update" rule, so both runs may pass
 this case. It checks that rule as much as this skill.
 
-## Case 3: a briefing while no model can sort the cards
+## Case 3: a briefing with one ready card
 
 `auto/` is empty. The prompt is:
 
@@ -103,7 +99,7 @@ until 07:00 tomorrow, and no rule ends at a set time."
 Checks:
 
 1. The run runs `hub auto ready --run auto`.
-2. It runs `opencode run` to sort the card.
+2. It sorts the card itself and runs no `opencode`.
 3. It writes `auto/run.md` with DEMO-KB-007 under one heading.
 4. It runs `hub auto check --run auto`, and fixes `run.md` until the
    check exits 0.

@@ -65,8 +65,11 @@ steps' defaults.
    Before the first request goes out, tell the user who approves each
    request and when.
    Run `pde-gh-write pr create --title "$(head -n 1 FILE)" --body-file BODY`.
-   If it exits 3, tell the user once that a detached runner will
-   perform the write when approved. Do not ask the user to confirm.
+   If it exits 3, tell the user that a detached runner will perform
+   the write when approved. Do not ask the user to confirm. The
+   request waits on the user until it runs, is declined, is
+   interrupted or expires four hours after it was filed. Keep it in
+   every update until then, as `status-updates` says.
    Rerun the identical command later only to read its result.
    `already ran <id>, exit N` (followed by the captured `gh` output),
    `declined <id>` (exit 4), and `interrupted <id>` (exit 6) are final.
