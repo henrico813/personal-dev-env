@@ -35,4 +35,8 @@ turns off plugins listed before it, so both go at the end. */ -}}
 {{- end -}}
 {{- $config = set $config "plugins" $plugins -}}
 {{- end -}}
+{{- /* ./pde-usage shows subagent tokens, prices and context above the prompt
+and in the sidebar. Moving it to the end keeps one entry on every install. */ -}}
+{{- $plugins := get $config "plugins" | default (list) -}}
+{{- $config = set $config "plugins" (append (without $plugins "./pde-usage") "./pde-usage") -}}
 {{ $config | toPrettyJson }}
