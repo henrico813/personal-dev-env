@@ -362,6 +362,34 @@ fn find_run_folder_skips_running_auto_run() {
     assert_eq!(found.path(), local_state.path().join("herdr-hub.front"));
 }
 
+/// While the user's hub handles a line, its `hub next` is not running,
+/// so during two auto runs only the auto runs hold a lock. The user's
+/// `hub board` must still show their own hub, the folder without an
+/// `approved.md` written to last, not stop with an error. A finished
+/// auto run written to later must not win.
+#[test]
+fn find_run_folder_own_hub_beats_autos() {
+    let local_state = TempFolder::new();
+    let _auto_locks: Vec<fs::File> = ["herdr-hub.auto1", "herdr-hub.auto2"]
+        .iter()
+        .map(|name| {
+            let run = local_state.path().join(name);
+            let lock = hold_watcher_lock(&run);
+            fs::write(run.join("approved.md"), "").unwrap();
+            lock
+        })
+        .collect();
+    let finished_auto = local_state.path().join("herdr-hub.done");
+    make_finished_run(&finished_auto, 30);
+    fs::write(finished_auto.join("approved.md"), "").unwrap();
+    make_finished_run(&local_state.path().join("herdr-hub.own"), 60);
+    make_finished_run(&local_state.path().join("herdr-hub.old"), 60 * 60);
+
+    let found = find_run_folder(None, None, Some(local_state.path())).unwrap();
+
+    assert_eq!(found.path(), local_state.path().join("herdr-hub.own"));
+}
+
 /// Two running hubs that are not auto runs give no way to tell which
 /// one the user means, and picking one could show the wrong run. So
 /// the search names both folders and asks for `--run`, rather than

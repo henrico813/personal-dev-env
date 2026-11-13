@@ -1,12 +1,15 @@
 mod common;
 
-use hub::board::{self, ScreenSize};
+use std::fs;
+
+use hub::board::{self, Hubs, ScreenSize};
 use hub::external::cards::{CardNote, Stage};
+use hub::external::herdr::AgentStatus;
 use hub::shared::HubError;
 use jiff::tz::TimeZone;
 use serde_json::Value;
 
-use common::TestTools;
+use common::{TestTools, make_agent};
 
 /// The phone's screen size.
 const PHONE: ScreenSize = ScreenSize {
@@ -20,7 +23,7 @@ fn control(test_tools: &TestTools, steps: &str) -> (Result<(), HubError>, Vec<Va
     let mut output = Vec::new();
     let result = board::control_board(
         &test_tools.tools(),
-        &test_tools.run(),
+        &Hubs::Given(test_tools.run_path()),
         &TimeZone::UTC,
         PHONE,
         &mut steps.as_bytes(),
@@ -44,13 +47,99 @@ fn print_board_shows_card_failure_on_top() {
 
     let outcome = board::print_board(
         &test_tools.tools(),
-        &test_tools.run(),
+        &Hubs::Given(test_tools.run_path()),
         &TimeZone::UTC,
         PHONE,
     )
     .unwrap();
 
     assert_eq!(outcome.lines[1], "> Could not read 1");
+}
+
+/// The user opens `hub board` from any shell, with no run folder named,
+/// while two hubs work. Needs you must hold the questions of every hub
+/// Herdr lists, each tagged with its hub, and none from the folder of a
+/// hub that is gone. A worker that reported to the second hub has
+/// reported, so it must not wait on the user as one that never
+/// reported.
+#[test]
+fn print_board_gathers_and_tags_live_hubs() {
+    let mut test_tools = TestTools::new();
+    let runs = [
+        ("herdr-hub.one", "kanban-hub-1", "Deploy tonight?"),
+        ("herdr-hub.two", "auto-hub-2", "Merge the docs PR?"),
+        ("herdr-hub.gone", "kanban-hub-0", "Rename the bucket?"),
+    ];
+    for (folder, hub, question) in runs {
+        let run = test_tools.path().join(folder);
+        fs::create_dir(&run).unwrap();
+        let started =
+            format!(r#"{{"at":"2026-11-12T08:00:00Z","event":"watch_started","hub":"{hub}"}}"#);
+        fs::write(run.join("events.jsonl"), started + "\n").unwrap();
+        fs::write(
+            run.join("decisions.md"),
+            format!("## {question}\n\nPick one.\n"),
+        )
+        .unwrap();
+    }
+    let worker = "demo-kb-007-impl";
+    fs::write(
+        test_tools
+            .path()
+            .join(format!("herdr-hub.two/report-{worker}.md")),
+        "DEMO-KB-007 is half done.",
+    )
+    .unwrap();
+    for name in ["kanban-hub-1", "auto-hub-2", worker] {
+        test_tools
+            .herdr
+            .agents
+            .push(make_agent(name, AgentStatus::Idle));
+    }
+    test_tools
+        .cards
+        .stages
+        .insert("DEMO-KB-007".to_owned(), Stage::Active);
+    test_tools
+        .cards
+        .card_notes
+        .insert("DEMO-KB-007".to_owned(), CardNote::default());
+    let hubs = Hubs::Live(test_tools.path().to_owned());
+
+    let outcome = board::print_board(&test_tools.tools(), &hubs, &TimeZone::UTC, PHONE).unwrap();
+
+    let screen = outcome.lines.join("\n");
+    assert!(
+        outcome.lines.contains(&"v Needs you 2".to_owned()),
+        "{screen}"
+    );
+    let row = |question: &str| {
+        let line = outcome.lines.iter().find(|line| line.contains(question));
+        line.map(|line| line.split_whitespace().last().unwrap_or_default())
+    };
+    assert_eq!(row("Deploy tonight?"), Some("kanban"), "{screen}");
+    assert_eq!(row("Merge the docs PR?"), Some("auto-h"), "{screen}");
+    assert_eq!(row("Rename the bucket?"), None, "{screen}");
+}
+
+/// With no hub running, as on a fresh login, the board must still show
+/// the cards from the vault, and Needs you must say no hub runs. An
+/// error there leaves the user with no board at all, and an empty group
+/// reads as if nothing waits.
+#[test]
+fn print_board_hubless_shows_cards_and_note() {
+    let test_tools = tools_with_ready_card();
+    let hubs = Hubs::Live(test_tools.path().to_owned());
+
+    let outcome = board::print_board(&test_tools.tools(), &hubs, &TimeZone::UTC, PHONE).unwrap();
+
+    let needs_you = outcome
+        .lines
+        .iter()
+        .position(|line| line == "v Needs you 0")
+        .unwrap();
+    assert_eq!(outcome.lines[needs_you + 1], "   no hub running");
+    assert!(outcome.lines.contains(&"> Ready 1".to_owned()));
 }
 
 /// The one criterion in the note of `tools_with_ready_card`.

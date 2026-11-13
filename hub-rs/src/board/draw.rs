@@ -10,6 +10,7 @@ use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use super::elements::{Action, Element, HiddenBy, Kind, Place};
 use super::groups::{Group, Item};
+use super::queue::NO_HUB;
 use super::view::{Details, Line};
 
 /// The space between the top line's counts.
@@ -18,7 +19,8 @@ const COUNT_GAP: &str = "  ";
 /// The details page's bottom line.
 const BACK_HINT: &str = "tap or q to go back";
 
-/// The columns of an item's tag, such as `DEMO`, so tags line up.
+/// The most columns an item's tag takes, so tags line up. A longer tag
+/// is cut without a `~`, as the demo cuts `Homelab` to `Homela`.
 const TAG_WIDTH: usize = 6;
 
 /// What the list page shows.
@@ -82,7 +84,8 @@ pub(super) fn list_elements(screen: &ListScreen<'_>, area: Rect, list: &ListStat
     const GAP_WIDTH: u16 = COUNT_GAP.len() as u16;
     let mut column = top.x;
     for (group, text) in parts {
-        let width = u16::try_from(text.len()).unwrap_or(u16::MAX);
+        // A mark such as `◐` takes 3 bytes but one column.
+        let width = u16::try_from(text.chars().count()).unwrap_or(u16::MAX);
         elements.push(Element {
             id: format!("count:{}", group.slug()),
             kind: Kind::Count,
@@ -108,7 +111,7 @@ pub(super) fn list_elements(screen: &ListScreen<'_>, area: Rect, list: &ListStat
             kind,
             text: line_text(&list_line(screen, *line, width)),
             place: None,
-            tap: Some(tap),
+            tap,
             chosen: list.selected() == Some(index),
             hidden: false,
             hiding: None,
@@ -271,20 +274,29 @@ fn shown_details(details: &Details, middle: Rect) -> Vec<String> {
         .collect()
 }
 
-/// Returns a list line's element id, kind and what a tap on it does.
-fn describe_line(groups: &[(Group, Vec<Item>)], line: Line) -> (String, Kind, &'static str) {
+/// Returns a list line's element id, kind and what a tap on it does,
+/// if anything.
+fn describe_line(
+    groups: &[(Group, Vec<Item>)],
+    line: Line,
+) -> (String, Kind, Option<&'static str>) {
     match line {
         Line::Heading { group, is_open } => {
             let tap = if is_open { "fold" } else { "unfold" };
-            (format!("group:{}", group.slug()), Kind::Heading, tap)
+            (format!("group:{}", group.slug()), Kind::Heading, Some(tap))
         }
-        Line::More { group, .. } => (format!("more:{}", group.slug()), Kind::More, "show all"),
+        Line::More { group, .. } => (
+            format!("more:{}", group.slug()),
+            Kind::More,
+            Some("show all"),
+        ),
         Line::Item { group, index } => {
             let id = group_items(groups, group)
                 .get(index)
                 .map_or_else(String::new, item_id);
-            (id, Kind::Item, "open")
+            (id, Kind::Item, Some("open"))
         }
+        Line::NoHub => ("no-hub".to_owned(), Kind::Text, None),
     }
 }
 
@@ -318,7 +330,7 @@ fn line_text(line: &TextLine<'_>) -> String {
     text.trim_end().to_owned()
 }
 
-/// Returns the top line's counts, such as `*5 progress`, or none
+/// Returns the top line's counts, such as `◐5 progress`, or none
 /// before the first read.
 fn count_parts(groups: &[(Group, Vec<Item>)]) -> Vec<(Group, String)> {
     Group::COUNTED
@@ -330,7 +342,7 @@ fn count_parts(groups: &[(Group, Vec<Item>)]) -> Vec<(Group, String)> {
         .collect()
 }
 
-/// Returns the top line, such as `*5 progress  @23 review  ?19 you`.
+/// Returns the top line, such as `◐5 progress  ◕23 review  ?19 you`.
 fn count_line(groups: &[(Group, Vec<Item>)], color: bool) -> TextLine<'static> {
     let parts = count_parts(groups);
     if parts.is_empty() {
@@ -360,6 +372,7 @@ fn list_line(screen: &ListScreen<'_>, line: Line, width: usize) -> TextLine<'sta
             TextLine::styled(text, heading_style(group, screen.color))
         }
         Line::More { hidden, .. } => TextLine::styled(format!("   + {hidden} more"), dim()),
+        Line::NoHub => TextLine::styled(format!("   {NO_HUB}"), dim()),
         Line::Item { group, index } => {
             let item = screen
                 .groups
@@ -374,11 +387,12 @@ fn list_line(screen: &ListScreen<'_>, line: Line, width: usize) -> TextLine<'sta
     }
 }
 
-/// Returns an item's line, such as ` @ Retry failed upl~ DEMO`. The
+/// Returns an item's line, such as ` ◕ Retry failed upl~ DevEnv`. The
 /// line holds its group's mark, its words cut to fit with `~`, and its
 /// tag in the last `TAG_WIDTH` columns.
 fn item_line(group: Group, item: &Item, width: usize, color: bool) -> TextLine<'static> {
     let room = width.saturating_sub(4 + TAG_WIDTH);
+    let tag: String = item.tag.chars().take(TAG_WIDTH).collect();
     let mark_style = if color {
         Style::new().fg(group.color())
     } else {
@@ -389,21 +403,17 @@ fn item_line(group: Group, item: &Item, width: usize, color: bool) -> TextLine<'
         Span::styled(group.mark(), mark_style),
         Span::raw(" "),
         Span::raw(format!("{:room$}", fit_text(&item.text, room))),
-        Span::styled(format!(" {}", fit_text(&item.tag, TAG_WIDTH)), dim()),
+        Span::styled(format!(" {tag}"), dim()),
     ])
 }
 
-/// Cuts `text` to `room` columns, ending a cut text with `~`. A title
-/// that `card list` already cut with `…` also ends with `~`.
+/// Cuts `text` to `room` columns, ending a cut text with `~`.
 fn fit_text(text: &str, room: usize) -> String {
     if text.chars().count() > room {
         let kept: String = text.chars().take(room.saturating_sub(1)).collect();
         return format!("{kept}~");
     }
-    match text.strip_suffix('…') {
-        Some(kept) => format!("{kept}~"),
-        None => text.to_owned(),
-    }
+    text.to_owned()
 }
 
 /// Returns the bold style of a heading or count, in its group's color

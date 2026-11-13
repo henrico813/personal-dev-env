@@ -1,6 +1,7 @@
 //! Lets an agent drive the board the user watches. `hub board --listen`
-//! takes steps from `board.sock` in the run folder, and
-//! `hub board --send` sends one and prints the screen it leads to. Read
+//! takes steps from `hub/board.sock` in the state folder,
+//! `~/.local/state/pde`, and `hub board --send` sends one and prints
+//! the screen it leads to. One board per user listens at a time. Read
 //! `StepListener::start` and `send_step` first.
 //!
 //! The socket is a Unix socket, so both flags work on Linux and macOS,
@@ -8,7 +9,6 @@
 
 use crate::commands::Outcome;
 use crate::shared::HubError;
-use crate::shared::run_folder::RunFolder;
 
 use std::fs;
 use std::io::{BufRead, BufReader, ErrorKind, Write};
@@ -18,8 +18,8 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::Duration;
 
-/// The socket's file name in the run folder.
-const SOCKET: &str = "board.sock";
+/// The socket's path in the state folder, beside `hub watch`'s lock.
+const SOCKET: &str = "hub/board.sock";
 
 /// How long the listener waits for an agent's step line. An agent that
 /// connects and sends nothing would hold up every agent after it.
@@ -52,21 +52,25 @@ pub(super) struct StepListener {
 }
 
 impl StepListener {
-    /// Makes `board.sock` in `run`, and returns the listener with the
-    /// steps agents send. A thread reads each agent's step in turn, and
-    /// the board answers them in that order.
+    /// Makes `board.sock` in `state_folder`, and returns the listener
+    /// with the steps agents send. A thread reads each agent's step in
+    /// turn, and the board answers them in that order.
     ///
     /// # Errors
     ///
-    /// `HubError::Usage` when a board already listens in `run`, and
+    /// `HubError::Usage` when another board listens, and
     /// `HubError::File` when the socket cannot be made.
-    pub(super) fn start(run: &RunFolder) -> Result<(StepListener, Receiver<SentStep>), HubError> {
-        let path = run.path().join(SOCKET);
+    pub(super) fn start(
+        state_folder: &Path,
+    ) -> Result<(StepListener, Receiver<SentStep>), HubError> {
+        let path = state_folder.join(SOCKET);
         if UnixStream::connect(&path).is_ok() {
-            return Err(HubError::Usage(format!(
-                "a board already listens in {}",
-                run.path().display()
-            )));
+            return Err(HubError::Usage(
+                "another board listens; quit it, or start this one without --listen".to_owned(),
+            ));
+        }
+        if let Some(folder) = path.parent() {
+            fs::create_dir_all(folder).map_err(|source| socket_error(folder, source))?;
         }
         // A board that was killed leaves its socket file behind, and
         // binding fails while the file is there.
@@ -96,17 +100,17 @@ impl Drop for StepListener {
     }
 }
 
-/// Sends `step` to the board listening in `run`, and returns the screen
-/// it leads to as one JSON line.
+/// Sends `step` to the board that listens on `state_folder`'s socket,
+/// and returns the screen it leads to as one JSON line.
 ///
 /// # Errors
 ///
-/// `HubError::NotDone` when no board listens in `run`, the board
+/// `HubError::NotDone` when no board listens, the board
 /// quits before it takes the step, or it does not answer within 15
 /// seconds. `HubError::Usage` when `step` is
 /// blank or the board cannot follow it, with the reason.
 /// `HubError::File` when the socket fails after it connects.
-pub fn send_step(run: &RunFolder, step: &str) -> Result<Outcome, HubError> {
+pub fn send_step(state_folder: &Path, step: &str) -> Result<Outcome, HubError> {
     // The board drops a blank line's connection, which would read as
     // the board quitting before it took the step.
     if step.trim().is_empty() {
@@ -114,13 +118,9 @@ pub fn send_step(run: &RunFolder, step: &str) -> Result<Outcome, HubError> {
             "the step is blank; send one such as press j".to_owned(),
         ));
     }
-    let path = run.path().join(SOCKET);
-    let stream = UnixStream::connect(&path).map_err(|_| {
-        HubError::NotDone(format!(
-            "no board listens in {}; start hub board --listen",
-            run.path().display()
-        ))
-    })?;
+    let path = state_folder.join(SOCKET);
+    let stream = UnixStream::connect(&path)
+        .map_err(|_| HubError::NotDone("no board listens; start hub board --listen".to_owned()))?;
     writeln!(&stream, "{}", step.trim()).map_err(|source| socket_error(&path, source))?;
     let mut reply = String::new();
     stream
@@ -191,27 +191,25 @@ mod tests {
     use crate::board::view::Step;
     use crate::board::view::tests::sample_board;
 
-    /// A run folder of its own under the system's temporary folder,
+    /// A state folder of its own under the system's temporary folder,
     /// removed on drop.
-    struct TempRun {
-        run: RunFolder,
+    struct TempState {
+        path: PathBuf,
     }
 
-    impl TempRun {
-        /// Makes an empty run folder named after `test`.
-        fn new(test: &str) -> TempRun {
+    impl TempState {
+        /// Makes an empty state folder named after `test`.
+        fn new(test: &str) -> TempState {
             let path = std::env::temp_dir().join(format!("hub-{test}-{}", std::process::id()));
             let _ = fs::remove_dir_all(&path);
             fs::create_dir_all(&path).unwrap();
-            TempRun {
-                run: RunFolder::open(&path).unwrap(),
-            }
+            TempState { path }
         }
     }
 
-    impl Drop for TempRun {
+    impl Drop for TempState {
         fn drop(&mut self) {
-            let _ = fs::remove_dir_all(self.run.path());
+            let _ = fs::remove_dir_all(&self.path);
         }
     }
 
@@ -221,14 +219,14 @@ mod tests {
     /// saw.
     #[test]
     fn send_step_reaches_board_and_returns_screen() {
-        let temp = TempRun::new("send-step");
-        let (_listener, steps) = StepListener::start(&temp.run).unwrap();
+        let temp = TempState::new("send-step");
+        let (_listener, steps) = StepListener::start(&temp.path).unwrap();
         let mut board = sample_board();
 
         // The agent sends a tap from another thread, as `--send` does
         // from another terminal.
-        let run = RunFolder::open(temp.run.path()).unwrap();
-        let agent = thread::spawn(move || send_step(&run, "tap card:DEMO-KB-001"));
+        let state_folder = temp.path.clone();
+        let agent = thread::spawn(move || send_step(&state_folder, "tap card:DEMO-KB-001"));
 
         // The board takes the step as the live loop does.
         let sent = steps.recv_timeout(Duration::from_secs(5)).unwrap();
@@ -250,11 +248,11 @@ mod tests {
     /// the only place it learns which step shows that card.
     #[test]
     fn send_step_hidden_tap_fails_naming_show() {
-        let temp = TempRun::new("send-hidden-card");
-        let (_listener, steps) = StepListener::start(&temp.run).unwrap();
+        let temp = TempState::new("send-hidden-card");
+        let (_listener, steps) = StepListener::start(&temp.path).unwrap();
         let mut board = sample_board();
-        let run = RunFolder::open(temp.run.path()).unwrap();
-        let agent = thread::spawn(move || send_step(&run, "tap card:DEMO-KB-020"));
+        let state_folder = temp.path.clone();
+        let agent = thread::spawn(move || send_step(&state_folder, "tap card:DEMO-KB-020"));
 
         let sent = steps.recv_timeout(Duration::from_secs(5)).unwrap();
         let (_, reply) = answer_sent_step(&mut board, &sent.text, |_, _| Ok(true)).unwrap();
@@ -269,16 +267,17 @@ mod tests {
     }
 
     /// A killed board leaves `board.sock` behind, and a new board must
-    /// replace it or the user cannot listen again. A second board in
-    /// the same run must be refused, or it takes the steps meant for
-    /// the board the user watches.
+    /// replace it or the user cannot listen again. A second board must
+    /// be refused, or it takes the steps meant for the board the user
+    /// watches.
     #[test]
     fn step_listener_start_replaces_only_dead_socket() {
-        let temp = TempRun::new("start-dead-socket");
-        drop(UnixListener::bind(temp.run.path().join(SOCKET)).unwrap());
+        let temp = TempState::new("start-dead-socket");
+        fs::create_dir(temp.path.join("hub")).unwrap();
+        drop(UnixListener::bind(temp.path.join(SOCKET)).unwrap());
 
-        let first = StepListener::start(&temp.run);
-        let second = StepListener::start(&temp.run);
+        let first = StepListener::start(&temp.path);
+        let second = StepListener::start(&temp.path);
 
         assert!(first.is_ok());
         assert!(matches!(second, Err(HubError::Usage(_))));
@@ -289,9 +288,9 @@ mod tests {
     /// That misleads the agent, so it must say what to send instead.
     #[test]
     fn send_step_blank_step_fails_with_example() {
-        let temp = TempRun::new("send-blank");
+        let temp = TempState::new("send-blank");
 
-        let error = send_step(&temp.run, "  ").unwrap_err();
+        let error = send_step(&temp.path, "  ").unwrap_err();
 
         assert_eq!(error.exit_code(), 2);
         assert_eq!(
@@ -305,9 +304,9 @@ mod tests {
     /// socket error, leaves it guessing why nothing happened.
     #[test]
     fn send_step_without_board_names_the_fix() {
-        let temp = TempRun::new("send-no-board");
+        let temp = TempState::new("send-no-board");
 
-        let error = send_step(&temp.run, "press j").unwrap_err();
+        let error = send_step(&temp.path, "press j").unwrap_err();
 
         assert_eq!(error.exit_code(), 3);
         assert!(error.to_string().ends_with("start hub board --listen"));

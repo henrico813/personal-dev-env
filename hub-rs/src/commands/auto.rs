@@ -394,6 +394,7 @@ mod tests {
         .map(|(key, stage)| ListedCard {
             key: key.parse().unwrap(),
             stage,
+            project: String::new(),
             title: String::new(),
         })
         .collect();

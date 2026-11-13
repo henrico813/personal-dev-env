@@ -53,6 +53,8 @@ pub(super) enum Line {
         group: Group,
         hidden: usize,
     },
+    /// The line under an open Needs you when no hub runs.
+    NoHub,
 }
 
 /// What names a line across reads, since a read can move an item to
@@ -63,6 +65,7 @@ enum LineId {
     More(Group),
     /// The item's `Item::id`, such as a card key.
     Item(Group, String),
+    NoHub,
 }
 
 /// The page the screen shows.
@@ -332,6 +335,7 @@ impl Board {
                 Step::Stay
             }
             Line::Item { group, index } => self.open_details(group, index),
+            Line::NoHub => Step::Stay,
         }
     }
 
@@ -398,8 +402,10 @@ impl Board {
     }
 
     /// Lists each group's heading, then its first `GROUP_LIMIT` items
-    /// and a `+ N more` line when it is open.
+    /// and a `+ N more` line when it is open. An open Needs you says
+    /// that no hub runs when none did at the read.
     fn rebuild_lines(&mut self) {
+        let no_hub = self.queue.as_ref().is_some_and(|queue| queue.no_hub);
         let mut lines = Vec::new();
         for (group, items) in &self.groups {
             let is_open = self.open.contains(group);
@@ -409,6 +415,9 @@ impl Board {
             });
             if !is_open {
                 continue;
+            }
+            if *group == Group::NeedsYou && no_hub {
+                lines.push(Line::NoHub);
             }
             let shown = if self.shown_in_full.contains(group) {
                 items.len()
@@ -456,6 +465,7 @@ impl Board {
             Line::Item { group, index } => {
                 Some(LineId::Item(group, self.item(group, index)?.id.clone()))
             }
+            Line::NoHub => Some(LineId::NoHub),
         }
     }
 }
@@ -477,6 +487,7 @@ pub(super) mod tests {
         let card = |key: &str, stage, title: &str, workers: &[&str]| CardLine {
             key: key.parse().unwrap(),
             stage,
+            project: "Demo".to_owned(),
             title: title.to_owned(),
             workers: workers.iter().map(|name| (*name).to_owned()).collect(),
         };
@@ -503,7 +514,7 @@ pub(super) mod tests {
                 card(
                     "DEMO-KB-004",
                     Stage::Active,
-                    "Lint every Dockerfile in t…",
+                    "Lint every Dockerfile in the repository",
                     &[],
                 ),
                 card("DEMO-KB-005", Stage::Active, "Rotate the backup keys", &[]),
@@ -517,6 +528,7 @@ pub(super) mod tests {
                 card("OPS-KB-001", Stage::Draft, "Watch the disks", &[]),
             ],
             questions: vec![Question {
+                hub: "kanban-hub-1".to_owned(),
                 title: "Deploy tonight?".to_owned(),
                 lines: vec![
                     "Deploy the new model tonight?".to_owned(),
@@ -530,6 +542,7 @@ pub(super) mod tests {
                 why: "needs you".to_owned(),
                 card: None,
             }],
+            no_hub: false,
             notes: [("DEMO-KB-010".parse().unwrap(), reviewed_note)].into(),
             problems: Vec::new(),
         }
@@ -573,17 +586,17 @@ pub(super) mod tests {
         let lines = board.render_lines(40, 16);
 
         let expected = [
-            "*5 progress  @1 review  ?2 you",
+            "◐5 progress  ◕1 review  ?2 you",
             "v In progress 5",
-            " * Faster search                  DEMO",
-            " * Board for the phone            DEMO",
-            " * Trim the build cache           DEMO",
-            " * Lint every Dockerfile in t~    DEMO",
+            " ◐ Faster search                  Demo",
+            " ◐ Board for the phone            Demo",
+            " ◐ Trim the build cache           Demo",
+            " ◐ Lint every Dockerfile in the ~ Demo",
             "   + 1 more",
             "v In review 1",
-            " @ Retry a failed upload twice, ~ DEMO",
+            " ◕ Retry a failed upload twice, ~ Demo",
             "v Needs you 2",
-            " ? Deploy tonight?                hub",
+            " ? Deploy tonight?                kanban",
             " ? blocked-fix  needs you         worker",
             "> Ready 1",
             "> Draft 1",
@@ -610,7 +623,7 @@ pub(super) mod tests {
 
         assert_eq!(folded[1..3], ["> In progress 5", "v In review 1"]);
         assert_eq!(opened, lines);
-        assert_eq!(in_full[6], " * Rotate the backup keys         DEMO");
+        assert_eq!(in_full[6], " ◐ Rotate the backup keys         Demo");
         assert_eq!(in_full[7], "v In review 1");
     }
 
@@ -896,7 +909,7 @@ pub(super) mod tests {
             let lines = board.render_lines(40, 16);
 
             assert_eq!(step, case.expected, "{}", case.name);
-            assert_eq!(lines[0], "*5 progress  @1 review  ?2 you", "{}", case.name);
+            assert_eq!(lines[0], "◐5 progress  ◕1 review  ?2 you", "{}", case.name);
         }
     }
 

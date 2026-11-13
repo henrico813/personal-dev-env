@@ -15,13 +15,12 @@ use jiff::tz::TimeZone;
 
 use super::ScreenSize;
 use super::elements::ScreenDump;
-use super::queue::read_queue;
+use super::queue::{Hubs, read_queue};
 use super::view::{Board, Step};
 use crate::commands::Outcome;
-use crate::shared::run_folder::RunFolder;
 use crate::shared::{HubError, Tools};
 
-/// Reads the hub's state once and returns the board's first screen,
+/// Reads the hubs' state once and returns the board's first screen,
 /// `size` large, as one JSON line.
 ///
 /// # Errors
@@ -30,12 +29,12 @@ use crate::shared::{HubError, Tools};
 /// `HubError::File` when a run folder file cannot be read.
 pub fn dump_board(
     tools: &Tools<'_>,
-    run: &RunFolder,
+    hubs: &Hubs,
     time_zone: &TimeZone,
     size: ScreenSize,
 ) -> Result<Outcome, HubError> {
     let mut board = Board::new(false);
-    board.show_reading(Ok(read_queue(tools, run, time_zone)?));
+    board.show_reading(Ok(read_queue(tools, hubs, time_zone)?));
     let dump = board.dump(size.columns, size.rows, None);
     Ok(Outcome {
         lines: vec![to_json(&dump)?],
@@ -56,7 +55,7 @@ pub fn dump_board(
 /// when `input` or `output` fails.
 pub fn control_board(
     tools: &Tools<'_>,
-    run: &RunFolder,
+    hubs: &Hubs,
     time_zone: &TimeZone,
     size: ScreenSize,
     input: &mut dyn BufRead,
@@ -64,7 +63,7 @@ pub fn control_board(
 ) -> Result<Outcome, HubError> {
     let done = Outcome { lines: Vec::new() };
     let mut board = Board::new(false);
-    board.show_reading(Ok(read_queue(tools, run, time_zone)?));
+    board.show_reading(Ok(read_queue(tools, hubs, time_zone)?));
     if !write_dump(output, &board.dump(size.columns, size.rows, None))? {
         return Ok(done);
     }
@@ -82,7 +81,7 @@ pub fn control_board(
         let dump = match board.handle_input(&event) {
             Step::Quit => quit_dump(step),
             Step::Refresh => {
-                let reading = read_queue(tools, run, time_zone).map_err(|error| error.to_string());
+                let reading = read_queue(tools, hubs, time_zone).map_err(|error| error.to_string());
                 board.show_reading(reading);
                 board.dump(size.columns, size.rows, Some(step.to_owned()))
             }

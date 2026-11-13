@@ -54,12 +54,15 @@ it in these ways.
   "needs you" shows once it stops. The Python hub marked the working
   state, which showed "needs you" while the session still worked.
 - `status`, `next`, `send`, `read`, `report`, `inbox`, `note`,
-  `brief`, `handoff`, `adopt`, `clean`, `park` and `board` take the
+  `brief`, `handoff`, `adopt`, `clean` and `park` take the
   run folder from `--run DIR`, else from `HUB_RUN`, else from the one
   `~/.local/state/herdr-hub.*` folder whose `hub next` runs now. With
   no `hub next` running, they use the folder whose `events.jsonl`
-  changed last and name it on stderr. With no folder found, two or
-  more running, or a folder that does not exist, they exit 2.
+  changed last and name it on stderr. When only auto runs have
+  `hub next` running, they use the newest folder without
+  `approved.md` the same way. With no folder found, two of the user's
+  own hubs running, or a folder that does not exist, they exit 2.
+  `board` needs no run folder.
 - `read` exits 3, not 2, when the session has no unread report.
   `read --note TEXT --card [KEY]` also adds the note to the card's Log,
   with the key in the session's name or the KEY given. If a step
@@ -157,8 +160,15 @@ it in these ways.
   `NAME stays: REASON` otherwise.
 - `board` is new. It lists the cards by stage, sized for a 40x16
   phone screen: In progress, In review, Needs you, Ready and Draft.
-  Needs you holds the questions in `decisions.md` and the sessions
-  that wait on the user. A Could not read group shows on top when a
+  The cards come from `card list`. Needs you holds the questions in
+  each `decisions.md` and the sessions that wait on the user, from
+  every hub on this machine that Herdr lists: each
+  `~/.local/state/herdr-hub.*` folder whose hub `hub watch start`
+  named, auto runs included. Each question's tag is its hub's name,
+  cut to 6 letters, and its details page names the hub in full. With
+  no hub running, Needs you shows `no hub running`.
+  It ignores `HUB_RUN`, and the hidden `--run DIR` shows one run only.
+  A Could not read group shows on top when a
   read fails. An open group shows four rows, then
   `+ N more`; Ready and Draft start folded. A tap on a count in the
   top line jumps to its group, a tap on a heading folds or opens it,
@@ -167,19 +177,23 @@ it in these ways.
   j, k, the arrow and page keys or the wheel move the choice, and
   Enter or space acts on it. It reads again every 10 seconds or when
   r is pressed, and q quits from the list. `NO_COLOR` turns colors
-  off. Each row starts with an ASCII mark for its group: `*` in
-  progress, `@` in review, `?` needs you, `o` ready, `.` draft and `!`
-  could not read. `board --print` prints one screen as text, 40x16
-  unless `--size` says otherwise.
+  off. Colors use the terminal's basic codes, such as `33` for yellow,
+  so a phone app's theme sets them. Each row starts with a mark for its
+  group: `◐` in progress, `◕` in review, `?` needs you, `○` ready, `·`
+  draft and `!` could not read. It ends with the card's project folder,
+  cut to 6 letters, such as `DevEnv`. `card list --tabs` gives each
+  card's whole title and folder. `board --print` prints one screen as
+  text, 40x16 unless `--size` says otherwise.
 - `board --dump` prints the screen's elements as one line of JSON.
-  `--print` and `--dump` draw a new board from the run folder, not the
-  board that listens. The flags below take steps: `tap ID`,
+  `--print` and `--dump` draw a new board, not the board that
+  listens. The flags below take steps: `tap ID`,
   `tap COLUMN ROW`, `press KEY`, `wheel up` and `wheel down`. KEY is
   `enter`, `esc`, `space`, `up`, `down`, `pageup`, `pagedown`, `ctrl-c`
   or one character, such as `q`, `r`, `j` or `k`.
 - `board --listen` shows the live board and also takes steps from
-  `board.sock` in the run folder. `board --send 'STEP'`, from another
-  terminal, sends one step to it. The user sees the step happen, and
+  `~/.local/state/pde/hub/board.sock`, one per user. A second
+  `--listen` exits 2 while the first runs. `board --send 'STEP'`,
+  from another terminal, sends one step to it. The user sees the step happen, and
   `--send` prints the screen that follows as one JSON line, at the
   live terminal's size, with the step in `step`. After a step that
   quits, `page` is `quit` and the board ends. A step the board cannot
@@ -238,5 +252,6 @@ these rules, so an agent sees and taps exactly what the user does.
   `--listen` and `--send`, which let an agent tap the screen the user
   watches and print the list and the screen's text after each step,
   and `--control`, which does the same without a terminal for tests.
-- Marks and labels a tap can hit are plain ASCII, so each takes one
-  column in every terminal and a tap's column is exact.
+- Each mark and label a tap can hit takes one column, so a tap's
+  column is exact. Places count characters, not bytes, since a mark
+  such as `◐` takes 3 bytes.

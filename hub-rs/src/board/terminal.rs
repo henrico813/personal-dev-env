@@ -5,12 +5,14 @@
 
 use std::io::{self, Write};
 use std::panic;
+use std::sync::LazyLock;
 
 use crossterm::cursor::{Hide, Show};
 use crossterm::execute;
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
+use regex::bytes::{Captures, Regex};
 
 use super::view::Board;
 
@@ -26,10 +28,22 @@ const TAPS_ON: &str = "\x1b[?1000h\x1b[?1006h";
 const ALL_MOUSE_OFF: &str =
     "\x1b[?1006l\x1b[?1016l\x1b[?1015l\x1b[?1005l\x1b[?1003l\x1b[?1002l\x1b[?1000l";
 
+/// A style code, such as `\x1b[1;38;5;3m`, with its numbers in group 1.
+static STYLE_CODE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\x1b\[([0-9;]*)m").unwrap());
+
 /// Owns the terminal while the board shows. Dropping it puts the
 /// terminal back.
 pub(crate) struct Screen {
-    terminal: Terminal<CrosstermBackend<io::Stdout>>,
+    terminal: Terminal<CrosstermBackend<BasicColors<io::Stdout>>>,
+}
+
+/// Holds what crossterm writes until a flush, then writes it with each
+/// of the 16 theme colors as its basic code, such as `33` for yellow.
+/// crossterm writes them as 256-color codes, such as `38;5;3`, and some
+/// phone terminals, such as Moshi, show those in other colors.
+struct BasicColors<W: Write> {
+    out: W,
+    pending: Vec<u8>,
 }
 
 impl Screen {
@@ -37,7 +51,7 @@ impl Screen {
     pub(crate) fn start() -> io::Result<Screen> {
         install_panic_restore();
         let mut screen = Screen {
-            terminal: Terminal::new(CrosstermBackend::new(io::stdout()))?,
+            terminal: Terminal::new(CrosstermBackend::new(BasicColors::new(io::stdout())))?,
         };
         // From here a failed step drops `screen`, which puts the
         // terminal back.
@@ -61,6 +75,63 @@ impl Drop for Screen {
     fn drop(&mut self) {
         restore_terminal();
     }
+}
+
+impl<W: Write> BasicColors<W> {
+    fn new(out: W) -> BasicColors<W> {
+        BasicColors {
+            out,
+            pending: Vec::new(),
+        }
+    }
+}
+
+/// ratatui flushes after each frame, so each flush writes whole codes.
+impl<W: Write> Write for BasicColors<W> {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.pending.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        let basic = STYLE_CODE.replace_all(&self.pending, |found: &Captures| {
+            // The pattern matches only digits and semicolons.
+            let numbers = std::str::from_utf8(&found[1]).unwrap_or_default();
+            format!("\x1b[{}m", to_basic_colors(numbers)).into_bytes()
+        });
+        self.out.write_all(&basic)?;
+        self.pending.clear();
+        self.out.flush()
+    }
+}
+
+/// Returns a style code's numbers with each `38;5;N` or `48;5;N` for N
+/// under 16 written as its basic code, such as `33` for `38;5;3` and
+/// `91` for `38;5;9`. Other numbers stay as they are.
+fn to_basic_colors(numbers: &str) -> String {
+    let parts: Vec<&str> = numbers.split(';').collect();
+    let mut rest = parts.as_slice();
+    let mut basic = Vec::new();
+    while let Some((first, after)) = rest.split_first() {
+        if let [layer @ ("38" | "48"), "5", color, tail @ ..] = rest
+            && let Ok(color @ 0..16) = color.parse::<u8>()
+        {
+            // Text colors start at 30, backgrounds at 40, and the bright
+            // eight 60 higher.
+            let base = if *layer == "38" { 30 } else { 40 };
+            let code = if color < 8 {
+                base + color
+            } else {
+                base + 60 + color - 8
+            };
+            basic.push(code.to_string());
+            rest = tail;
+        } else {
+            basic.push((*first).to_owned());
+            rest = after;
+        }
+    }
+    basic.join(";")
 }
 
 /// Writes the codes that turn off mouse reports, show the cursor and
@@ -90,6 +161,34 @@ fn install_panic_restore() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use ratatui::backend::Backend;
+    use ratatui::buffer::Cell;
+    use ratatui::style::Color;
+
+    /// Phone terminals such as Moshi use their theme's colors for the
+    /// basic codes, such as `33`. A group drawn with a 256-color code
+    /// shows in another color than the user's theme gives it.
+    #[test]
+    fn basic_colors_writes_basic_codes() {
+        let mut written = Vec::new();
+        let mut backend = CrosstermBackend::new(BasicColors::new(&mut written));
+        let mut yellow = Cell::new("◐");
+        yellow.set_fg(Color::Yellow);
+        let mut bright_red = Cell::new("!");
+        bright_red.set_fg(Color::LightRed);
+
+        backend
+            .draw([(0, 0, &yellow), (1, 0, &bright_red)].into_iter())
+            .unwrap();
+        Backend::flush(&mut backend).unwrap();
+        drop(backend);
+
+        let written = String::from_utf8(written).unwrap();
+        assert!(written.contains("\x1b[33;49m◐"), "{written:?}");
+        assert!(written.contains("\x1b[91;49m!"), "{written:?}");
+        assert!(!written.contains("38;5;"), "{written:?}");
+    }
 
     /// The board's exit must hand the mouse back to Herdr. A mode left
     /// on after exit keeps sending mouse reports to the shell as text,
