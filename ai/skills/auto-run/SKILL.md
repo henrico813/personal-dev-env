@@ -79,27 +79,11 @@ The user's rules for every run:
    A roadmap the user wants built runs as a ready card that links its
    design and its roadmap page. Read both. When either is not
    approved, the card goes under `## Left out` with that reason.
-3. Sort every ready card into one of three groups: work-pc, hands or
-   alone. Always run this sort, even for one card. Send it to the
-   cheap model with the command below. Checking that `opencode`
-   exists is not the sort: run the command even when you expect it
-   to fail. `<model>` is the first cheap
-   model in `model-routing`'s Models list, such as
-   `openai/gpt-6-luna`:
-
-       opencode run --standalone -m <model> \
-         "$(cat <run folder>/ready.md)
-
-       Sort each card into one group, one line per card as
-       '<key> <group>: <reason>'. Groups: work-pc (the work runs on
-       the work PC or uses its data), hands (it needs the user at a
-       device, a login, a purchase or a choice before work can
-       start), alone (the rest)."
-
-   When the model does not answer, pick the next one as
-   `model-routing` says. When none is left, or a card gets no line,
-   sort the cards yourself by the same rule. Read each line against
-   the card before you use it.
+3. Sort every ready card into one of three groups yourself, even
+   when there is only one card: work-pc (the work runs on the work PC
+   or uses its data), hands (it needs the user at a device, a login,
+   a purchase or a choice before work can start) or alone (the rest).
+   Read each card before you sort it.
 4. Write `<run folder>/run.md`. Put under `## Run` the `alone` cards
    you pick, and every other ready card under `## Needs your hands`,
    `## Work PC` or `## Left out`, with a reason. Each line is the key,
