@@ -17,8 +17,8 @@ for people and skills that used the Python one.
 
 ## The run folder
 
-- `status`, `next`, `send`, `read`, `report`, `inbox`, `note`,
-  `brief`, `handoff`, `adopt`, `clean` and `park` take the
+- `status`, `next`, `send`, `at`, `read`, `report`, `inbox`,
+  `note`, `brief`, `handoff`, `adopt`, `clean` and `park` take the
   run folder from `--run DIR`, else from `HUB_RUN`, else from the one
   `~/.local/state/herdr-hub.*` folder whose `hub next` runs now. With
   no `hub next` running, they use the folder whose `events.jsonl`
@@ -67,6 +67,9 @@ for people and skills that used the Python one.
   when it may have arrived.
 - `inbox NAME` is new. It prints the messages held for NAME and
   counts each as delivered, so `next` never sends them.
+- `at HH:MM` is new. It stores a message that `next` sends at that
+  time today, to the `--to` sessions or, with `--all`, to every live
+  worker.
 - `send` to a parked session opens a new tab and resumes its
   OpenCode session there. It holds the message until the session
   starts.
