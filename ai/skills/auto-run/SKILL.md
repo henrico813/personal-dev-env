@@ -79,7 +79,11 @@ The user's rules for every run:
    A roadmap the user wants built runs as a ready card that links its
    design and its roadmap page. Read both. When either is not
    approved, the card goes under `## Left out` with that reason.
-3. Sort them with the cheap model, as `model-routing` picks:
+3. Sort every ready card into one of three groups: work-pc, hands or
+   alone. Always run this sort, even for one card. Send it to the
+   cheap model with the command below. `<model>` is the first cheap
+   model in `model-routing`'s Models list, such as
+   `openai/gpt-6-luna`:
 
        opencode run --standalone -m <model> \
          "$(cat <run folder>/ready.md)
