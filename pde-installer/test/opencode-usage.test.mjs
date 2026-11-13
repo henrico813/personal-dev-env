@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   describePlanUsage,
-  describePromptLine,
-  describeSubagentRow,
+  describePromptLines,
+  describeSubagentLines,
   describeSubagents,
   findApiPrice,
   listCatalogModels,
@@ -105,8 +105,8 @@ test("priceSubagents bills all tokens, largest first", () => {
 
   assert.deepEqual(priced, {
     rows: [
-      { name: "plan review", model: "claude-opus-5-5[1m]", tokens: 1_162_000, dollars: 1.6125, context: { tokens: 88_000, percent: 44 } },
-      { name: "locator", model: "claude-opus-5-5", tokens: 88_000, dollars: 0.44, context: undefined },
+      { name: "plan review", model: "claude-opus-5-5[1m]", tokens: 1_162_000, dollars: 1.6125, context: { tokens: 88_000, percent: 44 }, running: false },
+      { name: "locator", model: "claude-opus-5-5", tokens: 88_000, dollars: 0.44, context: undefined, running: false },
     ],
     tokens: 1_250_000,
     dollars: 2.0525,
@@ -114,9 +114,9 @@ test("priceSubagents bills all tokens, largest first", () => {
 });
 
 /**
- * The header sums the price, and a local model shows "no price" rather
+ * The header sums the price, and a local model shows "price unknown" rather
  * than $0.00, which would read as free API use. With no priced subagent the
- * header says "no price" too, as the row above the prompt does.
+ * header says "price unknown" too, as the lines above the prompt do.
  */
 test("describeSubagents marks unpriced rows and header", () => {
   const priced = {
@@ -135,52 +135,70 @@ test("describeSubagents marks unpriced rows and header", () => {
     "  claude-opus-5-5[1m] 1.2M $1.61",
     "  context 88k 44%",
     "locator",
-    "  qwen3.8 88k no price",
+    "  qwen3.8 88k price unknown",
   ]);
-  assert.equal(describeSubagents({ rows: [priced.rows[1]], dollars: 0 })[0], "1 subagent, no price");
+  assert.equal(describeSubagents({ rows: [priced.rows[1]], dollars: 0 })[0], "1 subagent, price unknown");
 });
 
 /**
- * A phone-width screen shows only this line, so it must carry the tokens,
- * price and fullest context of all subagents. The fullest sits between
- * smaller ones, so taking the first or last row fails. A total of $0.00 for
- * unpriced local models would read as free API use.
+ * A phone-width screen shows only these lines, so they must carry how many
+ * subagents still run, their tokens, price and fullest context. The fullest
+ * sits between smaller ones, so taking the first or last row fails.
  */
-test("describePromptLine sums subagents, shows fullest context", () => {
+test("describePromptLines counts running, shows largest context", () => {
   const priced = {
     rows: [
-      { tokens: 300_000, dollars: 1, context: { tokens: 60_000, percent: 30 } },
-      { tokens: 100_000, dollars: undefined, context: { tokens: 88_000, percent: 44 } },
-      { tokens: 100_000, dollars: 0.5, context: { tokens: 20_000, percent: 10 } },
+      { tokens: 300_000, dollars: 1, context: { tokens: 60_000, percent: 30 }, running: true },
+      { tokens: 100_000, dollars: undefined, context: { tokens: 88_000, percent: 44 }, running: false },
+      { tokens: 100_000, dollars: 0.5, context: { tokens: 20_000, percent: 10 }, running: false },
     ],
     tokens: 500_000,
     dollars: 1.5,
   };
-  const unpriced = { rows: [{ tokens: 51_000, dollars: undefined, context: undefined }], tokens: 51_000, dollars: 0 };
 
-  assert.equal(describePromptLine(priced, undefined), "3 subagents 500k $1.50, max context 88k 44%");
-  assert.equal(describePromptLine(unpriced, undefined), "1 subagent 51k no price");
+  assert.deepEqual(describePromptLines(priced, undefined), ["3 subagents, 1 running: 500k tokens", "$1.50, largest context 44%"]);
+});
+
+/** A total of $0.00 for unpriced local models would read as free API use. */
+test("describePromptLines unpriced says price unknown", () => {
+  const unpriced = { rows: [{ tokens: 51_000, dollars: undefined, context: undefined, running: false }], tokens: 51_000, dollars: 0 };
+
+  assert.deepEqual(describePromptLines(unpriced, undefined), ["1 subagent: 51k tokens", "price unknown"]);
 });
 
 /**
  * Subagents count 0 tokens until their first reply, and a bare 0 beside
- * "no price" read as a broken row on the phone, so the row waits.
+ * the price read as a broken row on the phone, so the line says no usage yet.
  */
-test("describePromptLine hides subagents before tokens", () => {
-  const starting = { rows: [{ tokens: 0, dollars: undefined, context: undefined }], tokens: 0, dollars: 0 };
+test("describePromptLines no usage before reply", () => {
+  const starting = { rows: [{ tokens: 0, dollars: undefined, context: undefined, running: true }], tokens: 0, dollars: 0 };
 
-  assert.equal(describePromptLine(starting, undefined), "");
+  assert.deepEqual(describePromptLines(starting, undefined), ["1 subagent, 1 running: no usage yet"]);
 });
 
 /**
- * Inside a subagent's view this row is the only place its own usage shows
- * on the phone, so it must carry the model, tokens, price and context.
+ * Inside a subagent's view these lines are the only place its own usage
+ * shows on the phone, so they must name its task and carry its tokens, price
+ * and context.
  */
-test("describeSubagentRow shows usage, waits for tokens", () => {
-  const row = { model: "claude-opus-5-5", tokens: 412_000, dollars: 1.71, context: { tokens: 88_000, percent: 44 } };
+test("describeSubagentLines shows task and usage", () => {
+  const row = { name: "plan review", tokens: 412_000, dollars: 1.71, context: { tokens: 88_000, percent: 44 } };
 
-  assert.equal(describeSubagentRow(row), "this subagent claude-opus-5-5 412k $1.71, context 88k 44%");
-  assert.equal(describeSubagentRow({ ...row, tokens: 0 }), "");
+  assert.deepEqual(describeSubagentLines(row), ["Subagent: plan review", "412k tokens, $1.71, context 44%"]);
+});
+
+/** A wrapped line splits words and numbers on a 40-column phone. */
+test("describeSubagentLines cuts long task", () => {
+  const row = { name: "Read the repository and explain its purpose", tokens: 5_000, dollars: undefined, context: undefined };
+
+  assert.equal(describeSubagentLines(row)[0], "Subagent: Read the repository and ex…");
+});
+
+/** A bare 0 before the first reply read as a broken row on the phone. */
+test("describeSubagentLines no usage before reply", () => {
+  const row = { name: "plan review", tokens: 0, dollars: undefined, context: undefined };
+
+  assert.deepEqual(describeSubagentLines(row), ["Subagent: plan review", "no usage yet"]);
 });
 
 /**

@@ -58,12 +58,12 @@ both would report, and an uninstall leaves the wrapper without Herdr's plugin to
 load.
 
 The modifier also lists `./pde-usage` last in `plugins`, once. In an OpenCode
-session, that plugin adds a row above the prompt with the number of
-subagents, their tokens and API price, and the fullest subagent context with
-its share of the model's window. Inside a subagent's view, the row shows that
-subagent's own model, tokens, API price and context instead. The row stays
-empty until the first reply. A phone-width screen hides the sidebar, so this
-row is the part that shows in a phone terminal. On a wider screen, a
+session, that plugin adds two lines above the prompt with the number of
+subagents, how many still run, their tokens and API price, and the fullest
+subagent context as a share of the model's window. Inside a subagent's view,
+the lines show that subagent's task, tokens, API price and context instead.
+Before the first reply they say `no usage yet`. A phone-width screen hides
+the sidebar, so these lines are the part that shows in a phone terminal. On a wider screen, a
 Usage panel in the sidebar lists each subagent's model, tokens, API price and
 context, largest first, then the Claude plan limits that the OpenCode Claude
 plugin saved last. The price uses the rates listed for the subagent's

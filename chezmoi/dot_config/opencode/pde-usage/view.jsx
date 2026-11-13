@@ -1,17 +1,17 @@
-// Draws the lines from usage.js in OpenCode's session sidebar and in the row
-// above the prompt. OpenCode compiles this JSX itself and redraws the lines
+// Draws the lines from usage.js in OpenCode's session sidebar and in the two
+// lines above the prompt. OpenCode compiles this JSX itself and redraws the lines
 // when its session data changes.
 import {
   describePlanUsage,
-  describePromptLine,
-  describeSubagentRow,
+  describePromptLines,
+  describeSubagentLines,
   describeSubagents,
   listSubagents,
   priceSubagents,
   readJsonFile,
 } from "./usage.js";
 
-/** Adds the usage panel to the sidebar and the usage row above the prompt. */
+/** Adds the usage panel to the sidebar and the usage lines above the prompt. */
 export function addUsageSlots(api, { catalogModels, planFile }) {
   const sessions = api.data.session;
   // OpenCode's Context panel reads model limits from the same list. Its
@@ -22,7 +22,7 @@ export function addUsageSlots(api, { catalogModels, planFile }) {
   ];
   const withMessages = (id) => {
     const info = sessions.get(id);
-    return info && { ...info, messages: sessions.message.list(id) ?? [] };
+    return info && { ...info, messages: sessions.message.list(id) ?? [], running: sessions.status(id) === "running" };
   };
   const priceFor = (sessionID) =>
     priceSubagents(listSubagents(sessions, sessionID).map(withMessages).filter(Boolean), listModels(sessionID));
@@ -53,22 +53,25 @@ export function addUsageSlots(api, { catalogModels, planFile }) {
       </box>
     ),
   });
-  // A parent session shows its subagents' total, and a subagent its own row.
-  const rowFor = (sessionID) => {
+  // A parent session shows its subagents' total, and a subagent its own lines.
+  const linesFor = (sessionID) => {
     const info = withMessages(sessionID);
-    if (!info) return "";
-    if (!info.parentID) return describePromptLine(priceFor(sessionID), readPlan());
-    return describeSubagentRow(priceSubagents([info], listModels(sessionID)).rows[0]);
+    if (!info) return [];
+    if (!info.parentID) return describePromptLines(priceFor(sessionID), readPlan());
+    return describeSubagentLines(priceSubagents([info], listModels(sessionID)).rows[0]);
   };
   // The footer row under the prompt shares its width with OpenCode's spinner,
-  // which cut the line off at phone width, so the row goes above the prompt.
+  // which cut the line off at phone width, so the lines go above the prompt.
+  // The info color keeps them apart from the chat text.
   api.ui.slot({
     append: "session.composer.top",
     render: (props) => {
-      const row = props.sessionID ? rowFor(props.sessionID) : "";
-      return row ? (
+      const lines = props.sessionID ? linesFor(props.sessionID) : [];
+      return lines.length > 0 ? (
         <box paddingLeft={2}>
-          <text fg={api.theme.text.muted}>{row}</text>
+          {lines.map((line) => (
+            <text fg={api.theme.text.feedback.info.base}>{line}</text>
+          ))}
         </box>
       ) : null;
     },
