@@ -130,8 +130,8 @@ other copy with a pointer.
 5. Run the checks in `ai/evals/skill-routing.md` when its opening says
    to.
 6. Draft the pull request's title and description in a file, as the
-   `pull-request` skill says. The new-reader reviewer reads that
-   file. Then get the reviews in "Review a skill change" for each
+   `pull-request` skill says. The plain-English reviewer reads
+   that file. Then get the reviews in "Review a skill change" for each
    changed skill. Check the change yourself against Final checks
    instead when you cannot start another agent. Do the same when
    another agent gave you this task and did not ask you to start
@@ -187,7 +187,7 @@ None of them wrote the change, and none starts another agent.
 
 1. A consistency reviewer loads this skill. It gets the whole diff, the
    check script's output and `ai/AGENTS.md`. It checks the skill it
-   was started for against every other skill on the same topics, and
+   reviews against every other skill on the same topics, and
    against the Lessons sections of their installed copies. It reads
    the rest of the diff only for context.
    It reports each conflict, each repeat and each thing that two
@@ -196,13 +196,13 @@ None of them wrote the change, and none starts another agent.
    these conflicts, because two skills can disagree in different
    words. One skill may say to ask an open question once while
    another says to repeat it in every update.
-2. A new-reader reviewer loads `plain-direct-english`. It gets only
+2. A plain-English reviewer loads `plain-direct-english`. It gets only
    the changed skill's files, the diff of that skill, and the file of
    pull request text from step 6 of "Change a skill". It never gets
    the task. It reports each sentence it cannot follow, each term it
    does not know, and each step where it would not know what to do.
    It checks each sentence the diff adds, and each sentence of the
-   pull request text, against the sentence checks in the Final checks of
+   pull request text, against the Final checks of
    `plain-direct-english`. For each sentence that fails, it gives a
    rewrite. It marks each finding required or optional. If it also
    loads this skill, it still reads only the skills it loads and the

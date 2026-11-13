@@ -103,7 +103,6 @@ Vibe binaries plus repo-managed AI config.
 | Herdr handoff | `ai/skills/herdr-handoff/` | `~/.agents/skills/herdr-handoff/` | Shared workflow skill for handing work to a new session in a new Herdr workspace |
 | Herdr hub | `ai/skills/herdr-hub/` | `~/.agents/skills/herdr-hub/` | Shared workflow skill for the session that coordinates other Herdr sessions |
 | Auto run | `ai/skills/auto-run/` | `~/.agents/skills/auto-run/` | Shared workflow skill for working an approved list of cards and roadmaps to pull requests without the user |
-| Plan to prod | `ai/skills/plan-to-prod/` | `~/.agents/skills/plan-to-prod/` | Shared workflow skill for taking a new skill or tool through a reviewed plan, a local build and a real test to a pull request |
 | Session review | `ai/skills/session-review/` | `~/.agents/skills/session-review/` | Shared workflow skill for reviewing a session's token use, lessons and local model jobs |
 | Conclude session | `ai/skills/conclude-session/` | `~/.agents/skills/conclude-session/` | Shared workflow skill for closing out a session after one pick from the user |
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/` | Shared test-writing guidance |
@@ -187,7 +186,6 @@ loads `~/.agents/skills/`.
 | `herdr-handoff` | Hand work to a new session in a new Herdr workspace, with a handoff file it reads first | "Hand the docs work to a new session" |
 | `herdr-hub` | Coordinate other Herdr sessions: pass messages, answer their questions, run merges | "You are the hub of this run" |
 | `auto-run` | Brief the user on ready cards and roadmaps, then have a separate hub plan, build, review and file the approved list as PRs | "Set up an auto run", "Build the rest of the roadmap overnight" |
-| `plan-to-prod` | Take a new skill or tool through a plan the user reviews, a build on the local model, a real test on this machine and fresh reviews | "Plan the new skill, build it on the local model and test it for real" |
 | `session-review` | Review a session for token use, lessons to save and jobs a local model could run, then wait for your pick | "Review this session for token usage, skill lessons and local model handoff" |
 | `conclude-session` | Close out a session: review it, wait for your pick, then save lessons, open one skill PR and hand off or report | "conclude-session" |
 | `model-routing` | Pick the model for each agent job, and check and step up failed local jobs | "Which model should run these test jobs?" |

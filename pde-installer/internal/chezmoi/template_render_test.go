@@ -240,7 +240,6 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".agents/skills/herdr-handoff",
 		".agents/skills/herdr-hub",
 		".agents/skills/implement-plan",
-		".agents/skills/plan-to-prod",
 		".agents/skills/promote-memory",
 		".agents/skills/pull-request",
 		".agents/skills/python-development",
