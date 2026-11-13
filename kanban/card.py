@@ -16,6 +16,7 @@ Usage::
     card [--vault NAME] COMMAND ...
 
     card new PROJECT TITLE [--kind K] [--user]  make a card in draft
+    card new PROJECT --from FILE [--user]  FILE gives title, kind, sections
     card new PROJECT TITLE --adopt STAGE --user [--why TEXT]
                                        [--session [AGENT]]
     card list [--stage S] [--project P] [--kind K]
@@ -65,6 +66,7 @@ KINDS = {
     "build": "ends in a change to code, config or the running setup",
     "research": "ends in a document or a decision",
 }
+DEFAULT_KIND = "build"
 # A move missing here is refused, so accepted is final and follow-up
 # work gets a new card. "user" moves need --user, and "staff" moves
 # take it when the user makes them.
@@ -112,6 +114,9 @@ SECTIONS = [
     "Decisions",
     "Log",
 ]
+# Sections that card add, card edit and --from files fill. Only card
+# writes the Log.
+WRITABLE_SECTIONS = [name for name in SECTIONS if name != "Log"]
 CRITERIA = "Acceptance Criteria"
 
 WIDTH = 60
@@ -171,6 +176,19 @@ class Card:
 
 
 @dataclass(frozen=True)
+class NewCard:
+    """The title, kind and section text of a card about to be made.
+
+    ``sections`` maps a name from WRITABLE_SECTIONS to the text under
+    its heading.
+    """
+
+    title: str
+    kind: str
+    sections: dict[str, str]
+
+
+@dataclass(frozen=True)
 class AgentSession:
     """A Herdr agent's name and its entry for the sessions field.
 
@@ -220,14 +238,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--vault", help="vault name for nobs vault path")
     commands = parser.add_subparsers(dest="command", required=True)
 
-    new = commands.add_parser("new", help="make a card in draft")
+    new = commands.add_parser(
+        "new",
+        help="make a card in draft",
+        epilog=format_card_file_help(),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     new.add_argument("project", help="project folder, such as DevEnv")
-    new.add_argument("title")
+    new.add_argument("title", nargs="?", help="the title, unless --from")
+    new.add_argument(
+        "--from",
+        dest="from_file",
+        metavar="FILE",
+        help="take the title, kind and sections from FILE, laid out below",
+    )
     new.add_argument(
         "--kind",
         choices=list(KINDS),
-        default="build",
-        help="; ".join(f"{name} {meaning}" for name, meaning in KINDS.items()),
+        help="; ".join(f"{name} {meaning}" for name, meaning in KINDS.items())
+        + f"; default {DEFAULT_KIND}",
     )
     new.add_argument(
         "--user",
@@ -299,9 +328,7 @@ def build_parser() -> argparse.ArgumentParser:
         "add", help="add a bullet, or a criteria checkbox, to a section"
     )
     add.add_argument("key")
-    add.add_argument(
-        "section", choices=[name for name in SECTIONS if name != "Log"]
-    )
+    add.add_argument("section", choices=WRITABLE_SECTIONS)
     add.add_argument("text")
     add.set_defaults(run=run_add)
 
@@ -318,9 +345,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="N is the item's number in card show KEY --section S.",
     )
     edit.add_argument("key")
-    edit.add_argument(
-        "section", choices=[name for name in SECTIONS if name != "Log"]
-    )
+    edit.add_argument("section", choices=WRITABLE_SECTIONS)
     edit.add_argument("number", type=int, metavar="N")
     edit.add_argument("text", nargs="?", help="the item's new text")
     edit.add_argument("--remove", action="store_true", help="remove item N")
@@ -413,6 +438,34 @@ def format_moves() -> str:
     return "\n".join(lines)
 
 
+def format_card_file_help() -> str:
+    """Format help text that shows the layout of a --from file.
+
+    Returns:
+        The help text.
+    """
+    return "\n".join(
+        [
+            "--from FILE holds the title and kind, then sections:",
+            "  ---",
+            "  title: Retry failed uploads",
+            "  kind: build",
+            "  ---",
+            "",
+            "  ## Context",
+            "  - Uploads fail on a slow link.",
+            "",
+            "  ## Acceptance Criteria",
+            "  - [ ] A failed upload retries.",
+            "",
+            f"kind is optional, {DEFAULT_KIND} by default. Each of these",
+            "sections may appear once, in any letter case:",
+            f"  {', '.join(WRITABLE_SECTIONS)}",
+            "Section text is copied as written, so criteria need - [ ].",
+        ]
+    )
+
+
 def run_new(args: argparse.Namespace, projects: Path) -> int:
     """Make a card in draft, or adopt work under way, and print its name.
 
@@ -423,6 +476,10 @@ def run_new(args: argparse.Namespace, projects: Path) -> int:
     Returns:
         The exit code.
     """
+    if (args.title is None) == (args.from_file is None):
+        raise CardError("give either a TITLE or --from FILE")
+    if args.from_file is not None and args.kind:
+        raise CardError("with --from, FILE gives the kind")
     if args.adopt and not args.user:
         raise CardError(
             "only the user adopts work already under way."
@@ -433,6 +490,10 @@ def run_new(args: argparse.Namespace, projects: Path) -> int:
             "--session goes with --adopt. A draft card gets its session"
             " when it moves to active."
         )
+    if args.from_file is not None:
+        new_card = read_card_file(Path(args.from_file))
+    else:
+        new_card = NewCard(args.title, args.kind or DEFAULT_KIND, {})
     stage = args.adopt or STAGES[0]
     verb = "adopted by" if args.adopt else "by"
     entry = format_log_entry(
@@ -441,18 +502,70 @@ def run_new(args: argparse.Namespace, projects: Path) -> int:
     session = None
     if args.session is not None:
         session = find_agent_session(args.session)
-    path = create_card(
-        projects, args.project, args.title, args.kind, stage, entry, session
-    )
+    path = create_card(projects, args.project, new_card, stage, entry, session)
     print(path.stem)
     return 0
+
+
+def read_card_file(path: Path) -> NewCard:
+    """Read a new card's title, kind and section text from a file.
+
+    The file has frontmatter with ``title`` and an optional ``kind``,
+    then ``##`` headings named as in WRITABLE_SECTIONS, in any case.
+    Any other heading, or text before the first heading, is refused so
+    that no line is dropped without notice.
+
+    Args:
+        path: The file, laid out as ``card new --help`` shows.
+
+    Returns:
+        The card's title, kind and section text.
+
+    Raises:
+        CardError: The file cannot be read, has no title, names an
+            unknown kind, or holds text outside the allowed sections.
+    """
+    try:
+        text = path.read_text()
+    except OSError as error:
+        raise CardError(f"cannot read {path}: {error.strerror}") from error
+    fields = read_fields(text)
+    title = str(fields.get("title", "")).strip()
+    if not title:
+        raise CardError(f"{path} needs a title field in its frontmatter")
+    kind = str(fields.get("kind") or DEFAULT_KIND)
+    if kind not in KINDS:
+        raise CardError(f"kind is one of {', '.join(KINDS)}")
+    allowed = [name.lower() for name in WRITABLE_SECTIONS]
+    seen: set[str] = set()
+    lines = text.split("\n")
+    for line in lines[find_frontmatter_end(lines) + 1 :]:
+        heading = HEADING_RE.match(line)
+        if heading is None:
+            if line.strip() and not seen:
+                raise CardError(
+                    f"{path} has text before its first section: {line!r}"
+                )
+            continue
+        name = heading[2].lower()
+        if heading[1] != "##" or name not in allowed or name in seen:
+            raise CardError(
+                f"{path} has the heading {line.strip()!r}. Each section"
+                f" may appear once: {', '.join(WRITABLE_SECTIONS)}"
+            )
+        seen.add(name)
+    sections = {
+        name: body.strip("\n")
+        for name in WRITABLE_SECTIONS
+        if (body := read_section(text, name)) and body.strip()
+    }
+    return NewCard(title, kind, sections)
 
 
 def create_card(
     projects: Path,
     project: str,
-    title: str,
-    kind: str,
+    new_card: NewCard,
     stage: str,
     log_entry: str,
     session: AgentSession | None = None,
@@ -466,8 +579,7 @@ def create_card(
     Args:
         projects: The vault's Projects folder.
         project: The project folder name, in any case.
-        title: The card title.
-        kind: One of KINDS.
+        new_card: The title, kind and section text.
         stage: The first stage, draft unless the card is adopted.
         log_entry: The first Log line, without its date.
         session: A Herdr agent session to record, or None.
@@ -480,7 +592,7 @@ def create_card(
     """
     folder = find_project_folder(projects, project)
     code = read_project_code(folder)
-    name = BAD_NAME_CHARS_RE.sub("", title).strip()
+    name = BAD_NAME_CHARS_RE.sub("", new_card.title).strip()
     if not name:
         raise CardError("the title needs a letter or digit")
     today = date.today().isoformat()
@@ -489,12 +601,13 @@ def create_card(
         path = folder / f"{key} {name}.md"
         text = render_card(
             key=key,
-            title=title.strip(),
+            title=new_card.title.strip(),
             project=folder.name,
-            kind=kind,
+            kind=new_card.kind,
             today=today,
             stage=stage,
             log_entry=log_entry,
+            sections=new_card.sections,
         )
         if session:
             text = add_session(text, today, session)
@@ -1167,6 +1280,7 @@ def render_card(
     today: str,
     stage: str,
     log_entry: str,
+    sections: dict[str, str] | None = None,
 ) -> str:
     """Return the text of a new card.
 
@@ -1178,6 +1292,8 @@ def render_card(
         today: The date, as YYYY-MM-DD.
         stage: The first stage.
         log_entry: The first Log line, without its date.
+        sections: Text to put under some section headings, by name.
+            None leaves every section empty.
 
     Returns:
         The note text.
@@ -1200,8 +1316,11 @@ def render_card(
     for name in FIELDS:
         lines += render_field(name, values[name])
     lines += ["---", "", f"# {key} {title}", "---", ""]
+    sections = sections or {}
     for name in SECTIONS:
         lines += [f"## {name}", "---", ""]
+        if name in sections:
+            lines += [sections[name], ""]
     lines.append(f"- {today} {log_entry}")
     return "\n".join(lines) + "\n"
 
