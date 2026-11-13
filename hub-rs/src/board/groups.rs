@@ -51,17 +51,16 @@ impl Group {
         }
     }
 
-    /// Returns the ASCII mark each row of the group starts with, so a
-    /// row's group shows without color. Each mark is one column wide in
-    /// every terminal, so a tap's column finds the count it meant.
+    /// Returns the mark each row of the group starts with, so a row's
+    /// group shows without color. Each mark takes one column.
     pub(super) fn mark(self) -> &'static str {
         match self {
             Group::Problems => "!",
-            Group::InProgress => "*",
-            Group::InReview => "@",
+            Group::InProgress => "◐",
+            Group::InReview => "◕",
             Group::NeedsYou => "?",
-            Group::Ready => "o",
-            Group::Draft => ".",
+            Group::Ready => "○",
+            Group::Draft => "·",
         }
     }
 
@@ -88,8 +87,8 @@ pub(super) struct Item {
     /// problem.
     pub id: String,
     pub text: String,
-    /// A short word for the row's right end, such as `DEMO` for a
-    /// card's project code.
+    /// A short word for the row's right end, such as `DevEnv` for a
+    /// card's project folder or `kanban-hub-3` for a hub's question.
     pub tag: String,
     pub target: Target,
 }
@@ -135,7 +134,7 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
         .map(|(index, question)| Item {
             id: question.title.clone(),
             text: question.title.clone(),
-            tag: "hub".to_owned(),
+            tag: question.hub.clone(),
             target: Target::Question(index),
         })
         .collect();
@@ -185,7 +184,11 @@ pub(super) fn describe_item(queue: &Queue, target: Target, note: Option<&CardNot
         Target::Card(index) => describe_card(&queue.cards[index], note),
         Target::Question(index) => {
             let question = &queue.questions[index];
-            let mut lines = vec![question.title.clone(), String::new()];
+            let mut lines = vec![
+                question.title.clone(),
+                format!("from {}", question.hub),
+                String::new(),
+            ];
             lines.extend(question.lines.iter().cloned());
             lines
         }
@@ -203,19 +206,15 @@ pub(super) fn describe_item(queue: &Queue, target: Target, note: Option<&CardNot
 /// `DEMO-KB-001  review  Demo`, its workers, next step, PR links and
 /// criteria.
 pub(super) fn describe_card(card: &CardLine, note: Option<&CardNote>) -> Vec<String> {
-    // `card show` gives the whole title, where `card list` may cut it.
-    let title = note
-        .map(|note| note.title.as_str())
-        .filter(|title| !title.is_empty())
-        .unwrap_or(&card.title);
-    let project = note
-        .map(|note| note.project.as_str())
-        .filter(|project| !project.is_empty())
-        .unwrap_or_else(|| project_code(card));
     let mut lines = vec![
-        title.to_owned(),
+        card.title.clone(),
         String::new(),
-        format!("{}  {}  {project}", card.key.as_str(), card.stage.as_str()),
+        format!(
+            "{}  {}  {}",
+            card.key.as_str(),
+            card.stage.as_str(),
+            card.project
+        ),
     ];
     lines.push(if card.workers.is_empty() {
         "no worker".to_owned()
@@ -234,7 +233,7 @@ pub(super) fn describe_card(card: &CardLine, note: Option<&CardNote>) -> Vec<Str
     lines
 }
 
-/// Returns a card's row, its title with its project code as the tag.
+/// Returns a card's row, its title with its project folder as the tag.
 fn card_item(index: usize, card: &CardLine) -> Item {
     let text = if card.title.is_empty() {
         card.key.as_str().to_owned()
@@ -244,16 +243,9 @@ fn card_item(index: usize, card: &CardLine) -> Item {
     Item {
         id: card.key.as_str().to_owned(),
         text,
-        tag: project_code(card).to_owned(),
+        tag: card.project.clone(),
         target: Target::Card(index),
     }
-}
-
-/// Returns the project code a card key starts with, such as `DEMO` for
-/// `DEMO-KB-001`.
-fn project_code(card: &CardLine) -> &str {
-    let key = card.key.as_str();
-    key.split_once("-KB-").map_or(key, |(code, _)| code)
 }
 
 /// Returns the card's newest `next:` Log line, else a step from its
