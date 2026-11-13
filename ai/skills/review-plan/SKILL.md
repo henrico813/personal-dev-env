@@ -25,8 +25,8 @@ execution instead.
 When this command is invoked:
 
 1. If a plan path, PR number or URL, commit, commit range, branch, a
-   diff, or uncommitted changes are provided, read the change fully and
-   begin.
+   diff, or uncommitted changes are provided, read the whole change and
+   begin. Read a plan as Step 1 says.
 2. If none is provided, ask for it and stop.
 
 ## Arguments
@@ -37,7 +37,8 @@ Take the task from the user's request or command arguments.
 
 ### Step 1: Read and Understand the Change
 
-1. Read the complete change under review.
+1. Read the complete change under review. For a plan, read every
+   part as Step 1 of the `create-plan` skill says.
 2. Read directly referenced requirements, identify affected domains, and load
    matching skills before broader repository review.
    Load `code-documentation` when the change touches source code or
