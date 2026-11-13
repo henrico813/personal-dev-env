@@ -136,6 +136,10 @@ for people and skills that used the Python one.
   left open without `handoff`: it writes OLD's review handoff and
   records a handoff, so `clean` closes OLD once it is idle and
   `next --start-reviews` then starts its review.
+- `launch NAME HANDOFF --model MODEL` is new. It starts a worker
+  from its handoff file in the tab or workspace the sidebar rules
+  pick, moves a ready card to active first, and records the handoff
+  on the card and in `notes.md`.
 
 ## The sidebar and the screen
 

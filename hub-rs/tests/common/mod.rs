@@ -428,7 +428,8 @@ impl Herdr for &InMemoryHerdr {
 
 /// The `card` command, as the `Cards` trait, with the board, the
 /// stages, the ready cards and what `card show` gives in memory. It
-/// records each note it is asked to add and each session it links.
+/// records each note it is asked to add, each session it links and
+/// each card it moves to active.
 #[derive(Default)]
 pub struct InMemoryCards {
     /// Each card's stage, as `card list` gives it.
@@ -455,6 +456,11 @@ pub struct InMemoryCards {
     /// When set, `list_cards` and `read_card` fail with this message,
     /// as `card` does without a vault.
     pub read_error: Option<String>,
+    /// The key of each `move_to_active` call.
+    pub moves: RefCell<Vec<String>>,
+    /// When set, `move_to_active` fails with this message and records
+    /// nothing, as `card` does past the work limit.
+    pub move_error: Option<String>,
 }
 
 impl InMemoryCards {
@@ -519,6 +525,14 @@ impl Cards for InMemoryCards {
         if let Some(on_link) = &self.on_link {
             on_link();
         }
+        Ok(())
+    }
+
+    fn move_to_active(&self, key: &CardKey) -> Result<(), CardError> {
+        if let Some(message) = &self.move_error {
+            return Err(CardError::Failed(message.clone()));
+        }
+        self.moves.borrow_mut().push(key.as_str().to_owned());
         Ok(())
     }
 }

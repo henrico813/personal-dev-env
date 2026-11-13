@@ -10,6 +10,7 @@ pub mod clean;
 pub mod cli;
 pub mod flag;
 pub mod handoff;
+pub mod launch;
 pub mod next;
 pub mod reports;
 pub mod send;

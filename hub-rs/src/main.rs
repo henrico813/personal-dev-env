@@ -13,11 +13,13 @@ use hub::board;
 use hub::commands::at::{AtRequest, Recipients};
 use hub::commands::auto::AutoApproval;
 use hub::commands::cli::{self, AutoRunArg, AutoStep, Cli, Command, RunArg, WatchStep};
+use hub::commands::launch::LaunchRequest;
 use hub::commands::next::NextOptions;
 use hub::commands::reports::{CardChoice, ReadRequest};
 use hub::commands::send::SendRequest;
 use hub::commands::{
-    Outcome, alive, at, auto, brief, clean, flag, handoff, next, reports, send, sidebar, status,
+    Outcome, alive, at, auto, brief, clean, flag, handoff, launch, next, reports, send, sidebar,
+    status,
 };
 use hub::external::cards::CardCli;
 use hub::external::herdr::HerdrCli;
@@ -254,6 +256,23 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
             let poll = read_poll_interval()?;
             let cwd = read_current_folder()?;
             handoff::run_handoff(&tools, &run, name, handoff, &cwd, &now, poll)
+        }
+        Command::Launch {
+            run,
+            name,
+            handoff,
+            model,
+            workspace,
+        } => {
+            let run = find_run(run)?;
+            let request = LaunchRequest {
+                name: name.clone(),
+                handoff: handoff.clone(),
+                model: model.clone(),
+                workspace: workspace.clone(),
+                cwd: read_current_folder()?,
+            };
+            launch::run_launch(&tools, &run, &request, &now)
         }
         Command::Adopt { run, old } => handoff::run_adopt(&tools, &find_run(run)?, old, &now),
         Command::Clean { run, dry_run } => {
