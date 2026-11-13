@@ -31,12 +31,12 @@ Follow the repository's documented style first. Otherwise use these defaults.
    such as `20 passed`. For an evaluation, give one concrete example
    with and without the change, and its limits. Add one line on what
    was not done, if anything. End Testing with a checks list in a
-   fenced code block. Its first line reads `Checks`. Each line after
-   it covers one review, test or try, and starts with `pass`, `fail`
-   or `not run`. A try is a run of the changed behavior where it is
-   deployed. A `not run` line gives the reason. Mark a check `pass`
-   or `fail` only when it ran. Never refer to commits the squash
-   removes.
+   fenced code block. A try runs the changed behavior on an installed
+   or deployed copy. The block's first line reads `Checks`. Each line
+   after it covers one review, test or try, and starts with `pass`,
+   `fail` or `not run`. A `not run` line gives the reason. Mark a
+   check `pass` or `fail` only when it ran. Never refer to commits
+   the squash removes.
 6. Leave out branch-only commit hashes, meaningless test counts, private
    tracker references, unexplained project terms, and AI attribution.
    Never name a private machine, the user's employer or work, private
