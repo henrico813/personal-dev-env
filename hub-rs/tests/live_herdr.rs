@@ -99,8 +99,8 @@ fn herdr_cli_starts_prompts_and_closes_tab() {
 
 /// Reopening starts OpenCode with `--session ID`. A launcher that drops
 /// the flag starts an empty session, so Herdr must show the same ID
-/// after the start. In the user's live check 1, the user also compares
-/// the model and effort in the reopened pane, which no test can see.
+/// after the start. When run by hand, the user also compares the model
+/// and effort in the reopened pane, which no test can see.
 #[test]
 #[ignore = "needs a scratch Herdr session"]
 fn herdr_cli_resumes_session_by_id() {

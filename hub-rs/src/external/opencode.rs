@@ -265,12 +265,13 @@ fn count_trusted_context(steps: impl IntoIterator<Item = TokenStep>) -> Option<u
     context
 }
 
-/// Returns working while a tool part runs, or while the newest row
-/// changed in the last 2 minutes. Returns finished after a succeeded
-/// `idle` row. Returns stopped otherwise. An unfinished step alone is
-/// not working, because a killed session keeps one forever. A long
-/// quiet time alone is not stopped, because a parent waiting on a
-/// subagent changes nothing for minutes while its tool part runs.
+/// A newest `idle` row gives finished for a succeeded outcome and
+/// stopped for any other, even a fresh one. Other rows give working
+/// while a tool part runs or they changed in the last 2 minutes, and
+/// stopped otherwise. An unfinished step alone is not working,
+/// because a killed session keeps one forever. A long quiet time
+/// alone is not stopped, because a parent waiting on a subagent
+/// changes nothing for minutes while its tool part runs.
 fn judge_activity(newest: &MessageRow, now_ms: i64) -> ActivityWord {
     if newest.kind == "idle" {
         return if newest.data["outcome"] == "succeeded" {

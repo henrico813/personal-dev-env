@@ -429,8 +429,9 @@ pub(crate) fn is_tab_still_free(
     planned: &[Pane],
 ) -> Result<bool, HubError> {
     let (panes, quiet_shells) = read_tab_panes(tools, tab_id)?;
-    // A quiet shell where the user then started an agent changes its
-    // pair, so the tab stays with the user's new session.
+    // A shell where the user has since started an agent now counts
+    // as an agent pane, so the tab no longer matches the plan and
+    // stays.
     let list_tab_panes = |list: &[Pane]| -> BTreeSet<(String, bool)> {
         list.iter()
             .filter(|pane| pane.tab_id == tab_id)

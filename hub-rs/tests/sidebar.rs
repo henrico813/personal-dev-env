@@ -59,8 +59,8 @@ mod gather {
 
     /// `hub handoff`, `hub adopt` and `hub auto now` gather, so the
     /// hubs sit together at the top of the sidebar. Herdr refuses a
-    /// block that names a workspace twice or goes before one of its own
-    /// members. Without that refusal, a bad block would leave the hubs
+    /// block that names a workspace twice or goes before one of its
+    /// own members, and that refusal is what would leave the hubs
     /// below the workers.
     #[test]
     fn run_gather_moves_hub_workspaces_to_top() {
