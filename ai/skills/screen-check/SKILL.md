@@ -2,8 +2,9 @@
 name: screen-check
 description: Runs a terminal program on a hidden tmux screen at phone
   size, presses its keys and reads the screen back as JSON, so an
-  agent sees its own change before handing it over. Covers TUIs, the
-  programs inside Herdr popups, and CLI programs. Use after changing
+  agent sees its own change before handing it over. The skill covers
+  TUIs, the programs inside Herdr popups, and CLI programs. Use after
+  changing
   anything a person sees in a terminal, instead of asking the user to
   test it. Not for web pages or browsers.
 ---
