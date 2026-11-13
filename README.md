@@ -135,6 +135,7 @@ Vibe binaries plus repo-managed AI config.
 | Skill lessons | `skill-lessons/` | `~/.local/bin/skill-lessons` (client and full) | Saves your corrections as lessons in the installed copy of a skill; see the [skill-lessons README](skill-lessons/README.md) |
 | Hub | `hub-rs/` | `~/.local/bin/hub` (full only) | Shows, messages, parks and tidies the Herdr sessions a hub session runs; see the [hub README](hub-rs/README.md) |
 | prs | `prs/` | `~/.local/bin/prs` (full only) | Reads your open pull requests on a phone; see [GitHub Pull Request Reviews](chezmoi/README.md#github-pull-request-reviews) |
+| pde-check | `chezmoi/` | `~/.local/bin/pde-check` (client and full) | Runs test and lint commands, saves each command's output to a log, and prints a summary of at most 10 lines. Run `pde-check` with no arguments to see how to use it |
 
 Shared configuration lives in `chezmoi/`, including local-file mappings for the complete `ai/` source tree and checksummed remote externals.
 

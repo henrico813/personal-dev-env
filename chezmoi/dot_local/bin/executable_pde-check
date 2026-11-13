@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# Run test and lint commands and print a summary of at most 10 lines, so
+# an agent reads the result instead of the whole output.
+#
+#   pde-check [-o OUT_DIR] COMMAND...
+#   pde-check 'go test ./...' 'go vet ./... && shellcheck run.sh'
+#
+# Each COMMAND runs with sh -c in the current folder. Its output goes to
+# OUT_DIR/test<N>.log, where N is the command's place in the list.
+# Without -o, OUT_DIR is a new temporary folder. pde-check also writes
+# the printed summary to OUT_DIR/summary.txt. It exits 1 when a command
+# fails and 2 on a usage error.
+set -u
+
+usage() {
+    cat >&2 <<'EOF'
+usage: pde-check [-o OUT_DIR] COMMAND...
+Runs each COMMAND with sh -c and prints a summary of at most 10 lines.
+Quote each COMMAND. Give 1 to 6 commands. To run more, join them with
+&& inside one quoted COMMAND.
+  -o OUT_DIR  folder for the logs and summary.txt; default is a new
+              temporary folder
+example: pde-check 'go test ./...' 'go vet ./... && shellcheck run.sh'
+EOF
+    exit 2
+}
+
+out=
+while getopts o: opt; do
+    case $opt in
+        o) out=$OPTARG ;;
+        *) usage ;;
+    esac
+done
+shift $((OPTIND - 1))
+# Six command lines, three failure lines and "done" fill the 10 lines.
+if (($# == 0 || $# > 6)); then
+    usage
+fi
+if [[ -z $out ]]; then
+    out=$(mktemp -d) || exit 1
+fi
+mkdir -p "$out" || exit 1
+# Remove the last run's summary, so a run that stops early leaves none.
+rm -f "$out/summary.txt"
+
+lines=()
+failed=()
+n=0
+for cmd in "$@"; do
+    n=$((n + 1))
+    log=$out/test$n.log
+    # A command gets no input, so one that reads stdin cannot hang.
+    sh -c "$cmd" </dev/null >"$log" 2>&1
+    rc=$?
+    result=pass
+    if ((rc != 0)); then
+        result=fail
+        failed+=("$log")
+    fi
+    # Newlines become spaces, so each command takes one summary line.
+    shown=${cmd//$'\n'/ }
+    if ((${#shown} > 80)); then
+        shown="${shown:0:80} [cut]"
+    fi
+    lines+=("$result (exit $rc) $log: $shown")
+done
+
+# Add up to three failure lines from failed logs, or a log's last lines
+# when none match.
+room=3
+for log in "${failed[@]}"; do
+    ((room > 0)) || break
+    # Drop test start and pass lines, since test names can hold words like error.
+    found=$(grep -a -n -E 'FAIL|[Ee]rror|panic|warning' "$log" |
+        grep -a -v -E '\.\.\. ok$|--- PASS|=== RUN' |
+        head -n "$room" | tr -d '\0')
+    if [[ -z $found ]]; then
+        found=$(grep -a -n '' "$log" | tail -n "$room" | tr -d '\0')
+    fi
+    [[ -n $found ]] || continue
+    while IFS= read -r line; do
+        lines+=("${log##*/}:${line:0:160}")
+        room=$((room - 1))
+    done <<<"$found"
+done
+lines+=("done")
+
+printf '%s\n' "${lines[@]}" >"$out/summary.txt" || exit 1
+cat "$out/summary.txt"
+((${#failed[@]} == 0)) || exit 1
