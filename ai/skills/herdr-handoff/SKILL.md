@@ -85,11 +85,11 @@ the handoff file through Tell the user:
    [references/handoff-template.md](references/handoff-template.md).
 3. Copy into it every result that lives only in this conversation,
    such as subagent reports and review findings. The new session
-   cannot see them, so they are lost otherwise. When the handoff
-   pauses the work and no session takes it now, also list each
-   uncommitted file, unpushed branch and worktree you leave, and each
-   question waiting on the user, word for word. Leave the files as
-   they are. When this session works for a hub, first run
+   cannot see them, so they are lost otherwise. Copy each question
+   waiting on the user into every handoff, word for word. When the
+   handoff pauses the work and no session takes it now, also list
+   each uncommitted file, unpushed branch and worktree you leave. Leave
+   the files as they are. When this session works for a hub, first run
    `hub inbox <your agent name>` and copy every message it prints into
    the handoff, since no one sends those messages again.
 4. Never write a secret into it. Name where the secret lives instead,
