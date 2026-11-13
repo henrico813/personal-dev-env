@@ -3,7 +3,7 @@ name: screen-check
 description: Runs a terminal program on a hidden tmux screen at phone
   size, presses its keys and reads the screen back as JSON, so an
   agent sees its own change before handing it over. Covers TUIs, the
-  programs inside Herdr pop-ups, and CLI output. Use after changing
+  programs inside Herdr popups, and CLI programs. Use after changing
   anything a person sees in a terminal, instead of asking the user to
   test it. Not for web pages or browsers.
 ---
@@ -34,9 +34,9 @@ command reaches another session's panes.
 Each shell call starts fresh, so begin each one with
 `S=~/.agents/skills/screen-check/scripts/screen.py`.
 
-1. Start the program on a new screen. Pick a name of lowercase words,
-   such as the branch's words. The default size, 40x16, is the
-   user's phone:
+1. Start the program on a new screen. Pick a name of lowercase
+   letters, digits and hyphens, such as the branch's words. The
+   default size, 40x16, is the user's phone:
 
    ```bash
    python3 $S start menu-archive --cwd "$PWD" -- go run ./cmd/app
@@ -51,7 +51,7 @@ Each shell call starts fresh, so begin each one with
    `wait` prints the screen as JSON. It exits 1 when the text does
    not appear within `--timeout` seconds, default 10, or when the
    program exits first. Never use `sleep` instead.
-3. Reach the screen you changed. `type` sends text as written, and
+3. Reach the screen you changed. `type` sends text as written.
    `keys` sends tmux key names, such as `Enter`, `Escape`, `Tab`,
    `Up`, `Down`, `BSpace` and `C-c`. Run `wait` after each step:
 
@@ -81,25 +81,28 @@ Each shell call starts fresh, so begin each one with
    ```
 
 For CLI output, `start` the command the same way and `wait` for its
-last line. The screen keeps the output after the command exits, and
-`exit_code` in the JSON holds its exit code.
+last line. The screen keeps the output after the command exits. The
+`exit_code` field in the JSON holds the command's exit code.
 
-For a Herdr pop-up, start the program the pop-up runs, at the pop-up's
-size. Herdr's own frame, sidebar and bars are not on the screen, so
-say in your report that they were not checked.
+For a Herdr popup, start the program the popup runs, at the popup's
+size. Herdr's own frame, sidebar and bars are not on the screen. Say
+in your report that they were not checked.
 
-When the project already has screen tests, such as Bubble Tea's
-`teatest` or Ratatui's `TestBackend`, also add or update one for the
-changed screen, by the `behavior-focused-testing` skill. A screen
-check shows what a person sees; a test keeps it that way.
+Some projects already have screen tests, such as Bubble Tea's
+`teatest` or Ratatui's `TestBackend`. In that case, also add or
+update one for the changed screen, by the `behavior-focused-testing`
+skill. A screen check shows what a person sees. A test keeps the
+screen that way.
 
 ## Output format
 
+Keep the report to the length the `status-updates` skill sets.
 Report each screen you checked with these parts:
 
 - The command, its size, and the keys that reached the screen.
-- The final screen's `lines`, in a code block, so the user sees it
-  without running anything.
+- For one screen only, its final `lines` inline in a code block, so
+  the user sees it without running anything. Put any other screens
+  where `status-updates` says detail goes.
 - What you checked on it, and what you fixed after a check failed.
 - What the check could not show, such as Herdr's frame or how the
   phone's keyboard covers the bottom rows.
@@ -130,7 +133,8 @@ Report each screen you checked with these parts:
   waited for.
 - `python3 $S show <name>` exits 2 for every screen you started, so
   none is still running.
-- The report holds each final screen in a code block.
+- The report shows one final screen in a code block and links any
+  other screens.
 
 ## References
 

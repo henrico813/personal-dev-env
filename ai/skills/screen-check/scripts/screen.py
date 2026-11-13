@@ -25,8 +25,9 @@ SESSION = "screen"
 PHONE_SIZE = "40x16"
 NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]*")
 SIZE_PATTERN = re.compile(r"([1-9][0-9]*)x([1-9][0-9]*)")
-# tmux 3.7 blanks a dead pane's screen, so the pane stays open after
-# the program exits. $0 is the tmux path and "$@" the program.
+# tmux 3.7 blanks a dead pane's screen, so HOLD_OPEN keeps the pane's
+# shell alive after the program exits. $0 is the tmux path and "$@" is
+# the program.
 HOLD_OPEN = (
     '"$@"; "$0" set-option -g @exit_code "$?"; while :; do sleep 3600; done'
 )
@@ -209,8 +210,8 @@ def read_screen(name: str, ansi: bool = False) -> dict:
         ansi: Keep colors and styles in the lines as escape codes.
 
     Returns:
-        A dict with ``width``, ``height``, ``cursor``, ``exited``,
-        ``exit_code`` and one string per row in ``lines``. tmux drops
+        A dict with ``name``, ``width``, ``height``, ``cursor``,
+        ``exited``, ``exit_code`` and one string per row in ``lines``. tmux drops
         spaces at the end of each line.
 
     Raises:
