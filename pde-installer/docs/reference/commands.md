@@ -100,6 +100,13 @@ record names another branch. The line names that branch, its commit and its
 install time, so a branch install under test is never replaced silently. The
 install still runs, and `--dry-run` prints the warning too.
 
+After every component is in place, install looks for processes of the current
+user that still run a binary it deleted from `HOME`. When `hub-watch.service`
+runs a replaced `hub`, install restarts it with `systemctl --user try-restart`.
+For each other such process it prints a warning line on stderr with the PID and
+process name, so you can restart it yourself. A failed check or restart only
+warns. `--dry-run` prints the planned check.
+
 The removed `update`, `config`, and `--profile` interfaces have no aliases.
 
 Installation also configures Git's template directory at
