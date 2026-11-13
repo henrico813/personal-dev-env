@@ -81,7 +81,9 @@ The user's rules for every run:
    approved, the card goes under `## Left out` with that reason.
 3. Sort every ready card into one of three groups: work-pc, hands or
    alone. Always run this sort, even for one card. Send it to the
-   cheap model with the command below. `<model>` is the first cheap
+   cheap model with the command below. Checking that `opencode`
+   exists is not the sort: run the command even when you expect it
+   to fail. `<model>` is the first cheap
    model in `model-routing`'s Models list, such as
    `openai/gpt-6-luna`:
 
