@@ -1,0 +1,4 @@
+{{- /* Renders empty outside full, which alone runs hubs and pde-gh-write, so chezmoi removes the link there. */ -}}
+{{- if has "development" .pde.tiers -}}
+{{ env "PDE_REPO_ROOT" }}/sweep/pde_sweep.py
+{{ end -}}
