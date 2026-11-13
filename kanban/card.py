@@ -19,7 +19,7 @@ Usage::
     card new PROJECT --from FILE [--user]  FILE gives title, kind, sections
     card new PROJECT TITLE --adopt STAGE --user [--why TEXT]
                                        [--session [AGENT]]
-    card list [--stage S] [--project P] [--kind K]
+    card list [--stage S] [--project P] [--kind K] [--tabs]
     card board                         counts and the review queue
     card show KEY [--section S]
     card grep PATTERN [--section S] [--stage S] [--project P]
@@ -275,6 +275,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     listing = commands.add_parser("list", help="one line per card")
     add_filters(listing)
+    listing.add_argument(
+        "--tabs",
+        action="store_true",
+        help="whole lines for scripts: key, stage, kind, project, title",
+    )
     listing.set_defaults(run=run_list)
 
     board = commands.add_parser("board", help="counts and review queue")
@@ -651,6 +656,10 @@ def run_list(args: argparse.Namespace, projects: Path) -> int:
     cards = filter_cards(load_all_cards(projects), args)
     cards.sort(key=lambda card: (rank_stage(card.stage), card.key))
     for card in cards:
+        if args.tabs:
+            fields = [card.key, card.stage, card.kind, card.project]
+            print(*fields, card.title, sep="\t")
+            continue
         print(fit(f"{card.key} {card.stage:<8} {card.kind:<8} {card.title}"))
     print(f"{len(cards)} cards")
     return 0
