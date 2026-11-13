@@ -141,7 +141,16 @@ func readCheckoutRevision(repoRoot string, runner run.Runner, args ...string) st
 }
 
 func writeInstallRecord(home string, record installRecord) error {
-	path := installRecordPath(home)
+	return writeStateJSON(
+		home,
+		installRecordPath(home),
+		record,
+	)
+}
+
+// Saves a value as indented JSON at a path within HOME. The file is replaced
+// whole, so a reader never sees half a record.
+func writeStateJSON(home, path string, value any) error {
 	if err := fsutil.GuardHome(
 		home,
 		path,
@@ -155,7 +164,7 @@ func writeInstallRecord(home string, record installRecord) error {
 		return err
 	}
 	data, err := json.MarshalIndent(
-		record,
+		value,
 		"",
 		"  ",
 	)

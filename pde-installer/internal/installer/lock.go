@@ -15,7 +15,17 @@ type installerLock struct {
 }
 
 func acquireInstallerLock(home string) (*installerLock, error) {
-	path := filepath.Join(home, ".local", "state", "pde", "installer.lock")
+	return acquireStateLock(
+		home,
+		"installer.lock",
+		"another installer is already running",
+	)
+}
+
+// Locks the named file in ~/.local/state/pde. Fails at once with the busy
+// message when another process holds the lock.
+func acquireStateLock(home, name, busy string) (*installerLock, error) {
+	path := filepath.Join(home, ".local", "state", "pde", name)
 	if err := fsutil.GuardHome(home, path); err != nil {
 		return nil, err
 	}
@@ -24,14 +34,14 @@ func acquireInstallerLock(home string) (*installerLock, error) {
 	}
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		return nil, fmt.Errorf("open installer lock: %w", err)
+		return nil, fmt.Errorf("open %s: %w", name, err)
 	}
 	if err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		_ = file.Close()
 		if errors.Is(err, unix.EWOULDBLOCK) {
-			return nil, fmt.Errorf("another installer is already running")
+			return nil, errors.New(busy)
 		}
-		return nil, fmt.Errorf("lock installer state: %w", err)
+		return nil, fmt.Errorf("lock %s: %w", name, err)
 	}
 	return &installerLock{file: file}, nil
 }
