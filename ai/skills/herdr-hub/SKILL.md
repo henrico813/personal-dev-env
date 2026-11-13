@@ -67,9 +67,11 @@ run folder. Send again any message in it that still matters, with
 
 Run `hub status` at the start and on each turn. Read its counts line
 and its `unread` line each time; never list the run folder. Tell the
-user once what each `you` session waits on. When such a session has
-never reported to you, bring it under the hub at once: send it the
-new rules that Rules gives for a worker the user hands you.
+user what each `you` session waits on, and keep that in every later
+message until the session no longer waits on the user, as
+`status-updates` says. When such a session has never reported to
+you, bring it under the hub at once: send it the new rules that Rules
+gives for a worker the user hands you.
 
 Before you send a worker new build work, check its CTX in
 `hub status`. A worker near 150k writes its handoff first, and the
@@ -144,6 +146,10 @@ are off by default. Most lines end with your own context, such as
   file, since the session waits on you while it stays.
 - `unsure <name>: <reason>`: a held message may have arrived. Handle
   it as an `unsure` send, as Send to a session says.
+- `timed message to <N> sessions: <path>`: a message stored with
+  `hub at` has reached its time and is held for N sessions. `<path>` is
+  the `--file` given to `hub at`. A session that is gone or turns it
+  down gets its own `not sent` or `unsure` line.
 - `hand off now: hub at <N>k`: your context passed 150k. Hand off
   the hub now, as Hand off the hub says.
 - `board over its limit: N/M`: the cards in active and review passed
@@ -200,7 +206,8 @@ tools, so you never read half a report.
 - A question: answer it yourself when the user's standing decisions,
   the repository's usual practice or the run's design document
   settles it. Bring the user only a question whose answer changes
-  what the user sees, with your recommendation.
+  what the user sees. File it, with your recommendation, as
+  Questions for the user says.
 - A request to go on with a routine step: tell the worker to go
   ahead. A merge or pull request edit is never a routine step, as
   Merges says.
@@ -244,6 +251,20 @@ the pane with
 delete the `.sending` file it names and send again only if the
 message did not arrive.
 
+To send a message later today, such as when a rule ends at 20:00, store
+it with `hub at`:
+
+    hub at --run "<run folder>" 20:00 --to <name>... --file <path>
+    hub at --run "<run folder>" 20:00 --all --file <path>
+
+`--all` means every live worker found at that time. A live worker is a
+session on a card or one that has reported, and never a hub. `hub at`
+prints
+`at 20:00 to <names>: <stored file>`, and exits 2 for a time already
+past today. Delete the stored file to cancel the message. At that time,
+`hub next` holds the message for each session and sends it as it sends
+other held messages.
+
 ## Waiting on the user
 
 When a session waits on the user, flag it, so the sidebar shows
@@ -253,16 +274,18 @@ When a session waits on the user, flag it, so the sidebar shows
 
 A session waits on the user when it is `blocked` at an approval or a
 question in its pane, or when you bring the user a question from its
-report. A blocked session's mark goes away by itself once it works
-again. Unflag any other session when you send it the user's
-answer:
+report. A question from a report also gets its entry and card note,
+as Questions for the user says. A blocked session's mark goes away by
+itself once it works again. Unflag any other session when you send it
+the user's answer:
 
     hub unflag <name>
 
 When a session is `blocked`, read what it asks with
 `herdr agent read <name> --source recent-unwrapped --lines 40`. Tell
-the user once which session waits, what it asks, and your
-recommendation. Never answer it yourself.
+the user which session waits, what it asks, and your recommendation.
+Keep this in every later message until the session no longer waits.
+Never answer the question yourself.
 
 ## Cards
 
@@ -360,9 +383,10 @@ that report. Never ask the user to close a worker.
 
 Keep each question that waits on the user as one entry in
 `<run folder>/decisions.md`, in full, so no message names it by
-number alone:
+number alone. Start its title with the key of the card it blocks,
+when it blocks one:
 
-    ## New model overnight
+    ## DEMO-KB-007: New model overnight
 
     Deploy the new model tonight so you can test it in the morning?
 
@@ -370,14 +394,33 @@ number alone:
     - B. Wait until you return.
 
     Recommended: A, since you want to test it in the morning.
-    If no reply: A.
+    If no reply: nothing deploys; the worker goes on with its tests.
     Depends on: your rule of 2026-11-09 to test it in the morning.
+
+The `If no reply:` line, which `hub brief` requires, says what stays
+blocked and what the worker does meanwhile. The work the entry asks
+about never goes ahead without the user's answer, and no agent
+answers an entry for the user.
+
+No `hub` command keeps these entries yet, so also mark the entry's
+card. `hub status` then shows the card's sessions as `you`:
+
+    card note <key> "<entry title>" --needs-you
+
+An entry that blocks no card, such as a session review's question
+about which changes to make, has no key and no card note.
+
+While the note is open, a session that handed off that card also
+shows `you`. It waits on the same entry, not a new one. Close its tab
+yourself once the session that took over is running.
 
 Add `Depends on:` when the question rests on an earlier decision, and
 name who made it. Whenever a message to the user mentions an entry,
-show the entry in full. Delete the entry once the user answers, and
-record the answer in `rules.md` when it stands for later. Bring the
-user everything that waits on them with:
+show the entry in full. When the user answers, delete the entry, and
+record the answer in `rules.md` when it stands for later. Run
+`card note <key> "<the answer>" --answered` only when no other entry
+title starts with that key. Bring the user everything that waits on
+them with:
 
     hub brief --run "<run folder>"
 
@@ -475,7 +518,9 @@ Close the merge worker's tab once you have read its summary.
 ## Hand off the hub
 
 When you hand the hub to a new session, write its handoff with
-`herdr-handoff`, holding only the run's state, then start it with:
+`herdr-handoff`, holding only the run's state and the output of
+`hub brief --run "<run folder>"`, word for word. Tell the new hub to
+show that output in its first reply. Then start it with:
 
     hub handoff --run "<run folder>" <name> <handoff file>
 

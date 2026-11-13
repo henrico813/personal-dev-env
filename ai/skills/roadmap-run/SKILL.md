@@ -68,11 +68,16 @@ runs them once per plan version. Before an agent reviews a plan
 version, the local model runs the suites on it once, as
 build.md's Run the suites once per plan version says. Reviewers read
 that summary and run at most the one test a finding needs.
+Every job a script checks goes to the local model first, as
+build.md's Send script-checked jobs to the local model says.
 
 1. **Plan.** Write the PR's design digest with build.md's Write a
    design digest, then delegate the plan with `create-plan`. The
-   planner and the plan reviewers read the digest, not the design
-   notes.
+   planner and the plan reviewers ask the digest questions with
+   build.md's Ask a digest a question, and never read the design
+   notes. A planner stops once its context passes 150k and reports
+   what is left. Start the next planner with prompts.md's Next part
+   message until the plan is whole.
    The plan lists each place it differs from the design under
    `### Design edits to apply` in its `## Notes for agents`. A child
    of an unbuilt parent is written against a commit of the parent's
@@ -130,8 +135,9 @@ that summary and run at most the one test a finding needs.
    stops when the branch's tree differs from the plan, on bad PR text,
    a failed check, the wrong branch, a parent that moved or a branch
    already pushed. It squashes onto the parent, pushes, and stops.
-   Deploy the pushed commit and try it, as pull-request Guardrail 4
-   says. In a brief for an agent that deploys and tries it, name the
+   Deploy the pushed commit and try it with build.md's Check a
+   deploy, as pull-request Guardrail 4 says. In a brief for an agent
+   that deploys and tries it, name the
    folder in every command, as in `git -C <worktree>`. Take
    `git status --short` of the main checkout both before that agent
    starts and after it ends, and move into its run folder only the
@@ -235,8 +241,8 @@ entries parked.
 - A question that blocks one PR parks only that PR; keep building the
   others. Put non-blocking questions in the roadmap page as "your
   call".
-- Sessions of one run send the hub a question, a blocker, or finished
-  work it waits on, such as a PR opening or a step finishing.
+- Sessions of one run report to the hub a question, a blocker, or
+  finished work it waits on, such as a PR opening or a step finishing.
   Progress-only news, such as a passed rehearsal, goes only in the
   session's own status file. The hub answers from the user's standing
   decisions first. When none applies, it picks the simplest option
@@ -278,9 +284,10 @@ entries parked.
   files, results you have not read, and open questions. A new
   session resumes from that file, the plan and the rules file.
 - A session writes progress-only news, such as "rehearsal passed", to
-  its own `status.txt`. It prompts the hub with a question, a blocker,
-  or finished work the hub waits on, such as a PR opening or a step
-  finishing. Each prompt makes the hub re-read its whole context.
+  its own `status.txt`. It reports a question, a blocker, or finished
+  work the hub waits on, such as a PR opening or a step finishing, as
+  the `herdr-handoff` skill says. It never prompts the hub, since each
+  prompt makes the hub re-read its whole context.
 - When your context grows past about 150k tokens, after it is
   summarized, and always after the build script, use the
   `herdr-handoff` skill to offer the user a new session. Keep the run
