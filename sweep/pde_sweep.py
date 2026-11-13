@@ -463,7 +463,7 @@ def is_request_lost(record: dict[str, Any], now: datetime) -> bool:
     an hour. A record with no readable time counts as old.
 
     Args:
-        record: One request file, as pdev2/internal/approval writes it.
+        record: One request file, as pdev/internal/approval writes it.
         now: The current time.
 
     Returns:

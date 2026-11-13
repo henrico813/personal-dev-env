@@ -417,7 +417,7 @@ func newCommittedManager(t *testing.T) (manager Manager, repoRoot, logPath strin
 func writeBuildSources(t *testing.T, repoRoot string) {
 	t.Helper()
 	for _, source := range []string{
-		"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2", "glimmer", "hub-rs", "prs",
+		"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev", "glimmer", "hub-rs", "prs",
 	} {
 		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
 	}
