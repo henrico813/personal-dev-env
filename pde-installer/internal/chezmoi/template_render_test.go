@@ -45,6 +45,9 @@ func TestIgnoreListMatchesEachProfile(t *testing.T) {
 		"enable_prune_timer.sh",
 		".config/systemd/user/hub-watch.service",
 		"enable_hub_watch.sh",
+		".config/systemd/user/pde-sweep.service",
+		".config/systemd/user/pde-sweep.timer",
+		"enable_sweep_timer.sh",
 	}
 	terminalIgnores := []string{
 		".config/alacritty",

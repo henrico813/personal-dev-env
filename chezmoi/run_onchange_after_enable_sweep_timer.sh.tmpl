@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Turns on the hourly timer that lists lost work.
+# The hashes below make chezmoi run this again when a unit file changes.
+# service {{ include "dot_config/systemd/user/pde-sweep.service" | sha256sum }}
+# timer {{ include "dot_config/systemd/user/pde-sweep.timer" | sha256sum }}
+set -euo pipefail
+
+# systemctl --user only works when a systemd user manager is running, which
+# Docker smoke tests lack.
+if ! command -v systemctl >/dev/null 2>&1 || ! systemctl --user show-environment >/dev/null 2>&1; then
+    exit 0
+fi
+systemctl --user daemon-reload
+systemctl --user enable --now pde-sweep.timer
