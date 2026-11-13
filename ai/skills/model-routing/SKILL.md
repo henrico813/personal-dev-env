@@ -65,8 +65,8 @@ level:
 - An orchestrator is a worker session that directs other agents,
   such as one that hands plan steps to the local model and review
   jobs to the review model. It runs at low reasoning. It is not a
-  hub. A session the user started, such as one running
-  `roadmap-run`, keeps the model and level the user started it on.
+  hub. A session the user started, such as an auto run's
+  front hub, keeps the model and level the user started it on.
 
 Neither the cheap nor the review model writes code or directs other
 agents.

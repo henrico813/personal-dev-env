@@ -1,0 +1,12 @@
+[Unit]
+Description=List lost pull request requests, cards, worktrees and branches
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/pde-sweep
+# The sweep runs hub, card, git and gh. The gh in ~/.local/bin is a guard
+# that runs the real gh, which aqua installs.
+Environment=PATH=%h/.local/bin:%h/.local/share/aquaproj-aqua/bin:/usr/local/bin:/usr/bin:/bin
+# Oneshot services have no start timeout, and a hung run would block later ones.
+TimeoutStartSec=30min
+Nice=10

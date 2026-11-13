@@ -429,8 +429,9 @@ pub(crate) fn is_tab_still_free(
     planned: &[Pane],
 ) -> Result<bool, HubError> {
     let (panes, quiet_shells) = read_tab_panes(tools, tab_id)?;
-    // A quiet shell where the user then started an agent changes its
-    // pair, so the tab stays with the user's new session.
+    // A shell where the user has since started an agent now counts
+    // as an agent pane, so the tab no longer matches the plan and
+    // stays.
     let list_tab_panes = |list: &[Pane]| -> BTreeSet<(String, bool)> {
         list.iter()
             .filter(|pane| pane.tab_id == tab_id)
@@ -681,8 +682,7 @@ mod tests {
 
     /// A review worker must park, so its session can reopen when review
     /// comments come. A done card's worker must close instead. Swapping the
-    /// two closes reviewed work with no way back, or keeps a record no
-    /// card needs. A parked record whose card is done is forgotten.
+    /// two closes reviewed work with no way back.
     #[test]
     fn plan_tidy_actions_parks_review_closes_accepted() {
         let review = (
@@ -693,27 +693,33 @@ mod tests {
             },
         );
         let accepted = make_closing_worker("demo-kb-001-impl", "w1:t1");
-        let parked_done = {
-            let (mut facts, verdict) = make_closing_worker("demo-kb-003-auto", "w1:t3");
-            facts.agent = None;
-            facts.parked = Some(make_parked_record("demo-kb-003-auto"));
-            (facts, verdict)
-        };
         let panes = [
             make_pane("w1:demo-kb-007-impl", "w1:t-demo-kb-007-impl", true),
             make_pane("w1:demo-kb-001-impl", "w1:t1", true),
         ];
 
-        let actions = plan_for(&[review, accepted, parked_done], &panes, None, &[]);
+        let actions = plan_for(&[review, accepted], &panes, None, &[]);
 
         assert_eq!(
             actions,
             [
                 "park demo-kb-007-impl DEMO-KB-007",
                 "close w1:t1 demo-kb-001-impl: DEMO-KB-001 accepted",
-                "forget demo-kb-003-auto",
             ]
         );
+    }
+
+    /// A parked record whose card is done must go, or the parked folder
+    /// keeps a record no card can use again.
+    #[test]
+    fn plan_tidy_actions_forgets_parked_done_record() {
+        let (mut facts, verdict) = make_closing_worker("demo-kb-003-auto", "w1:t3");
+        facts.agent = None;
+        facts.parked = Some(make_parked_record("demo-kb-003-auto"));
+
+        let actions = plan_for(&[(facts, verdict)], &[], None, &[]);
+
+        assert_eq!(actions, ["forget demo-kb-003-auto"]);
     }
 
     /// Most workers have a plain shell beside the agent. If a shell at

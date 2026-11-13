@@ -1,6 +1,6 @@
 //! Runs `hub status`. Read `run_status` first. `build_status_rows` and
 //! the two format functions are pure and hold every rule of the
-//! output, so text and JSON cannot drift apart.
+//! output, so tests check them without Herdr.
 
 use jiff::Zoned;
 use jiff::tz::TimeZone;
@@ -22,8 +22,9 @@ use crate::shared::{HubError, Tools};
 /// # Errors
 ///
 /// `HubError::Herdr` when Herdr cannot list the agents, since no row
-/// is left to print. A failed `card` or OpenCode database read becomes
-/// a problem line instead.
+/// is left to print. A failed read of the run, parked or request
+/// folder also stops it. A failed `card` or OpenCode database read
+/// becomes a problem line instead.
 pub fn run_status(
     tools: &Tools<'_>,
     run: &RunFolder,
@@ -373,8 +374,8 @@ mod tests {
         }
     }
 
-    /// The design's example status, one session in each state, given
-    /// out of order.
+    /// A status view with one session in each state, given out of
+    /// order.
     fn make_example_view() -> StatusView {
         let mut docs_fix = make_row_facts("docs-fix", Some(152_000), None);
         docs_fix.messages.held = 1;

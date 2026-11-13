@@ -129,12 +129,12 @@ Step 2's message, for a session with one proposal and one lesson:
     11.2M tokens read, peak context about 171,400, 120 steps.
 
     Proposals
-    1. Print only failing tests in roadmap-run's test step, in a
+    1. Print only failing tests in auto-run's test step, in a
        skill PR. Saves about 1.4M tokens (estimate: 4,000 tokens
        read again by 90 steps, 4 times).
 
     Lessons to save, pick by number
-    2. Print test failures, never whole test logs -> roadmap-run
+    2. Print test failures, never whole test logs -> auto-run
 
     Local models: a script could run the 5 test runs.
 

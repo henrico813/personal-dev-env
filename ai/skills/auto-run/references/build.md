@@ -1,24 +1,24 @@
-# Commands for a roadmap run
+# Commands for building a pull request
 
 The snippets work in zsh and bash. Variables, arrays and functions
-are lost between tool calls, so each PR keeps them in a run folder:
+are lost between tool calls, so each PR keeps them in a PR folder:
 `env` holds the variables and loads `fns.sh`. Start every tool call
-after the setup with `. <run folder>/env`, using the path the setup
+after the setup with `. <PR folder>/env`, using the path the setup
 printed. Each snippet stops with `exit 1` on the first failure; never
 run the lines after a failed one by hand.
 
-The setup copies this skill's scripts into the run folder: `fns.sh`,
+The setup copies this skill's scripts into the PR folder: `fns.sh`,
 `build.sh`, `ship.sh`, `plants.sh`, `suites.sh` and
-`deploy-check.sh`. Run each as the
-section below says. You need not read them: each prints a short
-result and logs the rest in the run folder.
+`deploy-check.sh`. Run each as the section below says. You need not
+read them: each prints a short result and logs the rest in the PR
+folder.
 
 ## Contents
 
 - Send script-checked jobs to the local model
 - Write a design digest
 - Ask a digest a question
-- Set up a PR's run folder
+- Set up a PR's folder
 - Run the suites once per plan version
 - Build the PR
 - Apply a fix round
@@ -43,18 +43,18 @@ cheap model only when the local job fails its check, as
 ## Write a design digest
 
 Before a PR's first planner starts, write its design digest in the
-run's shared folder, beside `rules.md`. A script writes it, so it
+run folder, beside `common.md`. A script writes it, so it
 drops no passage that names a term. List every design note, the
 design-edits note among them, and each term the PR adds or changes,
 such as a file, type, function, command, flag or error code. Name
 each section to copy whole, such as the Dictionary. Write the snippet
-below, filled in, to `<shared folder>/digest-<PR name>.sh`. Hand the
+below, filled in, to `<run folder>/digest-<PR name>.sh`. Hand the
 job to the local model with the command
-`bash <shared folder>/digest-<PR name>.sh` and the summary file
-`<shared folder>/design-<PR name>.md.summary`:
+`bash <run folder>/digest-<PR name>.sh` and the summary file
+`<run folder>/design-<PR name>.md.summary`:
 
 ```sh
-G='<shared folder>/design-<PR name>.md'
+G='<run folder>/design-<PR name>.md'
 rm -f "$G.summary" || exit 1
 E='<design-edits note, or the one design note>'
 set -- '<design note>' '<design note>'
@@ -93,10 +93,11 @@ around it with `sed -n`. To add a term, run the whole snippet again.
 
 Planners and reviewers ask the local model about a digest instead of
 reading the whole digest. They read whole only the passages their
-work changes. The rules file names the local and cheap models:
+work changes. Pick the local and cheap models from the ones that
+answered, in common.md's The run:
 
 ```sh
-python3 ~/.agents/skills/roadmap-run/scripts/digest_reader.py \
+python3 ~/.agents/skills/auto-run/scripts/digest_reader.py \
   ask --model '<local model>' '<design digest>' '<question>'
 ```
 
@@ -110,23 +111,24 @@ run on a stronger model than the cheap one. `model-routing`'s When the
 check fails lets a stronger model take the digest job over, which is
 why you read the passage instead of asking again.
 
-## Set up a PR's run folder
+## Set up a PR's folder
 
 The folder is under `~/.local/state`, so it survives a reboot.
 `PARENT` is the branch this PR stacks on: the default branch, or the
 parent PR's branch. `P` is the plan file. The setup runs
 `planner key` on it before making the folder and stops when the file
 has no key. `K` holds that key, such as `abc-12`, and goes into the
-run folder's name and `BR`, so one search for the key finds the
-branch, its worktree and the run folder. `BR` is this PR's branch,
+PR folder's name and `BR`, so one search for the key finds the
+branch, its worktree and the PR folder. `BR` is this PR's branch,
 `<type>/$K-<words>`: a `git-messages` commit type, the key, then
 lowercase words joined by hyphens, at most 48 characters after the
 type. Words after the key are required: `feat/abc-12-approvals-file`,
 never `feat/abc-12`. When the repository sets `pde.branchPattern`,
 set `BR` to a branch that starts with the ticket key the plan names,
-in the form the pattern asks for, with words after it, and ask the
-user when the plan names none; `K` and the run folder still come
-from `planner key`. `CHECK` is the plan's test and
+in the form the pattern asks for, with words after it, and report a
+question to the hub when the plan names none; `K` and the PR folder
+still come from `planner key`. `RUN` is the auto run's folder, where
+ship.sh logs each new request it files. `CHECK` is the plan's test and
 lint command, with any race detector or type checker the language
 skills ask for. Keep each value in single quotes, since vault paths
 have spaces; use double quotes for a value that holds a single quote
@@ -136,22 +138,24 @@ or `$K`.
 S=${XDG_STATE_HOME:-$HOME/.local/state}
 P='<plan file>'
 K=$(planner key "$P") || exit 1
-mkdir -p "$S" && D=$(mktemp -d "$S/roadmap-run.$K.XXXXXX") || exit 1
+mkdir -p "$S" && D=$(mktemp -d "$S/auto-run.$K.XXXXXX") || exit 1
 printf 'D=%q\n. "$D/fns.sh"\n' "$D" > "$D/env"
-cp "$HOME/.agents/skills/roadmap-run/scripts/"*.sh "$D/" || exit 1
+cp "$HOME/.agents/skills/auto-run/scripts/"*.sh "$D/" || exit 1
 . "$D/env"
 keep R '<repository root>'
 keep P "$P"
 keep B '<full commit from the plan>'
 keep REMOTE '<remote, such as origin>'
 keep PARENT '<parent branch>'
+keep RUN '<run folder>'
 keep BR "<type>/$K-<words>"
 keep CHECK '<test and lint command>'
 keep M "$HOME/.agents/skills/git-messages/scripts/msg"
-echo "run folder: $D"
+echo "PR folder: $D"
 ```
 
-Write the run folder's path on the roadmap page next to the PR.
+Write the PR folder's path on the item's page next to the PR. The
+item's page is the roadmap page or the card, as pr-loop.md says.
 
 ## Run the suites once per plan version
 
@@ -161,35 +165,39 @@ run no test suites or linters, since one script runs them once per
 plan version. Reviewers read its summary and run at most the one test
 a finding needs. Hand the suites run as a local job to the local
 model, as `model-routing` picks. Give it the command
-`bash <run folder>/suites.sh` and the summary file
-`<run folder>/suites.txt`. Then name that file in each reviewer's
+`bash <PR folder>/suites.sh` and the summary file
+`<PR folder>/suites.txt`. Then name that file in each reviewer's
 brief.
 
-suites.sh exports the plan's tree through its last step, commits it
-on `B` without touching any checkout, and runs `CHECK` on it in a
-scratch clone with the pull-request skill's `merge-check.sh`. The
-first line of `suites.txt` is `plan: <hash>`, the plan file's
-`git hash-object`; the summary holds only for that version of the
-plan, and only when its last line is `done`. Each `exit` line gives
-the exit code and the last output line; the full output is in
-`<run folder>/suites/<key>/test1.log`, where the key hashes the plan
+suites.sh exports the plan's tree through its last step and commits
+it on `B` without touching any checkout. It then runs `CHECK` on that
+commit with `pde-check`, in a scratch clone where tests get their own
+`XDG_STATE_HOME`. The first line of `suites.txt` is `plan: <hash>`,
+where the hash is the plan file's `git hash-object`. The summary is
+valid only for that version of the plan, and only when its last line
+is `done`. The second line is a `pass` or `fail` line with the exit
+code and the log's path. Up to three lines from a failed log come
+next, each starting with the log name and line number, such as
+`test1.log:42:`. The full output is in
+`<PR folder>/suites/<key>/test1.log`, where the key hashes the plan
 and `CHECK`. A rerun for the same plan version and `CHECK` prints the
 saved summary and runs nothing.
 
 ## Build the PR
 
 Write `$D/MSG<step>` for each `### <step>.` heading in the plan,
-following `git-messages`. Run Move a PR's base right before, since the
-parent branch may have moved since the plan was written. Then run:
+following `git-messages`. Right before you run build.sh, run Move a
+PR's base, since the parent branch may have moved since the plan was
+written. Then run:
 
 ```sh
-bash <run folder>/build.sh
+bash <PR folder>/build.sh
 ```
 
 It prints `built <branch> in <worktree>: <n> changed lines`, or one
 line `STOPPED at <step>: <reason>`. The full output is in `build.log`
-in the run folder. To resume, fix the cause and run
-`bash <run folder>/build.sh`; it skips each step it finished for this
+in the PR folder. To resume, fix the cause and run
+`bash <PR folder>/build.sh`; it skips each step it finished for this
 version of the plan.
 
 - `check`: start a new planner with planner's errors from
@@ -197,7 +205,7 @@ version of the plan.
 - `lint`: fix the message, then rerun.
 - Any other step means a stale plan or a broken tool. Do not retry or
   edit files: stop this PR and its children, put the error on the
-  roadmap page as a blocking question, and keep building other
+  item's page as a blocking question, and keep building other
   stacks.
 
 A revised plan makes build.sh repeat every step. Once the branch holds
@@ -211,7 +219,7 @@ commit. Read the step list again, since the revision may add steps.
 Write `$D/MSGfix` first:
 
 ```sh
-. <run folder>/env
+. <PR folder>/env
 { [ -n "$W" ] && [ "$W" != null ] && cd "$W"; } ||
   { echo "no worktree: '$W'"; exit 1; }
 python3 "$M" fmt "$D/MSGfix" >/dev/null || exit 1
@@ -232,20 +240,22 @@ step.
 
 ## Put back the bugs
 
-This runs every `plant` line in the plan and in the run folder's
+This runs every `plant` line in the plan and in the PR folder's
 reports, one at a time, and writes one `pass`, `FAIL`, `stale` or
-`broken` line per `plant` line to `$D/plants.txt`, ending with `done`. Their
-output goes to `$D/plants.log`. A passed line is skipped only while
-the plan is unchanged. A plan change runs every line again:
+`broken` line per `plant` line, or a skip line for one that passed
+before, to `$D/plants.txt`, ending with `done`. Their output goes
+to `$D/plants.log`. A passed line is
+skipped only while the plan is unchanged. A plan change runs every
+line again:
 
 ```sh
-bash <run folder>/plants.sh
+bash <PR folder>/plants.sh
 ```
 
 A `FAIL` line means no test caught that bug. A `stale` line means
 its file is gone or its old text no longer appears once, because a
 fix round changed it. When a `stale` line's bug still matters, write
-a new `plant` line for it in a `.md` file in the run folder. A
+a new `plant` line for it in a `.md` file in the PR folder. A
 `broken` line's test command could not run, such as a misspelled
 command; fix the line the same way. Send only `FAIL` lines to a
 planner.
@@ -257,13 +267,13 @@ so it can give the final pass's real numbers. ship.sh squashes only
 before the branch's first push:
 
 ```sh
-bash <run folder>/ship.sh
+bash <PR folder>/ship.sh
 ```
 
 It prints the PR's status line, or one line
 `STOPPED at <step>: <reason>`. The full output is in `ship.log` in
-the run folder. To resume, fix the cause and run
-`bash <run folder>/ship.sh`. It checks the tree and lints the PR
+the PR folder. To resume, fix the cause and run
+`bash <PR folder>/ship.sh`. It checks the tree and lints the PR
 text on every run, and skips each other step it finished for this
 version of the plan.
 
@@ -272,39 +282,42 @@ version of the plan.
 - `text`: fix `$D/FILE`, then rerun.
 - `push`: follow the reason. A failed check is never minor. When the
   parent moved, run Carry a parent's commit to a child, then rerun.
-- The stop after `push`: deploy and try the pushed commit with Check
-  a deploy, add the
-  one-line result to Testing in `$D/FILE`, write the same line,
-  starting with the full hash from `git -C "$W" rev-parse HEAD`,
-  to `$D/tested`, then rerun.
+- The stop after `push`: try the pushed commit with Check a deploy,
+  add the one-line result to Testing in `$D/FILE`, write the same
+  line, starting with the full hash from
+  `git -C "$W" rev-parse HEAD`, to `$D/tested`, then file the request
+  as pr-loop.md's Ship says.
 - `request`: the reason gives the PR request's result, below.
 
-Put `bash <run folder>/request.sh` on the roadmap page. Rerunning it
-reads the result:
+Put `bash <PR folder>/ship.sh` on the item's page. Rerunning it
+reads the request's result, and never files again after a decline:
 
 - `0`, or `already ran <id>, exit 0`: the PR is open.
 - `3`: it waits for the user; move on, and keep it in your updates
   as the `pull-request` skill says. ship.sh still prints the status
   line.
 - `4`, `declined <id>`: park this PR and its children.
-- `6`, `interrupted <id>`: it is never retried; ask the user.
+- `6`, `interrupted <id>`: it is never retried; ask the hub.
 - `2`: the command was refused; fix it, then rerun ship.sh, which
   writes `request.sh` again.
-- Anything else is from `gh`; put its output on the roadmap page.
+- Anything else is from `gh`; put its output on the item's page.
 
-A request expires four hours after it is filed. Rerunning the script
-after that files a fresh request. ship.sh keeps the request's first
-text, reruns the saved script while the request waits, and skips it
-once the PR is open, so a later round never files a second PR
-request.
+A request expires four hours after it is filed. Rerunning ship.sh
+after that files a fresh request. Within four hours, a rerun files
+no new request: it waits on the same one, and the phone gets a
+second question only when the first one ended without an answer.
+ship.sh keeps the request's first text, reruns the saved script
+while the request waits, and skips it once the PR is open, so a
+later round never files a second PR request. After a decline or an
+interruption, ship.sh files nothing and says to ask the hub.
 
 ## Check a deploy
 
 Write each try a script can check as a `try` line in
-`<run folder>/deploy.checks`, and delete any old
-`<run folder>/deploy.txt`. Hand the job to the local model with
-the command `bash <run folder>/deploy-check.sh` and the summary file
-`<run folder>/deploy.txt`:
+`<PR folder>/deploy.checks`, and delete any old
+`<PR folder>/deploy.txt`. Hand the job to the local model with
+the command `bash <PR folder>/deploy-check.sh` and the summary file
+`<PR folder>/deploy.txt`:
 
 ```sh
 try '<name>' '<command>' '<text the output must hold>'
@@ -314,7 +327,7 @@ Each command runs with `sh` in one scratch folder that all the lines
 share, so a later line can use what an earlier one made. Name every
 other folder in full, as in `git -C <worktree>`. Leave out the text
 when the exit code is enough. Put longer setup, such as a fake
-program, in a file in the run folder, and run it from a `try` line.
+program, in a file in the PR folder, and run it from a `try` line.
 A try that needs judgment, such as an agent following a changed
 skill, gets its model from `model-routing` instead.
 
@@ -322,7 +335,7 @@ skill, gets its model from `model-routing` instead.
 `pass` or `FAIL` line per `try` line. The script stops at the first
 `FAIL`. It writes the last line, `done`, only after every line
 passed, so a failed try never ends in `done`. Each command's output
-is in `<run folder>/deploy.log`.
+is in `<PR folder>/deploy.log`.
 
 - `done` last: write the one-line result from the `pass` lines.
 - A `FAIL` line last: the PR failed its try. That is the PR's result,
@@ -337,7 +350,7 @@ After the first push, each change adds a commit, and ship.sh stops at
 `push`. Update `$D/FILE`, then push the commit with this:
 
 ```sh
-. <run folder>/env
+. <PR folder>/env
 python3 "$M" fmt "$D/FILE" >/dev/null || exit 1
 python3 "$M" lint --pr "$D/FILE" || exit 1
 tail -n +3 "$D/FILE" > "$D/BODY" || exit 1
@@ -354,38 +367,38 @@ git merge-base --is-ancestor "$REMOTE/$PARENT" HEAD ||
 git push -u "$REMOTE" "HEAD:refs/heads/$BR" || exit 1
 ```
 
-Then update the PR text with
-`pde-gh-write pr edit NUMBER --body-file "$D/BODY"`, and print the
-status line. While the PR request waits, there is no PR to edit yet;
-update its text once the PR opens. ship.sh's status line then names
-`pr edit` as the next step.
+Print the status line. Once the hub says the user reviewed the PR,
+update its text with
+`pde-gh-write pr edit NUMBER --body-file "$D/BODY"`. While the PR
+request waits, there is no PR to edit yet. ship.sh's status line then
+names `pr edit` as the next step.
 
 ## Print a PR's status line
 
-Write the roadmap's status line for a PR from this output, never by
-hand. Set NEXT to the PR's next step, such as `skill reviews` or
-`rerun request.sh`, so a new session can resume from the roadmap
-page. `status_line` also writes the line as the first line of
-`$D/status.txt` and keeps the lines below it, so the status line that
-ship.sh prints reaches the file too:
+Write a PR's status line from this output, never by hand. Set NEXT
+to the PR's next step, such as `code review` or `rerun ship.sh`,
+so a new session can resume from the item's page. `status_line` also
+writes the line as the first line of `$D/status.txt` and keeps the
+lines below it, so the status line that ship.sh prints reaches the
+file too:
 
 ```sh
-. <run folder>/env
+. <PR folder>/env
 keep NEXT '<next step>'
 status_line
 ```
 
 After the PR's first push, `local equals pushed: no` means a new
-commit is not pushed: push it before anything else, and never deploy
+commit is not pushed: push it before anything else, and never try
 it. Before that first push, ship.sh pushes the built PR.
 
 ## Base a child on an unbuilt parent
 
 A child planned before its parent is built needs a base commit with
-the parent's planned tree. In the parent's run folder:
+the parent's planned tree. In the parent's PR folder:
 
 ```sh
-. <parent's run folder>/env
+. <parent's PR folder>/env
 pt=$(plan_tree "$P" "$R" "$B" "$(tail -n 1 "$D/steps")") || exit 1
 git -C "$R" commit-tree "$pt" -p "$B" -m "Planned tree of $(basename "$P")"
 ```
@@ -395,14 +408,14 @@ points at it, so `git gc` may delete it after two weeks.
 
 ## Move a PR's base
 
-Run this in the PR's run folder right before build.sh, for every PR.
+Run this in the PR's folder right before build.sh, for every PR.
 The parent branch may have moved since the plan was written, and a
 child's parent has just shipped. It fetches the parent branch, sets
 the plan's `Base commit:` line to the parent's tip, saves that
 commit, and runs `planner check`:
 
 ```sh
-. <run folder>/env
+. <PR folder>/env
 git -C "$R" fetch -q "$REMOTE" || exit 1
 nb=$(git -C "$R" rev-parse --verify "$REMOTE/$PARENT^{commit}") ||
   exit 1
@@ -420,13 +433,13 @@ with the errors.
 
 ## Carry a parent's commit to a child
 
-After a parent pushes a new commit, run this in each child's run
+After a parent pushes a new commit, run this in each child's PR
 folder, in stack order, pushing each child before the next. It makes
 a merge commit whose tree `planner export` writes from the child's
 plan on the pushed parent:
 
 ```sh
-. <child's run folder>/env
+. <child's PR folder>/env
 { [ -n "$W" ] && [ "$W" != null ] && cd "$W"; } ||
   { echo "no worktree: '$W'"; exit 1; }
 [ "$(git symbolic-ref -q --short HEAD)" = "$BR" ] ||

@@ -193,7 +193,7 @@ tool.
 
 The templates use the word orchestrator for the agent that builds the
 design's pull requests in order, such as a session that runs the
-`roadmap-run` skill. In the templates, the user is the person who
+`auto-run` skill. In the templates, the user is the person who
 asked for the design. That person reviews the doc and its pull
 requests, and often runs the program too. When other people run the
 program, name them on the page instead of writing "the user".
@@ -248,7 +248,7 @@ then reads only the signatures its work touches.
 An agent reads the index and only the parts its task needs. Write
 each part so it stands alone. A part names each interface it uses and
 links to the part that defines it. Step 5's review and the
-`roadmap-run` skill's design check still read every part.
+`auto-run` skill's design check still read every part.
 
 Filling every template does not make the doc complete. Before
 writing, read

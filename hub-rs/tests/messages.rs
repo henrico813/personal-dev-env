@@ -355,7 +355,7 @@ fn run_next_sends_held_messages_oldest_first() {
 /// Herdr shows it working. Text typed into that permission prompt
 /// answers it, so the next message must wait for a later check.
 #[test]
-fn run_next_holds_second_message_until_later_check() {
+fn run_next_holds_message_until_later_check() {
     let mut test_tools = TestTools::new();
     test_tools.herdr.agents = vec![make_agent("docs-fix", AgentStatus::Blocked)];
     send(&test_tools.tools(), &test_tools, "docs-fix", "First.").unwrap();
@@ -475,8 +475,8 @@ fn run_next_skips_message_claimed_elsewhere() {
     send(&test_tools.tools(), &test_tools, "docs-fix", "First.").unwrap();
     send(&test_tools.tools(), &test_tools, "notes-fix", "Second.").unwrap();
     let sends = test_tools.run_path().join("sends");
-    // While docs-fix's prompt runs, another process claims notes-fix's
-    // message.
+    // While the first session's prompt runs, another process claims
+    // the second session's message.
     test_tools.herdr.on_prompt = Some(Box::new(move || {
         let held = sends.join("notes-fix.20261111-221400.1.held");
         let _ = fs::rename(&held, held.with_extension("sending"));
@@ -665,7 +665,7 @@ fn run_next_prints_failed_held_message() {
 /// printed message must count as delivered, or `hub next` sends it
 /// again to a session that already has it.
 #[test]
-fn run_inbox_marks_held_messages_delivered() {
+fn run_inbox_prints_held_and_marks_delivered() {
     let mut test_tools = TestTools::new();
     test_tools.herdr.agents = vec![make_agent("docs-fix", AgentStatus::Blocked)];
     send(&test_tools.tools(), &test_tools, "docs-fix", "First.").unwrap();
