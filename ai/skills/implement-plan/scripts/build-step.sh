@@ -26,8 +26,8 @@ finish() {
   exit "$2"
 }
 
-. "$(dirname "$0")/../../roadmap-run/scripts/fns.sh" ||
-  finish "fail: cannot load roadmap-run's fns.sh" 2
+. "$(dirname "$0")/../../auto-run/scripts/fns.sh" ||
+  finish "fail: cannot load auto-run's fns.sh" 2
 repo=$(git rev-parse --show-toplevel) || finish "fail: not a worktree" 2
 
 planner check "$plan" --repo "$repo" --json-errors \
