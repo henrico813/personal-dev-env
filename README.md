@@ -107,6 +107,7 @@ Vibe binaries plus repo-managed AI config.
 | Session review | `ai/skills/session-review/` | `~/.agents/skills/session-review/` | Shared workflow skill for reviewing a session's token use, lessons and local model jobs |
 | Conclude session | `ai/skills/conclude-session/` | `~/.agents/skills/conclude-session/` | Shared workflow skill for closing out a session after one pick from the user |
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/` | Shared test-writing guidance |
+| Screen check | `ai/skills/screen-check/` | `~/.agents/skills/screen-check/` | Agents run a changed TUI or CLI on a hidden phone-size screen and check it |
 | Model routing | `ai/skills/model-routing/` | `~/.agents/skills/model-routing/` | Shared guidance on which model runs each job and how local jobs are checked |
 | Code documentation | `ai/skills/code-documentation/` | `~/.agents/skills/code-documentation/` | Proportional source and test explanations |
 | Plain direct English | `ai/skills/plain-direct-english/` | `~/.agents/skills/plain-direct-english/` | Clear sentences in comments, docs and other prose, and breakdowns of hard ones |

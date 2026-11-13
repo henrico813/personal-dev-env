@@ -10,6 +10,7 @@ This directory is the neutral repo-managed source for PDE AI tooling.
 - `pi/agent/` holds Pi settings and any Pi-specific resources.
 
 Shared skills include `git-messages` for commit and PR text, `pull-request` for PR procedure, `behavior-focused-testing` for automated tests,
+`screen-check` for checking a changed terminal screen at phone size,
 `code-documentation` for proportional source explanations,
 `comment-review` for putting code comments in front of the user,
 `plain-direct-english` for clear sentences in comments and docs,
