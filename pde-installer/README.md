@@ -29,8 +29,10 @@ pde-installer list
 pde-installer version
 ```
 
-The installer does not clone or update the checkout. It finds the checkout from
-the current directory, `--repo-root`, or `PDE_REPO_ROOT`.
+`install` does not clone or update the checkout. It finds the checkout from
+the current directory, `--repo-root`, or `PDE_REPO_ROOT`. `pde-installer update`
+fast-forwards a checkout on `main` to the newest `main` and installs it; see the
+[command reference](docs/reference/commands.md#pde-installer-update).
 
 Pick the profile for the machine:
 

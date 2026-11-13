@@ -2,7 +2,9 @@
 
 ## Checkout Selection
 
-Every command except `version` needs the repository root. Resolution order is:
+Every command except `version` and `update` needs the repository root.
+`update` finds its checkout as its section below says. The others resolve the
+root in this order:
 
 1. `--repo-root PATH`
 2. `PDE_REPO_ROOT`
@@ -107,7 +109,7 @@ For each other such process it prints a warning line on stderr with the PID and
 process name, so you can restart it yourself. A failed check or restart only
 warns. `--dry-run` prints the planned check.
 
-The removed `update`, `config`, and `--profile` interfaces have no aliases.
+The removed `config` and `--profile` interfaces have no aliases.
 
 Installation also configures Git's template directory at
 `~/.config/git/template`. Future `git init` and `git clone` operations receive
@@ -164,6 +166,52 @@ writes nothing. A detached checkout records `HEAD` as its branch, and a field
 that git cannot read records `unknown`. The record does not show uncommitted
 changes in the checkout. `version` needs no checkout and works from any folder.
 With no record it exits with an error that says to run `pde-installer install`.
+
+### `pde-installer update`
+
+Fast-forwards the checkout to the newest `main` and installs it. A timer or a
+script can run it from any folder, with no terminal.
+
+It finds the checkout from `--repo-root`, then `PDE_REPO_ROOT`, then
+`install_path` in `~/.config/pde/config.json`, which every install saves. It
+never uses the current directory.
+
+It fetches `main` from the remote that the checkout's `main` tracks, or from
+`origin`. A GitHub SSH address is fetched over HTTPS, so no SSH key is needed.
+Set `update_url` in `config.json` to fetch from another address. A fetch that
+fails or takes more than two minutes is tried once more.
+
+It skips the update, and changes nothing, when the checkout is not on `main`,
+has uncommitted changes to tracked files, or has commits that `main` does not
+have. Untracked files do not block it. It never stashes, resets, or forces.
+
+When `install.json` already names the fetched commit on `main`, it stops there.
+Otherwise it builds `pde-installer` from the checkout into
+`~/.local/state/pde/update-stage`, runs `install` with that build, and only
+then moves the build to `~/.local/bin/pde-installer`. A failed build or install
+keeps the old installer, and a failed install puts back what it changed. The
+checkout stays at the new commit, so the next run tries the install again.
+
+The install runs with no terminal. When an apt package is missing, `sudo`
+fails at once instead of waiting for a password; run `pde-installer install` by
+hand then. Install also skips its question about restarting OpenCode servers.
+
+Each run writes `~/.local/state/pde/update.json`:
+
+```json
+{
+  "result": "installed",
+  "commit": "3f9c2e1a...",
+  "reason": "",
+  "checked_at": "2026-11-13T08:30:00Z"
+}
+```
+
+`result` is `installed`, `current` when that `main` was already installed,
+`skipped`, or `failed`, and `reason` says why for the last two. On `installed`
+and `current`, `update` prints `update <result>: main is at <commit>`.
+Otherwise it exits with an error that gives the result and reason. A second
+update started while one runs exits at once with an error.
 
 ## Global Option
 
