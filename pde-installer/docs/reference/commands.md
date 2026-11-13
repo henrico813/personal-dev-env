@@ -57,6 +57,26 @@ or installing Herdr after PDE, lists Herdr's entry after the PDE entries, so
 both would report, and an uninstall leaves the wrapper without Herdr's plugin to
 load.
 
+The modifier also lists `./pde-usage` last in `plugins`, once. In an OpenCode
+session, that plugin adds a short line above a parent session's prompt with
+the number of subagents and their API price, such as `3 agents · $1.94 cost`.
+Setting `PDE_USAGE_LINE=left`, or the plugin option `line: "left"`, shows the
+fullest subagent's context left instead. When a subagent finishes, a green
+line above it names the subagent, its tokens, run time and price for 10
+seconds. Inside a subagent's view, two lines above the prompt show its model,
+a context bar, its tokens, price and whether it still runs. The Usage panel in
+the sidebar shows the group totals, how many subagents still run, their tokens
+and API price, and the Claude plan limit that the OpenCode Claude plugin saved
+last, with its reset time on its own line. A phone-width screen hides the
+sidebar, so `/usage` opens a screen with the same totals, and esc goes back.
+The price uses the rates listed for the subagent's provider, or else the rates
+Anthropic or OpenAI list for the model. The rates come from OpenCode's model
+list, then from the models.dev catalog, which the plugin downloads once each
+time OpenCode starts. The price is not what a plan or local model bills, and a
+model with no listed rate shows `$0 cost`. The plan line covers only the window
+the latest Claude reply reported, five-hour or weekly, with a share only when
+that reply carried one. The plugin does nothing in Claude Code.
+
 Rendering is static and does not emit terminal palette escape sequences. An SSH
 client keeps its local terminal palette while a remote PDE prompt and tmux
 session use the remote host's selected RGB colors.
