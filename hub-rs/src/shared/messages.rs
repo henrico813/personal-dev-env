@@ -746,10 +746,10 @@ mod tests {
                 expected: Delivery::Now,
             },
             Case {
-                name: "claude-idle",
+                name: "claude-working",
                 target: Target::Live(Agent {
                     kind: AgentKind::Claude,
-                    ..make_agent("docs-fix", AgentStatus::Idle)
+                    ..make_agent("docs-fix", AgentStatus::Working)
                 }),
                 older_waiting: 0,
                 expected: Delivery::Now,
