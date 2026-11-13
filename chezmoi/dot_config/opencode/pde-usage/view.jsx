@@ -1,18 +1,25 @@
-// Draws the lines from usage.js in OpenCode's session sidebar and in the two
-// lines above the prompt. OpenCode compiles this JSX itself and redraws the lines
-// when its session data changes.
+// Draws usage for one OpenCode session in a short line above the prompt, in a
+// subagent's own row, in a sidebar panel and on the screen /usage opens, and
+// adds a notice line above the prompt when a subagent finishes. The lines are
+// read as the JSX renders, so they follow the run while a screen is open.
+// OpenCode compiles this JSX itself, and the plugin entry in tui.js calls
+// addUsageSlots once at startup.
+import { createSignal } from "solid-js";
 import {
-  describePlanUsage,
-  describePromptLines,
+  describeFinishNotice,
+  describeGroupLines,
+  describeShortLine,
   describeSubagentLines,
-  describeSubagents,
   listSubagents,
   priceSubagents,
   readJsonFile,
 } from "./usage.js";
 
-/** Adds the usage panel to the sidebar and the usage lines above the prompt. */
-export function addUsageSlots(api, { catalogModels, planFile }) {
+const NOTICE_MS = 10_000;
+
+/** Adds the usage slots, the /usage screen and the finish notices to OpenCode. */
+export function addUsageSlots(api, { catalogModels, planFile, lineMode }) {
+  const [notices, setNotices] = createSignal([]);
   const sessions = api.data.session;
   // OpenCode's Context panel reads model limits from the same list. Its
   // entries come first, so the catalog only fills in missing prices.
@@ -20,60 +27,155 @@ export function addUsageSlots(api, { catalogModels, planFile }) {
     ...(api.data.location.model.list(sessions.get(sessionID)?.location) ?? []),
     ...catalogModels(),
   ];
-  const withMessages = (id) => {
-    const info = sessions.get(id);
-    return info && { ...info, messages: sessions.message.list(id) ?? [], running: sessions.status(id) === "running" };
+  const withMessages = (sessionID) => {
+    const info = sessions.get(sessionID);
+    return (
+      info && {
+        ...info,
+        messages: sessions.message.list(sessionID) ?? [],
+        running: sessions.status(sessionID) === "running",
+      }
+    );
   };
   const priceFor = (sessionID) =>
     priceSubagents(listSubagents(sessions, sessionID).map(withMessages).filter(Boolean), listModels(sessionID));
-  // The file is small, and reading it on each redraw picks up the Claude
-  // plugin's latest save.
-  const readPlan = () => readJsonFile(planFile);
-  const sidebarLines = (sessionID) => {
-    const priced = priceFor(sessionID);
-    const plan = describePlanUsage(readPlan());
-    const lines = [...(priced.rows.length > 0 ? describeSubagents(priced) : []), ...(plan ? [`Claude plan ${plan}`] : [])];
-    // The first line is the panel's bold title, so an empty panel draws nothing.
-    return lines.length > 0 ? ["Usage", ...lines] : [];
+
+  // The sidebar, screen and finish notices keep the last root session, because a plugin
+  // screen has no session of its own to ask.
+  let rootID;
+  const rootOf = (startID) => {
+    let sessionID = startID;
+    for (let info = sessions.get(sessionID); info?.parentID; info = sessions.get(info.parentID)) {
+      sessionID = info.parentID;
+    }
+    return sessionID;
+  };
+  const rememberRoot = () => {
+    const current = api.ui.router.current();
+    if (current?.type === "session" && current.sessionID) rootID = rootOf(current.sessionID);
+    return rootID;
+  };
+  const goBack = () => {
+    if (rootID) api.ui.router.navigate({ type: "session", sessionID: rootID });
+  };
+
+  // A parent shows finish notices and the short line, a subagent its own row.
+  const composerLines = (sessionID) => {
+    const info = sessionID ? sessions.get(sessionID) : undefined;
+    if (!info) return [];
+    const infoColor = api.theme.text.feedback.info.base;
+    if (info.parentID) {
+      // Pricing only this subagent keeps its lines matched to its own session.
+      const self = priceSubagents([withMessages(sessionID)], listModels(sessionID));
+      return describeSubagentLines(self.rows[0]).map((text) => ({ text, fg: infoColor }));
+    }
+    const line = describeShortLine(priceFor(sessionID), lineMode);
+    return [
+      ...notices().map((text) => ({ text, fg: api.theme.text.feedback.success.base })),
+      ...(line === "" ? [] : [{ text: line, fg: infoColor }]),
+    ];
   };
 
   api.ui.slot({
-    append: "sidebar.content",
+    append: "session.composer.top",
+    // The lines are read inside the JSX, so a new finish notice redraws them.
     render: (props) => (
-      <box>
-        {sidebarLines(props.sessionID).map((line, index) =>
-          index === 0 ? (
-            <text fg={api.theme.text.base}>
-              <b>{line}</b>
-            </text>
-          ) : (
-            <text fg={api.theme.text.muted}>{line}</text>
-          ),
-        )}
+      <box paddingLeft={2} flexDirection="column">
+        {composerLines(props.sessionID).map((line) => (
+          <text fg={line.fg}>{line.text}</text>
+        ))}
       </box>
     ),
   });
-  // A parent session shows its subagents' total, and a subagent its own lines.
-  const linesFor = (sessionID) => {
-    const info = withMessages(sessionID);
-    if (!info) return [];
-    if (!info.parentID) return describePromptLines(priceFor(sessionID), readPlan());
-    return describeSubagentLines(priceSubagents([info], listModels(sessionID)).rows[0]);
-  };
-  // The footer row under the prompt shares its width with OpenCode's spinner,
-  // which cut the line off at phone width, so the lines go above the prompt.
-  // The info color keeps them apart from the chat text.
+
+  // A subagent's own sidebar shows its root's data, so both sessions agree.
   api.ui.slot({
-    append: "session.composer.top",
+    append: "sidebar.content",
     render: (props) => {
-      const lines = props.sessionID ? linesFor(props.sessionID) : [];
-      return lines.length > 0 ? (
-        <box paddingLeft={2}>
+      if (!props.sessionID) return null;
+      const lines = describeGroupLines(priceFor(rootOf(props.sessionID)), readJsonFile(planFile));
+      return lines.length === 0 ? null : (
+        <box paddingLeft={2} flexDirection="column">
+          <text fg={api.theme.text.base}>
+            <b>Usage</b>
+          </text>
           {lines.map((line) => (
-            <text fg={api.theme.text.feedback.info.base}>{line}</text>
+            <text fg={api.theme.text.muted}>{line}</text>
           ))}
         </box>
-      ) : null;
+      );
     },
   });
+
+  // Every text part is read when the screen renders, so the lines follow the
+  // run while the screen is open.
+  const usageLines = () =>
+    describeGroupLines(rootID ? priceFor(rootID) : { rows: [], tokens: 0, dollars: 0 }, readJsonFile(planFile));
+  api.ui.router.register({
+    name: "usage",
+    render: () => (
+      <box flexDirection="column" paddingTop={1} paddingLeft={3}>
+        <text fg={api.theme.text.base}>
+          <b>Subagent usage  (esc back)</b>
+        </text>
+        {usageLines().map((line) => (
+          <text fg={api.theme.text.muted}>{line}</text>
+        ))}
+      </box>
+    ),
+  });
+
+  api.keymap.layer(() => ({
+    mode: "global",
+    commands: [
+      {
+        id: "pde.usage.open",
+        title: "Subagent usage",
+        group: "PDE",
+        palette: true,
+        slash: { name: "usage" },
+        run: () => {
+          rememberRoot();
+          api.ui.router.navigate({ type: "plugin", name: "usage" });
+        },
+      },
+    ],
+  }));
+
+  api.keymap.layer(() => ({
+    mode: "global",
+    priority: 2,
+    enabled: api.ui.router.current()?.type === "plugin" && api.ui.router.current()?.name === "usage",
+    commands: [{ bind: "escape", title: "Back", group: "PDE", run: goBack }],
+  }));
+
+  // Each subagent id to when OpenCode first ran it, so one that already
+  // finished before the plugin started never shows a notice.
+  const startedAt = new Map();
+  // A toast draws over the chat, so finish notices get their own lines above
+  // the prompt and clear after NOTICE_MS.
+  const showNotice = (text) => {
+    setNotices((list) => [...list, text]);
+    setTimeout(() => setNotices((list) => list.filter((item) => item !== text)), NOTICE_MS).unref?.();
+  };
+  const watchSubagents = () => {
+    const root = rememberRoot();
+    if (!root) return;
+    const models = listModels(root);
+    for (const sessionID of listSubagents(sessions, root)) {
+      const info = withMessages(sessionID);
+      if (!info) continue;
+      if (info.running) {
+        if (!startedAt.has(sessionID)) startedAt.set(sessionID, Date.now());
+        continue;
+      }
+      const first = startedAt.get(sessionID);
+      startedAt.delete(sessionID);
+      if (first === undefined) continue;
+      // Pricing only this subagent keeps its row matched to its own session.
+      const row = priceSubagents([info], models).rows[0];
+      showNotice(describeFinishNotice(row, (Date.now() - first) / 1000));
+    }
+  };
+  setInterval(watchSubagents, 1000).unref?.();
 }

@@ -1,7 +1,8 @@
 // Prices subagent tokens at API rates, measures their context and describes
-// the Claude plan limits. view.jsx calls these with OpenCode's session data.
-// Start with priceSubagents, describePromptLines, describeSubagentLines and
-// describeSubagents.
+// the lines OpenCode shows above the prompt, in the sidebar, on the /usage
+// screen and when a subagent finishes. view.jsx calls these with OpenCode's
+// session data. Start with priceSubagents, describeShortLine,
+// describeGroupLines and describeSubagentLines.
 import { readFileSync } from "node:fs";
 
 // Providers whose listed prices are the model makers' own API rates.
@@ -12,11 +13,12 @@ const PLAN_WINDOWS = {
   seven_day_opus: "weekly Opus",
   seven_day_sonnet: "weekly Sonnet",
 };
-const SUBAGENTS_SHOWN = 5;
-const NAME_WIDTH = 34;
+// A narrow screen wraps a longer line and hides the parts at its end.
+const LINE_LIMIT = 30;
 // A phone in Moshi shows about 40 columns, less the row's padding of 2, and a
 // wrapped line splits numbers.
-const LINE_WIDTH = 37;
+const GROUP_LIMIT = 37;
+const PARTS = " · ";
 const CATALOG_URL = "https://models.dev/api.json";
 const CATALOG_TIMEOUT_MS = 10_000;
 
@@ -50,20 +52,96 @@ export function priceSubagents(infos, models) {
 }
 
 /**
- * Returns sidebar lines for priced subagents. Under each name come the model,
- * tokens and price, such as `opus-5-5 412k $1.71`, then `context 88k 44%`.
+ * Returns the one short line above a parent session's prompt, such as
+ * `3 agents · $1.94 cost`, or an empty string when the session has no
+ * subagents. Mode `left` asks what is still available instead of what the run
+ * cost, so it shows context left instead of the cost.
  */
-export function describeSubagents({ rows, dollars }) {
-  const noun = rows.length === 1 ? "subagent" : "subagents";
-  const total = rows.some(isPriced) ? `${formatDollars(dollars)} at API rates` : "price unknown";
-  const lines = [`${rows.length} ${noun}, ${total}`];
-  for (const row of rows.slice(0, SUBAGENTS_SHOWN)) {
-    const price = isPriced(row) ? formatDollars(row.dollars) : "price unknown";
-    lines.push(row.name.slice(0, NAME_WIDTH), `  ${row.model} ${formatTokens(row.tokens)} ${price}`);
-    if (row.context) lines.push(`  context ${formatContext(row.context)}`);
+export function describeShortLine(priced, mode = "spent") {
+  const rows = priced?.rows ?? [];
+  if (rows.length === 0) return "";
+  const parts = [describeCount(rows.length)];
+  if (mode === "left") {
+    const used = largestContext(rows);
+    if (used !== undefined) parts.push(`${100 - used}% context left`);
+  } else {
+    parts.push(formatPrice(priced.dollars));
   }
-  if (rows.length > SUBAGENTS_SHOWN) lines.push(`${rows.length - SUBAGENTS_SHOWN} more`);
+  return cut(parts.join(PARTS), LINE_LIMIT);
+}
+
+/**
+ * Returns the group data for all of a session's subagents together, for the
+ * usage sidebar and the /usage screen. The first line counts the agents and
+ * says who still runs, the second totals tokens and API price, and the third
+ * reports the Claude plan. No subagents still leaves a known plan line, and
+ * nothing else gives an empty list. Each line fits 37 characters.
+ */
+export function describeGroupLines(priced, saved, now = Date.now()) {
+  const rows = priced?.rows ?? [];
+  const lines = [];
+  if (rows.length > 0) {
+    const running = rows.filter((row) => row.running).length;
+    const state = running > 0 ? `${running} running` : "all done";
+    lines.push(cut(`${describeCount(rows.length)}, ${state}`, GROUP_LIMIT));
+    // $0.00 would read as free API use when no subagent has a price.
+    const price = rows.some(isPriced) ? `${formatDollars(priced.dollars)} API cost` : "$0 cost";
+    lines.push(cut(`${formatTokens(priced.tokens)} tokens used · ${price}`, GROUP_LIMIT));
+  }
+  const plan = describePlanUsage(saved, { now });
+  // The reset time gets its own line so a phone-width line keeps it whole.
+  if (plan !== undefined) {
+    const [window, ...rest] = plan.split(", ");
+    lines.push(cut(`Claude plan ${window}`, GROUP_LIMIT));
+    if (rest.length > 0) lines.push(cut(`  ${rest.join(", ")}`, GROUP_LIMIT));
+  } else if (rows.length > 0) lines.push("Claude plan unknown");
   return lines;
+}
+
+/**
+ * Returns the two lines above a subagent's own prompt, such as
+ * `claude-sonnet-4-5 ▓▓▓░░░░░ 40%` and `88k tokens used · $0.42 cost · done`.
+ * `row` is one of priceSubagents' rows.
+ */
+export function describeSubagentLines(row) {
+  if (!row) return [];
+  const percent = row.context?.percent;
+  const share = typeof percent === "number" ? `${percent}%` : "--";
+  const state = row.running ? "running" : "done";
+  return [
+    cut(`${row.model} ${describeContextBar(percent)} ${share}`, GROUP_LIMIT),
+    cut(`${formatTokens(row.tokens)} tokens used · ${formatPrice(row.dollars)} · ${state}`, GROUP_LIMIT),
+  ];
+}
+
+/**
+ * Returns a context bar such as `▓▓▓░░░░░`, where the filled cells are the
+ * percent of the model's context window in use. An unknown percent gives only
+ * dots, because the window is unknown rather than empty.
+ */
+export function describeContextBar(percent, cells = 8) {
+  if (typeof percent !== "number" || !Number.isFinite(percent)) return "·".repeat(cells);
+  const filled = Math.max(0, Math.min(cells, Math.round((percent / 100) * cells)));
+  return "▓".repeat(filled) + "░".repeat(cells - filled);
+}
+
+/**
+ * Returns the notice line shown above the prompt when a subagent stops, such
+ * as `locator done · 88k · 45s · $0 cost`. `seconds` is how long it ran.
+ */
+export function describeFinishNotice(row, seconds) {
+  const state = row.running ? "running" : "done";
+  const parts = [`${row.name} ${state}`, formatTokens(row.tokens), formatDuration(seconds), formatPrice(row.dollars)];
+  return parts.join(PARTS);
+}
+
+/**
+ * Returns which short line to show, `left` when the user asked for what is
+ * left over, `spent` otherwise. Either the environment variable or the
+ * plugin's own options can ask for `left`.
+ */
+export function readLineMode(options, env = process.env) {
+  return env?.PDE_USAGE_LINE === "left" || options?.line === "left" ? "left" : "spent";
 }
 
 /**
@@ -83,45 +161,6 @@ export function describePlanUsage(saved, { now = Date.now(), timeZone } = {}) {
   // The plugin keeps the last reset time when an event leaves it out.
   if (saved.resetsAt > now) line += `, resets ${formatTime(saved.resetsAt, timeZone)}`;
   return line;
-}
-
-/**
- * Returns the two lines above a parent session's prompt, such as
- * `2 subagents, 1 running: 500k tokens` and `$1.94, largest context 44%`, or
- * an empty list without subagents. A phone-width screen hides the sidebar, so
- * these lines are all it shows. Before the first reply the first line ends in
- * `no usage yet` and the second is left out.
- */
-export function describePromptLines({ rows, tokens, dollars }, saved, now = Date.now()) {
-  const limit = isLimited(saved, now) ? ["plan limit reached"] : [];
-  if (rows.length === 0) return limit;
-  const noun = rows.length === 1 ? "subagent" : "subagents";
-  const running = rows.filter((row) => row.running).length;
-  const count = running > 0 ? `${rows.length} ${noun}, ${running} running` : `${rows.length} ${noun}`;
-  if (tokens <= 0) return [fitLine(`${count}: no usage yet`), ...limit];
-  // $0.00 would read as free API use when no subagent has a price.
-  const parts = [rows.some(isPriced) ? formatDollars(dollars) : "price unknown"];
-  const largest = rows
-    .map((row) => row.context)
-    .filter(Boolean)
-    .sort((a, b) => b.tokens - a.tokens)[0];
-  if (largest) parts.push(`largest context ${formatPercent(largest)}`);
-  return [fitLine(`${count}: ${formatTokens(tokens)} tokens`), fitLine([...parts, ...limit].join(", "))];
-}
-
-/**
- * Returns the two lines above a subagent's own prompt, such as
- * `Subagent: plan review` and `412k tokens, $1.71, context 44%`. Before its
- * first reply the second line is `no usage yet`. `row` is one of
- * priceSubagents' rows.
- */
-export function describeSubagentLines(row) {
-  if (!row) return [];
-  const title = fitLine(`Subagent: ${row.name}`);
-  if (row.tokens <= 0) return [title, "no usage yet"];
-  const parts = [`${formatTokens(row.tokens)} tokens`, isPriced(row) ? formatDollars(row.dollars) : "price unknown"];
-  if (row.context) parts.push(`context ${formatPercent(row.context)}`);
-  return [title, fitLine(parts.join(", "))];
 }
 
 /**
@@ -248,6 +287,22 @@ function isPriced(row) {
   return row.dollars !== undefined;
 }
 
+/** Returns the agent count with its singular or plural noun. */
+function describeCount(count) {
+  return `${count} ${count === 1 ? "agent" : "agents"}`;
+}
+
+/** Returns the largest context share of any row, or undefined when none has one. */
+function largestContext(rows) {
+  const shares = rows.map((row) => row.context?.percent).filter((percent) => typeof percent === "number");
+  return shares.length === 0 ? undefined : Math.max(...shares);
+}
+
+/** Returns the cost, or `$0 cost` when there is no dollar amount, such as for a local model. */
+function formatPrice(dollars) {
+  return dollars ? `${formatDollars(dollars)} cost` : "$0 cost";
+}
+
 function countTokens(tokens) {
   const { input = 0, output = 0, reasoning = 0, cache = {} } = tokens;
   return input + output + reasoning + (cache.read ?? 0) + (cache.write ?? 0);
@@ -263,18 +318,16 @@ function formatTokens(count) {
   return `${(count / 1_000_000).toFixed(1)}M`;
 }
 
-function formatContext({ tokens, percent }) {
-  return percent === undefined ? formatTokens(tokens) : `${formatTokens(tokens)} ${percent}%`;
+/** Returns how long a subagent ran, in seconds, or minutes and seconds past a minute. */
+function formatDuration(seconds) {
+  const whole = Math.max(0, Math.round(seconds ?? 0));
+  if (whole < 60) return `${whole}s`;
+  return `${Math.floor(whole / 60)}m${String(whole % 60).padStart(2, "0")}s`;
 }
 
-/** Returns a context's share of the window, or its size when the window is unknown. */
-function formatPercent(context) {
-  return context.percent === undefined ? formatTokens(context.tokens) : `${context.percent}%`;
-}
-
-/** Returns a line cut to the phone's width, ending in … when cut. */
-function fitLine(line) {
-  return line.length > LINE_WIDTH ? `${line.slice(0, LINE_WIDTH - 1)}…` : line;
+/** Returns a line cut to the limit, ending in … when cut. */
+function cut(line, limit) {
+  return line.length > limit ? `${line.slice(0, limit - 1)}…` : line;
 }
 
 function formatTime(milliseconds, timeZone) {

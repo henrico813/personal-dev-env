@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  describeContextBar,
+  describeFinishNotice,
+  describeGroupLines,
   describePlanUsage,
-  describePromptLines,
+  describeShortLine,
   describeSubagentLines,
-  describeSubagents,
   findApiPrice,
   listCatalogModels,
   listSubagents,
   priceSubagents,
+  readLineMode,
 } from "../../chezmoi/dot_config/opencode/pde-usage/usage.js";
 
 /** Anthropic's base rates for Opus, in dollars per million tokens. */
@@ -113,92 +116,152 @@ test("priceSubagents bills all tokens, largest first", () => {
   });
 });
 
+/** A priced subagent row, with fields a test can override. */
+const row = (fields = {}) => ({
+  name: "locator",
+  model: "claude-sonnet-4-5",
+  tokens: 88_000,
+  dollars: 0.42,
+  context: { tokens: 88_000, percent: 40 },
+  running: false,
+  ...fields,
+});
+
+/** The priced result for its rows, with totals that match them. */
+const priced = (...rows) => ({
+  rows,
+  tokens: rows.reduce((sum, entry) => sum + entry.tokens, 0),
+  dollars: rows.reduce((sum, entry) => sum + (entry.dollars ?? 0), 0),
+});
+
+/** A saved weekly plan event at 41 percent, with no reset time. */
+const weekly = { rateLimitType: "seven_day", utilization: 0.41 };
+
 /**
- * The header sums the price, and a local model shows "price unknown" rather
- * than $0.00, which would read as free API use. With no priced subagent the
- * header says "price unknown" too, as the lines above the prompt do.
+ * A phone shows only this line above the prompt, so it must carry the agent
+ * count with what the run cost, or the context left when asked.
  */
-test("describeSubagents marks unpriced rows and header", () => {
-  const priced = {
-    rows: [
-      { name: "plan review", model: "claude-opus-5-5[1m]", tokens: 1_162_000, dollars: 1.6125, context: { tokens: 88_000, percent: 44 } },
-      { name: "locator", model: "qwen3.8", tokens: 88_000, dollars: undefined, context: undefined },
-    ],
-    dollars: 1.6125,
-  };
+test("describeShortLine shows cost or context left", () => {
+  const three = priced(row({ dollars: 1.2 }), row({ dollars: 0.5 }), row({ dollars: 0.24 }));
 
-  const lines = describeSubagents(priced);
+  assert.equal(describeShortLine(three), "3 agents · $1.94 cost", "spent");
+  assert.equal(describeShortLine(three, "left"), "3 agents · 60% context left", "left");
+  assert.equal(describeShortLine(priced(row({ context: undefined })), "left"), "1 agent", "left, no context");
+});
 
-  assert.deepEqual(lines, [
-    "2 subagents, $1.61 at API rates",
-    "plan review",
-    "  claude-opus-5-5[1m] 1.2M $1.61",
-    "  context 88k 44%",
-    "locator",
-    "  qwen3.8 88k price unknown",
+/** A total of $0.00 for a local model would read as free API use. */
+test("describeShortLine unpriced shows zero", () => {
+  assert.equal(describeShortLine(priced(row({ dollars: undefined }))), "1 agent · $0 cost");
+});
+
+/** A figure above the prompt of a session with no subagents reads as a phantom. */
+test("describeShortLine empty without subagents", () => {
+  assert.equal(describeShortLine(priced()), "");
+});
+
+/** A wrapped line splits numbers on a 40-column phone. */
+test("describeShortLine cuts long line", () => {
+  const three = priced(row(), row(), row());
+
+  assert.equal(describeShortLine({ ...three, dollars: 1e16 }), "3 agents · $10000000000000000…");
+});
+
+/**
+ * The sidebar and the /usage screen are the only group view, so they must
+ * carry the running count, the token and price totals, and the plan line.
+ */
+test("describeGroupLines totals agents tokens price", () => {
+  const three = priced(row({ running: true }), row({ running: true }), row());
+
+  assert.deepEqual(describeGroupLines(three, weekly), [
+    "3 agents, 2 running",
+    "264k tokens used · $1.26 API cost",
+    "Claude plan weekly 41%",
   ]);
-  assert.equal(describeSubagents({ rows: [priced.rows[1]], dollars: 0 })[0], "1 subagent, price unknown");
+});
+
+/** $0.00 would read as free API use, a stopped group must say all done, and an unknown plan must say so. */
+test("describeGroupLines unpriced, plan unknown", () => {
+  const local = priced(row({ model: "llama-3.3", dollars: undefined }));
+
+  assert.deepEqual(describeGroupLines(local, undefined), [
+    "1 agent, all done",
+    "88k tokens used · $0 cost",
+    "Claude plan unknown",
+  ]);
+});
+
+/** A known plan still guides a session with no subagents, while an unknown one shows nothing. */
+test("describeGroupLines plan without subagents", () => {
+  assert.deepEqual(describeGroupLines(priced(), weekly), ["Claude plan weekly 41%"], "known plan");
+  assert.deepEqual(describeGroupLines(priced(), undefined), [], "nothing saved");
+});
+
+/** A plan event with an unexpected long name must not wrap on a 40-column phone. */
+test("describeGroupLines cuts long plan line", () => {
+  const long = describeGroupLines(priced(), { rateLimitType: "x".repeat(30) });
+
+  assert.equal(long[0], `Claude plan ${"x".repeat(24)}…`, "cut at 37");
 });
 
 /**
- * A phone-width screen shows only these lines, so they must carry how many
- * subagents still run, their tokens, price and fullest context. The fullest
- * sits between smaller ones, so taking the first or last row fails.
+ * Inside a subagent these lines are its only usage view on a phone, so the
+ * context bar, share, tokens, price and state must all show.
  */
-test("describePromptLines counts running, shows largest context", () => {
-  const priced = {
-    rows: [
-      { tokens: 300_000, dollars: 1, context: { tokens: 60_000, percent: 30 }, running: true },
-      { tokens: 100_000, dollars: undefined, context: { tokens: 88_000, percent: 44 }, running: false },
-      { tokens: 100_000, dollars: 0.5, context: { tokens: 20_000, percent: 10 }, running: false },
-    ],
-    tokens: 500_000,
-    dollars: 1.5,
-  };
-
-  assert.deepEqual(describePromptLines(priced, undefined), ["3 subagents, 1 running: 500k tokens", "$1.50, largest context 44%"]);
+test("describeSubagentLines shows bar, price and state", () => {
+  assert.deepEqual(describeSubagentLines(row()), [
+    "claude-sonnet-4-5 ▓▓▓░░░░░ 40%",
+    "88k tokens used · $0.42 cost · done",
+  ]);
+  assert.deepEqual(describeSubagentLines(row({ context: undefined, dollars: undefined, running: true })), [
+    "claude-sonnet-4-5 ········ --",
+    "88k tokens used · $0 cost · running",
+  ]);
 });
 
-/** A total of $0.00 for unpriced local models would read as free API use. */
-test("describePromptLines unpriced says price unknown", () => {
-  const unpriced = { rows: [{ tokens: 51_000, dollars: undefined, context: undefined, running: false }], tokens: 51_000, dollars: 0 };
-
-  assert.deepEqual(describePromptLines(unpriced, undefined), ["1 subagent: 51k tokens", "price unknown"]);
-});
-
-/**
- * Subagents count 0 tokens until their first reply, and a bare 0 beside
- * the price read as a broken row on the phone, so the line says no usage yet.
- */
-test("describePromptLines no usage before reply", () => {
-  const starting = { rows: [{ tokens: 0, dollars: undefined, context: undefined, running: true }], tokens: 0, dollars: 0 };
-
-  assert.deepEqual(describePromptLines(starting, undefined), ["1 subagent, 1 running: no usage yet"]);
-});
-
-/**
- * Inside a subagent's view these lines are the only place its own usage
- * shows on the phone, so they must name its task and carry its tokens, price
- * and context.
- */
-test("describeSubagentLines shows task and usage", () => {
-  const row = { name: "plan review", tokens: 412_000, dollars: 1.71, context: { tokens: 88_000, percent: 44 } };
-
-  assert.deepEqual(describeSubagentLines(row), ["Subagent: plan review", "412k tokens, $1.71, context 44%"]);
+/** A subagent with no priced row must draw no lines rather than a broken one. */
+test("describeSubagentLines empty without row", () => {
+  assert.deepEqual(describeSubagentLines(undefined), []);
 });
 
 /** A wrapped line splits words and numbers on a 40-column phone. */
-test("describeSubagentLines cuts long task", () => {
-  const row = { name: "Read the repository and explain its purpose", tokens: 5_000, dollars: undefined, context: undefined };
+test("describeSubagentLines cuts long model", () => {
+  const lines = describeSubagentLines(row({ model: "m".repeat(40) }));
 
-  assert.equal(describeSubagentLines(row)[0], "Subagent: Read the repository and ex…");
+  assert.ok(lines.every((line) => line.length <= 37));
 });
 
-/** A bare 0 before the first reply read as a broken row on the phone. */
-test("describeSubagentLines no usage before reply", () => {
-  const row = { name: "plan review", tokens: 0, dollars: undefined, context: undefined };
+/**
+ * A wrong bar makes the user end a good subagent early or run it past its
+ * context window, so the filled cells must match the percent.
+ */
+test("describeContextBar fills cells for percent", () => {
+  assert.equal(describeContextBar(40), "▓▓▓░░░░░");
+  assert.equal(describeContextBar(20, 4), "▓░░░");
+  assert.equal(describeContextBar(0), "░░░░░░░░");
+  assert.equal(describeContextBar(120), "▓▓▓▓▓▓▓▓");
+});
 
-  assert.deepEqual(describeSubagentLines(row), ["Subagent: plan review", "no usage yet"]);
+/** An unknown window must not look like an empty one, so the bar shows dots. */
+test("describeContextBar unknown shows dots", () => {
+  assert.equal(describeContextBar(undefined), "········");
+});
+
+/**
+ * The notice is the only summary of a stopping subagent, so it must carry
+ * its name, state, runtime and price.
+ */
+test("describeFinishNotice shows state, duration and cost", () => {
+  assert.equal(describeFinishNotice(row({ dollars: undefined }), 45), "locator done · 88k · 45s · $0 cost");
+  assert.equal(describeFinishNotice(row({ running: true }), 125), "locator running · 88k · 2m05s · $0.42 cost");
+});
+
+/** The short line's mode comes from env or options, and a wrong mode hides the run's cost. */
+test("readLineMode chooses left or spent", () => {
+  assert.equal(readLineMode(undefined, {}), "spent");
+  assert.equal(readLineMode({ line: "spent" }, { PDE_USAGE_LINE: "left" }), "left");
+  assert.equal(readLineMode({ line: "left" }, {}), "left");
+  assert.equal(readLineMode(undefined, { PDE_USAGE_LINE: "spent" }), "spent");
 });
 
 /**
