@@ -55,6 +55,9 @@ pub trait Cards {
     /// Adds a live agent's session ID to the card's sessions list.
     /// `card` reads the ID from Herdr, so the agent must still run.
     fn link_session(&self, key: &CardKey, agent_name: &str) -> Result<(), CardError>;
+    /// Moves a ready card to active. `card` refuses a start past the
+    /// work limit, with its reason.
+    fn move_to_active(&self, key: &CardKey) -> Result<(), CardError>;
 }
 
 /// Runs the `card` command.
@@ -149,6 +152,10 @@ impl Cards for CardCli {
         // Neither value is user text, and neither can start with a dash.
         self.run_card(&["link", key.as_str(), "--session", agent_name])
             .map(drop)
+    }
+
+    fn move_to_active(&self, key: &CardKey) -> Result<(), CardError> {
+        self.run_card(&["move", key.as_str(), "active"]).map(drop)
     }
 }
 

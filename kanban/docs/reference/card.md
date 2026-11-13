@@ -26,6 +26,7 @@ named vault.
 | Command | What it does |
 | --- | --- |
 | `card new PROJECT TITLE [--kind K] [--user] [--why TEXT]` | Makes a card in `draft` and prints its name. |
+| `card new PROJECT --from FILE [--user] [--why TEXT]` | Makes a card in `draft` with the title, kind and section text from FILE, laid out as `card new --help` shows. Refuses any other heading, a repeated heading, and text before the first heading, so no line is lost. |
 | `card new PROJECT TITLE --adopt STAGE --user [--why TEXT] [--session [AGENT]]` | Makes a card straight in `active` or `review`, for work already under way. `--session` also records the agent's session, as `card link --session` does. |
 | `card list [--stage S] [--project P] [--kind K] [--tabs]` | Prints one line per card: key, stage, kind and title, in stage order. A long line is cut to 60 characters. With `--tabs`, each line holds the key, stage, kind, project folder and whole title, split by tabs, for scripts such as `hub board`. |
 | `card board` | Prints the count per stage, active plus review against the work limit, and the review queue by `stage_date`, oldest first. |

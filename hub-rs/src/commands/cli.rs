@@ -52,6 +52,7 @@ one used last.
   next*    Wait for news, print one line
   watch    Catch stalled workers
   send*    Deliver, or hold until free
+  at*      Send a message later today
   read*    Print and archive a report
   report*  Write your report (workers)
   inbox*   Print held messages (workers)
@@ -59,6 +60,7 @@ one used last.
   note*    Add a timed line to notes.md
   brief*   What waits on the user
   handoff* Start the next hub
+  launch*  Start a worker from a handoff
   adopt*   Take over an older open hub
   clean*   Close and park finished tabs
   park*    Close one tab, keep its ID
@@ -176,6 +178,36 @@ pub enum Command {
         #[arg(long, value_name = "PATH")]
         file: Option<PathBuf>,
     },
+    /// Send a message later today
+    ///
+    /// Stores a message for HH:MM today, in this machine's local time.
+    /// At that time hub next holds it for each session and sends it as
+    /// it sends other held messages. --all means every live worker at
+    /// that time, a session on a card or that has reported. A time
+    /// already past exits 2. Delete the stored file to cancel it.
+    #[command(after_help = "Example: hub at 20:00 --all \\\n  --file /tmp/resume.md")]
+    At {
+        #[command(flatten)]
+        run: RunArg,
+        /// The time today, such as 20:00
+        #[arg(value_name = "HH:MM")]
+        time: jiff::civil::Time,
+        /// The sessions' agent names
+        #[arg(
+            long,
+            num_args = 1..,
+            required_unless_present = "all",
+            conflicts_with = "all",
+            value_name = "NAME"
+        )]
+        to: Vec<AgentName>,
+        /// Every live worker, at that time
+        #[arg(long)]
+        all: bool,
+        /// Read the message from this file
+        #[arg(long, value_name = "PATH")]
+        file: PathBuf,
+    },
     /// Print and archive a report
     ///
     /// Prints a worker's report and archives it, so it no longer counts
@@ -284,6 +316,29 @@ pub enum Command {
         name: AgentName,
         /// The handoff file for the next hub
         handoff: PathBuf,
+    },
+    /// Start a worker from a handoff
+    ///
+    /// Starts a worker in a new tab or workspace, gives it the handoff
+    /// file, and records the start on its card and in notes.md. A card
+    /// key at the start of NAME makes it that card's worker, and a
+    /// ready card moves to active first. Run it to start each worker.
+    #[command(
+        after_help = "Example: hub launch demo-kb-007-impl \\\n  /tmp/impl.md \\\n  --model anthropic/claude-sonnet-5#high"
+    )]
+    Launch {
+        #[command(flatten)]
+        run: RunArg,
+        /// The worker's agent name, such as demo-kb-007-impl
+        name: AgentName,
+        /// The handoff file the worker reads first
+        handoff: PathBuf,
+        /// The worker's OpenCode model and effort
+        #[arg(long)]
+        model: String,
+        /// Open in the workspace with this label, made when missing
+        #[arg(long, value_name = "LABEL")]
+        workspace: Option<String>,
     },
     /// Take over an older open hub
     ///
@@ -596,6 +651,7 @@ impl Command {
             Command::Next { .. } => "next",
             Command::Watch { .. } => "watch",
             Command::Send { .. } => "send",
+            Command::At { .. } => "at",
             Command::Read { .. } => "read",
             Command::Report { .. } => "report",
             Command::Inbox { .. } => "inbox",
@@ -603,6 +659,7 @@ impl Command {
             Command::Note { .. } => "note",
             Command::Brief { .. } => "brief",
             Command::Handoff { .. } => "handoff",
+            Command::Launch { .. } => "launch",
             Command::Adopt { .. } => "adopt",
             Command::Clean { .. } => "clean",
             Command::Park { .. } => "park",
@@ -808,12 +865,14 @@ pub fn takes_machine(command: &Command) -> bool {
         Command::Next { .. }
         | Command::Watch { .. }
         | Command::Wait { .. }
+        | Command::At { .. }
         | Command::Read { .. }
         | Command::Report { .. }
         | Command::Inbox { .. }
         | Command::Note { .. }
         | Command::Brief { .. }
         | Command::Handoff { .. }
+        | Command::Launch { .. }
         | Command::Adopt { .. }
         | Command::Clean { .. }
         | Command::Park { .. }

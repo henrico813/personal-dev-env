@@ -4,8 +4,9 @@
 //! `run_minute_pass` is the slow part, at most once a minute, which
 //! reads the board, finds finished sessions and asks workers to hand
 //! off. It never closes or parks a session, which only `hub clean`
-//! does. The one session it starts is an old hub's session review,
-//! once that hub's tab has closed, and only with `--start-reviews`.
+//! and `hub park` do. The one session it starts is an old hub's
+//! session review, once that hub's tab has closed, and only with
+//! `--start-reviews`.
 
 use std::path::PathBuf;
 use std::thread;
@@ -15,6 +16,7 @@ use jiff::{SignedDuration, Zoned};
 use serde_json::json;
 
 use super::Outcome;
+use super::at;
 use super::handoff::{self, ReviewStart};
 use crate::external::cards::{BoardCounts, CardKey};
 use crate::external::herdr::{Agent, AgentStatus};
@@ -73,6 +75,12 @@ enum News {
     Unsure {
         name: String,
         reason: String,
+    },
+    /// A timed message held for `sessions` sessions in a check.
+    Timed {
+        id: String,
+        file: PathBuf,
+        sessions: usize,
     },
     HubHandOff {
         session_id: String,
@@ -169,11 +177,11 @@ pub fn run_next(
     }
 }
 
-/// Runs one check. Runs the minute pass when it is due, starts an old
-/// hub's session review when one is due and reviews are on, delivers
-/// held messages and returns the news to print, if any. Records
-/// nothing about the news itself, since `run_next` does that before
-/// printing.
+/// Runs one check. Holds the timed messages that are due, runs the
+/// minute pass when it is due, starts an old hub's session review when
+/// one is due and reviews are on, delivers held messages and returns
+/// the news to print, if any. Records nothing about the news itself,
+/// since `run_next` does that before printing.
 fn check_for_news(
     tools: &Tools<'_>,
     run: &RunFolder,
@@ -181,9 +189,12 @@ fn check_for_news(
     options: &NextOptions,
     now: &Zoned,
 ) -> Result<Option<News>, HubError> {
-    let memory = events::load_memory(run)?;
     let mut agents = tools.herdr.list_agents()?;
     agents.retain(|agent| Some(agent.pane_id.as_str()) != tools.own_pane);
+    at::hold_due_messages(run, &agents, now)?;
+    // Read after the holds, so a timed message held in this check can
+    // print its line in this check.
+    let memory = events::load_memory(run)?;
     // Delivery comes last, since an error after it would lose its
     // not-sent or unsure line.
     let reports = run.list_reports(now)?;
@@ -403,9 +414,10 @@ fn ask_for_worker_handoffs(
 /// Picks the most urgent news in a fixed order, or `None` when nothing
 /// is new. A message that was not sent or is unsure comes first, since
 /// nothing prints it again. Then come an old hub's review start,
-/// reports, blocked states, the hub's own handoff, the board crossing
-/// its limit, finished sessions not listed yet, old hub message files
-/// not printed yet and older hubs left without a handoff.
+/// reports, blocked states, timed messages held, the hub's own
+/// handoff, the board crossing its limit, finished sessions not listed
+/// yet, old hub message files not printed yet and older hubs left
+/// without a handoff.
 fn choose_news(facts: &NewsFacts<'_>) -> Option<News> {
     match facts.outcome {
         Some(SendOutcome::NotSent { name, reason }) => {
@@ -436,6 +448,13 @@ fn choose_news(facts: &NewsFacts<'_>) -> Option<News> {
         return Some(News::Blocked {
             name: agent.name.clone(),
             state_seq: agent.state_seq,
+        });
+    }
+    if let Some((id, untold)) = facts.memory.timed_untold.first_key_value() {
+        return Some(News::Timed {
+            id: id.clone(),
+            file: untold.file.clone(),
+            sessions: untold.sessions,
         });
     }
     if let (Some(session_id), Some(tokens)) = (&facts.hub.session_id, facts.hub.context_tokens)
@@ -533,6 +552,7 @@ fn record_news(news: &News) -> Option<EventKind> {
             name: name.clone(),
             state_seq: *state_seq,
         }),
+        News::Timed { id, .. } => Some(EventKind::TimedTold { id: id.clone() }),
         News::HubHandOff { session_id, .. } => Some(EventKind::HubContextTold {
             session: session_id.clone(),
         }),
@@ -579,6 +599,13 @@ fn format_news_line(news: &News, hub_tokens: Option<u64>) -> String {
         } => format!("missed report {name} {hub}"),
         News::Report { name, .. } => format!("report {name} {hub}"),
         News::Blocked { name, .. } => format!("blocked {name} {hub}"),
+        News::Timed { file, sessions, .. } => {
+            let sessions = match sessions {
+                1 => "1 session".to_owned(),
+                count => format!("{count} sessions"),
+            };
+            format!("timed message to {sessions}: {} {hub}", file.display())
+        }
         News::NotSent { name, reason } => format!("not sent {name}: {reason} {hub}"),
         News::Unsure { name, reason } => format!("unsure {name}: {reason} {hub}"),
         News::HubHandOff { tokens, .. } => {
@@ -615,6 +642,7 @@ fn format_news_json(news: &News, hub_tokens: Option<u64>) -> String {
         } => ("missed_report", Some(name.clone()), None),
         News::Report { name, .. } => ("report", Some(name.clone()), None),
         News::Blocked { name, .. } => ("blocked", Some(name.clone()), None),
+        News::Timed { file, .. } => ("timed_message", None, Some(file.display().to_string())),
         News::NotSent { name, reason } => ("not_sent", Some(name.clone()), Some(reason.clone())),
         News::Unsure { name, reason } => ("unsure", Some(name.clone()), Some(reason.clone())),
         News::HubHandOff { .. } => ("hand_off", None, None),
@@ -794,8 +822,8 @@ mod tests {
         );
     }
 
-    /// Scripts and the later board read `hub next --json`, so a renamed
-    /// field or a missing null breaks them without a word.
+    /// A script or a hub that reads `hub next --json` breaks without
+    /// a word when a field is renamed or a null goes missing.
     #[test]
     fn format_news_json_matches_example_object() {
         let cases = [

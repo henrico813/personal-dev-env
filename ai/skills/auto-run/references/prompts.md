@@ -1,77 +1,33 @@
-# Prompts for a roadmap run
+# Prompts for a run's agents
 
 Fill each `<...>`. Every brief names the skills the agent must load,
 and you load them too. Start every brief with "Read <rules file>
 first and follow it for the whole task. Write your full report to
-<report file>." `<rules file>` is the run's `rules.md`, from
-SKILL.md's Before you start. `<design digest>` is the PR's file from
-build.md's Write a design digest. `<suites summary>` is the PR's
-`<run folder>/suites.txt`, from build.md's Run the suites once per
-plan version, for the plan version the agent reads.
+<report file>." `<rules file>` is the run's `common.md`, from step 3
+of SKILL.md's auto hub; it holds the rules every agent gets and the
+ones reviewers also get. `<design digest>` is the PR's file from
+build.md's Write a design digest; for a card with no design, give
+the card instead and leave out the Dictionary sentence.
+`<suites summary>` is the PR's `<PR folder>/suites.txt`, from
+build.md's Run the suites once per plan version, for the plan
+version the agent reads.
 `<Write in parts>` is the block in Write in parts below.
-`<report file>` stands for a new file in the PR's run folder, such as
-`<run folder>/plan-review-1.md`. The first planner starts before that
+`<report file>` stands for a new file in the PR folder, such as
+`<PR folder>/plan-review-1.md`. The first planner starts before that
 folder exists, so give it a file in a folder you make with `mktemp -d`.
 
 ## Contents
 
-- Rules every agent gets
 - Planner
 - Write in parts
 - Next part
 - Fresh plan review
-- Skill review
+- Code review
 - Revision message
-
-## Rules every agent gets
-
-Write these into the rules file once, then the reviewers' rules
-below under their "Reviewers also get:" label, so planners know
-those rules are not theirs. Add the user's style rules that apply,
-such as comment length or call layout, from their notes or memory.
-Once the user has given feedback on one PR, add that feedback list
-from the roadmap page too.
-
-    The user is away; decide minor things yourself and say so.
-    Never edit or commit a real `.code-comments.json`. Work only in
-    folders you make with `mktemp -d`, except that you write your full
-    report to the file your brief names; never remove a fixed /tmp
-    path or use another agent's folder. Read a skill's SKILL.md,
-    then only the references your step needs. Work on large files
-    and plans with scripts, `git show` and `sed -n` ranges, never by
-    reading them whole. Send test, lint and
-    build output to a log file in your folder, and read only its
-    summary lines, such as counts and the names of failed tests.
-    Never run a whole test suite or linter; a script runs them once
-    for each plan version.
-    Do not read the design digest whole. Ask it questions with the
-    digest reader, as "Ask a digest a question" in
-    `~/.agents/skills/roadmap-run/references/build.md` says, and
-    read whole only the passages your work changes.
-    Reply in at most 20 lines, starting with the report's path.
-
-Reviewers also get:
-
-    Read-only: do not edit the worktree, commit, push or install. You
-    are a delegated reviewer: review directly and start no other
-    agents. Report in review-plan's format with file:line evidence.
-    For each bug you want put back in the final pass, write a line to
-    run as is from the repository root:
-    `plant <file> '<old text>' '<new text>' <test command>`, where the
-    test command is its words, or one quoted string run by `sh -c`,
-    such as `'cd app && npm test'`. Put each
-    line in a `sh` code block, starting with `plant`. The plant
-    function swaps the old text, which must appear once in the file,
-    for the new, runs the test command, and passes only when a test
-    fails. The new text must still build, or a build error passes
-    the line with no test catching the bug. Do not run the lines; a
-    script runs them after the build. Read the test and lint results
-    in the suites summary, and run at most the one test a finding
-    needs.
 
 ## Planner
 
-    Write an implementation plan for <PR name> of the roadmap.
+    Write an implementation plan for <PR name>.
     Applicable skills: create-plan, <domain skills>,
     code-documentation, behavior-focused-testing. Load each first and
     report any that are unavailable. Follow create-plan's "When you
@@ -79,11 +35,12 @@ Reviewers also get:
     vault before writing there.
 
     Base: <branch> at <full commit>; for a child of an unbuilt
-    parent, the commit of the parent's planned tree. Read: <roadmap>
-    and <parent plans>. Design: <design digest>, which holds the design
-    passages this PR touches, the Dictionary and the design-edits
-    entries they point to. Use the words the Dictionary defines in
-    names and comments. Scope: <what this PR does and does not do>.
+    parent, the commit of the parent's planned tree. Read: <roadmap
+    page or card> and <parent plans>. Design: <design digest>, which
+    holds the design passages this PR touches, the Dictionary and the
+    design-edits entries they point to. Use the words the Dictionary
+    defines in names and comments. Scope: <what this PR does and does
+    not do>.
 
     Decisions, each labeled user-decided, orchestrator-proposed or
     inferred from code: <list>. Reserve the plan file with
@@ -139,11 +96,11 @@ this. Repeat until a report has no `Left:` line.
     vault before writing there.
 
     The planner before you stopped at its context limit. What is
-    left: <the Left: list>. Read <roadmap> and <parent plans>.
-    Design: <design digest>. Read the plan as written so far with
-    `rg` and `sed -n`, and write what is left. Keep the decisions in
-    its `## Notes for agents`; change one only on evidence, and say
-    so in your report.
+    left: <the Left: list>. Read <roadmap page or card> and <parent
+    plans>. Design: <design digest>. Read the plan as written so far
+    with `rg` and `sed -n`, and write what is left. Keep the
+    decisions in its `## Notes for agents`; change one only on
+    evidence, and say so in your report.
 
     Report: plan paths, `planner check` result, changed lines (code,
     tests, other), choices you made, and anything that contradicts the
@@ -152,6 +109,13 @@ this. Repeat until a report has no `Left:` line.
     <Write in parts>
 
 ## Fresh plan review
+
+For a T1 plan, start one reviewer with this brief as it stands. For
+T2 and T3, start one reviewer per skill, as pr-loop.md's Review tiers
+says, and change the brief's Applicable skills line for each. The
+`review-plan` reviewer gets `review-plan` and the language skills.
+Each other reviewer gets `review-plan` and its own skill, such as
+`review-plan, code-documentation`:
 
     Review an implementation plan as a fresh reviewer.
     Applicable skills: review-plan, <domain skills>,
@@ -166,10 +130,11 @@ this. Repeat until a report has no `Left:` line.
     `plant` lines catch the bugs most likely to hurt, and write a
     line for each claim you doubt.
 
-## Skill review
+## Code review
 
-Start the reviewers loop step 4 names, all at once, after the build.
-Each gets the same change description and its own focus. When one
+Start the code review's reviewers that pr-loop.md's Review tiers
+names for the PR's tier, all at once, after the build. Each gets the
+same change description and its own focus. When one
 reviewer covers several skills, name each on its Applicable skills
 line and give it each skill's focus:
 
@@ -182,16 +147,17 @@ line and give it each skill's focus:
 
     Focus: <see below>.
 
-- `review-plan`: data safety. Rehearse the change by hand with a
-  scratch home and state folder. Can the user's data be lost, sent
-  twice, or changed unseen?
-- Each language skill: idiom, names, error handling, package
-  boundaries, the race detector or type checker results in the
-  suites summary, and `plant` lines for claims the plan's lines miss.
+- `review-plan` with the language skills: idiom, names, error
+  handling, package boundaries, the race detector or type checker
+  results in the suites summary, and `plant` lines for claims the
+  plan's lines miss. For T2 and T3, also data safety: rehearse the
+  change by hand with a scratch home and state folder. Can the
+  user's data be lost, sent twice, or changed unseen?
 - `code-documentation`: every comment and doc line added or touched,
   as keep, shorten (with the exact text) or cut, with a reason. Text
   in touched code that became false, and approved text that needs a
-  reword.
+  reword. Never ask to cut a Python docstring's Google-style `Args:`,
+  `Returns:` or `Raises:` sections.
 - `behavior-focused-testing`: for each test, the bug it catches and
   whether that bug is likely or costly. Low-value tests are required
   corrections, and so is untested behavior that is likely and costly.

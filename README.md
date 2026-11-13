@@ -102,8 +102,7 @@ Vibe binaries plus repo-managed AI config.
 | Delegate | `ai/skills/delegate/` | `~/.agents/skills/delegate/` | Shared workflow skill for handing a task to an agent and reviewing it |
 | Herdr handoff | `ai/skills/herdr-handoff/` | `~/.agents/skills/herdr-handoff/` | Shared workflow skill for handing work to a new session in a new Herdr workspace |
 | Herdr hub | `ai/skills/herdr-hub/` | `~/.agents/skills/herdr-hub/` | Shared workflow skill for the session that coordinates other Herdr sessions |
-| Roadmap run | `ai/skills/roadmap-run/` | `~/.agents/skills/roadmap-run/` | Shared workflow skill for building a roadmap's pull requests as a stack while the user is away |
-| Auto run | `ai/skills/auto-run/` | `~/.agents/skills/auto-run/` | Shared workflow skill for working an approved list of cards to pull requests without the user |
+| Auto run | `ai/skills/auto-run/` | `~/.agents/skills/auto-run/` | Shared workflow skill for working an approved list of cards and roadmaps to pull requests without the user |
 | Session review | `ai/skills/session-review/` | `~/.agents/skills/session-review/` | Shared workflow skill for reviewing a session's token use, lessons and local model jobs |
 | Conclude session | `ai/skills/conclude-session/` | `~/.agents/skills/conclude-session/` | Shared workflow skill for closing out a session after one pick from the user |
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/` | Shared test-writing guidance |
@@ -124,7 +123,7 @@ Vibe binaries plus repo-managed AI config.
 | Promote memory | `ai/skills/promote-memory/` | `~/.agents/skills/promote-memory/` | Reviewed memory-to-skill promotion |
 | Obsidian Zettel | `ai/skills/obsidian-zettel/` | `~/.agents/skills/obsidian-zettel/` | Template-aligned vault note creation |
 | Obsidian daily note | `ai/skills/obsidian-daily-note/` | `~/.agents/skills/obsidian-daily-note/` | Approved sections appended to today's daily note |
-| OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands,cli.json,pde-herdr-opencode}`, `opencode.json` permission merge | OpenCode commands, agents, synchronized TUI theme, bidirectional agent cycling (`Tab` next, `Shift+Tab` previous), and a Herdr pane that stays working while background subagents run |
+| OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands,cli.json,pde-herdr-opencode,pde-usage}`, `opencode.json` permission merge | OpenCode commands, agents, synchronized TUI theme, bidirectional agent cycling (`Tab` next, `Shift+Tab` previous), a Herdr pane that stays working while background subagents run, and subagent usage above the prompt, in the sidebar and on a `/usage` screen |
 | Herdr layout | `chezmoi/dot_config/herdr/` | `~/.config/herdr/config.toml` (client and full) | Mobile-first agent workspace UI; Herdr is the installer-managed Herdr release |
 | OpenCode memory | `ai/AGENTS.md`, `chezmoi/` | Existing `~/.opencode-mem/` data | Unsupported with the managed Claude adapter |
 | OpenCode Inline | `nvim-plugins/opencode-inline.nvim/` | `~/.config/nvim/pack/plugins/start/opencode-inline.nvim`, `~/.local/bin/opencode-inline-shim` | CodeCompanion inline plugin and OpenAI-compatible bridge |
@@ -137,6 +136,7 @@ Vibe binaries plus repo-managed AI config.
 | Skill lessons | `skill-lessons/` | `~/.local/bin/skill-lessons` (client and full) | Saves your corrections as lessons in the installed copy of a skill; see the [skill-lessons README](skill-lessons/README.md) |
 | Hub | `hub-rs/` | `~/.local/bin/hub` (full only) | Shows, messages, parks and tidies the Herdr sessions a hub session runs; see the [hub README](hub-rs/README.md) |
 | prs | `prs/` | `~/.local/bin/prs` (full only) | Reads your open pull requests on a phone; see [GitHub Pull Request Reviews](chezmoi/README.md#github-pull-request-reviews) |
+| pde-check | `chezmoi/` | `~/.local/bin/pde-check` (client and full) | Runs test and lint commands, saves each command's output to a log, and prints a summary of at most 10 lines. Run `pde-check` with no arguments to see how to use it |
 
 Shared configuration lives in `chezmoi/`, including local-file mappings for the complete `ai/` source tree and checksummed remote externals.
 
@@ -186,8 +186,7 @@ loads `~/.agents/skills/`.
 | `delegate` | Have an agent do a task, review and iterate until it is ready | "Have an agent fix the flaky test, review it until it's ready for me" |
 | `herdr-handoff` | Hand work to a new session in a new Herdr workspace, with a handoff file it reads first | "Hand the docs work to a new session" |
 | `herdr-hub` | Coordinate other Herdr sessions: pass messages, answer their questions, run merges | "You are the hub of this run" |
-| `roadmap-run` | Plan, build, review and file the remaining PRs of an approved roadmap as a stack | "Build the rest of the roadmap overnight" |
-| `auto-run` | Brief the user on ready cards, then have a separate hub work the approved list to PRs | "Set up an auto run" |
+| `auto-run` | Brief the user on ready cards and roadmaps, then have a separate hub plan, build, review and file the approved list as PRs | "Set up an auto run", "Build the rest of the roadmap overnight" |
 | `session-review` | Review a session for token use, lessons to save and jobs a local model could run, then wait for your pick | "Review this session for token usage, skill lessons and local model handoff" |
 | `conclude-session` | Close out a session: review it, wait for your pick, then save lessons, open one skill PR and hand off or report | "conclude-session" |
 | `model-routing` | Pick the model for each agent job, and check and step up failed local jobs | "Which model should run these test jobs?" |
