@@ -138,6 +138,10 @@ are warnings, not doctor failures. The credential check does not validate GitHub
 access; use `:Copilot auth info` in Neovim for the authenticated account's live
 status.
 
+`doctor` ends its report with the two update lines that `version` prints, each
+after `status` or `warning`. A skipped, failed, or unreadable update and a
+`main` ahead of the install are warnings. They do not fail `doctor`.
+
 ### `pde-installer list`
 
 Prints tab-separated columns:
@@ -152,19 +156,28 @@ Status words vary by owner. Common values include `missing`, `installed`,
 ### `pde-installer version`
 
 Prints the commit, branch, and UTC time of the last install on this machine
-that put every component in place. It reads them from
-`~/.local/state/pde/install.json`:
+that put every component in place, then the last update and how far `main` is
+ahead. It reads the first three from `~/.local/state/pde/install.json`:
 
 ```text
 commit 3f9c2e1a...
 branch main
 installed 2026-11-10T08:30:00Z
+last update failed at 2026-11-13T08:30:00Z: install: <last error line>
+main is 2 commits ahead of the install
 ```
+
+The `last update` line gives the result, time, and reason from `update.json`,
+or reads `no update recorded`. The `main` line counts the commits on the
+checkout's local `main` branch that the installed commit lacks. It finds the
+checkout from `install_path` in `~/.config/pde/config.json` and never fetches,
+so it counts only what `update` or a pull already brought into `main`. When it
+cannot compare, it reads `main not compared` and gives the cause.
 
 Each real install writes the file after every component is in place; `--dry-run`
 writes nothing. A detached checkout records `HEAD` as its branch, and a field
 that git cannot read records `unknown`. The record does not show uncommitted
-changes in the checkout. `version` needs no checkout and works from any folder.
+changes in the checkout. `version` works from any folder.
 With no record it exits with an error that says to run `pde-installer install`.
 
 ### `pde-installer update`

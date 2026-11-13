@@ -46,6 +46,44 @@ func TestDoctorRejectsInvalidProfile(t *testing.T) {
 	}
 }
 
+// Doctor is where the owner looks when a PC seems out of date. A skipped
+// update must stand out as a warning without failing the host checks.
+func TestDoctorWarnsAboutSkippedUpdate(t *testing.T) {
+	cfg, _ := newDoctorCopilotFixture(
+		t,
+		"terminal",
+	)
+	if err := writeStateJSON(
+		cfg.Home,
+		updateRecordPath(cfg.Home),
+		updateRecord{
+			Result:    "skipped",
+			Reason:    "the checkout is on feature/demo, not main",
+			CheckedAt: "2026-11-13T08:30:00Z",
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	output := runDoctorPreflight(
+		t,
+		cfg,
+		preflightReport,
+	)
+
+	want := "warning last update skipped at 2026-11-13T08:30:00Z: the checkout is on feature/demo, not main\n"
+	if !strings.Contains(
+		output,
+		want,
+	) {
+		t.Fatalf(
+			"doctor output = %q, want it to contain %q",
+			output,
+			want,
+		)
+	}
+}
+
 type copilotReportCase struct {
 	name        string
 	profile     profile.Profile
