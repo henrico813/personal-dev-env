@@ -129,6 +129,7 @@ jobs:
           go vet ./...
           node test/opencode-herdr-subagents.test.mjs
           node test/opencode-secret-redaction.test.mjs
+          node test/opencode-usage.test.mjs
           bash -n test/*.sh
           test/nvim-obsidian-sync.sh
           test/nvim-clipboard.sh
@@ -208,7 +209,7 @@ jobs:
           # The cache is keyed on go.sum, which planner lacks: it has no dependencies.
           cache: false
       - name: install test dependencies
-        run: sudo apt-get update && sudo apt-get install --yes zsh tmux
+        run: sudo apt-get update && sudo apt-get install --yes zsh
       - uses: astral-sh/setup-uv@v6
       - name: check planning prompts
         run: uv sync --locked && uv run pytest -m "not local_ai"
@@ -226,3 +227,17 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - name: test on Python 3.10
         run: uv sync --locked && uv run --locked pytest
+
+  sweep:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sweep
+    # Ubuntu 22.04, the oldest release pde-installer supports, ships 3.10.
+    env:
+      UV_PYTHON: "3.10"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: test on Python 3.10
+        run: uvx pytest

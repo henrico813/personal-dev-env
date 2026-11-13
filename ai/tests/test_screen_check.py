@@ -6,6 +6,7 @@ an agent checks a TUI or CLI change, so these tests need tmux on PATH.
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -17,6 +18,10 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "ai/skills/screen-check/scripts/screen.py"
+
+pytestmark = pytest.mark.skipif(
+    shutil.which("tmux") is None, reason="tmux is not installed"
+)
 
 
 def run_screen(*args: str) -> subprocess.CompletedProcess:
