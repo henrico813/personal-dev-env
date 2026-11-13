@@ -80,18 +80,28 @@ Waiting on you
 Number the pull requests in the order they should merge. Each entry
 gives its repository, what it fixes for the user in one line, its
 check results and anything that holds it up. Bold the entry the user
-should review first.
+should review first. A plan or file comes with a command that opens
+that file itself, never the card that links it.
 
-```text
+````text
 Ready for your review, in merge order:
 
 1. **fernwood: skip watering when rain is forecast (#7).** 14 of 14
    tests pass. Nothing blocks it.
 2. fernwood: a separate schedule for each garden bed (#8). 19 of 19
-   tests pass. Merge it after #7; both change the timer file.
+   tests pass. Merge it after #7; both change the timer file. Read
+   its plan with:
+
+   ```sh
+   less ~/notes/plan.md
+   ```
+
 3. valve-kit: a text when a valve sticks (#3). Not tried on the real
    valve controller. It waits for #8 to merge.
-```
+````
+
+The `text` fence only marks the example. Send the update itself as
+plain Markdown, so the checker reads only the commands.
 
 ## A correction
 

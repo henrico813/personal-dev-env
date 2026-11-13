@@ -39,9 +39,12 @@ when the user has nothing to do.
 3. Detail, only as much as the user needs.
 
 Each thing the user must open comes with its link, branch, worktree
-path or command. Say where to run each command. For a file, the
-command must open that file, not the card or plan that lists it. Run
-the command once to see that it does.
+path or command. Say where to run each command.
+
+- For a plan or other file, give a command that opens that file
+  itself, such as `less <path>`. A command that opens the card or
+  board that links it does not count. Run the command once to see
+  that it works.
 
 ## Real results
 
@@ -79,7 +82,8 @@ message, fix each miss, and send it only when every check passes:
    ```
 
 3. A new reader knows every label in the update.
-4. The user's actions come early, each with its link.
+4. The user's actions come early, each with its link. Each file's
+   command opens that file, not its card.
 5. Every question and approval still waiting is in the update.
 6. You checked every number, and the update names what you did not.
 7. The update repeats no side item that an earlier message raised.
