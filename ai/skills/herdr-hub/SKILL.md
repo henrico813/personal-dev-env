@@ -437,7 +437,15 @@ Fix the entry and run it again.
 Each card's worker opens its own pull request by `pull-request`. Keep
 one list of the pull requests that wait for the user's review, in
 `<run folder>/reviews.md`, and bring the whole list to the user in
-one message. A merge or pull request edit request is never a routine
+one message. Show each pull request with the checks list that ends
+its Testing section, as `git-messages` item 5 says. Add a pull
+request to the list only after its reviews, tests and tries ran. A
+`not run` line may stay only when its reason shows the check cannot
+apply. When a check is missing, or `not run` for any other reason,
+send the pull request back to its worker before you add it. Name it
+in that same message to the user, with the check it waits on.
+
+A merge or pull request edit request is never a routine
 step. A worker sends one only after you tell it the user reviewed
 that pull request, so tell it once the user has, and take the pull
 request off the list. The worker then merges and reports once it has
