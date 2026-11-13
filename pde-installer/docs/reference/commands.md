@@ -68,16 +68,38 @@ line above it names the subagent, its tokens, run time and price for 10
 seconds. Inside a subagent's view, two lines above the prompt show its model,
 a context bar, its tokens, price and whether it still runs. The Usage panel in
 the sidebar shows the group totals, how many subagents still run, their tokens
-and API price, and the Claude plan limit that the OpenCode Claude plugin saved
-last, with its reset time on its own line. A phone-width screen hides the
-sidebar, so `/usage` opens a screen with the same totals, and esc goes back.
+and API price, and the plan lines of the plans the session used, plus any plan
+at 80% or more. A phone-width screen hides the sidebar, so `/usage` opens a
+screen with the same totals and every plan line, and esc goes back.
 The price uses the rates listed for the subagent's provider, or else the rates
 Anthropic or OpenAI list for the model. The rates come from OpenCode's model
 list, then from the models.dev catalog, which the plugin downloads once each
 time OpenCode starts. The price is not what a plan or local model bills, and a
-model with no listed rate shows `$0 cost`. The plan line covers only the window
-the latest Claude reply reported, five-hour or weekly, with a share only when
-that reply carried one. The plugin does nothing in Claude Code.
+model with no listed rate shows `$0 cost`. The plugin does nothing in Claude
+Code.
+
+A plan line shows how much of a plan's limit is used, such as `Claude weekly 48%
+used`, with its reset time on the line below. A number 10 minutes old or more
+shows its age, such as `· 2h ago`. When the latest check failed, the last good
+number stays with its age and `check failed` below it, and a window that has
+reset since shows `unknown`. A plan line turns the warning color at 80% and the
+error color at 95%. `Claude limit reached until 14:00` shows while the OpenCode
+Claude plugin reports that Claude has stopped answering. A machine with no
+Claude Code login or plan shows no Claude line.
+
+`pde-quota` keeps these numbers in `~/.local/state/pde/quota/`, one file per
+source, and the plugin only reads them. `pde-quota show` prints the same plan
+lines in any shell, `--json` prints them with their numbers for other tools, and
+`--width N` sets the line width, 37 by default. When a number is due, `show` and
+the plugin start `pde-quota refresh` in the background. It asks Claude Code for
+the account's plan usage at most every 5 minutes, through `claude -p` in an
+empty folder with the user's own Claude Code settings skipped for that call, so
+their "no non-essential traffic" setting does not empty the answer. Telemetry,
+error reports and auto-update stay off, and no model runs. A lock keeps many
+OpenCode windows to one check, and `checks.log` beside the files records each
+check. A Claude Code status line can pipe its JSON into `pde-quota
+save-claude-status`, which saves its two plan windows, prints nothing and never
+fails. Deleting the folder is safe; the next refresh rebuilds it.
 
 Rendering is static and does not emit terminal palette escape sequences. An SSH
 client keeps its local terminal palette while a remote PDE prompt and tmux

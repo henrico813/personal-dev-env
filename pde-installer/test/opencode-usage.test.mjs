@@ -5,11 +5,11 @@ import {
   describeFinishGroup,
   describeFinishNotice,
   describeGroupLines,
-  describePlanUsage,
   describeShortLine,
   describeSubagentLines,
   findApiPrice,
   listCatalogModels,
+  listPlanProvidersUsed,
   listSubagents,
   priceSubagents,
   readLineMode,
@@ -109,8 +109,8 @@ test("priceSubagents bills all tokens, largest first", () => {
 
   assert.deepEqual(priced, {
     rows: [
-      { name: "plan review", model: "claude-opus-5-5[1m]", tokens: 1_162_000, dollars: 1.6125, context: { tokens: 88_000, percent: 44 }, running: false },
-      { name: "locator", model: "claude-opus-5-5", tokens: 88_000, dollars: 0.44, context: undefined, running: false },
+      { name: "plan review", model: "claude-opus-5-5[1m]", providerID: "claude-code", tokens: 1_162_000, dollars: 1.6125, context: { tokens: 88_000, percent: 44 }, running: false },
+      { name: "locator", model: "claude-opus-5-5", providerID: "anthropic", tokens: 88_000, dollars: 0.44, context: undefined, running: false },
     ],
     tokens: 1_250_000,
     dollars: 2.0525,
@@ -135,8 +135,11 @@ const priced = (...rows) => ({
   dollars: rows.reduce((sum, entry) => sum + (entry.dollars ?? 0), 0),
 });
 
-/** A saved weekly plan event at 41 percent, with no reset time. */
-const weekly = { rateLimitType: "seven_day", utilization: 0.41 };
+/** One plan line, as quota/lines.js draws it. */
+const weekly = [{ text: "Claude weekly 41% used", level: "normal" }];
+
+/** Returns the text of each line. */
+const texts = (lines) => lines.map((line) => line.text);
 
 /**
  * A phone shows only this line above the prompt, so it must carry the agent
@@ -169,40 +172,39 @@ test("describeShortLine cuts long line", () => {
 
 /**
  * The sidebar and the /usage screen are the only group view, so they must
- * carry the running count, the token and price totals, and the plan line.
+ * carry the running count, the token and price totals, and the plan lines.
  */
 test("describeGroupLines totals agents tokens price", () => {
   const three = priced(row({ running: true }), row({ running: true }), row());
 
-  assert.deepEqual(describeGroupLines(three, weekly), [
+  assert.deepEqual(texts(describeGroupLines(three, weekly)), [
     "3 agents, 2 running",
     "264k tokens used · $1.26 API cost",
-    "Claude plan weekly 41%",
+    "Claude weekly 41% used",
   ]);
 });
 
-/** $0.00 would read as free API use, a stopped group must say all done, and an unknown plan must say so. */
-test("describeGroupLines unpriced, plan unknown", () => {
+/**
+ * A machine with no plan login must show no plan line at all. The plugin
+ * used to print `Claude plan unknown` there, about a plan nobody uses.
+ */
+test("describeGroupLines omits plans without login", () => {
   const local = priced(row({ model: "llama-3.3", dollars: undefined }));
 
-  assert.deepEqual(describeGroupLines(local, undefined), [
-    "1 agent, all done",
-    "88k tokens used · $0 cost",
-    "Claude plan unknown",
-  ]);
+  assert.deepEqual(texts(describeGroupLines(local, [])), ["1 agent, all done", "88k tokens used · $0 cost"]);
 });
 
-/** A known plan still guides a session with no subagents, while an unknown one shows nothing. */
+/** A known plan still guides a session with no subagents, while no plan shows nothing. */
 test("describeGroupLines plan without subagents", () => {
-  assert.deepEqual(describeGroupLines(priced(), weekly), ["Claude plan weekly 41%"], "known plan");
-  assert.deepEqual(describeGroupLines(priced(), undefined), [], "nothing saved");
+  assert.deepEqual(texts(describeGroupLines(priced(), weekly)), ["Claude weekly 41% used"], "known plan");
+  assert.deepEqual(describeGroupLines(priced(), []), [], "no plan");
 });
 
-/** A plan event with an unexpected long name must not wrap on a 40-column phone. */
-test("describeGroupLines cuts long plan line", () => {
-  const long = describeGroupLines(priced(), { rateLimitType: "x".repeat(30) });
+/** A machine that runs Copilot through OpenCode shows no plan in its sidebar unless that use counts. */
+test("listPlanProvidersUsed maps Copilot use", () => {
+  const group = priced(row({ providerID: "github-copilot" }), row({ providerID: "ollama" }));
 
-  assert.equal(long[0], `Claude plan ${"x".repeat(24)}…`, "cut at 37");
+  assert.deepEqual(listPlanProvidersUsed(group, "claude-code"), ["claude", "copilot"]);
 });
 
 /**
@@ -294,32 +296,3 @@ test("listSubagents includes nested, never the parent", () => {
   assert.deepEqual(listSubagents(sessions, "root"), ["child", "sibling", "grandchild"]);
   assert.deepEqual(listSubagents(sessions, "child"), ["grandchild"]);
 });
-
-/** The test's current time, and times six days after and eight days before it. */
-const NOW = Date.UTC(2026, 10, 12, 9, 0);
-const LATER = Date.UTC(2026, 10, 18, 2, 0);
-const EARLIER = Date.UTC(2026, 10, 4, 2, 0);
-
-/** Each case is a name, the saved plan file and the line expected. */
-const planCases = [
-  ["window and reset only", { status: "allowed", rateLimitType: "seven_day", resetsAt: LATER }, "weekly, resets Nov 18, 02:00"],
-  ["share and reset", { rateLimitType: "seven_day", utilization: 0.414, resetsAt: LATER }, "weekly 41%, resets Nov 18, 02:00"],
-  ["limit reached", { rateLimitType: "five_hour", limited: true, limitedUntil: LATER }, "5-hour, limit reached until Nov 18, 02:00"],
-  [
-    "stale times dropped",
-    { rateLimitType: "seven_day", limited: true, limitedUntil: EARLIER, utilization: 0.2, resetsAt: EARLIER },
-    "weekly 20%",
-  ],
-  ["nothing saved", undefined, undefined],
-];
-
-for (const [name, saved, line] of planCases) {
-  /**
-   * The plan line must show the window, a share when the reply carried one,
-   * a live limit and a future reset, and nothing when no file was saved. The Claude plugin keeps old limit and
-   * reset times, so showing them would claim a limit or reset that passed.
-   */
-  test(`describePlanUsage ${name}`, () => {
-    assert.equal(describePlanUsage(saved, { now: NOW, timeZone: "UTC" }), line);
-  });
-}

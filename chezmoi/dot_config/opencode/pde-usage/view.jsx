@@ -2,25 +2,50 @@
 // subagent's own row, in a sidebar panel and on the screen /usage opens, and
 // adds a notice line above the prompt when a subagent finishes. The lines are
 // read as the JSX renders, so they follow the run while a screen is open.
-// OpenCode compiles this JSX itself, and the plugin entry in tui.js calls
-// addUsageSlots once at startup.
+// The sidebar and /usage also show the plan lines from the files `pde-quota`
+// saves. OpenCode compiles this JSX itself, and the plugin entry in tui.js
+// calls addUsageSlots once at startup.
+import { readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { createSignal } from "solid-js";
+import { startRefresh } from "./quota/cli.js";
+import { describePlanLines, levelOf } from "./quota/lines.js";
+import { pickProviderViews, readClaudeLimit } from "./quota/pick.js";
+import { readSettings } from "./quota/settings.js";
+import { dueSources, readPlanFiles } from "./quota/store.js";
 import {
   describeFinishGroup,
   describeFinishNotice,
   describeGroupLines,
   describeShortLine,
   describeSubagentLines,
+  listPlanProvidersUsed,
   listSubagents,
   priceSubagents,
   readJsonFile,
 } from "./usage.js";
 
 const NOTICE_MS = 10_000;
+const WATCH_MS = 5_000;
+// Each OpenCode window starts at most one refresh a minute, and the refresh
+// lock keeps windows from asking a provider at once.
+const REFRESH_START_GAP_MS = 60_000;
 
-/** Adds the usage slots, the /usage screen and the finish notices to OpenCode. */
-export function addUsageSlots(api, { catalogModels, planFile, lineMode }) {
+/**
+ * Adds the usage slots, the /usage screen and the finish notices to
+ * OpenCode. `quotaDir` is where `pde-quota` saves plan files, and
+ * `rateLimitFile` is where the OpenCode Claude plugin saves Claude's hard limit.
+ */
+export function addUsageSlots(api, { catalogModels, quotaDir, rateLimitFile, lineMode }) {
   const [notices, setNotices] = createSignal([]);
+  const planViews = watchPlanFiles({ quotaDir, rateLimitFile });
+  // Read at render time, like the other colors, so a theme change applies.
+  const colorOf = (level) =>
+    level === "error"
+      ? api.theme.text.feedback.error.base
+      : level === "warning"
+        ? api.theme.text.feedback.warning.base
+        : api.theme.text.muted;
   const sessions = api.data.session;
   // OpenCode's Context panel reads model limits from the same list. Its
   // entries come first, so the catalog only fills in missing prices.
@@ -96,18 +121,25 @@ export function addUsageSlots(api, { catalogModels, planFile, lineMode }) {
   });
 
   // A subagent's own sidebar shows its root's data, so both sessions agree.
+  // The short sidebar shows the plans the group used, plus any nearly full one.
   api.ui.slot({
     append: "sidebar.content",
     render: (props) => {
       if (!props.sessionID) return null;
-      const lines = describeGroupLines(priceFor(rootOf(props.sessionID)), readJsonFile(planFile));
+      const root = rootOf(props.sessionID);
+      const priced = priceFor(root);
+      const used = listPlanProvidersUsed(priced, sessions.get(root)?.model?.providerID);
+      const shown = planViews().filter(
+        (view) => used.includes(view.provider) || view.windows.some((window) => levelOf(window.usedPercent) !== "normal"),
+      );
+      const lines = describeGroupLines(priced, describePlanLines(shown, { now: Date.now() }));
       return lines.length === 0 ? null : (
         <box paddingLeft={2} flexDirection="column">
           <text fg={api.theme.text.base}>
             <b>Usage</b>
           </text>
           {lines.map((line) => (
-            <text fg={api.theme.text.muted}>{line}</text>
+            <text fg={colorOf(line.level)}>{line.text}</text>
           ))}
         </box>
       );
@@ -115,9 +147,12 @@ export function addUsageSlots(api, { catalogModels, planFile, lineMode }) {
   });
 
   // Every text part is read when the screen renders, so the lines follow the
-  // run while the screen is open.
+  // run while the screen is open. /usage shows every plan with a login.
   const usageLines = () =>
-    describeGroupLines(rootID ? priceFor(rootID) : { rows: [], tokens: 0, dollars: 0 }, readJsonFile(planFile));
+    describeGroupLines(
+      rootID ? priceFor(rootID) : { rows: [], tokens: 0, dollars: 0 },
+      describePlanLines(planViews(), { now: Date.now() }),
+    );
   api.ui.router.register({
     name: "usage",
     render: () => (
@@ -126,7 +161,7 @@ export function addUsageSlots(api, { catalogModels, planFile, lineMode }) {
           <b>Subagent usage  (esc back)</b>
         </text>
         {usageLines().map((line) => (
-          <text fg={api.theme.text.muted}>{line}</text>
+          <text fg={colorOf(line.level)}>{line.text}</text>
         ))}
       </box>
     ),
@@ -186,4 +221,49 @@ export function addUsageSlots(api, { catalogModels, planFile, lineMode }) {
     }
   };
   setInterval(watchSubagents, 1000).unref?.();
+}
+
+/**
+ * Re-reads the plan files every 5 seconds when their times change, starts a
+ * refresh when a source is due, and returns a signal of the provider views.
+ * The plugin never asks a provider itself, so a slow or hung one cannot
+ * stall OpenCode's screen.
+ */
+function watchPlanFiles({ quotaDir, rateLimitFile, now = Date.now }) {
+  const settings = readSettings();
+  // Set on every tick, so the ages in the lines stay right without a new file.
+  const [views, setViews] = createSignal([], { equals: false });
+  let stamps;
+  let files = {};
+  let saved;
+  let lastStartAt = 0;
+  const tick = () => {
+    const next = listFileTimes(quotaDir, rateLimitFile);
+    if (next !== stamps) {
+      stamps = next;
+      files = readPlanFiles(quotaDir);
+      saved = readJsonFile(rateLimitFile);
+    }
+    setViews(pickProviderViews(files, readClaudeLimit(saved, now()), settings, now()));
+    if (dueSources(files, settings, now()).length > 0 && now() - lastStartAt >= REFRESH_START_GAP_MS) {
+      lastStartAt = now();
+      startRefresh();
+    }
+  };
+  tick();
+  setInterval(tick, WATCH_MS).unref?.();
+  return views;
+}
+
+/** Returns the change times of the plan files and the Claude plugin's file as one text, which changes when any file does. */
+function listFileTimes(quotaDir, rateLimitFile) {
+  let names = [];
+  try {
+    names = readdirSync(quotaDir).filter((name) => name.endsWith(".json"));
+  } catch {
+    // No refresh has made the folder yet.
+  }
+  return [...names.map((name) => join(quotaDir, name)), rateLimitFile]
+    .map((path) => `${path} ${statSync(path, { throwIfNoEntry: false })?.mtimeMs}`)
+    .join("\n");
 }

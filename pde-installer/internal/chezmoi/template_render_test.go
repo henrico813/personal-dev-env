@@ -59,6 +59,7 @@ func TestIgnoreListMatchesEachProfile(t *testing.T) {
 		".config/opencode",
 		".config/opencode/**",
 		".local/bin/opencode",
+		".local/bin/pde-quota",
 		".config/herdr",
 		".config/herdr/**",
 		".agents",

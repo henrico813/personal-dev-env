@@ -4,15 +4,10 @@
 // session data. Start with priceSubagents, describeShortLine,
 // describeGroupLines and describeSubagentLines.
 import { readFileSync } from "node:fs";
+import { cut } from "./quota/lines.js";
 
 // Providers whose listed prices are the model makers' own API rates.
 const PRICE_MAKERS = ["anthropic", "openai"];
-const PLAN_WINDOWS = {
-  five_hour: "5-hour",
-  seven_day: "weekly",
-  seven_day_opus: "weekly Opus",
-  seven_day_sonnet: "weekly Sonnet",
-};
 // A narrow screen wraps a longer line and hides the parts at its end.
 const LINE_LIMIT = 30;
 // A phone in Moshi shows about 40 columns, less the row's padding of 2, and a
@@ -21,6 +16,9 @@ const GROUP_LIMIT = 37;
 const PARTS = " · ";
 const CATALOG_URL = "https://models.dev/api.json";
 const CATALOG_TIMEOUT_MS = 10_000;
+
+/** OpenCode provider IDs whose use counts against a plan, such as `github-copilot` to `copilot`. */
+export const PLAN_PROVIDERS = { "claude-code": "claude", "github-copilot": "copilot", openai: "codex" };
 
 /**
  * Returns the subagents under a session, largest first, with their total
@@ -37,6 +35,7 @@ export function priceSubagents(infos, models) {
       return {
         name: info.title || info.id,
         model: info.model?.id ?? "unknown model",
+        providerID: info.model?.providerID,
         tokens: countTokens(tokens),
         dollars: price && countApiDollars(price, tokens),
         context: measureContext(info.messages ?? [], models, info.model),
@@ -71,13 +70,13 @@ export function describeShortLine(priced, mode = "spent") {
 }
 
 /**
- * Returns the group data for all of a session's subagents together, for the
- * usage sidebar and the /usage screen. The first line counts the agents and
- * says who still runs, the second totals tokens and API price, and the third
- * reports the Claude plan. No subagents still leaves a known plan line, and
- * nothing else gives an empty list. Each line fits 37 characters.
+ * Returns the group lines for all of a session's subagents together, for the
+ * usage sidebar and the /usage screen, then `planLines`. The first line
+ * counts the agents and says who still runs, and the second totals tokens
+ * and API price. Each line is a plan line object, so plan lines keep their
+ * level. Each fits 37 characters.
  */
-export function describeGroupLines(priced, saved, now = Date.now()) {
+export function describeGroupLines(priced, planLines) {
   const rows = priced?.rows ?? [];
   const lines = [];
   if (rows.length > 0) {
@@ -88,14 +87,16 @@ export function describeGroupLines(priced, saved, now = Date.now()) {
     const price = rows.some(isPriced) ? `${formatDollars(priced.dollars)} API cost` : "$0 cost";
     lines.push(cut(`${formatTokens(priced.tokens)} tokens used · ${price}`, GROUP_LIMIT));
   }
-  const plan = describePlanUsage(saved, { now });
-  // The reset time gets its own line so a phone-width line keeps it whole.
-  if (plan !== undefined) {
-    const [window, ...rest] = plan.split(", ");
-    lines.push(cut(`Claude plan ${window}`, GROUP_LIMIT));
-    if (rest.length > 0) lines.push(cut(`  ${rest.join(", ")}`, GROUP_LIMIT));
-  } else if (rows.length > 0) lines.push("Claude plan unknown");
-  return lines;
+  return [...lines.map((text) => ({ text, level: "normal" })), ...planLines];
+}
+
+/**
+ * Returns the plan providers a session group used, from its subagents' and
+ * its own model providers, such as `["claude", "copilot"]`.
+ */
+export function listPlanProvidersUsed(priced, rootProviderID) {
+  const providerIDs = [rootProviderID, ...(priced?.rows ?? []).map((row) => row.providerID)];
+  return [...new Set(providerIDs.map((providerID) => PLAN_PROVIDERS[providerID]).filter(Boolean))];
 }
 
 /**
@@ -156,25 +157,6 @@ export function describeFinishGroup(rows) {
  */
 export function readLineMode(options, env = process.env) {
   return env?.PDE_USAGE_LINE === "left" || options?.line === "left" ? "left" : "spent";
-}
-
-/**
- * Returns the Claude plan limits the OpenCode Claude plugin saved, such as
- * `weekly, resets Nov 18, 02:00`, or undefined when nothing was saved. The
- * plugin saves only the window the latest Claude reply reported, and a share
- * only when that reply carried one.
- */
-export function describePlanUsage(saved, { now = Date.now(), timeZone } = {}) {
-  if (typeof saved !== "object" || saved === null) return undefined;
-  let line = PLAN_WINDOWS[saved.rateLimitType] ?? saved.rateLimitType ?? "plan";
-  if (isLimited(saved, now)) {
-    line += `, limit reached until ${formatTime(saved.limitedUntil, timeZone)}`;
-  } else if (typeof saved.utilization === "number") {
-    line += ` ${Math.round(saved.utilization * 100)}%`;
-  }
-  // The plugin keeps the last reset time when an event leaves it out.
-  if (saved.resetsAt > now) line += `, resets ${formatTime(saved.resetsAt, timeZone)}`;
-  return line;
 }
 
 /**
@@ -292,11 +274,6 @@ function measureContext(messages, models, model) {
   return { tokens, percent: window ? Math.round((tokens / window) * 100) : undefined };
 }
 
-/** Returns whether a saved plan limit still holds, since the plugin leaves an old limitedUntil behind. */
-function isLimited(saved, now) {
-  return Boolean(saved?.limited && saved.limitedUntil > now);
-}
-
 function isPriced(row) {
   return row.dollars !== undefined;
 }
@@ -342,20 +319,4 @@ function formatDuration(seconds) {
 /** Returns the name and its numbers in one phone line, cutting the name, never the numbers. */
 function fitName(name, numbers, limit = GROUP_LIMIT) {
   return cut(name, Math.max(1, limit - numbers.length)) + numbers;
-}
-
-/** Returns a line cut to the limit, ending in … when cut. */
-function cut(line, limit) {
-  return line.length > limit ? `${line.slice(0, limit - 1)}…` : line;
-}
-
-function formatTime(milliseconds, timeZone) {
-  return new Date(milliseconds).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-    timeZone,
-  });
 }
