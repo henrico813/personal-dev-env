@@ -723,7 +723,7 @@ fn find_hub_folder(local_state: &Path) -> Result<RunFolder, HubError> {
         }
     }
     // Newest first, so the first match is the folder written to last.
-    resting.sort_by(|left, right| right.0.cmp(&left.0));
+    resting.sort_by_key(|(modified, _)| std::cmp::Reverse(*modified));
 
     match running.len() {
         0 => {
