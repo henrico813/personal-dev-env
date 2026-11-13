@@ -644,10 +644,11 @@ fn parse_agent(raw: &Value, machine: Option<&str>) -> Result<Agent, HerdrError> 
         Some(_) => AgentStatus::Unknown,
         None => return Err(make_missing_field_error("agent_status")),
     };
-    // Herdr lists a starting agent with `"agent": null` until it detects
+    // Herdr lists a starting agent with `"agent": null`, or with no
+    // `agent` field just after a tab opens or closes, until it detects
     // the program. Its state is then unknown, so a message for it waits.
     let (kind, status) = match raw.get("agent") {
-        Some(Value::Null) => (AgentKind::Other(String::new()), AgentStatus::Unknown),
+        None | Some(Value::Null) => (AgentKind::Other(String::new()), AgentStatus::Unknown),
         _ => {
             let kind = match read_text(raw, "agent")?.as_str() {
                 "opencode" => AgentKind::OpenCode,
@@ -817,8 +818,9 @@ mod tests {
     }
 
     /// Herdr lists a new agent by name before it detects which program
-    /// runs there. That entry must stay in the list with an unknown
-    /// state, whatever state Herdr gives, so a message for it waits.
+    /// runs there, with a null or missing `agent` field. That entry must
+    /// stay in the list with an unknown state, whatever state Herdr
+    /// gives, so a message for it waits.
     /// Left out, the session looks gone, and its message is marked not
     /// sent or moved to an older session of the card.
     #[test]
@@ -844,6 +846,15 @@ mod tests {
                 "focused": false,
                 "state_change_seq": 1288,
             },
+            {
+                "name": "plan-fix",
+                "agent_status": "idle",
+                "pane_id": "w4:p4",
+                "workspace_id": "w4",
+                "tab_id": "w4:t4",
+                "focused": false,
+                "state_change_seq": 2,
+            },
         ]});
 
         let agents = parse_agent_list(&result, None).unwrap();
@@ -857,6 +868,7 @@ mod tests {
             [
                 ("docs-fix", AgentStatus::Unknown),
                 ("notes-fix", AgentStatus::Idle),
+                ("plan-fix", AgentStatus::Unknown),
             ]
         );
     }
