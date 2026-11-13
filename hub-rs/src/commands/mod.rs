@@ -1,6 +1,8 @@
-//! Holds one module per hub command. Each runs one command and
-//! returns an `Outcome` or a `HubError`, and never prints, so tests
-//! read plain values.
+//! Holds one module per hub command. Each command module runs one
+//! command and returns an `Outcome` or a `HubError`, and never
+//! prints, so tests read plain values. `cli.rs` is the exception.
+//! It reads the command line, and clap prints usage and errors
+//! there.
 
 pub mod alive;
 pub mod auto;

@@ -579,7 +579,7 @@ impl HerdrError {
     }
 }
 
-/// Writes Herdr's own message.
+/// Writes the message `main` prints after `hub: `.
 impl fmt::Display for HerdrError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

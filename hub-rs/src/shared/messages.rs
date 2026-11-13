@@ -646,7 +646,9 @@ fn place_message(
         path: sends.clone(),
         source,
     })?;
-    // The dot keeps the temporary file out of `list_messages`.
+    // The `.tmp` ending keeps the temporary file out of
+    // `list_messages`, and the leading dot keeps it out of
+    // `count_messages`.
     let temporary = sends.join(format!(".{}.{}.tmp", message.name, std::process::id()));
     fs::write(&temporary, to_json(&message, &temporary)?).map_err(|source| HubError::File {
         path: temporary.clone(),

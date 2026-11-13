@@ -4,8 +4,9 @@
 //! `run_minute_pass` is the slow part, at most once a minute, which
 //! reads the board, finds finished sessions and asks workers to hand
 //! off. It never closes or parks a session, which only `hub clean`
-//! does. The one session it starts is an old hub's session review,
-//! once that hub's tab has closed, and only with `--start-reviews`.
+//! and `hub park` do. The one session it starts is an old hub's
+//! session review, once that hub's tab has closed, and only with
+//! `--start-reviews`.
 
 use std::path::PathBuf;
 use std::thread;
@@ -794,8 +795,8 @@ mod tests {
         );
     }
 
-    /// Scripts and the later board read `hub next --json`, so a renamed
-    /// field or a missing null breaks them without a word.
+    /// A script or a hub that reads `hub next --json` breaks without
+    /// a word when a field is renamed or a null goes missing.
     #[test]
     fn format_news_json_matches_example_object() {
         let cases = [

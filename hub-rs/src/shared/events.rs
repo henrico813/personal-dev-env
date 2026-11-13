@@ -54,7 +54,8 @@ pub(crate) enum EventKind {
         id: MessageId,
         reason: String,
     },
-    /// Herdr turned the message down before taking it.
+    /// The message was not sent, because Herdr turned it down, the
+    /// session is gone, or a reopen of it failed.
     NotSent {
         name: String,
         id: MessageId,
