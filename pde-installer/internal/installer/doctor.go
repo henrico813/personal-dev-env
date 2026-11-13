@@ -120,6 +120,15 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 			return fmt.Errorf("write GitHub Copilot status: %w", err)
 		}
 	}
+	if mode == preflightReport {
+		if err := reportUpdateState(
+			config.Home,
+			config.RepoRoot,
+			runner,
+		); err != nil {
+			return fmt.Errorf("write update state: %w", err)
+		}
+	}
 	if len(failures) > 0 {
 		for _, failure := range failures {
 			if _, err := fmt.Fprintln(runner.Err(), "error   "+failure); err != nil {
@@ -148,6 +157,28 @@ func reportCopilotStatus(home string, out io.Writer) error {
 		}
 	} else if _, err := fmt.Fprintln(out, "warning GitHub Copilot credentials: missing; run :Copilot auth in Neovim"); err != nil {
 		return err
+	}
+	return nil
+}
+
+// Prints the last update and how far main is ahead as status lines. A line
+// that needs attention is a warning, which does not fail doctor.
+func reportUpdateState(home, root string, runner run.Runner) error {
+	for _, line := range readUpdateState(
+		home,
+		root,
+		runner,
+	) {
+		label := "status  "
+		if line.attention {
+			label = "warning "
+		}
+		if _, err := fmt.Fprintln(
+			runner.Out(),
+			label+line.text,
+		); err != nil {
+			return err
+		}
 	}
 	return nil
 }

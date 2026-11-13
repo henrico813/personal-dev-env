@@ -97,13 +97,7 @@ func runUpdate(home, flagRoot string, runner run.Runner) error {
 	record.CheckedAt = time.Now().UTC().Format(time.RFC3339)
 	if err := writeStateJSON(
 		home,
-		filepath.Join(
-			home,
-			".local",
-			"state",
-			"pde",
-			"update.json",
-		),
+		updateRecordPath(home),
 		record,
 	); err != nil {
 		fmt.Fprintf(
