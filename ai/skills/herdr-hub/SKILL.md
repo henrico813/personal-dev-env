@@ -311,6 +311,9 @@ vault. A hub never reports to a hub on another machine.
   When you move a card to `review`, add the user's one next step with
   `card note KEY "next: <step>"`, such as `next: review PR #498`.
   `hub board` shows it on the card's details page.
+- When one wake needs several card commands, such as `card note`,
+  `card move` and `card add`, put them in one shell script and run it
+  in one tool call.
 - Only the user moves a card from `draft` to `ready`, adopts work
   already under way, or drops a card. Never release a card the user
   described in a sentence: it stays in `draft` until the user has
@@ -434,7 +437,13 @@ Fix the entry and run it again.
 Each card's worker opens its own pull request by `pull-request`. Keep
 one list of the pull requests that wait for the user's review, in
 `<run folder>/reviews.md`, and bring the whole list to the user in
-one message. A merge or pull request edit request is never a routine
+one message. Show each pull request with the checks list from its
+Testing, as `git-messages` item 5 says. Add a pull request to the list
+only after its reviews, tests and tries ran. When a check is missing
+or `not run`, send the pull request back to its worker first. Keep a
+`not run` line only when the check cannot apply, and give the reason
+on that line.
+A merge or pull request edit request is never a routine
 step. A worker sends one only after you tell it the user reviewed
 that pull request, so tell it once the user has, and take the pull
 request off the list. The worker then merges and reports once it has
