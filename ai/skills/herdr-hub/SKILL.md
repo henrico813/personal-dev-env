@@ -213,11 +213,12 @@ tools, so you never read half a report.
   Merges says.
 - Finished work: start the next step. For an open pull request, add
   it to the review list, as Merges says.
-- A merged pull request: check the merge, and its install where there
-  is one, then accept the work yourself, such as by moving its card to
-  accepted. Do not ask the user, who already approved the merge.
-  A merge worker's summary shows the merge and the install, so start
-  no other session to check either.
+- A merged pull request: check the merge. For a personal-dev-env pull
+  request, also check that `pde-installer update` ran. Then accept the
+  work yourself, such as by moving its card to accepted. Do not ask
+  the user, who already approved the merge. A merge worker's summary
+  shows the merge, and the update when it ran with `--update`, so
+  start no other session to check either.
 - Status-only news, such as a passed rehearsal: send the worker
   nothing, and tell the user nothing about it.
 - A change of owner: note it on the card with `card note`, and tell
@@ -462,11 +463,12 @@ says for a local job. In that brief, put the command below in place
 of `bash <script>`, and name `<folder>/summary.txt` as the summary
 file. In a repository with
 several remotes, add `--remote <remote>` after the test command.
-When the merge changes what an install puts on this machine, add
-`--install '<install command>'` after the test command, so the same
-worker installs once the pull request has merged. For
-personal-dev-env, the install command is
-`git pull --ff-only && pde-installer install`.
+For a personal-dev-env pull request, add `--update` at the end, as in
+`'<test command>' --remote <remote> --update`. `--update` makes the
+same worker run `pde-installer update` once the pull request has
+merged. That command updates the checkout at `install_path` in
+`~/.config/pde/config.json` to the newest main and installs it, so
+the hub starts no separate session to install the merge.
 
 Start a merge worker only for a pull request whose Testing records that
 the change was deployed and tried, as `pull-request` Guardrail 4 asks.
@@ -492,11 +494,15 @@ merge request. The line before `exit:` says what happened:
 
 - `merged: <commit>`: handle it as a merged pull request, as Reports
   from sessions says.
-- `install: passed`: the merged line comes just before it. Handle it
-  as a merged pull request whose install you have checked.
-- `install: failed with exit <code>; see install.log`: the pull
-  request merged but its install failed. Tell the user, with the last
-  lines of `<folder>/install.log`.
+- `update installed: main is at <commit>` or
+  `update current: main is at <commit>`: the merged line comes just
+  before it. Handle it as a merged pull request; the update needs no
+  further check. The three `update` lines appear only with
+  `--update`.
+- `update: failed with exit <code>: <reason>; see update.log`: the
+  pull request merged, but this machine does not run the newest main.
+  Accept the merged work as above, and tell the user, with that line
+  and the last lines of `<folder>/update.log`.
 - `result: conflict with <base>: <files>`: resolving a conflict
   writes code, so it is a local job. Hand it to a worker as
   `herdr-handoff`'s "Hand a local job to a worker" says, with an edit

@@ -226,6 +226,9 @@ and `current`, `update` prints `update <result>: main is at <commit>`.
 Otherwise it exits with an error that gives the result and reason. A second
 update started while one runs exits at once with an error.
 
+On a full install, `hub watch` reads `update.json` and sends the phone one
+notification for each new `skipped` or `failed` result.
+
 ## Global Option
 
 `--repo-root PATH` selects a checkout instead of using the environment or
