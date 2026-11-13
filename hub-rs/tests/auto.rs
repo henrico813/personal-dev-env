@@ -194,11 +194,31 @@ fn run_auto_approve_ignores_other_replies() {
     }
 }
 
+/// `hub auto approve` re-checks `run.md`, so a card a run may not
+/// work, a draft for example, stops the approval and leaves no
+/// `approved.md` for workers to start from.
+#[test]
+fn run_auto_approve_stops_when_list_fails() {
+    let mut test_tools = make_ready_cards(&["DEMO-KB-001"]);
+    test_tools
+        .cards
+        .stages
+        .insert("DEMO-KB-001".to_owned(), Stage::Draft);
+    write_run_list(&test_tools, "- DEMO-KB-001 demo: retry", "");
+    let approval = make_approval(2, "approve run 2", false);
+    let now = make_time("2026-11-11T22:14:00+00:00[UTC]");
+
+    let result = run_auto_approve(&test_tools.tools(), &test_tools.run(), &approval, &now);
+
+    assert!(matches!(result, Err(HubError::NotDone(_))));
+    assert!(!test_tools.run_path().join("approved.md").exists());
+}
+
 /// `approved.md` records what the user approved, in the user's own
 /// words and with the time, so later sessions can check it. Case and a
 /// final period in the reply do not matter.
 #[test]
-fn run_auto_approve_saves_list_with_reply() {
+fn run_auto_approve_saves_words_and_list() {
     let test_tools = make_ready_cards(&["DEMO-KB-001"]);
     write_run_list(&test_tools, "- DEMO-KB-001 demo: retry", "");
     let approval = make_approval(2, "Approve run 2.", false);
@@ -296,7 +316,7 @@ fn run_auto_approve_keeps_existing_approval() {
 /// Each run card's line comes from the files instead, not from the
 /// hub's memory. A card under another heading gets no line.
 #[test]
-fn run_auto_now_writes_line_per_card() {
+fn run_auto_now_writes_brief_from_files() {
     let test_tools = TestTools::new();
     let run_path = test_tools.run_path();
     fs::write(
