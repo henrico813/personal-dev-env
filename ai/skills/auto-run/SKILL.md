@@ -218,12 +218,12 @@ send what it finds to the auto hub with `hub send`.
    start nothing, and end your turn. Write every report to the front
    hub this way.
 2. Check with `command -v` that `hub`, `card`, `herdr`, `wt`,
-   `planner`, `pde-gh-write`, `glimmer`, `nobs`, `jq`, `rg` and
-   `python3` are on `PATH`; never run `pde-gh-write pr` to test it,
-   since any `pr` command files a request. Check each model the
-   workers will use, as `model-routing` says. When a tool is missing
-   or no strongest model answers for the planners and workers, write
-   a blocker to the front hub and end your turn.
+   `planner`, `pde-gh-write`, `pde-check`, `glimmer`, `nobs`, `jq`,
+   `rg` and `python3` are on `PATH`; never run `pde-gh-write pr` to
+   test it, since any `pr` command files a request. Check each model
+   the workers will use, as `model-routing` says. When a tool is
+   missing or no strongest model answers for the planners and
+   workers, write a blocker to the front hub and end your turn.
 3. Copy [references/worker-limits.md](references/worker-limits.md)
    to `<run folder>/common.md`, and fill in each `<...>`: your name,
    the run folder, the run tier from `approved.md`, the away window,

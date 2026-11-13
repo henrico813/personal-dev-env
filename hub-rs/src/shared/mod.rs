@@ -36,7 +36,8 @@ pub enum HubError {
     Usage(String),
     /// The command did not do its work, for the reason given. Exit 3.
     NotDone(String),
-    /// Herdr turned a message down before taking it. Exit 1.
+    /// A message was not sent, because Herdr turned it down, the
+    /// session is gone, or a reopen of it failed. Exit 1.
     NotSent { name: String, reason: String },
     /// A message may have arrived. `file` is its `.sending` file.
     /// Exit 1.
@@ -97,7 +98,7 @@ impl fmt::Display for HubError {
     }
 }
 
-/// Returns the external error behind a failure, when there is one.
+/// Returns the error behind a failure, when there is one.
 impl std::error::Error for HubError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
