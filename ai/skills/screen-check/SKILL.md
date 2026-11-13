@@ -117,6 +117,8 @@ Report each screen you checked with these parts:
   real accounts, pull requests or approval requests.
 - Ask the user to look only at what a screen cannot show, such as how
   a key feels on the phone.
+- Report only screens that `show` or `wait` printed. When no screen
+  ran, say so. Never report a screen you did not read.
 
 ## When a tool is missing
 
@@ -135,6 +137,7 @@ Report each screen you checked with these parts:
   waited for.
 - `python3 $S show <name>` exits 2 for every screen you started, so
   none is still running.
+- Each screen in the report is one that `show` or `wait` printed.
 - The report shows one final screen in a code block. It puts any
   other screens where `status-updates` says detail goes.
 

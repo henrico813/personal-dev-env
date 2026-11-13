@@ -48,8 +48,9 @@ Checks:
 2. Uses the default 40x16 size or names it.
 3. Waits for text with `wait` and uses no `sleep`.
 4. Runs `stop` on the screen.
-5. Puts the final screen in a code block and does not ask the user to
-   test the menu.
+5. Shows only screens it read and does not ask the user to test
+   the menu. This case runs nothing, so any screen shown would be
+   made up.
 
 ## Case 2: a key hint cut at the edge
 
