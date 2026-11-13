@@ -1,5 +1,6 @@
-// Sums subagent tokens, API price and context size under OpenCode's prompt,
-// and lists each subagent and the Claude plan limits in the session sidebar.
+// Shows subagent tokens, API price and context size above OpenCode's prompt,
+// a total in the parent session and each subagent's own in its view, and
+// lists each subagent and the Claude plan limits in the session sidebar.
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fetchCatalogModels } from "./usage.js";

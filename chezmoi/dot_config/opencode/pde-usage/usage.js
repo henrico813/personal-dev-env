@@ -1,6 +1,7 @@
 // Prices subagent tokens at API rates, measures their context and describes
 // the Claude plan limits. view.jsx calls these with OpenCode's session data.
-// Start with priceSubagents, describePromptLine and describeSubagents.
+// Start with priceSubagents, describePromptLine, describeSubagentRow and
+// describeSubagents.
 import { readFileSync } from "node:fs";
 
 // Providers whose listed prices are the model makers' own API rates.
@@ -49,9 +50,10 @@ export function priceSubagents(infos, models) {
  */
 export function describeSubagents({ rows, dollars }) {
   const noun = rows.length === 1 ? "subagent" : "subagents";
-  const lines = [`${rows.length} ${noun}, ${formatDollars(dollars)} at API rates`];
+  const total = rows.some(isPriced) ? `${formatDollars(dollars)} at API rates` : "no price";
+  const lines = [`${rows.length} ${noun}, ${total}`];
   for (const row of rows.slice(0, SUBAGENTS_SHOWN)) {
-    const price = row.dollars === undefined ? "no price" : formatDollars(row.dollars);
+    const price = isPriced(row) ? formatDollars(row.dollars) : "no price";
     lines.push(row.name.slice(0, NAME_WIDTH), `  ${row.model} ${formatTokens(row.tokens)} ${price}`);
     if (row.context) lines.push(`  context ${formatContext(row.context)}`);
   }
@@ -79,17 +81,18 @@ export function describePlanUsage(saved, { now = Date.now(), timeZone } = {}) {
 }
 
 /**
- * Returns the line under the prompt, such as
+ * Returns the row above a parent session's prompt, such as
  * `2 subagents 500k $1.94, max context 88k 44%`, or an empty string. A
- * phone-width screen hides the sidebar, so this line is all it shows. The
- * context is the largest one among the subagents.
+ * phone-width screen hides the sidebar, so this row is all it shows. The
+ * context is the largest one among the subagents. Before the first reply the
+ * tokens are 0, and the row leaves the subagents out.
  */
 export function describePromptLine({ rows, tokens, dollars }, saved, now = Date.now()) {
   const parts = [];
-  if (rows.length > 0) {
+  if (tokens > 0) {
     const noun = rows.length === 1 ? "subagent" : "subagents";
     // $0.00 would read as free API use when no subagent has a price.
-    const price = rows.some((row) => row.dollars !== undefined) ? formatDollars(dollars) : "no price";
+    const price = rows.some(isPriced) ? formatDollars(dollars) : "no price";
     parts.push(`${rows.length} ${noun} ${formatTokens(tokens)} ${price}`);
     const largest = rows
       .map((row) => row.context)
@@ -99,6 +102,18 @@ export function describePromptLine({ rows, tokens, dollars }, saved, now = Date.
   }
   if (isLimited(saved, now)) parts.push("plan limit reached");
   return parts.join(", ");
+}
+
+/**
+ * Returns the row above a subagent's own prompt, such as
+ * `this subagent opus-5-5 412k $1.71, context 88k 44%`, or an empty string
+ * before its first reply. `row` is one of priceSubagents' rows.
+ */
+export function describeSubagentRow(row) {
+  if (!row || row.tokens <= 0) return "";
+  const price = isPriced(row) ? formatDollars(row.dollars) : "no price";
+  const line = `this subagent ${row.model} ${formatTokens(row.tokens)} ${price}`;
+  return row.context ? `${line}, context ${formatContext(row.context)}` : line;
 }
 
 /**
@@ -219,6 +234,10 @@ function measureContext(messages, models, model) {
 /** Returns whether a saved plan limit still holds, since the plugin leaves an old limitedUntil behind. */
 function isLimited(saved, now) {
   return Boolean(saved?.limited && saved.limitedUntil > now);
+}
+
+function isPriced(row) {
+  return row.dollars !== undefined;
 }
 
 function countTokens(tokens) {

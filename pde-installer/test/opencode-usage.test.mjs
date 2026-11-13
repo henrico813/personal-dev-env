@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   describePlanUsage,
   describePromptLine,
+  describeSubagentRow,
   describeSubagents,
   findApiPrice,
   listCatalogModels,
@@ -114,9 +115,10 @@ test("priceSubagents bills all tokens, largest first", () => {
 
 /**
  * The header sums the price, and a local model shows "no price" rather
- * than $0.00, which would read as free API use.
+ * than $0.00, which would read as free API use. With no priced subagent the
+ * header says "no price" too, as the row above the prompt does.
  */
-test("describeSubagents totals, marks unpriced rows", () => {
+test("describeSubagents marks unpriced rows and header", () => {
   const priced = {
     rows: [
       { name: "plan review", model: "claude-opus-5-5[1m]", tokens: 1_162_000, dollars: 1.6125, context: { tokens: 88_000, percent: 44 } },
@@ -135,6 +137,7 @@ test("describeSubagents totals, marks unpriced rows", () => {
     "locator",
     "  qwen3.8 88k no price",
   ]);
+  assert.equal(describeSubagents({ rows: [priced.rows[1]], dollars: 0 })[0], "1 subagent, no price");
 });
 
 /**
@@ -157,6 +160,27 @@ test("describePromptLine sums subagents, shows fullest context", () => {
 
   assert.equal(describePromptLine(priced, undefined), "3 subagents 500k $1.50, max context 88k 44%");
   assert.equal(describePromptLine(unpriced, undefined), "1 subagent 51k no price");
+});
+
+/**
+ * Subagents count 0 tokens until their first reply, and a bare 0 beside
+ * "no price" read as a broken row on the phone, so the row waits.
+ */
+test("describePromptLine hides subagents before tokens", () => {
+  const starting = { rows: [{ tokens: 0, dollars: undefined, context: undefined }], tokens: 0, dollars: 0 };
+
+  assert.equal(describePromptLine(starting, undefined), "");
+});
+
+/**
+ * Inside a subagent's view this row is the only place its own usage shows
+ * on the phone, so it must carry the model, tokens, price and context.
+ */
+test("describeSubagentRow shows usage, waits for tokens", () => {
+  const row = { model: "claude-opus-5-5", tokens: 412_000, dollars: 1.71, context: { tokens: 88_000, percent: 44 } };
+
+  assert.equal(describeSubagentRow(row), "this subagent claude-opus-5-5 412k $1.71, context 88k 44%");
+  assert.equal(describeSubagentRow({ ...row, tokens: 0 }), "");
 });
 
 /**
