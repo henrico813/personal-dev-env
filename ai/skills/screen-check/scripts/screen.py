@@ -38,7 +38,7 @@ POLL_SECONDS = 0.1
 
 
 class ScreenError(Exception):
-    """A screen command that cannot run, with a message for the agent."""
+    """Raised when a screen command cannot run, with a message to show."""
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -132,7 +132,7 @@ def check_screen_name(value: str) -> str:
 
     Raises:
         argparse.ArgumentTypeError: When value has anything but
-            lowercase letters, digits and hyphens.
+            lowercase letters, digits and hyphens, or starts with a hyphen.
     """
     if not NAME_PATTERN.fullmatch(value):
         raise argparse.ArgumentTypeError(
@@ -211,8 +211,8 @@ def read_screen(name: str, ansi: bool = False) -> dict:
 
     Returns:
         A dict with ``name``, ``width``, ``height``, ``cursor``,
-        ``exited``, ``exit_code`` and one string per row in ``lines``. tmux drops
-        spaces at the end of each line.
+        ``exited``, ``exit_code`` and one string per row in
+        ``lines``. tmux drops spaces at the end of each line.
 
     Raises:
         ScreenError: When no screen has this name.
@@ -237,7 +237,7 @@ def read_screen(name: str, ansi: bool = False) -> dict:
 
 
 def wait_for_text(name: str, text: str, timeout: float) -> int:
-    """Print the screen once text shows in one line, or the wait ends.
+    """Print the screen when text shows in one line or when the wait ends.
 
     The wait ends early when the program has exited without showing
     text, since its screen will not change again.

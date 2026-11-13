@@ -12,9 +12,9 @@ description: Runs a terminal program on a hidden tmux screen at phone
 
 The user reads every screen on a phone, through an SSH terminal about
 40 columns wide. A change that looks fine on a wide monitor can wrap,
-cut off a row or hide a key hint there. This skill has the agent run
-the changed program on a screen of that size, look at what it shows
-and fix it, so the user does not have to test each change.
+cut off a row or hide a key hint there. With this skill, the agent
+runs the changed program on a screen of that size and fixes what looks
+wrong. The user then does not have to test each change.
 
 `scripts/screen.py` runs the program inside its own tmux server, with
 no window. Nothing appears in the user's Herdr workspace, and no
@@ -66,7 +66,7 @@ Each shell call starts fresh, so begin each one with
      row.
    - Rows that no longer fit in 16 lines, so the last ones are gone.
    - Text drawn over other text, or a border that does not close.
-   - The cursor, in `cursor`, away from where typing goes.
+   - A `cursor` field that points away from where typing goes.
 
    Add `--ansi` when the change is about color or highlighting, such
    as which row is selected. Each line then keeps its escape codes.
@@ -128,7 +128,8 @@ Report each screen you checked with these parts:
 
 ## Final checks
 
-- Each changed screen was checked at 40x16.
+- Each changed screen was checked at 40x16, and each Herdr popup at
+  its own size.
 - You read every line of the final screen, not only the text you
   waited for.
 - `python3 $S show <name>` exits 2 for every screen you started, so
