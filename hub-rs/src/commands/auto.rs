@@ -102,8 +102,8 @@ pub fn run_auto_check(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, Hub
 
 /// Saves the checked list with the user's reply, once. A reply other
 /// than `approve run N` starts nothing, since run 1 started on a "go"
-/// meant for another question. Given words pass only when they name by
-/// key every card under `## Run` and no other card.
+/// meant for another question. With `--given`, the reply passes only
+/// when it names by key every card under `## Run` and no other card.
 ///
 /// # Errors
 ///
@@ -168,10 +168,10 @@ pub fn run_auto_approve(
 /// Writes `brief-now.md`, one line per card of the run, and prints it.
 /// A card's line is the first non-empty line of its worker's status
 /// file. It says `(needs you)` while `decisions.md` holds a question
-/// whose title starts with the card's key. The title of each question
-/// follows the count. It then puts the hubs at the top of the sidebar,
-/// and a failure there adds a warning line to the output, never to the
-/// file.
+/// whose title starts with the card's key. A `Questions for you: N`
+/// line follows, then one line per question title. It then puts the
+/// hubs at the top of the sidebar, and a failure there adds a warning
+/// line to the output, never to the file.
 ///
 /// # Errors
 ///

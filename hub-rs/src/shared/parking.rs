@@ -49,9 +49,9 @@ pub(crate) enum ParkOutcome {
     TabInUse,
 }
 
-/// Holds `.tidy.lock` in the parked folder while one tidy pass or one
-/// `hub park` runs. Dropping it, or the process ending, lets the next
-/// one in.
+/// Holds `.tidy.lock` in the parked folder while one tidy pass, one
+/// `hub park` or one reopen runs. Dropping it, or the process ending,
+/// lets the next one in.
 pub(crate) struct TidyLock {
     _file: File,
 }

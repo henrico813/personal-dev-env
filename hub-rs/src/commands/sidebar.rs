@@ -1,5 +1,6 @@
 //! Runs `hub go`, `hub gather` and `hub desk`, which find the hubs in
-//! Herdr's sidebar. A hub is an agent whose name ends in `-hub-<n>`.
+//! Herdr's sidebar. A hub is an agent whose name ends in `-hub-<n>`,
+//! other than a session review, whose name starts with `review-`.
 //! The desk is the user's own workspace, which holds no session.
 //! `gather` and `desk` put the kanban hubs at the top, then the desk,
 //! then the other hubs. They also cut Herdr's agent list down to a "go

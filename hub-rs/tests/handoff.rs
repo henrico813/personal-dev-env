@@ -221,9 +221,9 @@ fn run_handoff_says_started_when_prompt_fails() {
     assert_eq!(message, "started kanban-hub-2, but Herdr said no");
 }
 
-/// This check would have caught the wrong claim. The hub must not
-/// report a handoff it did not check, and the message names both
-/// efforts for the user.
+/// A hub once said its next hub ran at medium effort when it ran at
+/// the default. The hub must not report a handoff it did not check,
+/// and the message names both efforts for the user.
 #[test]
 fn run_handoff_stops_when_reply_effort_differs() {
     let (test_tools, handoff) = make_handoff_tools();
@@ -241,9 +241,10 @@ fn run_handoff_stops_when_reply_effort_differs() {
 }
 
 /// The tidy pass closes the old hub's tab from the `handoff` event,
-/// and `hub next` then starts its review from the event's review file.
-/// The event is written once the new tab exists, even when the effort
-/// check then fails, so the old hub never stays open forever.
+/// and `hub next --start-reviews` can then start its review from the
+/// event's review file. The event is written once the new tab exists,
+/// even when the effort check then fails, so the old hub never stays
+/// open forever.
 #[test]
 fn run_handoff_records_old_hub_and_review() {
     let (test_tools, handoff) = make_handoff_tools();

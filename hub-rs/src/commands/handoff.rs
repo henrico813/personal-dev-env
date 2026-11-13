@@ -1,8 +1,8 @@
 //! Runs `hub handoff`, which starts the next hub and checks its
-//! effort, and `hub adopt`, which takes over a hub started some other
-//! way. `start_due_review` starts the old hub's session review for
-//! `hub next --start-reviews`. Read `run_handoff` first. A hub once
-//! told the user the wrong effort because nothing checked it.
+//! effort, and `hub adopt`, which takes over an older hub left open
+//! without a handoff. `start_due_review` starts the old hub's session
+//! review for `hub next --start-reviews`. Read `run_handoff` first. A
+//! hub once told the user the wrong effort because nothing checked it.
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -42,10 +42,12 @@ pub(crate) enum ReviewStart {
 
 /// Starts the next hub on the model `rules.md` names, with `HUB_RUN`
 /// set, records the handoff, and reads back its first reply's effort.
-/// Checks every input before it starts anything. Only then does the
-/// next hub get its prompt, so it reads the whole handoff. It then puts
-/// the hubs at the top of the sidebar, and a failure there adds a
-/// warning line, not an error.
+/// Checks every input before it starts anything. It appends the old
+/// hub's steps to the caller's handoff file and writes a review
+/// handoff in the state folder before the next hub gets its prompt,
+/// so the prompt reads the whole handoff. A rerun appends the steps
+/// twice. It then puts the hubs at the top of the sidebar, and a
+/// failure there adds a warning line, not an error.
 ///
 /// # Errors
 ///

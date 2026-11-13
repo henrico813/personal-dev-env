@@ -475,8 +475,8 @@ fn run_next_skips_message_claimed_elsewhere() {
     send(&test_tools.tools(), &test_tools, "docs-fix", "First.").unwrap();
     send(&test_tools.tools(), &test_tools, "notes-fix", "Second.").unwrap();
     let sends = test_tools.run_path().join("sends");
-    // While docs-fix's prompt runs, another process claims notes-fix's
-    // message.
+    // While the first session's prompt runs, another process claims
+    // the second session's message.
     test_tools.herdr.on_prompt = Some(Box::new(move || {
         let held = sends.join("notes-fix.20261111-221400.1.held");
         let _ = fs::rename(&held, held.with_extension("sending"));
