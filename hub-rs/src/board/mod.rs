@@ -1,10 +1,10 @@
 //! Runs `hub board`, a full-screen list of the user's cards grouped by
-//! stage, with what waits on the user, sized for a phone first. Read
-//! `run_board` and `print_board` first, `control.rs` for the JSON that
-//! agents read, and `listen.rs` for the socket an agent drives the live
-//! board through.
+//! stage, with what waits on the user in every hub, sized for a phone
+//! first. Read `run_board` and `print_board` first, `control.rs` for
+//! the JSON that agents read, and `listen.rs` for the socket an agent
+//! drives the live board through.
 //!
-//! A second thread reads the hub's state every 10 seconds, or at once
+//! A second thread reads the hubs' state every 10 seconds, or at once
 //! when the user presses r. A read calls Herdr, `card` and OpenCode
 //! and takes about a second, so the keys and the mouse would freeze if
 //! the drawing thread waited for it. For the same reason, a details
@@ -35,7 +35,6 @@ use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
 
 use crate::commands::Outcome;
 use crate::external::cards::{CardCli, CardKey, CardNote, Cards};
-use crate::shared::run_folder::RunFolder;
 use crate::shared::{HubError, OwnedTools, Tools};
 use listen::StepListener;
 use queue::{Queue, read_queue};
@@ -44,6 +43,7 @@ use view::{Board, Step};
 
 pub use control::{control_board, dump_board};
 pub use listen::send_step;
+pub use queue::Hubs;
 
 /// How long the board waits for input before it checks for a stop
 /// signal or a new read again.
@@ -85,13 +85,13 @@ impl FromStr for ScreenSize {
 /// # Errors
 ///
 /// `HubError::Usage` when standard input or output is not a terminal,
-/// or with `listen` when another board listens in `run`.
+/// or with `listen` when another board listens.
 /// `HubError::File` when the terminal cannot be read or drawn on, or
 /// the socket cannot be made. `HubError::NotDone` when the reader
 /// thread stops, which only a panic in it causes.
 pub fn run_board(
     tools: OwnedTools,
-    run: RunFolder,
+    hubs: Hubs,
     time_zone: TimeZone,
     listen: bool,
 ) -> Result<Outcome, HubError> {
@@ -100,7 +100,7 @@ pub fn run_board(
     }
     // Dropping the listener when the board ends removes its socket.
     let listener = if listen {
-        Some(StepListener::start(&run)?)
+        Some(StepListener::start(&tools.state_folder)?)
     } else {
         None
     };
@@ -123,7 +123,7 @@ pub fn run_board(
     // runs. The thread ends at its next send or wait after the
     // channels close, or with the process.
     thread::spawn(move || {
-        read_until_closed(&tools, &run, &time_zone, &reading_sender, &wake_receiver);
+        read_until_closed(&tools, &hubs, &time_zone, &reading_sender, &wake_receiver);
     });
 
     // NO_COLOR set to any value but empty turns colors off, as
@@ -184,7 +184,7 @@ pub fn run_board(
     Ok(Outcome { lines: Vec::new() })
 }
 
-/// Reads the hub's state once and returns the board's first screen as
+/// Reads the hubs' state once and returns the board's first screen as
 /// text, `size` large, with no terminal needed.
 ///
 /// # Errors
@@ -193,13 +193,13 @@ pub fn run_board(
 /// `HubError::File` when a run folder file cannot be read.
 pub fn print_board(
     tools: &Tools<'_>,
-    run: &RunFolder,
+    hubs: &Hubs,
     time_zone: &TimeZone,
     size: ScreenSize,
 ) -> Result<Outcome, HubError> {
     // Text output carries no colors.
     let mut board = Board::new(false);
-    board.show_reading(Ok(read_queue(tools, run, time_zone)?));
+    board.show_reading(Ok(read_queue(tools, hubs, time_zone)?));
     Ok(Outcome {
         lines: board.render_lines(size.columns, size.rows),
     })
@@ -251,13 +251,13 @@ fn follow_step(
 /// stops listening.
 fn read_until_closed(
     tools: &OwnedTools,
-    run: &RunFolder,
+    hubs: &Hubs,
     time_zone: &TimeZone,
     readings: &Sender<Result<Queue, String>>,
     wake: &Receiver<()>,
 ) {
     loop {
-        let reading = read_queue(&tools.lend(), run, time_zone).map_err(|error| error.to_string());
+        let reading = read_queue(&tools.lend(), hubs, time_zone).map_err(|error| error.to_string());
         if readings.send(reading).is_err() {
             return;
         }
