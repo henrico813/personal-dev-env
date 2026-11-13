@@ -52,6 +52,7 @@ one used last.
   next*    Wait for news, print one line
   watch    Catch stalled workers
   send*    Deliver, or hold until free
+  at*      Send a message later today
   read*    Print and archive a report
   report*  Write your report (workers)
   inbox*   Print held messages (workers)
@@ -175,6 +176,36 @@ pub enum Command {
         /// Read the message from this file
         #[arg(long, value_name = "PATH")]
         file: Option<PathBuf>,
+    },
+    /// Send a message later today
+    ///
+    /// Stores a message for HH:MM today, in this machine's local time.
+    /// At that time hub next holds it for each session and sends it as
+    /// it sends other held messages. --all means every live worker at
+    /// that time, a session on a card or that has reported. A time
+    /// already past exits 2. Delete the stored file to cancel it.
+    #[command(after_help = "Example: hub at 20:00 --all \\\n  --file /tmp/resume.md")]
+    At {
+        #[command(flatten)]
+        run: RunArg,
+        /// The time today, such as 20:00
+        #[arg(value_name = "HH:MM")]
+        time: jiff::civil::Time,
+        /// The sessions' agent names
+        #[arg(
+            long,
+            num_args = 1..,
+            required_unless_present = "all",
+            conflicts_with = "all",
+            value_name = "NAME"
+        )]
+        to: Vec<AgentName>,
+        /// Every live worker, at that time
+        #[arg(long)]
+        all: bool,
+        /// Read the message from this file
+        #[arg(long, value_name = "PATH")]
+        file: PathBuf,
     },
     /// Print and archive a report
     ///
@@ -596,6 +627,7 @@ impl Command {
             Command::Next { .. } => "next",
             Command::Watch { .. } => "watch",
             Command::Send { .. } => "send",
+            Command::At { .. } => "at",
             Command::Read { .. } => "read",
             Command::Report { .. } => "report",
             Command::Inbox { .. } => "inbox",
@@ -808,6 +840,7 @@ pub fn takes_machine(command: &Command) -> bool {
         Command::Next { .. }
         | Command::Watch { .. }
         | Command::Wait { .. }
+        | Command::At { .. }
         | Command::Read { .. }
         | Command::Report { .. }
         | Command::Inbox { .. }
