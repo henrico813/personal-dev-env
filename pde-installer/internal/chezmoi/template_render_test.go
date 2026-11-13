@@ -246,6 +246,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".agents/skills/research-codebase",
 		".agents/skills/review-plan",
 		".agents/skills/rust-development",
+		".agents/skills/screen-check",
 		".agents/skills/session-review",
 		".agents/skills/skill-development",
 		".agents/skills/typescript-development",

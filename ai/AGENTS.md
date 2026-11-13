@@ -90,6 +90,9 @@ pattern over the whole file.
 
 - When planning changes to, writing, updating, or reviewing automated tests,
   load and follow the `behavior-focused-testing` skill.
+- After changing anything a person sees in a terminal, such as a TUI
+  screen, a Herdr popup or CLI output, load and follow
+  the `screen-check` skill before you report the change done.
 - When planning changes to, changing, or reviewing Go code, load and follow the
   `go-development` skill.
 - When planning changes to, changing, or reviewing Rust code, load and follow
