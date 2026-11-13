@@ -6,6 +6,7 @@
 // addUsageSlots once at startup.
 import { createSignal } from "solid-js";
 import {
+  describeFinishGroup,
   describeFinishNotice,
   describeGroupLines,
   describeShortLine,
@@ -70,8 +71,14 @@ export function addUsageSlots(api, { catalogModels, planFile, lineMode }) {
       return describeSubagentLines(self.rows[0]).map((text) => ({ text, fg: infoColor }));
     }
     const line = describeShortLine(priceFor(sessionID), lineMode);
+    // Many subagents can finish at once, so all recent finishes share one line.
+    const finished = notices();
+    const notice =
+      finished.length === 0
+        ? []
+        : [finished.length === 1 ? describeFinishNotice(finished[0].row, finished[0].seconds) : describeFinishGroup(finished.map((item) => item.row))];
     return [
-      ...notices().map((text) => ({ text, fg: api.theme.text.feedback.success.base })),
+      ...notice.map((text) => ({ text, fg: api.theme.text.feedback.success.base })),
       ...(line === "" ? [] : [{ text: line, fg: infoColor }]),
     ];
   };
@@ -152,11 +159,12 @@ export function addUsageSlots(api, { catalogModels, planFile, lineMode }) {
   // Each subagent id to when OpenCode first ran it, so one that already
   // finished before the plugin started never shows a notice.
   const startedAt = new Map();
-  // A toast draws over the chat, so finish notices get their own lines above
-  // the prompt and clear after NOTICE_MS.
-  const showNotice = (text) => {
-    setNotices((list) => [...list, text]);
-    setTimeout(() => setNotices((list) => list.filter((item) => item !== text)), NOTICE_MS).unref?.();
+  // A toast draws over the chat, so finish notices get a line above the
+  // prompt, and each finish leaves it after NOTICE_MS.
+  const showNotice = (row, seconds) => {
+    const item = { row, seconds };
+    setNotices((list) => [...list, item]);
+    setTimeout(() => setNotices((list) => list.filter((other) => other !== item)), NOTICE_MS).unref?.();
   };
   const watchSubagents = () => {
     const root = rememberRoot();
@@ -174,7 +182,7 @@ export function addUsageSlots(api, { catalogModels, planFile, lineMode }) {
       if (first === undefined) continue;
       // Pricing only this subagent keeps its row matched to its own session.
       const row = priceSubagents([info], models).rows[0];
-      showNotice(describeFinishNotice(row, (Date.now() - first) / 1000));
+      showNotice(row, (Date.now() - first) / 1000);
     }
   };
   setInterval(watchSubagents, 1000).unref?.();

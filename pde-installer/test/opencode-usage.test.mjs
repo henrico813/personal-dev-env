@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   describeContextBar,
+  describeFinishGroup,
   describeFinishNotice,
   describeGroupLines,
   describePlanUsage,
@@ -224,6 +225,24 @@ test("describeSubagentLines empty without row", () => {
   assert.deepEqual(describeSubagentLines(undefined), []);
 });
 
+/** The user reads their quota from these lines, so each window shows its share used, 5-hour first, with its reset below. */
+test("describeGroupLines shows quota used per window", () => {
+  const now = Date.UTC(2026, 10, 13);
+  const saved = {
+    rateLimitType: "seven_day",
+    unifiedWindows: {
+      seven_day: { utilization: 0.4, resetsAt: now / 1000 + 86_400 },
+      five_hour: { utilization: 0.123, resetsAt: now / 1000 - 1 },
+    },
+  };
+
+  const lines = describeGroupLines(priced(), saved, now);
+
+  assert.deepEqual(lines.slice(0, 2), ["Claude 5-hour 12% used", "Claude weekly 40% used"]);
+  assert.match(lines[2], /^  resets Nov 1[34], \d\d:\d\d$/);
+  assert.equal(lines.length, 3, "a past reset time is left out");
+});
+
 /** A wrapped line splits words and numbers on a 40-column phone, so a long model name gives way to the context share. */
 test("describeSubagentLines cuts model, keeps share", () => {
   const lines = describeSubagentLines(row({ model: "m".repeat(40) }));
@@ -257,7 +276,14 @@ test("describeFinishNotice shows state, duration and cost", () => {
   assert.equal(describeFinishNotice(row({ name: "a", running: true }), 125), "a running · 88k · 2m05s · $0.42 cost");
 });
 
-/** Three subagents finishing stack three notices, and each must fit one phone line with its numbers whole. */
+/** Ten or twenty subagents finishing together must still take one row above the prompt, not one row each. */
+test("describeFinishGroup sums several finishes into one line", () => {
+  const rows = [row({ dollars: undefined }), row({ dollars: undefined }), row({ name: "Read the installer README", dollars: undefined })];
+
+  assert.equal(describeFinishGroup(rows), "3 done · Read th… +2 · 264k · $0 cost");
+});
+
+/** A finish notice must fit one phone line with its numbers whole. */
 test("describeFinishNotice cuts long name, keeps numbers", () => {
   const notice = describeFinishNotice(row({ name: "Read the installer README and summarize it", dollars: undefined }), 118);
 
