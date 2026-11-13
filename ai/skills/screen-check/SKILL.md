@@ -18,8 +18,8 @@ runs the changed program on a screen of that size and fixes what looks
 wrong. The user then does not have to test each change.
 
 `scripts/screen.py` runs the program inside its own tmux server, with
-no window. Nothing appears in the user's Herdr workspace, and no
-command reaches another session's panes.
+no window. Nothing appears in the user's Herdr workspace. No command
+reaches another session's panes.
 
 ## Inputs
 
@@ -135,8 +135,8 @@ Report each screen you checked with these parts:
   waited for.
 - `python3 $S show <name>` exits 2 for every screen you started, so
   none is still running.
-- The report shows one final screen in a code block and links any
-  other screens.
+- The report shows one final screen in a code block. It puts any
+  other screens where `status-updates` says detail goes.
 
 ## References
 
