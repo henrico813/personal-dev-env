@@ -100,7 +100,7 @@ export function describeGroupLines(priced, saved, now = Date.now()) {
 
 /**
  * Returns the two lines above a subagent's own prompt, such as
- * `claude-sonnet-4-5 ▓▓▓░░░░░ 40%` and `88k tokens used · $0.42 cost · done`.
+ * `claude-sonnet-4-5 ▓▓▓░░░░░ 40%` and `88k tokens · $0.42 cost · done`.
  * `row` is one of priceSubagents' rows.
  */
 export function describeSubagentLines(row) {
@@ -109,8 +109,8 @@ export function describeSubagentLines(row) {
   const share = typeof percent === "number" ? `${percent}%` : "--";
   const state = row.running ? "running" : "done";
   return [
-    cut(`${row.model} ${describeContextBar(percent)} ${share}`, GROUP_LIMIT),
-    cut(`${formatTokens(row.tokens)} tokens used · ${formatPrice(row.dollars)} · ${state}`, GROUP_LIMIT),
+    fitName(row.model, ` ${describeContextBar(percent)} ${share}`),
+    `${formatTokens(row.tokens)} tokens · ${formatPrice(row.dollars)} · ${state}`,
   ];
 }
 
@@ -127,12 +127,13 @@ export function describeContextBar(percent, cells = 8) {
 
 /**
  * Returns the notice line shown above the prompt when a subagent stops, such
- * as `locator done · 88k · 45s · $0 cost`. `seconds` is how long it ran.
+ * as `locator done · 88k · 45s · $0 cost`. `seconds` is how long it ran. A
+ * long name is cut so the numbers still fit a phone line.
  */
 export function describeFinishNotice(row, seconds) {
   const state = row.running ? "running" : "done";
-  const parts = [`${row.name} ${state}`, formatTokens(row.tokens), formatDuration(seconds), formatPrice(row.dollars)];
-  return parts.join(PARTS);
+  const parts = [formatTokens(row.tokens), formatDuration(seconds), formatPrice(row.dollars)];
+  return fitName(row.name, ` ${state}${PARTS}${parts.join(PARTS)}`);
 }
 
 /**
@@ -323,6 +324,11 @@ function formatDuration(seconds) {
   const whole = Math.max(0, Math.round(seconds ?? 0));
   if (whole < 60) return `${whole}s`;
   return `${Math.floor(whole / 60)}m${String(whole % 60).padStart(2, "0")}s`;
+}
+
+/** Returns the name and its numbers in one phone line, cutting the name, never the numbers. */
+function fitName(name, numbers) {
+  return cut(name, Math.max(1, GROUP_LIMIT - numbers.length)) + numbers;
 }
 
 /** Returns a line cut to the limit, ending in … when cut. */

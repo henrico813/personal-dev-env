@@ -211,11 +211,11 @@ test("describeGroupLines cuts long plan line", () => {
 test("describeSubagentLines shows bar, price and state", () => {
   assert.deepEqual(describeSubagentLines(row()), [
     "claude-sonnet-4-5 ▓▓▓░░░░░ 40%",
-    "88k tokens used · $0.42 cost · done",
+    "88k tokens · $0.42 cost · done",
   ]);
   assert.deepEqual(describeSubagentLines(row({ context: undefined, dollars: undefined, running: true })), [
     "claude-sonnet-4-5 ········ --",
-    "88k tokens used · $0 cost · running",
+    "88k tokens · $0 cost · running",
   ]);
 });
 
@@ -224,10 +224,11 @@ test("describeSubagentLines empty without row", () => {
   assert.deepEqual(describeSubagentLines(undefined), []);
 });
 
-/** A wrapped line splits words and numbers on a 40-column phone. */
-test("describeSubagentLines cuts long model", () => {
+/** A wrapped line splits words and numbers on a 40-column phone, so a long model name gives way to the context share. */
+test("describeSubagentLines cuts model, keeps share", () => {
   const lines = describeSubagentLines(row({ model: "m".repeat(40) }));
 
+  assert.equal(lines[0], `${"m".repeat(23)}… ▓▓▓░░░░░ 40%`);
   assert.ok(lines.every((line) => line.length <= 37));
 });
 
@@ -253,7 +254,14 @@ test("describeContextBar unknown shows dots", () => {
  */
 test("describeFinishNotice shows state, duration and cost", () => {
   assert.equal(describeFinishNotice(row({ dollars: undefined }), 45), "locator done · 88k · 45s · $0 cost");
-  assert.equal(describeFinishNotice(row({ running: true }), 125), "locator running · 88k · 2m05s · $0.42 cost");
+  assert.equal(describeFinishNotice(row({ name: "a", running: true }), 125), "a running · 88k · 2m05s · $0.42 cost");
+});
+
+/** Three subagents finishing stack three notices, and each must fit one phone line with its numbers whole. */
+test("describeFinishNotice cuts long name, keeps numbers", () => {
+  const notice = describeFinishNotice(row({ name: "Read the installer README and summarize it", dollars: undefined }), 118);
+
+  assert.equal(notice, "Read th… done · 88k · 1m58s · $0 cost");
 });
 
 /** The short line's mode comes from env or options, and a wrong mode hides the run's cost. */
