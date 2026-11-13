@@ -170,8 +170,8 @@ script-checked jobs to the local model says.
    a reader who missed the work. Then run build.md's ship
    script. It stops when the branch's tree differs from the plan, the
    text is bad, a check fails, the branch is wrong, the parent moved
-   or the branch is already pushed. It squashes onto the parent, pushes, and
-   stops.
+   or the branch is already pushed. It squashes onto the parent,
+   pushes, and stops.
    Try the pushed commit with build.md's Check a deploy, as
    pull-request Guardrail 4 says, but never
    install into the real home during a run: other workers install

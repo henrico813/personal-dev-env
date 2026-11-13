@@ -51,13 +51,13 @@ The user's rules for every run:
   request shows. Approving the run does not approve that plan. The
   auto hub's `common.md`, the rules file for workers, is not in any
   repository, so no plan changes it and none waits for it.
-- In a T1 run, the worker builds every other plan. Each card ends at an open
-  pull request, or at a question that parks it; while the user is
-  away, its request waits in `requests.sh`. In a T2 or T3 run, a plan
-  that changes what the user sees daily, or adds a name the user
-  types or reads, also stops. That stop is a question to the hub.
-  `decisions.md` keeps the question for the user. It is not the
-  user's plan review.
+- In a T1 run, the worker builds every other plan. Each card ends at
+  an open pull request, or at a question that parks it; while the
+  user is away, its request waits in `requests.sh`. In a T2 or T3
+  run, a plan that changes what the user sees daily, or adds a name
+  the user types or reads, also stops. That stop is a question to
+  the hub. `decisions.md` keeps the question for the user. It is not
+  the user's plan review.
 - The user reviews every other plan's pull request before it merges.
 - Cards in the run may go past herdr-hub's limit on cards in
   `active` and `review`.
