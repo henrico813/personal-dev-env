@@ -103,6 +103,9 @@ func resolveInstallSelections(cfg config, args []string, requestedColorProfile s
 	if cfg.ColorProfile, err = resolveColorProfile(cfg.Home, requestedColorProfile); err != nil {
 		return config{}, err
 	}
+	if cfg.UpdateInterval, err = loadUpdateInterval(cfg.Home); err != nil {
+		return config{}, err
+	}
 	return cfg, nil
 }
 
@@ -137,6 +140,10 @@ func readCommand(name, description string, repoRoot *string, action func(config,
 				return errors.Join(err, lock.Close())
 			}
 			config.ColorProfile, err = resolveColorProfile(config.Home, "")
+			if err != nil {
+				return errors.Join(err, lock.Close())
+			}
+			config.UpdateInterval, err = loadUpdateInterval(config.Home)
 			if err != nil {
 				return errors.Join(err, lock.Close())
 			}
@@ -235,7 +242,16 @@ func reconcile(config config, runner run.Runner) error {
 		}
 		journals = append(journals, pluginJournal)
 	}
-	chezmoiJournal, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.Desktop, config.ColorProfile, runner).Apply()
+	chezmoiJournal, err := chezmoibackend.New(
+		config.Home,
+		config.RepoRoot,
+		config.AquaRoot,
+		config.Profile,
+		config.Desktop,
+		config.ColorProfile,
+		config.UpdateInterval,
+		runner,
+	).Apply()
 	if err != nil {
 		return fail("chezmoi", err)
 	}

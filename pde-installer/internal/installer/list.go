@@ -42,7 +42,16 @@ func list(config config, runner run.Runner) error {
 			return fmt.Errorf("read direct tool metadata: %w", directToolsErr)
 		}
 	}
-	chezmoiState, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.Desktop, config.ColorProfile, runner).Probe()
+	chezmoiState, err := chezmoibackend.New(
+		config.Home,
+		config.RepoRoot,
+		config.AquaRoot,
+		config.Profile,
+		config.Desktop,
+		config.ColorProfile,
+		config.UpdateInterval,
+		runner,
+	).Probe()
 	if err != nil {
 		return fmt.Errorf("read chezmoi status: %w", err)
 	}

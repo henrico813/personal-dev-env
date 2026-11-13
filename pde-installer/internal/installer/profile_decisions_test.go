@@ -51,7 +51,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"xz-utils",
 				"zsh",
 			},
-			chezmoiData: `{"pde":{"desktop":"","tiers":["terminal"]}}`,
+			chezmoiData: `{"pde":{"desktop":"","tiers":["terminal"],"updateInterval":"3600s"}}`,
 		},
 		{
 			profile: "client",
@@ -93,7 +93,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"xz-utils",
 				"zsh",
 			},
-			chezmoiData: `{"pde":{"desktop":"","tiers":["terminal","workstation"]}}`,
+			chezmoiData: `{"pde":{"desktop":"","tiers":["terminal","workstation"],"updateInterval":"3600s"}}`,
 		},
 		{
 			profile: "full",
@@ -149,7 +149,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"xz-utils",
 				"zsh",
 			},
-			chezmoiData: `{"pde":{"desktop":"","tiers":["terminal","workstation","development"]}}`,
+			chezmoiData: `{"pde":{"desktop":"","tiers":["terminal","workstation","development"],"updateInterval":"3600s"}}`,
 		},
 	}
 	for _, test := range tests {
@@ -234,7 +234,7 @@ func TestDryRunAddsDesktopToProfile(t *testing.T) {
 				"xdg-desktop-portal-wlr",
 				"xwayland",
 			},
-			chezmoiData: `{"pde":{"desktop":"sway","tiers":["terminal","workstation"]}}`,
+			chezmoiData: `{"pde":{"desktop":"sway","tiers":["terminal","workstation"],"updateInterval":"3600s"}}`,
 		},
 		{
 			profile: "full",
@@ -279,7 +279,7 @@ func TestDryRunAddsDesktopToProfile(t *testing.T) {
 				"xfce4-settings",
 				"xss-lock",
 			},
-			chezmoiData: `{"pde":{"desktop":"i3","tiers":["terminal","workstation","development"]}}`,
+			chezmoiData: `{"pde":{"desktop":"i3","tiers":["terminal","workstation","development"],"updateInterval":"3600s"}}`,
 		},
 	}
 	for _, test := range tests {
