@@ -9,14 +9,17 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
-use hub::board;
+use hub::board::{self, Hubs};
+use hub::commands::at::{AtRequest, Recipients};
 use hub::commands::auto::AutoApproval;
 use hub::commands::cli::{self, AutoRunArg, AutoStep, Cli, Command, RunArg, WatchStep};
+use hub::commands::launch::LaunchRequest;
 use hub::commands::next::NextOptions;
 use hub::commands::reports::{CardChoice, ReadRequest};
 use hub::commands::send::SendRequest;
 use hub::commands::{
-    Outcome, alive, auto, brief, clean, flag, handoff, next, reports, send, sidebar, status,
+    Outcome, alive, at, auto, brief, clean, flag, handoff, launch, next, reports, send, sidebar,
+    status,
 };
 use hub::external::cards::CardCli;
 use hub::external::herdr::HerdrCli;
@@ -173,6 +176,32 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
             send::run_send(&tools, &run, &request, &now)
         }
         Command::Inbox { run, name } => send::run_inbox(&find_run(run)?, name, &now),
+        Command::At {
+            run,
+            time,
+            to,
+            all,
+            file,
+        } => {
+            let run = find_run(run)?;
+            let text = fs::read_to_string(file).map_err(|source| HubError::File {
+                path: file.clone(),
+                source,
+            })?;
+            // clap lets exactly one of `--to` and `--all` through.
+            let to = if *all {
+                Recipients::AllWorkers
+            } else {
+                Recipients::Names(to.iter().map(|name| name.as_str().to_owned()).collect())
+            };
+            let request = AtRequest {
+                time: *time,
+                to,
+                file: file.clone(),
+                text,
+            };
+            at::run_at(&run, request, &now)
+        }
         Command::Wait {
             run,
             name,
@@ -228,6 +257,23 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
             let cwd = read_current_folder()?;
             handoff::run_handoff(&tools, &run, name, handoff, &cwd, &now, poll)
         }
+        Command::Launch {
+            run,
+            name,
+            handoff,
+            model,
+            workspace,
+        } => {
+            let run = find_run(run)?;
+            let request = LaunchRequest {
+                name: name.clone(),
+                handoff: handoff.clone(),
+                model: model.clone(),
+                workspace: workspace.clone(),
+                cwd: read_current_folder()?,
+            };
+            launch::run_launch(&tools, &run, &request, &now)
+        }
         Command::Adopt { run, old } => handoff::run_adopt(&tools, &find_run(run)?, old, &now),
         Command::Clean { run, dry_run } => {
             clean::run_clean(&tools, &find_run(run)?, *dry_run, &now)
@@ -259,7 +305,7 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         Command::Gather => sidebar::run_gather(&tools),
         Command::Desk => sidebar::run_desk(&tools, &home),
         Command::Board {
-            run,
+            only_run,
             print,
             dump,
             control,
@@ -267,20 +313,25 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
             send,
             size,
         } => {
-            let run = find_run(run)?;
+            // The board shows every hub, so it ignores `HUB_RUN`, which
+            // names one.
+            let hubs = match only_run {
+                Some(path) => Hubs::Given(path.clone()),
+                None => Hubs::Live(local_state.clone()),
+            };
             let time_zone = now.time_zone().clone();
             if let Some(step) = send {
-                board::send_step(&run, step)
+                board::send_step(tools.state_folder, step)
             } else if *print {
-                board::print_board(&tools, &run, &time_zone, *size)
+                board::print_board(&tools, &hubs, &time_zone, *size)
             } else if *dump {
-                board::dump_board(&tools, &run, &time_zone, *size)
+                board::dump_board(&tools, &hubs, &time_zone, *size)
             } else if *control {
                 let mut input = std::io::stdin().lock();
                 let mut output = std::io::stdout().lock();
-                board::control_board(&tools, &run, &time_zone, *size, &mut input, &mut output)
+                board::control_board(&tools, &hubs, &time_zone, *size, &mut input, &mut output)
             } else {
-                board::run_board(owned_tools, run, time_zone, *listen)
+                board::run_board(owned_tools, hubs, time_zone, *listen)
             }
         }
     }

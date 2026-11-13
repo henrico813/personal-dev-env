@@ -257,7 +257,7 @@ fn run_next_reopens_session_with_held_message() {
 /// hub as `not sent`, once. Kept held, it would be tried on every
 /// check and never sent, and nothing would tell the hub.
 #[test]
-fn run_next_prints_failed_reopen_as_not_sent() {
+fn run_next_prints_failed_reopen_once() {
     let mut test_tools = TestTools::new();
     // Hold a message while the user is in the worker's pane.
     test_tools.herdr.agents = vec![Agent {

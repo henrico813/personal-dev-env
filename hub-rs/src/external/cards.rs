@@ -55,6 +55,9 @@ pub trait Cards {
     /// Adds a live agent's session ID to the card's sessions list.
     /// `card` reads the ID from Herdr, so the agent must still run.
     fn link_session(&self, key: &CardKey, agent_name: &str) -> Result<(), CardError>;
+    /// Moves a ready card to active. `card` refuses a start past the
+    /// work limit, with its reason.
+    fn move_to_active(&self, key: &CardKey) -> Result<(), CardError>;
 }
 
 /// Runs the `card` command.
@@ -94,12 +97,12 @@ impl CardCli {
 
 impl Cards for CardCli {
     fn list_cards(&self) -> Result<Vec<ListedCard>, CardError> {
-        let printed = self.run_card(&["list"])?;
+        let printed = self.run_card(&["list", "--tabs"])?;
         Ok(parse_card_list(&printed))
     }
 
     fn list_ready(&self) -> Result<Vec<CardKey>, CardError> {
-        let printed = self.run_card(&["list", "--stage", "ready"])?;
+        let printed = self.run_card(&["list", "--tabs", "--stage", "ready"])?;
         Ok(parse_card_list(&printed)
             .into_iter()
             .map(|card| card.key)
@@ -149,6 +152,10 @@ impl Cards for CardCli {
         // Neither value is user text, and neither can start with a dash.
         self.run_card(&["link", key.as_str(), "--session", agent_name])
             .map(drop)
+    }
+
+    fn move_to_active(&self, key: &CardKey) -> Result<(), CardError> {
+        self.run_card(&["move", key.as_str(), "active"]).map(drop)
     }
 }
 
@@ -250,13 +257,13 @@ impl Stage {
     }
 }
 
-/// One line of `card list`.
+/// One line of `card list --tabs`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ListedCard {
     pub key: CardKey,
     pub stage: Stage,
-    /// The title as `card list` prints it. `card` cuts a long one to
-    /// about 30 characters and ends it with `…`.
+    /// The folder the card is in, such as `DevEnv`.
+    pub project: String,
     pub title: String,
 }
 
@@ -316,31 +323,24 @@ impl fmt::Display for CardError {
 /// Lets `HubError::source` return it.
 impl std::error::Error for CardError {}
 
-/// Reads `card list` lines, such as
-/// `DEMO-KB-007 ready    task     Retry failed uploads`, skipping the
-/// third word, the card's kind. The last line, `N cards`, holds no key.
+/// Reads `card list --tabs` lines, which hold the key, stage, kind,
+/// project and title split by tabs, skipping the kind. The last line,
+/// `N cards`, holds no key.
 fn parse_card_list(text: &str) -> Vec<ListedCard> {
     text.lines()
         .filter_map(|line| {
-            let (key, rest) = split_first_word(line)?;
-            let (stage, rest) = split_first_word(rest)?;
-            let title = split_first_word(rest).map_or("", |(_kind, title)| title);
+            let [key, stage, _kind, project, title] = line.splitn(5, '\t').collect::<Vec<_>>()[..]
+            else {
+                return None;
+            };
             Some(ListedCard {
                 key: key.parse().ok()?,
                 stage: Stage::from_word(stage)?,
-                title: title.trim_end().to_owned(),
+                project: project.to_owned(),
+                title: title.to_owned(),
             })
         })
         .collect()
-}
-
-/// Returns the first word of `text` and the text after it, with the
-/// spaces between them dropped.
-fn split_first_word(text: &str) -> Option<(&str, &str)> {
-    let text = text.trim_start();
-    let end = text.find(char::is_whitespace).unwrap_or(text.len());
-    let (word, rest) = text.split_at(end);
-    (!word.is_empty()).then(|| (word, rest.trim_start()))
 }
 
 /// Reads `card show` text, whose title is the first `# KEY ...` heading
@@ -554,29 +554,35 @@ mod tests {
     }
 
     /// Every session's lifecycle starts from its card's stage, read
-    /// from one `card list` line, and `hub board` shows the title as
-    /// the card's row. A stage read from the wrong word, or the count
-    /// line read as a card, gives sessions the wrong state, such as
-    /// `to-close` for a worker whose card is still active. A title cut
-    /// at its first space, or holding the kind, misnames the row.
+    /// from one `card list` line, and `hub board` shows the title and
+    /// project on the card's row. A stage read from the wrong field, or
+    /// the count line read as a card, gives sessions the wrong state,
+    /// such as `to-close` for a worker whose card is still active. A
+    /// card with no kind must not shift its project into the title.
     #[test]
-    fn parse_card_list_reads_key_stage_title() {
-        let listing = "DEMO-KB-004 active   task     Fix the docs\n\
-                       DEMO-KB-007 accepted task     Retry failed uploads\n\
+    fn parse_card_list_reads_tab_separated_fields() {
+        let listing = "DEMO-KB-004\tactive\t\tDemo\tFix the docs\n\
+                       DEMO-KB-007\taccepted\ttask\tOps\tRetry failed uploads, then warn\n\
                        2 cards\n";
 
         let cards = parse_card_list(listing);
 
-        let card = |key: &str, stage, title: &str| ListedCard {
+        let card = |key: &str, stage, project: &str, title: &str| ListedCard {
             key: key.parse().unwrap(),
             stage,
+            project: project.to_owned(),
             title: title.to_owned(),
         };
         assert_eq!(
             cards,
             [
-                card("DEMO-KB-004", Stage::Active, "Fix the docs"),
-                card("DEMO-KB-007", Stage::Accepted, "Retry failed uploads"),
+                card("DEMO-KB-004", Stage::Active, "Demo", "Fix the docs"),
+                card(
+                    "DEMO-KB-007",
+                    Stage::Accepted,
+                    "Ops",
+                    "Retry failed uploads, then warn"
+                ),
             ]
         );
     }

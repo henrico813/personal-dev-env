@@ -1,8 +1,9 @@
 //! Runs `hub handoff`, which starts the next hub and checks its
-//! effort, and `hub adopt`, which takes over a hub started some other
-//! way. `start_due_review` starts the old hub's session review for
-//! `hub next --start-reviews`. Read `run_handoff` first. A hub once
-//! told the user the wrong effort because nothing checked it.
+//! effort, and `hub adopt`, which takes over an older hub left open
+//! without a handoff. `start_due_review` starts the old hub's session
+//! review for `hub next --start-reviews`. Read `run_handoff` first. A
+//! hub once told the user the wrong effort because nothing checked it.
+//! `start_session` also starts the workers of `hub launch`.
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -14,7 +15,7 @@ use jiff::Zoned;
 use jiff::civil::Date;
 
 use super::{Outcome, sidebar};
-use crate::external::herdr::{Agent, AgentStart, Herdr, HerdrError, NewPlace};
+use crate::external::herdr::{Agent, AgentStart, Herdr, HerdrError, NewPlace, PlaceIds};
 use crate::shared::events::{self, Event, EventKind, Memory};
 use crate::shared::lifecycle;
 use crate::shared::run_folder::RunFolder;
@@ -42,10 +43,12 @@ pub(crate) enum ReviewStart {
 
 /// Starts the next hub on the model `rules.md` names, with `HUB_RUN`
 /// set, records the handoff, and reads back its first reply's effort.
-/// Checks every input before it starts anything. Only then does the
-/// next hub get its prompt, so it reads the whole handoff. It then puts
-/// the hubs at the top of the sidebar, and a failure there adds a
-/// warning line, not an error.
+/// Checks every input before it starts anything. It appends the old
+/// hub's steps to the caller's handoff file and writes a review
+/// handoff in the state folder before the next hub gets its prompt,
+/// so the prompt reads the whole handoff. A rerun appends the steps
+/// twice. It then puts the hubs at the top of the sidebar, and a
+/// failure there adds a warning line, not an error.
 ///
 /// # Errors
 ///
@@ -99,14 +102,10 @@ pub fn run_handoff(
         name.as_str(),
         now.date(),
     )?;
-    start_in_new_tab(
-        tools.herdr,
-        &old.workspace_id,
-        name.as_str(),
-        &model,
-        run,
-        cwd,
-    )?;
+    let place = SessionPlace::Tab {
+        workspace_id: old.workspace_id.clone(),
+    };
+    start_session(tools.herdr, &place, name.as_str(), &model, run, cwd)?;
     let started_but =
         |error: HubError| HubError::NotDone(format!("started {}, but {error}", name.as_str()));
     let handoff_event = Event {
@@ -302,13 +301,16 @@ fn start_review(
         .map_or(model.as_str(), |(base, _)| base);
     let model = format!("{base}#{REVIEW_EFFORT}");
     let hub = tools.herdr.get_agent(own_pane)?;
-    start_in_new_tab(tools.herdr, &hub.workspace_id, reviewer, &model, run, cwd)?;
+    let place = SessionPlace::Tab {
+        workspace_id: hub.workspace_id,
+    };
+    start_session(tools.herdr, &place, reviewer, &model, run, cwd)?;
     tools.herdr.prompt(reviewer, &make_handoff_prompt(review))?;
     Ok(())
 }
 
 /// Returns the first prompt of a session started from `handoff`.
-fn make_handoff_prompt(handoff: &Path) -> String {
+pub(crate) fn make_handoff_prompt(handoff: &Path) -> String {
     format!(
         "Read the handoff at {} and follow it. Load each skill it names when it says.",
         handoff.display()
@@ -465,29 +467,52 @@ user.
         })
 }
 
-/// Starts an OpenCode session in a new tab of the hub's workspace,
-/// with `HUB_RUN` set in the pane, so the session's `hub` commands
-/// need no `--run`.
-fn start_in_new_tab(
+/// Where `start_session` opens a session.
+pub(crate) enum SessionPlace {
+    /// A new tab, named after the session, in the workspace with this
+    /// ID.
+    Tab { workspace_id: String },
+    /// A new workspace with this label.
+    Workspace { label: String },
+}
+
+/// Starts an OpenCode session in a new tab or workspace, with
+/// `HUB_RUN` set in the pane, so the session's `hub` commands need no
+/// `--run`. Returns the IDs Herdr gave the new place.
+pub(crate) fn start_session(
     herdr: &dyn Herdr,
-    workspace_id: &str,
+    place: &SessionPlace,
     name: &str,
     model: &str,
     run: &RunFolder,
     cwd: &Path,
-) -> Result<(), HerdrError> {
-    let place = NewPlace {
-        label: name.to_owned(),
-        cwd: cwd.to_owned(),
-        env: vec![("HUB_RUN".to_owned(), run.path().display().to_string())],
+) -> Result<PlaceIds, HerdrError> {
+    let env = vec![("HUB_RUN".to_owned(), run.path().display().to_string())];
+    let ids = match place {
+        SessionPlace::Tab { workspace_id } => {
+            let tab = NewPlace {
+                label: name.to_owned(),
+                cwd: cwd.to_owned(),
+                env,
+            };
+            herdr.create_tab(workspace_id, &tab)?
+        }
+        SessionPlace::Workspace { label } => {
+            let workspace = NewPlace {
+                label: label.clone(),
+                cwd: cwd.to_owned(),
+                env,
+            };
+            herdr.create_workspace(&workspace)?
+        }
     };
-    let tab = herdr.create_tab(workspace_id, &place)?;
     let start = AgentStart {
         name: name.to_owned(),
-        pane_id: tab.root_pane_id,
+        pane_id: ids.root_pane_id.clone(),
         args: vec!["--model".to_owned(), model.to_owned(), "--auto".to_owned()],
     };
-    herdr.start_agent(&start)
+    herdr.start_agent(&start)?;
+    Ok(ids)
 }
 
 /// Waits up to two minutes for the session's first reply, and returns

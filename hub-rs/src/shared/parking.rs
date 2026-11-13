@@ -49,9 +49,9 @@ pub(crate) enum ParkOutcome {
     TabInUse,
 }
 
-/// Holds `.tidy.lock` in the parked folder while one tidy pass or one
-/// `hub park` runs. Dropping it, or the process ending, lets the next
-/// one in.
+/// Holds `.tidy.lock` in the parked folder while one tidy pass, one
+/// `hub park` or one reopen runs. Dropping it, or the process ending,
+/// lets the next one in.
 pub(crate) struct TidyLock {
     _file: File,
 }
@@ -380,7 +380,10 @@ fn build_resume_args(record: &ParkedRecord) -> Vec<String> {
 
 /// Returns the workspace whose label starts with the card key as its
 /// own word, such as `DEMO-KB-007 impl`, if one is left.
-fn find_card_workspace<'a>(workspaces: &'a [Workspace], card: &CardKey) -> Option<&'a Workspace> {
+pub(crate) fn find_card_workspace<'a>(
+    workspaces: &'a [Workspace],
+    card: &CardKey,
+) -> Option<&'a Workspace> {
     workspaces.iter().find(|workspace| {
         workspace
             .label

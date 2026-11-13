@@ -54,7 +54,8 @@ pub(crate) enum EventKind {
         id: MessageId,
         reason: String,
     },
-    /// Herdr turned the message down before taking it.
+    /// The message was not sent, because Herdr turned it down, the
+    /// session is gone, or a reopen of it failed.
     NotSent {
         name: String,
         id: MessageId,
@@ -120,6 +121,14 @@ pub(crate) enum EventKind {
         tab: String,
         why: String,
     },
+    /// `hub next` held the timed message `id` from `file` for NAMES.
+    TimedHeld {
+        id: String,
+        file: PathBuf,
+        names: Vec<String>,
+    },
+    /// `hub next` printed the line for the timed message `id`.
+    TimedTold { id: String },
 }
 
 /// Which command delivered a message.
@@ -129,6 +138,13 @@ pub(crate) enum Via {
     Send,
     Next,
     Inbox,
+}
+
+/// A held timed message whose line `hub next` has not printed.
+#[derive(Debug)]
+pub(crate) struct UntoldTimed {
+    pub file: PathBuf,
+    pub sessions: usize,
 }
 
 /// What the hub remembers, folded from the log in file order, later
@@ -155,6 +171,8 @@ pub(crate) struct Memory {
     pub listed: BTreeMap<String, String>,
     /// Old hub message files `hub next` already printed.
     pub old_send_seen: BTreeSet<PathBuf>,
+    /// Timed messages held but whose line has not printed, by ID.
+    pub timed_untold: BTreeMap<String, UntoldTimed>,
     /// How many `read` events the log holds, for the minute pass.
     pub read_count: usize,
     /// When `hub read` last archived each name's report.
@@ -250,6 +268,15 @@ fn fold_events(events: impl IntoIterator<Item = Event>) -> Memory {
             }
             EventKind::OldSendSeen { path } => {
                 memory.old_send_seen.insert(path);
+            }
+            EventKind::TimedHeld { id, file, names } => {
+                let sessions = names.len();
+                memory
+                    .timed_untold
+                    .insert(id, UntoldTimed { file, sessions });
+            }
+            EventKind::TimedTold { id } => {
+                memory.timed_untold.remove(&id);
             }
             EventKind::Listed { state, names } => {
                 for name in names {

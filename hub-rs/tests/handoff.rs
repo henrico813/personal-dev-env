@@ -174,21 +174,39 @@ fn run_handoff_tells_next_hub_review_steps() {
     assert!(prompts[0].1.contains(&handoff.display().to_string()));
 }
 
+/// Removes one input `hub handoff` needs before it starts a hub.
+type InputDropper = fn(&mut TestTools, &Path);
+
+/// The next hub's handoff file is gone.
+fn drop_handoff_file(_test_tools: &mut TestTools, handoff: &Path) {
+    fs::remove_file(handoff).unwrap();
+}
+
+/// The `rules.md` that names the model to start on is gone.
+fn drop_rules_file(test_tools: &mut TestTools, _handoff: &Path) {
+    fs::remove_file(test_tools.run_path().join("rules.md")).unwrap();
+}
+
+/// The hub sits outside Herdr, with no own pane.
+fn drop_own_pane(test_tools: &mut TestTools, _handoff: &Path) {
+    test_tools.own_pane = None;
+}
+
 /// Appending to a missing handoff would create it, and the next hub
 /// would start with none of the run's state. A run folder without
 /// `rules.md` names no model to start the next hub on. Stopping before
 /// any Herdr change leaves no tab to clean up.
 #[test]
 fn run_handoff_stops_before_starting_without_input() {
-    let cases = ["handoff", "rules", "own-pane"];
+    let cases: [(&str, InputDropper); 3] = [
+        ("handoff", drop_handoff_file),
+        ("rules", drop_rules_file),
+        ("own-pane", drop_own_pane),
+    ];
 
-    for case_name in cases {
+    for (case_name, drop_input) in cases {
         let (mut test_tools, handoff) = make_handoff_tools();
-        match case_name {
-            "handoff" => fs::remove_file(&handoff).unwrap(),
-            "rules" => fs::remove_file(test_tools.run_path().join("rules.md")).unwrap(),
-            _ => test_tools.own_pane = None,
-        }
+        drop_input(&mut test_tools, &handoff);
 
         let error = run_next_hub(&test_tools, &handoff).unwrap_err();
 
@@ -221,9 +239,9 @@ fn run_handoff_says_started_when_prompt_fails() {
     assert_eq!(message, "started kanban-hub-2, but Herdr said no");
 }
 
-/// This check would have caught the wrong claim. The hub must not
-/// report a handoff it did not check, and the message names both
-/// efforts for the user.
+/// A hub once said its next hub ran at medium effort when it ran at
+/// the default. The hub must not report a handoff it did not check,
+/// and the message names both efforts for the user.
 #[test]
 fn run_handoff_stops_when_reply_effort_differs() {
     let (test_tools, handoff) = make_handoff_tools();
@@ -241,9 +259,10 @@ fn run_handoff_stops_when_reply_effort_differs() {
 }
 
 /// The tidy pass closes the old hub's tab from the `handoff` event,
-/// and `hub next` then starts its review from the event's review file.
-/// The event is written once the new tab exists, even when the effort
-/// check then fails, so the old hub never stays open forever.
+/// and `hub next --start-reviews` can then start its review from the
+/// event's review file. The event is written once the new tab exists,
+/// even when the effort check then fails, so the old hub never stays
+/// open forever.
 #[test]
 fn run_handoff_records_old_hub_and_review() {
     let (test_tools, handoff) = make_handoff_tools();

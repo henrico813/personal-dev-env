@@ -1,4 +1,4 @@
-# Run each try line of deploy.checks in the run folder, in order, in
+# Run each try line of deploy.checks in the PR folder, in order, in
 # one scratch folder, and write one pass or FAIL line per line to
 # deploy.txt. The script, not the model that runs it, writes the last
 # line, done, only after every line passed. So a failed try leaves no
