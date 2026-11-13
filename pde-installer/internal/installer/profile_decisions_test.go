@@ -36,6 +36,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"atomically activate ~/.local/share/aquaproj-aqua",
 				"migrate legacy PDE configuration",
 				"preview chezmoi changes",
+				"restart hub-watch.service if it runs a replaced hub",
 				"refresh OpenCode server environment",
 			},
 			packages: []string{
@@ -75,6 +76,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"install and atomically activate opencode-inline.nvim",
 				"preview chezmoi changes",
 				"render skill lessons when skill-lessons is installed",
+				"restart hub-watch.service if it runs a replaced hub",
 				"refresh OpenCode server environment",
 			},
 			packages: []string{
@@ -125,6 +127,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"download and verify",
 				"build, verify, and atomically activate complete blink.cmp plugin tree",
 				"render skill lessons when skill-lessons is installed",
+				"restart hub-watch.service if it runs a replaced hub",
 				"refresh OpenCode server environment",
 			},
 			packages: []string{
