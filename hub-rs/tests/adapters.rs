@@ -647,8 +647,8 @@ mod card_cli {
     #[test]
     fn card_cli_lists_ready_keys_in_order() {
         let folder = TempFolder::new();
-        let card_list = "DEMO-KB-007 ready task Retry failed uploads\n\
-                         DEMO-KB-003 ready task Fix the docs\n\
+        let card_list = "DEMO-KB-007\tready\ttask\tDemo\tRetry failed uploads\n\
+                         DEMO-KB-003\tready\ttask\tDemo\tFix the docs\n\
                          2 cards\n";
         let script = folder.write_script("card", card_list, "", 0);
         let cards = CardCli::new(script.clone());
@@ -657,7 +657,10 @@ mod card_cli {
 
         let keys: Vec<&str> = keys.iter().map(CardKey::as_str).collect();
         assert_eq!(keys, ["DEMO-KB-007", "DEMO-KB-003"]);
-        assert_eq!(read_script_calls(&script), [["list", "--stage", "ready"]]);
+        assert_eq!(
+            read_script_calls(&script),
+            [["list", "--tabs", "--stage", "ready"]]
+        );
     }
 
     /// Parking adds the session to its card before closing the tab, so
