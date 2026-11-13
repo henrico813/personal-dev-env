@@ -86,8 +86,7 @@ everything that changed:
 
 1. Lessons. Save each picked lesson with the command in step 4 of
    [skill-lessons](../skill-lessons/SKILL.md). The pick counts as the
-   user saying "remember". Save a picked memory as your instructions
-   say.
+   user saying "remember".
 2. Skill and rules-file edits. The source of a shared skill is in
    the personal-dev-env checkout, under `ai/skills/<name>/`, not the
    installed copy. Ask the user for the checkout's path when you

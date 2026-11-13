@@ -217,6 +217,8 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".local/bin/pde-comment-review",
 		".local/share/pde/herdr-plugins/pde-comment-review",
 		".agents/skills/roadmap-run",
+		".agents/skills/promote-memory",
+		".config/opencode/opencode-mem.jsonc",
 	}
 	developmentTools := []string{
 		".local/bin/pde-gh-write",
@@ -240,7 +242,6 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".agents/skills/herdr-handoff",
 		".agents/skills/herdr-hub",
 		".agents/skills/implement-plan",
-		".agents/skills/promote-memory",
 		".agents/skills/pull-request",
 		".agents/skills/python-development",
 		".agents/skills/research-codebase",

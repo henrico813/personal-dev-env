@@ -25,7 +25,6 @@
 .agents/skills/herdr-handoff
 .agents/skills/herdr-hub
 .agents/skills/implement-plan
-.agents/skills/promote-memory
 .agents/skills/pull-request
 .agents/skills/python-development
 .agents/skills/research-codebase
@@ -91,3 +90,6 @@ Projects/CLAUDE.md
 .local/share/pde/herdr-plugins/pde-comment-review
 # auto-run took over roadmap-run's work.
 .agents/skills/roadmap-run
+# Installs remove the promote-memory skill and the opencode-mem plugin config.
+.agents/skills/promote-memory
+.config/opencode/opencode-mem.jsonc

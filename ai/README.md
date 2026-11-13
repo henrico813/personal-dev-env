@@ -66,13 +66,9 @@ rather than managed config under `ai/`. The installer copies the shared
 `AGENTS.md` into each harness config, backs up managed paths it replaces, and
 backs up `opencode.json` only when the permission merge changes it.
 
-OpenCode memory is intentionally unsupported with the managed Claude adapter.
-The chezmoi modifier removes `opencode-mem` from the OpenCode plugin list;
-existing `~/.opencode-mem/` data remains on disk but is not loaded. Shared
-memory instructions apply only when a memory tool is available; this
-installation does not configure one for OpenCode.
-
-The `promote-memory` skill turns an explicitly requested learning into a
-reviewed source change. It targets this repository by default from any
-checkout, writes the skill under `skills/`; it needs no install entry, and
-opens a pull request whose commits use a GitHub noreply author email.
+The shared rules tell agents to save no memories. A full install also sets
+`autoMemoryEnabled` to false in `~/.claude/settings.json`. Claude sessions
+started from OpenCode read that file too. The chezmoi modifier
+`modify_opencode.json` removes `opencode-mem` from the OpenCode plugin list.
+Agents turn corrections into skill lessons or `AGENTS.md` rules instead of
+memories.

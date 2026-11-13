@@ -61,7 +61,7 @@ say so at the top of the review and the message.
 Write at most three proposals, ranked by saving. Each one says:
 
 - What changes, and where it would live: a skill pull request, a
-  skill lesson, a memory, or a rules file such as `AGENTS.md`.
+  skill lesson, or a rules file such as `AGENTS.md`.
 - The saving, measured from the script's lines or marked
   "estimate" with its arithmetic. For example, 30,000 tokens of
   output read again by 80 later steps is about 2.4M tokens.
@@ -179,8 +179,8 @@ points to the `model-routing` skill.
 
 ## Guardrails
 
-- Change nothing, including skills, lessons, memories and rules
-  files, until the user picks. The review file and new trial cases
+- Change nothing, including skills, lessons and rules files, until
+  the user picks. The review file and new trial cases
   are review data, so write them before the pick.
 - Edit a shared rules file only when this session owns it or the
   user says so. Otherwise send the change to its owner, such as the
