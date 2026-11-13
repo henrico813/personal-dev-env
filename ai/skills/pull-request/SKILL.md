@@ -26,7 +26,11 @@ steps' defaults.
    nothing else broke. A deploy that never runs the changed files,
    such as an install on a machine that does not use them, does not
    count. For a skill or prompt, deploy it by installing it, and have
-   a fresh agent follow it on one real task. Put a one-line result in
+   a fresh agent follow it on one real task. Install into your own
+   home only when no other session may install at the same time.
+   Otherwise install into a scratch home that `mktemp -d` makes. Start
+   the trying agent with `HOME` set to that folder, so the agent loads
+   the new install. Put a one-line result in
    Testing, and give the rest, such as screenshots, in your message to
    the user. If the change only runs after its own merge, such as a
    job that runs only on the default branch, or never runs, such as
