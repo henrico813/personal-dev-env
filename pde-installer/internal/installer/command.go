@@ -260,6 +260,11 @@ func reconcile(config config, runner run.Runner) error {
 			return fmt.Errorf("skill lessons: %w", err)
 		}
 	}
+	// Runs after CommitJournals, which deletes the replaced binaries this looks for.
+	refreshStaleProcesses(
+		config.Home,
+		runner,
+	)
 	if err := refreshOpenCodeServers(config.Home, runner); err != nil {
 		return fmt.Errorf("refresh OpenCode servers: %w", err)
 	}
