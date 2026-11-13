@@ -1,4 +1,4 @@
-"""Behavior tests for the roadmap-run skill's digest reader.
+"""Behavior tests for the auto-run skill's digest reader.
 
 No test calls a model. The quote check runs on answer files, and a fake
 ``opencode`` on PATH stands in for the model.
@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "ai/skills/roadmap-run/scripts/digest_reader.py"
+SCRIPT = ROOT / "ai/skills/auto-run/scripts/digest_reader.py"
 DIGEST = """\
 /notes/Hub.md
 12:The hub keeps one inbox per

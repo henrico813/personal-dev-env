@@ -54,7 +54,7 @@ largest carried outputs
 ## Proposals
 
 1. Have `goog/qwen3.8-flash` run the planner's tests by a script that
-   writes only the failing tests' names. It lives in a roadmap-run
+   writes only the failing tests' names. It lives in an auto-run
    pull request. Saves about 1.1M tokens (estimate): each of the 4
    pytest runs printed about 3,500 tokens, and about 80 later steps
    read each one again.
@@ -122,7 +122,7 @@ Session review of Lantern P3 plan and review, saved to
 9.4M tokens read, peak context about 162k, 96 model steps.
 
 Proposals
-1. Tests on qwen3.8-flash, failing names only (roadmap-run PR). Saves
+1. Tests on qwen3.8-flash, failing names only (auto-run PR). Saves
    about 1.1M tokens (estimate).
 2. Read plans with narrow rg (create-plan lesson). Saves about 0.9M
    tokens (estimate).

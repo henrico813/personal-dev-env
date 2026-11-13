@@ -1,4 +1,4 @@
-"""Behavior tests for the roadmap-run skill's deploy check script."""
+"""Behavior tests for the auto-run skill's deploy check script."""
 
 import shutil
 import subprocess
@@ -7,16 +7,16 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "ai/skills/roadmap-run/scripts/deploy-check.sh"
+SCRIPT = ROOT / "ai/skills/auto-run/scripts/deploy-check.sh"
 
 
 def run_deploy_check(
     run_folder: Path, checks: str
 ) -> subprocess.CompletedProcess:
-    """Run deploy-check.sh in a run folder whose deploy.checks holds CHECKS.
+    """Run deploy-check.sh in a PR folder whose deploy.checks holds CHECKS.
 
     Args:
-        run_folder: Stands in for a roadmap run's PR run folder.
+        run_folder: Stands in for an auto run's PR folder.
         checks: The try lines to write to deploy.checks.
 
     Returns:

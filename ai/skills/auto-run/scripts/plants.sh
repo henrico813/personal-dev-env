@@ -1,7 +1,8 @@
-# Put back each bug from the plan's and the run folder's `plant` lines,
-# one at a time, and write one pass, FAIL or stale line per bug to
-# plants.txt, ending with done. A passed line is skipped only while the
-# plan is unchanged. A plan change runs every line again.
+# Put back each bug from the plan's and the PR folder's `plant` lines,
+# one at a time, and write one pass, FAIL, stale or broken line per bug
+# to plants.txt, ending with done. While the plan is unchanged, a line
+# that passed before gets a skip line instead. A plan change runs every
+# line again.
 . "$(dirname "$0")/env" || exit 1
 { [ -n "$W" ] && [ "$W" != null ] && cd "$W"; } ||
   { echo "no worktree: '$W'"; exit 1; }

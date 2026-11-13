@@ -58,9 +58,15 @@ step_push() {
 # request. Exit 3 leaves no mark, so a rerun reads the result. Once
 # the PR is open, a rerun skips the saved request, which would run
 # again after it expires. Writing the request also writes BODY, since
-# FILE is the newest text.
+# FILE is the newest text. After a decline or an interruption it files
+# nothing, since an expired request would come back as a new one.
 step_request() {
   grep -q '^exit 0 ' "$D/request.result" 2>/dev/null && exit 0
+  if grep -q '^exit [46] ' "$D/request.result" 2>/dev/null; then
+    echo "declined or interrupted before; filing nothing; ask the hub"
+    exit 1
+  fi
+  [ -n "$RUN" ] || { echo "RUN is empty; set it with keep"; exit 1; }
   if [ ! -e "$D/request.sh" ] ||
     grep -q '^exit 2 ' "$D/request.result" 2>/dev/null; then
     tail -n +3 "$D/FILE" > "$D/request.body" || exit 1
@@ -69,22 +75,32 @@ step_request() {
       printf 'cd %q || exit 1\n' "$W"
       printf 'pde-gh-write pr create --base %q --title %q' \
         "$PARENT" "$(head -n 1 "$D/FILE")"
-      printf ' --body-file %q\n' "$D/request.body"
+      printf ' --body-file %q 2> %q\n' \
+        "$D/request.body" "$D/request.err"
       printf 'rc=$?\n'
+      printf 'cat %q >&2\n' "$D/request.err"
       printf 'echo "exit $rc at $(date -u +%%FT%%TZ)" > %q\n' \
         "$D/request.result"
       printf 'exit $rc\n'
     } > "$D/request.sh" || exit 1
   fi
+  rm -f "$D/request.err"
   bash "$D/request.sh"
   rc=$?
+  # pde-gh-write prints this line only for a newly saved request. The
+  # auto hub counts each request's expiry from its line in the log, and
+  # workers keep requests a minute apart by the last line.
+  grep -q '^pde-gh-write: waiting for approval' "$D/request.err" \
+    2>/dev/null &&
+    printf '%s %s %s\n' "$(date -u +%FT%TZ)" "$BR" "$D" \
+      >> "$RUN/requests.log"
   case $rc in
     0) exit 0 ;;
     3) echo "waiting for the user's approval"; exit 3 ;;
     4) echo "declined; park this PR and its children"; exit 1 ;;
-    6) echo "interrupted, never retried; ask the user"; exit 1 ;;
+    6) echo "interrupted, never retried; ask the hub"; exit 1 ;;
     2) echo "refused; fix the command, then rerun"; exit 1 ;;
-    *) echo "exit $rc from gh; put its output on the roadmap page"
+    *) echo "exit $rc from gh; put its output on the item's page"
        exit 1 ;;
   esac
 }
@@ -92,8 +108,8 @@ step_request() {
 run_step "$log" tree
 run_step "$log" text
 run_step "$log" push
-# pull-request Guardrail 4 holds the first request until the pushed
-# commit is deployed and tried, and its result is written to tested.
+# The first request waits until the pushed commit is tried and its
+# result is in tested, as pr-loop.md's step 7 says.
 if [ ! -e "$D/request.sh" ] &&
   ! grep -qF "$(git -C "$W" rev-parse HEAD)" "$D/tested" 2>/dev/null
 then
@@ -108,7 +124,7 @@ run_step "$log" request
 if ! grep -q '^exit 0 ' "$D/request.result" 2>/dev/null; then
   keep NEXT 'rerun ship.sh to read the request'
 elif [ -e "$D/BODY" ] && ! cmp -s "$D/BODY" "$D/request.body"; then
-  keep NEXT 'update the PR text with pde-gh-write pr edit unless done'
+  keep NEXT 'pr edit the PR text once the hub says the user reviewed it'
 else
   keep NEXT 'queue the comment review'
 fi

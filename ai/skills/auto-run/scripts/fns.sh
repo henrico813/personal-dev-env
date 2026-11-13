@@ -1,5 +1,5 @@
-# Functions for a roadmap run's scripts. The run folder's env file
-# loads this copy, so every tool call and script has them.
+# Functions for the scripts that build a pull request. The PR folder's
+# env file loads this copy, so every tool call and script has them.
 
 # Set a variable here and save it for later tool calls; a later value
 # wins.
@@ -91,8 +91,8 @@ st() {
     mv "$D/status.new" "$D/status.txt" && printf '%s\n' "$1"
 }
 
-# Print the roadmap's status line for this PR, ending with NEXT, and
-# write it as the first line of status.txt.
+# Print this PR's status line, ending with NEXT, and write it as the
+# first line of status.txt.
 status_line() (
   { [ -n "$W" ] && [ "$W" != null ]; } ||
     { st "$BR: not built; next: $NEXT"; exit $?; }

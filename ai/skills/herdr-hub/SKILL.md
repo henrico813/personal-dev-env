@@ -6,8 +6,8 @@ description: Runs the hub, the one Herdr session that other sessions
   decisions, and keeps the sidebar named and tidy. Use when the user
   or a handoff makes this session the hub of several Herdr sessions.
   To start one new session, use herdr-handoff; to build a roadmap's
-  pull requests, use roadmap-run; to work an approved list of cards
-  without the user, use auto-run.
+  pull requests or work an approved list of cards without the user,
+  use auto-run.
 metadata:
   pde-workflow: "true"
 ---

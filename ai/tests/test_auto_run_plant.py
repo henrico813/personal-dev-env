@@ -1,4 +1,4 @@
-"""Behavior tests for the roadmap-run skill's plant function."""
+"""Behavior tests for the auto-run skill's plant function."""
 
 import subprocess
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-FNS = ROOT / "ai/skills/roadmap-run/scripts/fns.sh"
+FNS = ROOT / "ai/skills/auto-run/scripts/fns.sh"
 
 
 def run_plant(tmp_path: Path, *test_command: str) -> int:

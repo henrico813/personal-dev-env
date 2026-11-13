@@ -52,9 +52,9 @@
   load and follow the `delegate` skill. The subagent loads the skill for
   the task itself, such as `create-plan` or `implement-plan`; review its
   work with `review-plan` when it applies.
-- When asked to build several pull requests of an approved roadmap
-  without the user reviewing each step, load and follow the
-  `roadmap-run` skill.
+- When asked for an auto run, or to build several pull requests of
+  an approved roadmap without the user reviewing each step, load and
+  follow the `auto-run` skill.
 - When asked to review a session for token use, efficiency, skill
   lessons or local model handoff, load and follow the
   `session-review` skill.

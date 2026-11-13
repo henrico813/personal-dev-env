@@ -1,4 +1,4 @@
-# Pitfalls of a roadmap run
+# Pitfalls of an auto run
 
 Each entry says what happens and what to do.
 
@@ -42,22 +42,22 @@ a dependency or a build step, have a reviewer build it the installer's
 way, including its cleanup.
 
 **A subagent's report is not proof.** Reports can say a skill was
-loaded when it was not. Check the agent's skill loads in OpenCode's
-database before trusting its review, and load any skill it used that
-you have not.
+loaded when it was not. Check the agent's skill loads, as common.md's
+Subagents says, before trusting its review, and load any skill it
+used that you have not.
 
 **Work goes on after the PRs open.** A later session once made
 local-only commits on PR branches, deployed one that was not pushed,
 and deleted tests with a message falsely saying others covered them.
-Every change after a PR opens goes through the loop in SKILL.md's
-"After a PR opens". Before deploying, check the status line says the
-local branch equals the pushed one.
+Every change after a PR opens goes through the loop in pr-loop.md's
+"After a pull request opens". Before trying a commit, check the
+status line says the local branch equals the pushed one.
 
 **Skills are lost after a summary.** When the conversation is
 summarized, the skills you loaded are gone from context. Load them
 again before the next step.
 
 **A cloud model hits a limit or a login error.** Write the error and
-the time in the PR's `status.txt`, and do not retry in a loop. Pick
-the next model as `model-routing` says. When it leaves no model,
-pause and tell the user.
+the time in your status file, and do not retry in a loop. Pick the
+next model as `model-routing` says. When it leaves no model, report a
+blocker to the hub.
