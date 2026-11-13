@@ -225,24 +225,6 @@ test("describeSubagentLines empty without row", () => {
   assert.deepEqual(describeSubagentLines(undefined), []);
 });
 
-/** The user reads their quota from these lines, so each window shows its share used, 5-hour first, with its reset below. */
-test("describeGroupLines shows quota used per window", () => {
-  const now = Date.UTC(2026, 10, 13);
-  const saved = {
-    rateLimitType: "seven_day",
-    unifiedWindows: {
-      seven_day: { utilization: 0.4, resetsAt: now / 1000 + 86_400 },
-      five_hour: { utilization: 0.123, resetsAt: now / 1000 - 1 },
-    },
-  };
-
-  const lines = describeGroupLines(priced(), saved, now);
-
-  assert.deepEqual(lines.slice(0, 2), ["Claude 5-hour 12% used", "Claude weekly 40% used"]);
-  assert.match(lines[2], /^  resets Nov 1[34], \d\d:\d\d$/);
-  assert.equal(lines.length, 3, "a past reset time is left out");
-});
-
 /** A wrapped line splits words and numbers on a 40-column phone, so a long model name gives way to the context share. */
 test("describeSubagentLines cuts model, keeps share", () => {
   const lines = describeSubagentLines(row({ model: "m".repeat(40) }));

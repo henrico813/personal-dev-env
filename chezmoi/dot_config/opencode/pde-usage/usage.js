@@ -74,8 +74,7 @@ export function describeShortLine(priced, mode = "spent") {
  * Returns the group data for all of a session's subagents together, for the
  * usage sidebar and the /usage screen. The first line counts the agents and
  * says who still runs, the second totals tokens and API price, and the third
- * reports the Claude plan, as the share used of each window when the plan
- * file has it. No subagents still leaves a known plan line, and
+ * reports the Claude plan. No subagents still leaves a known plan line, and
  * nothing else gives an empty list. Each line fits 37 characters.
  */
 export function describeGroupLines(priced, saved, now = Date.now()) {
@@ -89,8 +88,6 @@ export function describeGroupLines(priced, saved, now = Date.now()) {
     const price = rows.some(isPriced) ? `${formatDollars(priced.dollars)} API cost` : "$0 cost";
     lines.push(cut(`${formatTokens(priced.tokens)} tokens used · ${price}`, GROUP_LIMIT));
   }
-  const windows = describePlanWindows(saved, now);
-  if (windows.length > 0) return [...lines, ...windows];
   const plan = describePlanUsage(saved, { now });
   // The reset time gets its own line so a phone-width line keeps it whole.
   if (plan !== undefined) {
@@ -178,29 +175,6 @@ export function describePlanUsage(saved, { now = Date.now(), timeZone } = {}) {
   // The plugin keeps the last reset time when an event leaves it out.
   if (saved.resetsAt > now) line += `, resets ${formatTime(saved.resetsAt, timeZone)}`;
   return line;
-}
-
-/**
- * Returns the used share of each Claude plan window, such as
- * `Claude weekly 40% used` with its reset time on the next line, or an empty
- * list when the plan file holds no `unifiedWindows`. Claude reports each
- * window's share in `unifiedWindows` after every reply, with `utilization`
- * from 0 to 1 and `resetsAt` in seconds.
- */
-function describePlanWindows(saved, now) {
-  const windows = saved?.unifiedWindows;
-  if (typeof windows !== "object" || windows === null) return [];
-  // The 5-hour window runs out first, so it leads.
-  const names = Object.keys(windows).sort((a, b) => (b === "five_hour") - (a === "five_hour"));
-  return names.flatMap((name) => {
-    const { utilization, resetsAt } = windows[name] ?? {};
-    if (typeof utilization !== "number") return [];
-    const label = PLAN_WINDOWS[name] ?? name;
-    const lines = [cut(`Claude ${label} ${Math.round(utilization * 100)}% used`, GROUP_LIMIT)];
-    const resetMs = resetsAt * 1000;
-    if (resetMs > now) lines.push(cut(`  resets ${formatTime(resetMs)}`, GROUP_LIMIT));
-    return lines;
-  });
 }
 
 /**
