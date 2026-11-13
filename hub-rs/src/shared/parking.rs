@@ -380,7 +380,10 @@ fn build_resume_args(record: &ParkedRecord) -> Vec<String> {
 
 /// Returns the workspace whose label starts with the card key as its
 /// own word, such as `DEMO-KB-007 impl`, if one is left.
-fn find_card_workspace<'a>(workspaces: &'a [Workspace], card: &CardKey) -> Option<&'a Workspace> {
+pub(crate) fn find_card_workspace<'a>(
+    workspaces: &'a [Workspace],
+    card: &CardKey,
+) -> Option<&'a Workspace> {
     workspaces.iter().find(|workspace| {
         workspace
             .label
