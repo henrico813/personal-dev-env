@@ -209,7 +209,7 @@ jobs:
           # The cache is keyed on go.sum, which planner lacks: it has no dependencies.
           cache: false
       - name: install test dependencies
-        run: sudo apt-get update && sudo apt-get install --yes zsh
+        run: sudo apt-get update && sudo apt-get install --yes zsh tmux
       - uses: astral-sh/setup-uv@v6
       - name: check planning prompts
         run: uv sync --locked && uv run pytest -m "not local_ai"
