@@ -6,6 +6,8 @@ description: Holds the one list of models, and says which model runs
   Use when choosing the model for a subagent, a new Herdr session, a
   worker or a job script, when the user's chosen model cannot run,
   and when another skill points here.
+metadata:
+  scope: personal
 ---
 
 # Model Routing

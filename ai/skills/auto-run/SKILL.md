@@ -12,6 +12,7 @@ description: Runs an auto run, in which a separate hub works a list of
   delegate.
 metadata:
   pde-workflow: "true"
+  scope: personal
 ---
 
 # Auto Run

@@ -5,6 +5,8 @@ description: Writes, changes and reviews agent skills so that each
   person can read, follow and debug the result. Use when creating,
   changing or reviewing a skill, its references or its routing line,
   or when turning saved lessons into skill text.
+metadata:
+  scope: personal
 ---
 
 # Skill Development
@@ -109,7 +111,11 @@ other copy with a pointer.
    hyphens, and give its frontmatter the same `name`. Give a skill
    that runs a whole workflow, such as `create-plan`, the frontmatter
    `pde-workflow: "true"` under `metadata:`. Vibe runs agents that
-   each do one task, so it leaves those skills out.
+   each do one task, so it leaves those skills out. Every skill also
+   gets `scope: personal` under `metadata:`. In a repository that
+   keeps its skills in a top-level `skills` folder, it gets
+   `scope: work` instead. The check script refuses a missing or
+   wrong tag.
    - Add its files to Git, and its routing line to `ai/AGENTS.md`.
    - List it everywhere the repository's own `AGENTS.md` says a new
      skill goes, such as install lists and READMEs.

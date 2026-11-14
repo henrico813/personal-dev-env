@@ -8,6 +8,7 @@ description: Closes out the current session after one reply from the
   or asks to close out or wrap up this session.
 metadata:
   pde-workflow: "true"
+  scope: personal
 ---
 
 # Conclude Session

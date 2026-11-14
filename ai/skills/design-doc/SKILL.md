@@ -3,6 +3,7 @@ name: design-doc
 description: 'Write a technical design document covering the problem, evaluated alternatives, and chosen direction, for requests like "write a design doc for X" or "I need a design document for this feature"; for a code-bearing implementation proposal use create-plan.'
 metadata:
   pde-workflow: "true"
+  scope: personal
 ---
 
 # Design Doc

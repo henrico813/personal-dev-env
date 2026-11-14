@@ -1,6 +1,8 @@
 ---
 name: git-messages
 description: Writes and checks commit messages and pull request titles and descriptions. Use before git commit and before writing or editing pull request text.
+metadata:
+  scope: personal
 ---
 
 # Git Messages

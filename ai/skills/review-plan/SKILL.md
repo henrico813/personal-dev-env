@@ -3,6 +3,7 @@ name: review-plan
 description: 'Review any change, such as an implementation plan, pull request, commit, commit range, or diff, for correctness, simplicity, and completeness, including code review, for requests like "review this plan", "review PR 253", or "review this branch"; for authoring a plan use create-plan, and for execution use implement-plan.'
 metadata:
   pde-workflow: "true"
+  scope: personal
 ---
 
 # Review Plan
