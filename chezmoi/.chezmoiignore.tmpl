@@ -35,6 +35,10 @@ enable_hub_watch.sh
 .config/systemd/user/pde-sweep.service
 .config/systemd/user/pde-sweep.timer
 enable_sweep_timer.sh
+# Only full installs have the go that pde-installer update builds with.
+.config/systemd/user/pde-update.service
+.config/systemd/user/pde-update.timer
+enable_update_timer.sh
 {{- if not (has "workstation" .pde.tiers) }}
 # Terminal VMs have no editor or agents, so they skip these files.
 .config/alacritty

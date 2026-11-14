@@ -1,0 +1,12 @@
+[Unit]
+Description=Install the newest main of personal-dev-env
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/pde-installer update
+# Install runs git, Aqua tools and the go in ~/.local/bin.
+Environment=PATH=%h/.local/bin:%h/.local/share/aquaproj-aqua/bin:/usr/local/bin:/usr/bin:/bin
+# Oneshot services have no start timeout, and a full install that rebuilds
+# tools takes far longer than a sweep.
+TimeoutStartSec=1h
+Nice=10
