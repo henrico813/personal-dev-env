@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  describeBackRoute,
   describeContextBar,
   describeFinishGroup,
   describeFinishNotice,
@@ -301,4 +302,14 @@ test("listSubagents includes nested, never the parent", () => {
 
   assert.deepEqual(listSubagents(sessions, "root"), ["child", "sibling", "grandchild"]);
   assert.deepEqual(listSubagents(sessions, "child"), ["grandchild"]);
+});
+
+/**
+ * Esc on /usage must leave the screen. Opened from the home screen there is
+ * no session to return to, and the old code then did nothing, so the user
+ * was stuck on /usage.
+ */
+test("describeBackRoute leaves /usage from home or session", () => {
+  assert.deepEqual(describeBackRoute({ type: "home" }, undefined), { type: "home" }, "from home");
+  assert.deepEqual(describeBackRoute({ type: "session", sessionID: "child" }, "root"), { type: "session", sessionID: "root" }, "from session");
 });

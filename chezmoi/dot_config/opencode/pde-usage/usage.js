@@ -91,6 +91,14 @@ export function describeGroupLines(priced, planLines) {
 }
 
 /**
+ * Returns the screen Esc on /usage goes back to, the session's root when it
+ * opened from a session, else OpenCode's home screen.
+ */
+export function describeBackRoute(current, rootID) {
+  return current?.type === "session" && rootID ? { type: "session", sessionID: rootID } : { type: "home" };
+}
+
+/**
  * Returns the plan providers a session group used, from its subagents' and
  * its own model providers, such as `["claude"]`.
  */

@@ -14,6 +14,7 @@ import { pickProviderViews, readClaudeLimit } from "./quota/pick.js";
 import { readSettings } from "./quota/settings.js";
 import { dueSources, readPlanFiles } from "./quota/store.js";
 import {
+  describeBackRoute,
   describeFinishGroup,
   describeFinishNotice,
   describeGroupLines,
@@ -81,9 +82,9 @@ export function addUsageSlots(api, { catalogModels, quotaDir, rateLimitFile, lin
     if (current?.type === "session" && current.sessionID) rootID = rootOf(current.sessionID);
     return rootID;
   };
-  const goBack = () => {
-    if (rootID) api.ui.router.navigate({ type: "session", sessionID: rootID });
-  };
+  // Where Esc on /usage returns to, set each time /usage opens.
+  let usageBack;
+  const goBack = () => api.ui.router.navigate(usageBack ?? { type: "home" });
 
   // A parent shows finish notices and the short line, a subagent its own row.
   const composerLines = (sessionID) => {
@@ -178,6 +179,7 @@ export function addUsageSlots(api, { catalogModels, quotaDir, rateLimitFile, lin
         slash: { name: "usage" },
         run: () => {
           rememberRoot();
+          usageBack = describeBackRoute(api.ui.router.current(), rootID);
           api.ui.router.navigate({ type: "plugin", name: "usage" });
         },
       },
