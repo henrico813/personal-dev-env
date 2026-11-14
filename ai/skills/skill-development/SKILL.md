@@ -4,7 +4,8 @@ description: Writes, changes and reviews agent skills so that each
   rule has one owner, no skill repeats or contradicts another, and a
   person can read, follow and debug the result. Use when creating,
   changing or reviewing a skill, its references or its routing line,
-  or when turning saved lessons into skill text.
+  or when turning saved lessons into skill text. Do not use it for
+  the wording of one sentence; plain-direct-english owns that.
 metadata:
   scope: personal
 ---
@@ -91,6 +92,16 @@ other copy with a pointer.
 - Write the description in the third person. Say what the skill does
   and when to use it, in under 1024 characters, the most the Agent
   Skills format allows.
+- Say when not to use the skill, in its description or in a line
+  near the top. Name the nearby task and the skill that owns it, as
+  this skill's description does for the wording of one sentence.
+  Without that line, an agent may load the skill for a task another
+  skill owns. Add that line to each new skill, and to each skill
+  whose description you change.
+- Give a rule whose reason is not obvious a short reason beside it,
+  such as "since the installer replaces them" in Guardrails. A reader
+  who cannot see why a rule exists cannot tell whether it is safe to
+  drop.
 - Keep made-up skill names and example links inside code blocks. The
   check script reads names and links in the text as real ones.
 - Give a new skill the sections it needs from this list, in this
@@ -217,6 +228,8 @@ so whoever gave you the task arranges them.
 2. A new-reader reviewer gets only the changed skill's files, never
    the task. It reports each sentence it cannot follow, each term it
    does not know, and each step where it would not know what to do.
+   It also reports each rule whose reason is neither obvious nor
+   given beside it.
    If it loads this skill, it still reads no file outside the changed
    skill and runs no command.
 
