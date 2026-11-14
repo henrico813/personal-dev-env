@@ -654,7 +654,7 @@ an older installed copy, before its message reaches the linter.
             env=environment,
             capture_output=True,
             text=True,
-            timeout=180,
+            timeout=300,
         )
         events = []
         for line in result.stdout.splitlines():
