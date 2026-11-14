@@ -271,6 +271,10 @@ Done narrative and Goals, Current State, Module Shape, the steps with
 their diffs, and Verification. Keep those short and plain, and add no
 other sections or subsections among them.
 
+Open the title and the Overview with the people affected and the
+problem they notice. Put numbers and code names, such as timeouts or
+function names, after that as detail.
+
 Put what only agents need in one `## Notes for agents` section, the
 last section of the plan: numbered decisions with their labels and
 evidence, file:line references, what the tests leave out, known limits,
