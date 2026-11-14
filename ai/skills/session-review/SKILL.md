@@ -9,6 +9,7 @@ description: Reviews an OpenCode session for token use, corrections
   lessons or local model handoff.
 metadata:
   pde-workflow: "true"
+  scope: personal
 ---
 
 # Session Review

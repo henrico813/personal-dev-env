@@ -7,6 +7,8 @@ description: >-
   designing Go APIs or dependencies, writing Go tests, or reviewing Go changes.
   Also use when explaining Go composition with examples. Not for unrelated work
   in a repository that happens to contain Go.
+metadata:
+  scope: personal
 ---
 
 # Go development

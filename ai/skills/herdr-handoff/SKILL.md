@@ -11,6 +11,7 @@ description: Hands part or all of a session's work to a new agent
   model. For a subagent whose work the session reviews, use delegate.
 metadata:
   pde-workflow: "true"
+  scope: personal
 ---
 
 # Herdr Handoff

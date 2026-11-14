@@ -7,6 +7,8 @@ description: >-
   dependencies, or features. Covers ownership, traits, errors, resource cleanup,
   concurrency, and unsafe code with explanations suitable for a junior
   maintainer. Do not use it merely because a repository contains Rust.
+metadata:
+  scope: personal
 ---
 
 # Rust development

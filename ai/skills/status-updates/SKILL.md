@@ -7,6 +7,8 @@ description: Writes status updates, progress reports, recaps and
   update to the user, including the update after each step of
   delegated work, a recap after time away, and a short answer about
   an earlier update.
+metadata:
+  scope: personal
 ---
 
 # Status Updates

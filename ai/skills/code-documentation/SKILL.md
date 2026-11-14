@@ -1,6 +1,8 @@
 ---
 name: code-documentation
 description: Use when planning changes to, writing, changing, or reviewing source code or automated tests where comments, docstrings, inline explanations, or function names affect maintainability, onboarding, or correct use.
+metadata:
+  scope: personal
 ---
 
 # Code Documentation

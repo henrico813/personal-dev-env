@@ -3,6 +3,7 @@ name: create-plan
 description: 'Create a repository-grounded implementation proposal with exact code diffs, for requests like "create a plan for adding X" or "I need a plan to fix Y"; for plan review use review-plan, and for execution use implement-plan.'
 metadata:
   pde-workflow: "true"
+  scope: personal
 ---
 
 # Create Plan

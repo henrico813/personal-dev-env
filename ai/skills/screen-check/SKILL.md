@@ -7,6 +7,8 @@ description: Runs a terminal program on a hidden tmux screen at phone
   changing
   anything a person sees in a terminal, instead of asking the user to
   test it. Not for web pages or browsers.
+metadata:
+  scope: personal
 ---
 
 # Screen Check

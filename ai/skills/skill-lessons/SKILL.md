@@ -5,6 +5,8 @@ description: Explains how to follow, save and render the user's
   skill-lessons tool. Use when a skill's Remembering corrections section
   links here, or when the user corrects work done under a skill that has
   a Lessons section.
+metadata:
+  scope: personal
 ---
 
 # Skill Lessons

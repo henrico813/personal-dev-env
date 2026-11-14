@@ -9,6 +9,8 @@ description: >-
   including when inspection shows the target is Python. Do not use it for basic
   syntax explanations, README-only edits, or merely because a repository
   contains Python.
+metadata:
+  scope: personal
 ---
 
 # Python development

@@ -6,6 +6,7 @@ description: Use when the user asks to have an agent do a task and then
   ready for me". Do not use it for work you are asked to do yourself.
 metadata:
   pde-workflow: "true"
+  scope: personal
 ---
 
 # Delegate

@@ -3,6 +3,7 @@ name: pull-request
 description: Opens, updates, and merges pull requests safely. Use when a user asks to open, update, or merge a pull request.
 metadata:
   pde-workflow: "true"
+  scope: personal
 ---
 
 # Pull Requests

@@ -3,6 +3,7 @@ name: implement-plan
 description: 'Implement an approved plan step by step with freshness checks and verification, for requests like "implement this plan" or "execute the approved plan"; for authoring use create-plan, for review use review-plan, and for teardown use cleanup-plan.'
 metadata:
   pde-workflow: "true"
+  scope: personal
 ---
 
 # Implement Plan

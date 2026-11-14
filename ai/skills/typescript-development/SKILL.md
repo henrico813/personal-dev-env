@@ -10,6 +10,8 @@ description: >-
   JavaScript or TypeScript. Do not use it for basic syntax
   explanations, README-only edits, or merely because a repository
   contains JavaScript.
+metadata:
+  scope: personal
 ---
 
 # TypeScript and JavaScript development
