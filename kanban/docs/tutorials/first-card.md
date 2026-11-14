@@ -85,6 +85,12 @@ The limits keep the work waiting on you small enough to clear. Last
 comes the review queue, the cards waiting for you to accept them,
 oldest first.
 
+A card that waits only on people outside the team, such as another
+team's reviewers, sits in `waiting-on-others` instead. It counts
+against no limit. When one is there, `card board` adds a line such as
+`waiting-on-others 2, oldest 8 days`, and lists those cards after the
+review queue, each with its days waited and who it waits on.
+
 In Obsidian, open the note `500 Zettelkasten/Kanban.md`. Its Board
 view groups every card by stage, and its Review queue view shows the
 same queue as `card board`.

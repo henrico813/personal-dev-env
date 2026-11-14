@@ -61,7 +61,15 @@ from pathlib import Path
 STATE_DIR = Path.home() / ".local/state/card"
 PROJECTS_SUBDIR = "500 Zettelkasten/Projects"
 
-STAGES = ["draft", "ready", "active", "review", "accepted", "dropped"]
+STAGES = [
+    "draft",
+    "ready",
+    "active",
+    "review",
+    "waiting-on-others",
+    "accepted",
+    "dropped",
+]
 KINDS = {
     "build": "ends in a change to code, config or the running setup",
     "research": "ends in a document or a decision",
@@ -79,6 +87,13 @@ MOVES = {
     ("active", "review"): "staff",
     ("review", "active"): "user",
     ("review", "accepted"): "user",
+    # A waiting-on-others card waits only on people outside the team,
+    # so it never counts against a limit.
+    ("active", "waiting-on-others"): "staff",
+    ("review", "waiting-on-others"): "staff",
+    ("waiting-on-others", "review"): "staff",
+    ("waiting-on-others", "active"): "staff",
+    ("waiting-on-others", "accepted"): "user",
     ("dropped", "draft"): "user",
     **{
         (stage, "dropped"): "user"
@@ -88,7 +103,7 @@ MOVES = {
 }
 # Only the user brings work already under way onto the board, straight
 # into one of these stages. These are not moves, so MOVES leaves them out.
-ADOPT_STAGES = ["active", "review"]
+ADOPT_STAGES = ["active", "review", "waiting-on-others"]
 # Cards in each stage across all projects. The user may move a card
 # past a limit with --user.
 ACTIVE_LIMIT = 8
@@ -440,6 +455,9 @@ def format_moves() -> str:
         f"the user moves a card past the limits of {ACTIVE_LIMIT} active"
         f" and {REVIEW_LIMIT} in review with --user"
     )
+    lines.append(
+        "a move to waiting-on-others needs --why, naming who the card waits on"
+    )
     lines.append("work already under way: card new --adopt STAGE --user")
     return "\n".join(lines)
 
@@ -496,6 +514,7 @@ def run_new(args: argparse.Namespace, projects: Path) -> int:
             "--session goes with --adopt. A draft card gets its session"
             " when it moves to active."
         )
+    require_reason_for_waiting(args.adopt, args.why)
     if args.from_file is not None:
         new_card = read_card_file(Path(args.from_file))
     else:
@@ -667,7 +686,12 @@ def run_list(args: argparse.Namespace, projects: Path) -> int:
 
 
 def run_board(args: argparse.Namespace, projects: Path) -> int:
-    """Print counts per stage, then the review queue, oldest first.
+    """Print counts per stage, then the review and waiting-on-others cards.
+
+    The hub reads the limits line, the waiting-on-others line and the
+    WAITING-ON-OTHERS list, so keep their words as they are. Both lists
+    put the card that has waited longest first. The waiting-on-others
+    line and list appear only when a card is in that stage.
 
     Args:
         args: The parsed arguments.
@@ -680,19 +704,92 @@ def run_board(args: argparse.Namespace, projects: Path) -> int:
     counts = {stage: 0 for stage in STAGES}
     for card in cards:
         counts[card.stage] = counts.get(card.stage, 0) + 1
-    print("  ".join(f"{stage} {counts[stage]}" for stage in STAGES[:3]))
-    print("  ".join(f"{stage} {counts[stage]}" for stage in STAGES[3:]))
+    # Three lines of stages keep each one within 40 columns.
+    for stages in (STAGES[:3], STAGES[3:5], STAGES[5:]):
+        print("  ".join(f"{stage} {counts[stage]}" for stage in stages))
     print(
         f"active {counts['active']} of {ACTIVE_LIMIT},"
         f" review {counts['review']} of {REVIEW_LIMIT}"
     )
+    today = date.today()
+    waiting = [
+        (count_days_since(card.stage_date, today), card)
+        for card in cards
+        if card.stage == "waiting-on-others"
+    ]
+    waiting.sort(key=lambda entry: (-entry[0], entry[1].key))
+    if waiting:
+        oldest = format_days(waiting[0][0])
+        print(f"waiting-on-others {len(waiting)}, oldest {oldest}")
     review = [card for card in cards if card.stage == "review"]
     review.sort(key=lambda card: (card.stage_date, card.key))
     print(f"\nREVIEW, oldest first ({len(review)})")
     for card in review:
         print(fit(f"- {card.key} {card.stage_date}", BOARD_WIDTH))
         print(fit(f"  {card.title}", BOARD_WIDTH))
+    if waiting:
+        print(f"\nWAITING-ON-OTHERS, oldest first ({len(waiting)})")
+    for days, card in waiting:
+        print(fit(f"- {card.key} {format_days(days)}", BOARD_WIDTH))
+        print(fit(f"  {card.title}", BOARD_WIDTH))
+        reason = read_waiting_reason(card.text)
+        if reason:
+            print(fit(f"  {reason}", BOARD_WIDTH))
     return 0
+
+
+def count_days_since(day: str, today: date) -> int:
+    """Return whole days from an ISO date to today.
+
+    A date that does not parse, such as a hand-edited stage_date,
+    counts as 0, so one bad card does not stop the board.
+
+    Args:
+        day: A date such as 2026-11-05.
+        today: Today's date.
+
+    Returns:
+        The number of days, never below 0.
+    """
+    try:
+        return max((today - date.fromisoformat(day)).days, 0)
+    except ValueError:
+        return 0
+
+
+def format_days(days: int) -> str:
+    """Return ``1 day`` or ``N days``.
+
+    Args:
+        days: A number of days.
+
+    Returns:
+        The text.
+    """
+    return "1 day" if days == 1 else f"{days} days"
+
+
+def read_waiting_reason(text: str) -> str:
+    """Return the --why of a card's newest move to waiting-on-others.
+
+    format_log_entry writes ``waiting-on-others: by AUTHOR. WHY``, so
+    the reason is the text after the first ". ".
+
+    Args:
+        text: The card text.
+
+    Returns:
+        The reason, or an empty string when no Log line has one.
+    """
+    reason = ""
+    for line in (read_section(text, "Log") or "").split("\n"):
+        words = line.split(" ", 2)
+        if len(words) < 3 or words[0] != "-":
+            continue
+        entry = words[2]
+        if entry.startswith("waiting-on-others: "):
+            reason = entry.partition(". ")[2].strip()
+    return reason
 
 
 def run_show(args: argparse.Namespace, projects: Path) -> int:
@@ -800,6 +897,7 @@ def run_move(args: argparse.Namespace, projects: Path) -> int:
     """
     if args.session is not None and args.stage != "active":
         raise CardError("--session goes with a move to active")
+    require_reason_for_waiting(args.stage, args.why)
     card = find_card(projects, args.key)
     today = date.today().isoformat()
     entry = format_log_entry(
@@ -821,6 +919,24 @@ def run_move(args: argparse.Namespace, projects: Path) -> int:
     update_card(card, change)
     print(f"{card.key} {args.stage}")
     return 0
+
+
+def require_reason_for_waiting(stage: str | None, why: str | None) -> None:
+    """Refuse a card entering waiting-on-others without a --why.
+
+    The board shows the reason, so the user knows whom to chase.
+
+    Args:
+        stage: The stage the card enters, or None.
+        why: The --why text, or None.
+
+    Raises:
+        CardError: The stage is waiting-on-others and why is empty.
+    """
+    if stage == "waiting-on-others" and not (why and why.strip()):
+        raise CardError(
+            "waiting-on-others needs --why naming who the card waits on"
+        )
 
 
 def format_log_entry(

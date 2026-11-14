@@ -42,11 +42,13 @@ session with the `hub` command, instead of `ls`, `cat` or
 
     hub status --run "<run folder>"
 
-It prints the hub's own line, the board, one count per state, the
-unread reports, then one row per session:
+It prints the hub's own line, the board, a waiting-on-others line
+when a card is in that stage, one count per state, the unread
+reports, then one row per session:
 
     hub kanban-hub-18 131k, watcher running
     board active 5 of 8, review 19 of 6
+    waiting-on-others 2, oldest 8 days
     open 24: 4 working, 2 hub, 3 you,
       5 kept, 1 to-close, 2 to-park; 12 parked
     unread 2: demo-kb-007-impl docs-fix
@@ -315,6 +317,29 @@ vault. A hub never reports to a hub on another machine.
   When you move a card to `review`, add the user's one next step with
   `card note KEY "next: <step>"`, such as `next: review PR #498`.
   `hub board` shows it on the card's details page.
+- Move a card to `waiting-on-others` when its work waits only on
+  people outside the user's team, such as another team's reviewers or
+  a change another team must make first. It is a staff move, without
+  `--user`. Name who it waits on with `--why`, such as
+  `--why "platform team's review"`; `card` refuses the move without
+  it. Work blocked on another team's change moves there from
+  `active`. A pull request moves there from `review` only after the
+  user reviewed it. Then take it off `reviews.md`, and send its worker
+  no merge step, since the merge waits on the outside reviewers.
+  `hub status` then shows the worker as `to-park`, and `hub clean`
+  parks it. These cards count against neither limit. `hub brief`
+  lists them, with the days since each moved there, under "Waiting on
+  others (no action needed)", and `hub board` folds them into a
+  "Waiting on others" group.
+- Move a `waiting-on-others` card back once the user tells you, or
+  the pull request shows, that the outside reviewers answered. These
+  are staff moves too. When they approved, move it to `review`; the
+  user's earlier review stands, so hand on the merge as Merges says.
+  When they asked something only the user can answer, move it to
+  `review` and add the question to `decisions.md`. When they asked
+  for changes, move it to `active`. When that stage is full, leave
+  the card where it is, tell the user, and move it once a place is
+  free.
 - When one wake needs several card commands, such as `card note`,
   `card move` and `card add`, put them in one shell script and run it
   in one tool call.
@@ -431,9 +456,15 @@ them with:
 
     hub brief --run "<run folder>"
 
-Its first line is `board N/M, review R; K decisions`, then it prints
-`reviews.md` and every entry. It exits 3, naming the entry, when one
-lacks its question, two choices, `Recommended:` or `If no reply:`.
+Its first line is `board active A of 8, review R of 6; K decisions`.
+When cards wait on others, a `waiting-on-others W, oldest D days`
+line follows. Then it prints `reviews.md` and every entry, and last
+the "Waiting on others (no action needed)" list, with each card's
+days in the stage, title and reason. That list is news for the user,
+such as for a standup, never a question, so do not repeat it in
+other messages unless the user asks. It exits 3, naming the
+entry, when one lacks its question, two choices, `Recommended:` or
+`If no reply:`.
 Fix the entry and run it again.
 
 ## Merges

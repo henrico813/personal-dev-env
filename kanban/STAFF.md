@@ -68,12 +68,20 @@ Everything else it handles itself or leaves alone.
   is accepted. Only the user makes these moves: `draft -> ready`,
   `active -> draft`, `review -> active`, `review -> accepted`, and any
   move to or from `dropped`. Only the user adopts work already under
-  way, with `card new --adopt active` or `--adopt review`. The staff
-  agent passes `--user` only after the user said so in this session.
+  way, with `card new --adopt active`, `--adopt review` or
+  `--adopt waiting-on-others`. The staff agent passes `--user` only
+  after the user said so in this session.
 - The staff agent moves `ready -> active` when a worker starts,
   `active -> review` when a worker reports ready with a PR or other
   evidence, `active -> ready` when work is paused, with `--why`
   naming its handoff, and `ready -> draft` when a card has a gap.
+- The staff agent moves a card to `waiting-on-others` when its work
+  waits only on people outside the team, with `--why` naming them,
+  such as `--why "platform team's review"`. A PR moves there from
+  `review` only after the user reviewed it. Work blocked on another
+  team's change moves there from `active`. The card goes back to
+  `review` when the merge or a question waits on the user, and to
+  `active` when the outside reviewers ask for changes.
 - Before `active -> review`, the staff agent checks the work itself,
   not only the report. The PR or branch must exist, and its tests must
   pass.
@@ -124,7 +132,8 @@ is missing, then renames the report to `report-<name>.read`.
 ## Set for the first week
 ---
 
-- The limits are 8 cards in active and 6 in review. The user
+- The limits are 8 cards in active and 6 in review.
+  `waiting-on-others` has no limit. The user
   revisits them from that week's merges per day and the age of the
   oldest item waiting on the user.
 - Every session doing real work holds a card. A short chat, named
