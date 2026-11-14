@@ -3,6 +3,7 @@ package installer
 import (
 	"bytes"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -59,7 +60,8 @@ func TestVersionPrintsRecordedInstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "commit " + commit + "\nbranch feature/demo\ninstalled 2026-11-10T08:30:00Z\n"
+	want := "commit " + commit + "\nbranch feature/demo\ninstalled 2026-11-10T08:30:00Z\n" +
+		"no update recorded\nmain not compared: no checkout found\n"
 	if stdout.String() != want {
 		t.Fatalf(
 			"version output = %q, want %q",
@@ -92,6 +94,100 @@ func TestVersionFailsWithoutRecordedInstall(t *testing.T) {
 		t.Fatalf(
 			"version printed %q without a record",
 			stdout.String(),
+		)
+	}
+}
+
+// The owner checks a PC with version instead of opening update.json. A
+// checkout left on a branch must still show that main moved past the install.
+func TestVersionReportsUpdateAndMainLead(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv(
+		"HOME",
+		home,
+	)
+	repo := initTestCheckout(
+		t,
+		"main",
+	)
+	installed := runTestGit(
+		t,
+		repo,
+		"rev-parse",
+		"HEAD",
+	)
+	runTestGit(
+		t,
+		repo,
+		"-c",
+		"user.name=Test",
+		"-c",
+		"user.email=test@example.invalid",
+		"commit",
+		"--quiet",
+		"--no-verify",
+		"--allow-empty",
+		"-m",
+		"new main",
+	)
+	runTestGit(
+		t,
+		repo,
+		"switch",
+		"--quiet",
+		"--create",
+		"feature/demo",
+		installed,
+	)
+	writeCommandTestFile(
+		t,
+		filepath.Join(
+			home,
+			".config",
+			"pde",
+			"config.json",
+		),
+		`{"install_path": "`+repo+`"}`,
+	)
+	if err := writeInstallRecord(
+		home,
+		installRecord{
+			Commit:      installed,
+			Branch:      "main",
+			InstalledAt: "2026-11-13T08:00:00Z",
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeStateJSON(
+		home,
+		updateRecordPath(home),
+		updateRecord{
+			Result:    "failed",
+			Reason:    "install: apt broke",
+			CheckedAt: "2026-11-13T08:30:00Z",
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	command := NewCommand()
+	command.SetOut(&stdout)
+	command.SetArgs([]string{"version"})
+	err := command.Execute()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "commit " + installed + "\nbranch main\ninstalled 2026-11-13T08:00:00Z\n" +
+		"last update failed at 2026-11-13T08:30:00Z: install: apt broke\n" +
+		"main is 1 commit ahead of the install\n"
+	if stdout.String() != want {
+		t.Fatalf(
+			"version output = %q, want %q",
+			stdout.String(),
+			want,
 		)
 	}
 }

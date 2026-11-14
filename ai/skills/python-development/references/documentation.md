@@ -12,15 +12,20 @@ covers Python docstring format and executable examples only.
 
 ## Follow the repository's format
 
-Use the established Google, NumPy, Sphinx, plain reStructuredText, or other
-docstring style. Do not mix formats in one project or add parameter sections that
-repeat an annotated signature. Keep public behavior, important side effects,
-failures, resource ownership, and non-obvious limits discoverable where callers
-look.
+Use the repository's established docstring style, such as Google, NumPy
+or Sphinx. When the repository has none, use Google style: a one-line
+summary, then `Args:`, `Returns:` and `Raises:` sections where they
+apply. Do not mix formats in one project. Keep public behavior,
+important side effects, failures, resource ownership, and non-obvious
+limits discoverable where callers look.
 
-For tests, let names, visible inputs, and assertions explain the behavior. Add a
-docstring or comment only when a supported reason, boundary, or regression is
-still unclear.
+Tests and fixtures get docstrings too, as the "Python rules" section
+of the `code-documentation` skill says.
+
+Every function that takes arguments gets an argument section, such as
+`Args:`, helpers and fixtures included. A one-line docstring is not
+enough for them. Never cut an `Args:`, `Returns:` or `Raises:` section
+to shorten a change, even when it repeats the signature.
 
 ## PEP 257 docstring conventions
 

@@ -24,6 +24,13 @@ when no saved or legacy selection exists. An explicit selection is saved in
 `paths.env` state or a config containing `install_path` without `profile` is
 legacy full state and is saved during the next install.
 
+Every selection makes zsh the login shell. After the install succeeds, when the
+passwd entry names another shell, install runs `sudo usermod -s` with the zsh
+on `PATH`; `--dry-run` prints that command. When `/etc/shells` does not list
+that zsh, or any step fails, install warns and leaves the shell alone. New
+logins and terminals that read the login shell start zsh. Herdr and tmux servers
+keep the old shell until they restart.
+
 `install i3` or `install sway` saves that desktop as `desktop` in `config.json`,
 next to the saved profile, which it keeps. With no saved or legacy profile, it exits
 before any change and says to install a profile first. Installing a profile, and
@@ -68,16 +75,38 @@ line above it names the subagent, its tokens, run time and price for 10
 seconds. Inside a subagent's view, two lines above the prompt show its model,
 a context bar, its tokens, price and whether it still runs. The Usage panel in
 the sidebar shows the group totals, how many subagents still run, their tokens
-and API price, and the Claude plan limit that the OpenCode Claude plugin saved
-last, with its reset time on its own line. A phone-width screen hides the
-sidebar, so `/usage` opens a screen with the same totals, and esc goes back.
+and API price, and the plan lines of the plans the session used, plus any plan
+at 80% or more. A phone-width screen hides the sidebar, so `/usage` opens a
+screen with the same totals and every plan line, and esc goes back.
 The price uses the rates listed for the subagent's provider, or else the rates
 Anthropic or OpenAI list for the model. The rates come from OpenCode's model
 list, then from the models.dev catalog, which the plugin downloads once each
 time OpenCode starts. The price is not what a plan or local model bills, and a
-model with no listed rate shows `$0 cost`. The plan line covers only the window
-the latest Claude reply reported, five-hour or weekly, with a share only when
-that reply carried one. The plugin does nothing in Claude Code.
+model with no listed rate shows `$0 cost`. The plugin does nothing in Claude
+Code.
+
+A plan line shows how much of a plan's limit is used, such as `Claude weekly 48%
+used`, with its reset time on the line below. A number 10 minutes old or more
+shows its age, such as `· 2h ago`. When the latest check failed, the last good
+number stays with its age and `check failed` below it, and a window that has
+reset since shows `unknown`. A plan line turns the warning color at 80% and the
+error color at 95%. `Claude limit reached until 14:00` shows while the OpenCode
+Claude plugin reports that Claude has stopped answering. A machine with no
+Claude Code login or plan shows no Claude line.
+
+`pde-quota` keeps these numbers in `~/.local/state/pde/quota/`, one file per
+source, and the plugin only reads them. `pde-quota show` prints the same plan
+lines in any shell, `--json` prints them with their numbers for other tools, and
+`--width N` sets the line width, 37 by default. When a number is due, `show` and
+the plugin start `pde-quota refresh` in the background. It asks Claude Code for
+the account's plan usage at most every 5 minutes, through `claude -p` in an
+empty folder with the user's own Claude Code settings skipped for that call, so
+their "no non-essential traffic" setting does not empty the answer. Telemetry,
+error reports and auto-update stay off, and no model runs. A lock keeps many
+OpenCode windows to one check, and `checks.log` beside the files records each
+check. A Claude Code status line can pipe its JSON into `pde-quota
+save-claude-status`, which saves its two plan windows, prints nothing and never
+fails. Deleting the folder is safe; the next refresh rebuilds it.
 
 Rendering is static and does not emit terminal palette escape sequences. An SSH
 client keeps its local terminal palette while a remote PDE prompt and tmux
@@ -138,6 +167,10 @@ are warnings, not doctor failures. The credential check does not validate GitHub
 access; use `:Copilot auth info` in Neovim for the authenticated account's live
 status.
 
+`doctor` ends its report with the two update lines that `version` prints, each
+after `status` or `warning`. A skipped, failed, or unreadable update and a
+`main` ahead of the install are warnings. They do not fail `doctor`.
+
 ### `pde-installer list`
 
 Prints tab-separated columns:
@@ -152,19 +185,28 @@ Status words vary by owner. Common values include `missing`, `installed`,
 ### `pde-installer version`
 
 Prints the commit, branch, and UTC time of the last install on this machine
-that put every component in place. It reads them from
-`~/.local/state/pde/install.json`:
+that put every component in place, then the last update and how far `main` is
+ahead. It reads the first three from `~/.local/state/pde/install.json`:
 
 ```text
 commit 3f9c2e1a...
 branch main
 installed 2026-11-10T08:30:00Z
+last update failed at 2026-11-13T08:30:00Z: install: <last error line>
+main is 2 commits ahead of the install
 ```
+
+The `last update` line gives the result, time, and reason from `update.json`,
+or reads `no update recorded`. The `main` line counts the commits on the
+checkout's local `main` branch that the installed commit lacks. It finds the
+checkout from `install_path` in `~/.config/pde/config.json` and never fetches,
+so it counts only what `update` or a pull already brought into `main`. When it
+cannot compare, it reads `main not compared` and gives the cause.
 
 Each real install writes the file after every component is in place; `--dry-run`
 writes nothing. A detached checkout records `HEAD` as its branch, and a field
 that git cannot read records `unknown`. The record does not show uncommitted
-changes in the checkout. `version` needs no checkout and works from any folder.
+changes in the checkout. `version` works from any folder.
 With no record it exits with an error that says to run `pde-installer install`.
 
 ### `pde-installer update`
@@ -212,6 +254,17 @@ Each run writes `~/.local/state/pde/update.json`:
 and `current`, `update` prints `update <result>: main is at <commit>`.
 Otherwise it exits with an error that gives the result and reason. A second
 update started while one runs exits at once with an error.
+
+On a full install, `pde-update.timer` runs `update` 15 minutes after it starts,
+at boot or install, and then once an hour. To change how often, set
+`update_interval` in `config.json` to a Go duration of at least a minute, such
+as `"6h"` or `"90m"`; the next `install` applies it. A value that does not
+parse stops `install`, `doctor` and `list`. `systemctl --user list-timers
+pde-update.timer` shows the next run, and `journalctl --user -u
+pde-update.service` shows what each run printed.
+
+On a full install, `hub watch` reads `update.json` and sends the phone one
+notification for each new `skipped` or `failed` result.
 
 ## Global Option
 

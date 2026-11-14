@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"pde-installer/internal/colorprofile"
 	"pde-installer/internal/fsutil"
@@ -20,12 +21,13 @@ type Manager struct {
 	Profile                  profile.Profile
 	Desktop                  profile.Desktop
 	ColorProfile             colorprofile.Profile
+	UpdateInterval           time.Duration
 	Runner                   run.Runner
 }
 
 // New returns a chezmoi manager for the supplied installation roots.
-func New(home, repoRoot, aquaRoot string, selected profile.Profile, desktop profile.Desktop, color colorprofile.Profile, runner run.Runner) Manager {
-	return Manager{Home: home, RepoRoot: repoRoot, AquaRoot: aquaRoot, Profile: selected, Desktop: desktop, ColorProfile: color, Runner: runner}
+func New(home, repoRoot, aquaRoot string, selected profile.Profile, desktop profile.Desktop, color colorprofile.Profile, updateInterval time.Duration, runner run.Runner) Manager {
+	return Manager{Home: home, RepoRoot: repoRoot, AquaRoot: aquaRoot, Profile: selected, Desktop: desktop, ColorProfile: color, UpdateInterval: updateInterval, Runner: runner}
 }
 
 // Source returns the repository's chezmoi source directory.
@@ -207,15 +209,21 @@ func (m Manager) readOnlyBinary() (string, error) {
 }
 
 func (m Manager) arguments() []string {
-	return []string{"--config", "/dev/null", "--config-format", "toml", "--source", m.Source(), "--destination", m.Home, "--persistent-state", filepath.Join(m.Home, ".local", "state", "pde", "chezmoi.boltdb"), "--color", "false", "--override-data", encodeTemplateData(m.Profile, m.Desktop)}
+	return []string{"--config", "/dev/null", "--config-format", "toml", "--source", m.Source(), "--destination", m.Home, "--persistent-state", filepath.Join(m.Home, ".local", "state", "pde", "chezmoi.boltdb"), "--color", "false", "--override-data", encodeTemplateData(m.Profile, m.Desktop, m.UpdateInterval)}
 }
 
 // Returns the --override-data JSON that templates read as .pde, such as
 // `{"pde":{"desktop":"","tiers":["terminal"]}}`.
-func encodeTemplateData(selected profile.Profile, desktop profile.Desktop) string {
+func encodeTemplateData(selected profile.Profile, desktop profile.Desktop, updateInterval time.Duration) string {
 	// chezmoi stops on a missing key, so a machine with no desktop gets "".
+	// The interval is in whole seconds, because Go and systemd spell some
+	// durations differently.
 	data, err := json.Marshal(map[string]map[string]any{
-		"pde": {"tiers": selected.Tiers(), "desktop": string(desktop)},
+		"pde": {
+			"tiers":          selected.Tiers(),
+			"desktop":        string(desktop),
+			"updateInterval": fmt.Sprintf("%ds", int64(updateInterval/time.Second)),
+		},
 	})
 	if err != nil {
 		// Strings and string slices always encode.
@@ -271,7 +279,6 @@ func (m Manager) Validate() error {
 			filepath.Join(m.Source(), "dot_config", "nvim", "lua", "plugins", "ui.lua.tmpl"),
 			filepath.Join(m.Source(), "dot_config", "herdr", "config.toml"),
 			filepath.Join(m.Source(), "dot_config", "opencode", "modify_opencode.json"),
-			filepath.Join(m.Source(), "dot_config", "opencode", "modify_opencode-mem.jsonc"),
 			filepath.Join(m.Source(), "dot_config", "opencode", "modify_cli.json"),
 		)
 	}

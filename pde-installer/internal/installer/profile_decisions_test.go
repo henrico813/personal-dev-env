@@ -38,6 +38,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"preview chezmoi changes",
 				"restart hub-watch.service if it runs a replaced hub",
 				"refresh OpenCode server environment",
+				"set login shell to zsh",
 			},
 			packages: []string{
 				"ca-certificates",
@@ -51,7 +52,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"xz-utils",
 				"zsh",
 			},
-			chezmoiData: `{"pde":{"desktop":"","tiers":["terminal"]}}`,
+			chezmoiData: `{"pde":{"desktop":"","tiers":["terminal"],"updateInterval":"3600s"}}`,
 		},
 		{
 			profile: "client",
@@ -78,6 +79,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"render skill lessons when skill-lessons is installed",
 				"restart hub-watch.service if it runs a replaced hub",
 				"refresh OpenCode server environment",
+				"set login shell to zsh",
 			},
 			packages: []string{
 				"ca-certificates",
@@ -93,7 +95,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"xz-utils",
 				"zsh",
 			},
-			chezmoiData: `{"pde":{"desktop":"","tiers":["terminal","workstation"]}}`,
+			chezmoiData: `{"pde":{"desktop":"","tiers":["terminal","workstation"],"updateInterval":"3600s"}}`,
 		},
 		{
 			profile: "full",
@@ -129,6 +131,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"render skill lessons when skill-lessons is installed",
 				"restart hub-watch.service if it runs a replaced hub",
 				"refresh OpenCode server environment",
+				"set login shell to zsh",
 			},
 			packages: []string{
 				"build-essential",
@@ -149,7 +152,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"xz-utils",
 				"zsh",
 			},
-			chezmoiData: `{"pde":{"desktop":"","tiers":["terminal","workstation","development"]}}`,
+			chezmoiData: `{"pde":{"desktop":"","tiers":["terminal","workstation","development"],"updateInterval":"3600s"}}`,
 		},
 	}
 	for _, test := range tests {
@@ -234,7 +237,7 @@ func TestDryRunAddsDesktopToProfile(t *testing.T) {
 				"xdg-desktop-portal-wlr",
 				"xwayland",
 			},
-			chezmoiData: `{"pde":{"desktop":"sway","tiers":["terminal","workstation"]}}`,
+			chezmoiData: `{"pde":{"desktop":"sway","tiers":["terminal","workstation"],"updateInterval":"3600s"}}`,
 		},
 		{
 			profile: "full",
@@ -279,7 +282,7 @@ func TestDryRunAddsDesktopToProfile(t *testing.T) {
 				"xfce4-settings",
 				"xss-lock",
 			},
-			chezmoiData: `{"pde":{"desktop":"i3","tiers":["terminal","workstation","development"]}}`,
+			chezmoiData: `{"pde":{"desktop":"i3","tiers":["terminal","workstation","development"],"updateInterval":"3600s"}}`,
 		},
 	}
 	for _, test := range tests {
@@ -319,7 +322,7 @@ func TestDryRunAddsDesktopToProfile(t *testing.T) {
 					sudo = append(sudo, strings.Join(strings.Fields(command)[:2], " "))
 				}
 			}
-			if want := []string{"apt-get update", "apt-get install"}; !slices.Equal(sudo, want) {
+			if want := []string{"apt-get update", "apt-get install", "usermod -s"}; !slices.Equal(sudo, want) {
 				t.Errorf("sudo commands = %q, want %q", sudo, want)
 			}
 		})
@@ -347,6 +350,7 @@ func writeMissingPackagesBin(t *testing.T) string {
 		"apt-get":    "#!/bin/sh\nexit 0\n",
 		"sudo":       "#!/bin/sh\nexit 0\n",
 		"dpkg-query": "#!/bin/sh\nexit 1\n",
+		"getent":     "#!/bin/sh\nprintf '%s\\n' 'tester:x:1000:1000::/nonexistent:/bin/bash'\n",
 	} {
 		testfile.WriteExecutable(t, filepath.Join(bin, name), script)
 	}

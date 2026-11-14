@@ -156,6 +156,13 @@ Synthesize all agent outputs before proceeding. If agents surface contradictory 
 
 ### Step 4: Write the design doc pages
 
+Unless you are a delegated agent, start subagents to write the pages.
+Pick their model with the `model-routing` skill, which names a cheap
+model for long drafts. Check each page against Step 5 as it comes
+back. Send your findings to the subagent that wrote it, until the
+page has no findings left. After the last page, run all of Step 5 on
+the whole doc.
+
 Write the design doc as a main page and the parts it needs. The main
 page is the index of the parts. Put the pages in the project's folder
 of the default vault. The Planning Docs section of your AGENTS.md

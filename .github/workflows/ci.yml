@@ -47,17 +47,17 @@ jobs:
         run: make check
       - run: go test -race -count=3 ./...
 
-  pdev2:
+  pdev:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: pdev2
+        working-directory: pdev
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: pdev2/go.mod
-          # The cache is keyed on go.sum, which pdev2 lacks: it has no dependencies.
+          go-version-file: pdev/go.mod
+          # The cache is keyed on go.sum, which pdev lacks: it has no dependencies.
           cache: false
       - run: go test -race -count=3 ./...
       - run: go vet ./...
@@ -130,6 +130,10 @@ jobs:
           node test/opencode-herdr-subagents.test.mjs
           node test/opencode-secret-redaction.test.mjs
           node test/opencode-usage.test.mjs
+          node test/opencode-quota-store.test.mjs
+          node test/opencode-quota-sources.test.mjs
+          node test/opencode-quota-lines.test.mjs
+          node test/opencode-quota-cli.test.mjs
           bash -n test/*.sh
           test/nvim-obsidian-sync.sh
           test/nvim-clipboard.sh
@@ -213,6 +217,23 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - name: check planning prompts
         run: uv sync --locked && uv run pytest -m "not local_ai"
+
+  # Checks only the skills a pull request changes, so a long skill on
+  # main fails only the pull request that edits it.
+  skills:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The merge base needs the base branch's history.
+          fetch-depth: 0
+      - name: check changed skills
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: >-
+          python3 ai/skills/skill-development/scripts/skill_check.py
+          --base "$(git merge-base "origin/$BASE_REF" HEAD)"
 
   skill-lessons:
     runs-on: ubuntu-latest

@@ -48,6 +48,9 @@ func TestIgnoreListMatchesEachProfile(t *testing.T) {
 		".config/systemd/user/pde-sweep.service",
 		".config/systemd/user/pde-sweep.timer",
 		"enable_sweep_timer.sh",
+		".config/systemd/user/pde-update.service",
+		".config/systemd/user/pde-update.timer",
+		"enable_update_timer.sh",
 	}
 	terminalIgnores := []string{
 		".config/alacritty",
@@ -59,6 +62,7 @@ func TestIgnoreListMatchesEachProfile(t *testing.T) {
 		".config/opencode",
 		".config/opencode/**",
 		".local/bin/opencode",
+		".local/bin/pde-quota",
 		".config/herdr",
 		".config/herdr/**",
 		".agents",
@@ -201,6 +205,34 @@ func isIgnored(target string, patterns []string) bool {
 	return false
 }
 
+// The owner sets update_interval as a Go duration, and systemd reads the
+// timer. A wrong unit or key would run updates far more or less often.
+func TestUpdateTimerUsesConfiguredInterval(t *testing.T) {
+	data := encodeTemplateData(
+		"full",
+		"",
+		90*time.Minute,
+	)
+
+	text, err := renderTemplateWithData(
+		t,
+		"dot_config/systemd/user/pde-update.timer.tmpl",
+		data,
+		"tokyo-night",
+		repoRoot(t),
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsLine(text, "OnUnitActiveSec=5400s") {
+		t.Fatalf(
+			"timer has no OnUnitActiveSec=5400s line:\n%s",
+			text,
+		)
+	}
+}
+
 // Each profile's remove list. chezmoi deletes these targets on every apply, so
 // a tool listed for a profile that installs it, such as pde-gh-write on full,
 // disappears after each install.
@@ -217,6 +249,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".local/bin/pde-comment-review",
 		".local/share/pde/herdr-plugins/pde-comment-review",
 		".agents/skills/roadmap-run",
+		".agents/skills/promote-memory",
 	}
 	developmentTools := []string{
 		".local/bin/pde-gh-write",
@@ -226,6 +259,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 	retiredAgentFiles := []string{
 		".config/opencode/plugins/pde-approval-session.js",
 		".config/opencode/commands/document_codebase.md",
+		".config/opencode/opencode-mem.jsonc",
 	}
 	fullOnlyFiles := []string{
 		".agents/skills/auto-run",
@@ -240,7 +274,6 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".agents/skills/herdr-handoff",
 		".agents/skills/herdr-hub",
 		".agents/skills/implement-plan",
-		".agents/skills/promote-memory",
 		".agents/skills/pull-request",
 		".agents/skills/python-development",
 		".agents/skills/research-codebase",
@@ -323,7 +356,11 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 // Returns the rendered lines that name paths, without blanks and comments.
 func renderPathList(t *testing.T, name, profileName, desktop string) []string {
 	t.Helper()
-	data := encodeTemplateData(profile.Profile(profileName), profile.Desktop(desktop))
+	data := encodeTemplateData(
+		profile.Profile(profileName),
+		profile.Desktop(desktop),
+		time.Hour,
+	)
 	text, err := renderTemplateWithData(t, name, data, "tokyo-night", repoRoot(t))
 	if err != nil {
 		t.Fatal(err)
@@ -1215,7 +1252,18 @@ func renderConfiguredTemplate(t *testing.T, name, profile, colorProfile string) 
 
 func renderTemplateForCheckout(t *testing.T, name, profileName, colorProfile, checkout string) (string, error) {
 	t.Helper()
-	return renderTemplateWithData(t, name, encodeTemplateData(profile.Profile(profileName), ""), colorProfile, checkout)
+	data := encodeTemplateData(
+		profile.Profile(profileName),
+		"",
+		time.Hour,
+	)
+	return renderTemplateWithData(
+		t,
+		name,
+		data,
+		colorProfile,
+		checkout,
+	)
 }
 
 // Renders a template with pdeData, the installer's --override-data JSON.

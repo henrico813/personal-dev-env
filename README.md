@@ -60,8 +60,9 @@ See the
 [command reference](pde-installer/docs/reference/commands.md) for details.
 
 Mutating commands reject UID 0. The installer uses `sudo apt-get` for missing
-Ubuntu dependencies. Other managed files stay below `HOME`. Use `--dry-run` to
-preview ordered work without making changes.
+Ubuntu dependencies, and `sudo usermod` to make zsh your login shell when it is
+not. Other managed files stay below `HOME`. Use `--dry-run` to preview ordered
+work without making changes.
 
 The installer saves which checkout it installed from in
 `~/.config/pde/config.json`. To tell Neovim and nobs where your Obsidian
@@ -123,23 +124,23 @@ Vibe binaries plus repo-managed AI config.
 | TypeScript development | `ai/skills/typescript-development/` | `~/.agents/skills/typescript-development/` | Shared JavaScript and TypeScript development guidance |
 | Pull request | `ai/skills/pull-request/` | `~/.agents/skills/pull-request/` | Pull-request procedure |
 | Git messages | `ai/skills/git-messages/` | `~/.agents/skills/git-messages/` | Shared commit and PR guidance |
-| Promote memory | `ai/skills/promote-memory/` | `~/.agents/skills/promote-memory/` | Reviewed memory-to-skill promotion |
 | Obsidian Zettel | `ai/skills/obsidian-zettel/` | `~/.agents/skills/obsidian-zettel/` | Template-aligned vault note creation |
 | Obsidian daily note | `ai/skills/obsidian-daily-note/` | `~/.agents/skills/obsidian-daily-note/` | Approved sections appended to today's daily note |
 | OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands,cli.json,pde-herdr-opencode,pde-usage}`, `opencode.json` permission merge | OpenCode commands, agents, synchronized TUI theme, bidirectional agent cycling (`Tab` next, `Shift+Tab` previous), a Herdr pane that stays working while background subagents run, and subagent usage above the prompt, in the sidebar and on a `/usage` screen |
 | Herdr layout | `chezmoi/dot_config/herdr/` | `~/.config/herdr/config.toml` (client and full) | Mobile-first agent workspace UI; Herdr is the installer-managed Herdr release |
-| OpenCode memory | `ai/AGENTS.md`, `chezmoi/` | Existing `~/.opencode-mem/` data | Unsupported with the managed Claude adapter |
 | OpenCode Inline | `nvim-plugins/opencode-inline.nvim/` | `~/.config/nvim/pack/plugins/start/opencode-inline.nvim`, `~/.local/bin/opencode-inline-shim` | CodeCompanion inline plugin and OpenAI-compatible bridge |
 | Pi | `ai/pi/agent/` | `~/.local/bin/pi`, `~/.pi/agent/` | Managed CLI plus settings |
 | Moshi Hook | `pde-installer/internal/direct/` | `~/.local/bin/moshi-hook`, `~/.local/bin/moshi` | Mobile coding-agent hook daemon |
 | Herdr | `pde-installer/internal/direct/` | `~/.local/bin/herdr` | Agent-aware terminal workspace |
 | nobs | `pde-installer/internal/direct/` | `~/.local/bin/nobs` | Finds, reads and syncs vault notes; run `nobs vault set` once per vault |
-| PR write approval | `pdev2/`, `chezmoi/` | `~/.local/bin/{pde-gh-write,pde-pr-approve,gh}`, `~/.local/share/pde/herdr-plugins/pde-approval/` (full only) | Agents write to pull requests only after you approve; see the [approval docs](pdev2/docs/README.md) |
+| PR write approval | `pdev/`, `chezmoi/` | `~/.local/bin/{pde-gh-write,pde-pr-approve,gh}`, `~/.local/share/pde/herdr-plugins/pde-approval/` (full only) | Agents write to pull requests only after you approve; see the [approval docs](pdev/docs/README.md) |
 | Comment review | `glimmer/`, `chezmoi/` | `~/.local/bin/glimmer`, `~/.local/share/pde/herdr-plugins/glimmer/` (full only) | Decide on an AI's Go, Python and Rust comments one per phone screen with Ctrl+b e, and keep agents from changing the ones you approved; run `glimmer help` for its commands |
 | Skill lessons | `skill-lessons/` | `~/.local/bin/skill-lessons` (client and full) | Saves your corrections as lessons in the installed copy of a skill; see the [skill-lessons README](skill-lessons/README.md) |
 | Hub | `hub-rs/` | `~/.local/bin/hub` (full only) | Shows, messages, parks and tidies the Herdr sessions a hub session runs; see the [hub README](hub-rs/README.md) |
 | prs | `prs/` | `~/.local/bin/prs` (full only) | Reads your open pull requests on a phone; see [GitHub Pull Request Reviews](chezmoi/README.md#github-pull-request-reviews) |
+| Automatic updates | `chezmoi/` | `~/.config/systemd/user/pde-update.{service,timer}` (full only) | Runs `pde-installer update` every hour; set `update_interval` in `~/.config/pde/config.json` to change it. See the [update reference](pde-installer/docs/reference/commands.md#pde-installer-update) |
 | pde-check | `chezmoi/` | `~/.local/bin/pde-check` (client and full) | Runs test and lint commands, saves each command's output to a log, and prints a summary of at most 10 lines. Run `pde-check` with no arguments to see how to use it |
+| pde-quota | `chezmoi/` | `~/.local/bin/pde-quota` (client and full) | Shows how much of each plan limit is used, such as `Claude weekly 48% used`, from numbers it saves in `~/.local/state/pde/quota/`; the OpenCode usage sidebar reads the same numbers. Run `pde-quota show` |
 
 Shared configuration lives in `chezmoi/`, including local-file mappings for the complete `ai/` source tree and checksummed remote externals.
 
@@ -153,9 +154,8 @@ with `claude auth login --claudeai`. The supported pairing is:
 
 The managed-plugin merge removes stale entries for managed Claude and memory
 plugins, preserves unrelated plugins and settings, and appends the pinned
-adapter. OpenCode memory is intentionally unsupported with this integration.
-Existing `~/.opencode-mem/` data remains on disk, but the full installation
-removes its plugin entry and OpenCode does not load it.
+adapter. A full install also sets `autoMemoryEnabled` to false in
+`~/.claude/settings.json`, so Claude Code saves no memories.
 
 ## Using OpenCode Commands
 
@@ -223,7 +223,8 @@ repository and are never committed or printed.
 
 - An existing Git checkout and Go are required to build `pde-installer`.
 - Ubuntu 22.04 or newer on Linux amd64 is required.
-- Use an unprivileged user with `sudo` access for missing apt packages.
+- Use an unprivileged user with `sudo` access for missing apt packages and
+  the login shell change.
 - `vibe run` additionally expects Docker plus provider auth via env vars or `~/.pi/agent/auth.json`.
 
 ## Installer Tests

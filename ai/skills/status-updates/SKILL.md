@@ -15,13 +15,9 @@ The user reads updates on a phone, out of order, often after time
 away. Write each one so a reader who missed every earlier message
 knows what happened and what to do next. Write each sentence by the
 `plain-direct-english` skill; this skill covers what an update says
-and in what order.
-
-## When to use
-
-Use it for every status update, progress report, recap or handoff
-message to the user. In delegated work, send one after each step,
-even when the user has nothing to do.
+and in what order. In delegated work, send one after each step, even
+when the user has nothing to do. A batch of agents that run at once
+counts as one step, as Restraint says.
 
 ## Write for a new reader
 
@@ -29,110 +25,79 @@ even when the user has nothing to do.
 - Say what each thing does for the user before its label. Write "the
   approvals-file pull request (P4, #383)", not "P4". Explain every
   term, such as "batch 2", in every message.
+- Name the repository with each pull request, card and plan, since
+  the user works on several, even when an update covers only one.
+- To explain how work behaves, open with a small concrete example.
+  Give each rule's real effect in one sentence, and name the file or
+  function that holds the rule. Say what the evidence leaves unproven.
 
 ## Order
 
 1. What changed since the last update.
 2. What the user must decide or do, numbered, in the order to do it.
+   For a question, approval or anything else waiting on the user, read
+   [references/waiting-on-you.md](references/waiting-on-you.md) first.
 3. Detail, only as much as the user needs.
 
 Each thing the user must open comes with its link, branch, worktree
-path or command. Give each deadline as the time left, worked out from
-what you know, such as "expires in about two hours". Add a clock time
-only when you know the current time.
+path or command. Say where to run each command.
 
-A question says what it asks, the choices, what each choice leads
-to, and your recommendation, as item 2 of the recap below does.
+- For a plan or other file, give a command that opens that file
+  itself, such as `less <path>`. A command that opens the card or
+  board that links it does not count. Run the command once to see
+  that it works.
 
 ## Real results
 
-- Give numbers and outcomes you checked, such as "31 of 32 tests
-  pass". Say what you did not check, such as "not run on Windows".
-- A claim you did not check is not a result. Leave it out or mark
-  it unchecked. Never make up a number, link or time the facts do not
-  give, such as a pull request number for work not yet opened.
-- Correct a wrong earlier claim in its own line: "Correction:
-  yesterday I said the tests cover Windows paths. They do not; only
-  Linux paths ran."
-
-## Cut AI filler
-
-Follow the filler list in
-[plain-direct-english](../plain-direct-english/SKILL.md#cut-ai-filler).
-
-## Phone first
-
-- Keep an update to about 20 short lines. Leave out sections with
-  nothing new. Put detail in a file or the pull request and link it.
-- Use tables of at most three columns, and no paragraph over three
-  lines.
-- Keep each command under about 35 characters, one per code block,
-  and say where to run it. Wrap a long one in a short script first.
-- Bold only what the user must act on.
+- Give only numbers and outcomes you checked, such as "31 of 32 tests
+  pass", and say what you did not check. Leave out or mark unchecked
+  any other claim. Never make up a number, link or time.
+- Correct a wrong earlier claim in its own line.
+- Leave out private details you read in notes.
 
 ## Restraint
 
+- Leave out sections with nothing new. Put detail in a file or the
+  pull request and link it. Bold only what the user must act on.
 - Raise an optional side item, such as deleting an old branch, in
   one message only. In every later message, leave it out: no
   reminder, "no rush", "last call" or note that you will stop asking.
   Bring it back only when it blocks work.
-- A question or approval that waits on the user is never a side
-  item. Keep it in every update until the user answers it or the
-  request ends.
-- Decide minor things, such as a name, and say what you chose in one
-  line. Ask only when a wrong guess would cause rework.
+- When several delegated agents run at once, say in one line that
+  they started. Then send one update when the whole batch is done.
+  Write sooner only when the user must decide something or work is
+  blocked.
 - Answer a short question, such as "what is batch 2?", in at most two
   sentences. Leave out the parts' labels; no list or walkthrough.
 
-## A recap
-
-A recap after time away has three parts: done, in progress, and
-waiting on you. For example:
-
-```text
-Fernwood, the app that waters the garden on a timer, since Monday:
-
-Done
-- Skip watering when rain is forecast (#7): merged Tuesday.
-
-In progress
-- A separate schedule for each garden bed (#8): 18 of 19 tests
-  pass. The failing test covers a bed with no plants; I am fixing
-  it. Not tried on the real valve controller yet.
-
-Waiting on you
-1. Approve #9, which texts you when a valve sticks, in the approval
-   app. The request expires in about three hours.
-2. Should a bed with no plants be skipped or watered at half time?
-   Skipping saves water; half time keeps new seeds damp. I recommend
-   skipping. #8 finishes within a day either way.
-```
-
-For a progress update rewritten from an agent's shorthand, read
-[references/examples.md](references/examples.md). Read
-[references/evaluation.md](references/evaluation.md) only when testing
-or revising this skill.
-
 ## Review before sending
 
-Never send a first draft. Reread the whole draft as a reader who saw
-no earlier message, and fix it before you send it:
+Never send a first draft. Reread it as a reader who saw no earlier
+message, fix each miss, and send it only when every check passes:
 
-1. Check each sentence against the Final checks of
-   `plain-direct-english`, and load that skill if it is not loaded.
-   Rewrite each sentence that fails, such as one that packs several
-   conditions onto one claim or leaves out who acts.
-2. Check the whole update against this list, and fix each miss:
-   - A reader who saw no earlier message understands every label.
-   - The user's actions come early, numbered, each with its link,
-     path or command.
-   - Every number was checked, and unchecked things are named.
-   - No side item that an earlier message raised.
-   - Every question and approval still waiting on the user is in it.
-   - Nothing from the filler list in `plain-direct-english` is left.
-   - It fits a phone screen without a wall of text.
-3. Read the fixed draft once more. Send it only when every check
-   passes.
+1. Each sentence passes the Final checks of `plain-direct-english`.
+2. The checker prints nothing. It adds the limits in
+   [references/phone-limits.md](references/phone-limits.md) to the
+   `plain-direct-english` checks. Without `draft.md`, it reads stdin:
+
+   ```bash
+   python3 ~/.agents/skills/status-updates/scripts/check_update.py draft.md
+   ```
+
+3. A new reader knows every label in the update.
+4. The user's actions come early, each with its link. Each file's
+   command opens that file, not its card.
+5. Every question and approval still waiting is in the update.
+6. You checked every number, and the update names what you did not.
+7. The update repeats no side item that an earlier message raised.
+
+## References
+
+- [references/examples.md](references/examples.md): read for an
+  example of a progress update, a recap after time away, a list of
+  pull requests to review, and a correction.
+- [references/evaluation.md](references/evaluation.md): read only
+  when testing or revising this skill.
 
 ## Remembering corrections
 

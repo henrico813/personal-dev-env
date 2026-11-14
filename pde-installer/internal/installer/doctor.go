@@ -92,7 +92,16 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 	if err := ubuntu.New(config.Profile, config.Desktop, runner).Validate(); err != nil {
 		failures = append(failures, "Ubuntu release: "+err.Error())
 	}
-	if err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.Desktop, config.ColorProfile, runner).Validate(); err != nil {
+	if err := chezmoibackend.New(
+		config.Home,
+		config.RepoRoot,
+		config.AquaRoot,
+		config.Profile,
+		config.Desktop,
+		config.ColorProfile,
+		config.UpdateInterval,
+		runner,
+	).Validate(); err != nil {
 		failures = append(failures, "chezmoi source: "+err.Error())
 	}
 	if config.Profile.Has(profile.Workstation) {
@@ -118,6 +127,15 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 	if mode == preflightReport && config.Profile.Has(profile.Workstation) {
 		if err := reportCopilotStatus(config.Home, runner.Out()); err != nil {
 			return fmt.Errorf("write GitHub Copilot status: %w", err)
+		}
+	}
+	if mode == preflightReport {
+		if err := reportUpdateState(
+			config.Home,
+			config.RepoRoot,
+			runner,
+		); err != nil {
+			return fmt.Errorf("write update state: %w", err)
 		}
 	}
 	if len(failures) > 0 {
@@ -148,6 +166,28 @@ func reportCopilotStatus(home string, out io.Writer) error {
 		}
 	} else if _, err := fmt.Fprintln(out, "warning GitHub Copilot credentials: missing; run :Copilot auth in Neovim"); err != nil {
 		return err
+	}
+	return nil
+}
+
+// Prints the last update and how far main is ahead as status lines. A line
+// that needs attention is a warning, which does not fail doctor.
+func reportUpdateState(home, root string, runner run.Runner) error {
+	for _, line := range readUpdateState(
+		home,
+		root,
+		runner,
+	) {
+		label := "status  "
+		if line.attention {
+			label = "warning "
+		}
+		if _, err := fmt.Fprintln(
+			runner.Out(),
+			label+line.text,
+		); err != nil {
+			return err
+		}
 	}
 	return nil
 }

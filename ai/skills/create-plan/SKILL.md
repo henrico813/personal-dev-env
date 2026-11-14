@@ -107,6 +107,11 @@ When this skill is invoked:
   not a design brainstorm.
 - Prefer `make` commands in verification when suitable targets exist. Otherwise
   use the direct command.
+- When a change to a skill, a tool or a timed job gets installed and
+  run on a machine, end Verification with a real test, as Guardrail 4
+  of `pull-request` says. For a timed job that can run from the branch,
+  the step forces one run instead of waiting for its schedule. The
+  step names what that run leaves out.
 - Exact code in diff blocks is required for every implementation and
   verification change in the final plan.
 - Write each paragraph and list item of plan prose as one line, with no
@@ -265,6 +270,10 @@ The owner reads a plan from the top: the Overview, the Definition of
 Done narrative and Goals, Current State, Module Shape, the steps with
 their diffs, and Verification. Keep those short and plain, and add no
 other sections or subsections among them.
+
+Open the title and the Overview with the people affected and the
+problem they notice. Put numbers and code names, such as timeouts or
+function names, after that as detail.
 
 Put what only agents need in one `## Notes for agents` section, the
 last section of the plan: numbered decisions with their labels and

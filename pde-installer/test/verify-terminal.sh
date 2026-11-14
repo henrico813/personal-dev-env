@@ -18,6 +18,8 @@ assert_absent_packages() {
 assert_absent_packages
 
 pde-installer install terminal --repo-root "$REPO_ROOT"
+# The image makes testuser with bash, so this checks a real usermod.
+[[ "$(getent passwd "$(id -un)" | cut -d: -f7)" == */zsh ]]
 export AQUA_ROOT_DIR="$HOME/.local/share/aquaproj-aqua"
 export AQUA_GLOBAL_CONFIG="$HOME/.config/aquaproj-aqua/aqua-terminal.yaml"
 export AQUA_CHECKSUMS_PATH="$HOME/.config/aquaproj-aqua/aqua-terminal-checksums.json"

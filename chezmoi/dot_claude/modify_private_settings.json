@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+
+input=$(cat)
+if [ -z "$(printf '%s' "$input" | tr -d '[:space:]')" ]; then
+    input='{}'
+fi
+
+# Turn off Claude Code auto memory, since agents keep rules in AGENTS.md and
+# skill lessons.
+printf '%s\n' "$input" | jq '
+    if type != "object" then
+        error("Claude Code settings must be an object")
+    else
+        .autoMemoryEnabled = false
+    end
+'

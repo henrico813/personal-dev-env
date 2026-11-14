@@ -311,6 +311,13 @@ class TestMove:
                 "- [ ] Done.",
                 id="accepted-final",
             ),
+            pytest.param(
+                "review",
+                "waiting-on-others",
+                [],
+                "- [ ] Done.",
+                id="waiting-without-why",
+            ),
         ],
     )
     def test_move_refuses_and_leaves_card_unchanged(
@@ -328,7 +335,8 @@ class TestMove:
         acceptance checkbox, would take those decisions away from the
         user. A move missing from the table, such as skipping ready or
         reopening an accepted card, would let work bypass those
-        decisions.
+        decisions. A card waiting on others with no reason would leave
+        the user not knowing whom to chase.
         """
         path = write_card(projects, KEY, stage, criteria)
         before = path.read_text()
@@ -376,7 +384,7 @@ class TestMove:
 
         Paused work goes back to ready to wait for a free slot, and
         adopted work may have no criteria yet. A refusal would leave
-        paused work counted as active against the work limit.
+        paused work counted against the active limit.
         """
         path = write_card(projects, KEY, "active")
 
@@ -409,31 +417,67 @@ class TestMove:
         assert path.read_text() == before
 
     @pytest.mark.parametrize(
-        ("flags", "exit_code", "stage"),
+        ("source", "target", "limit"),
         [
-            pytest.param([], 1, "ready", id="agent-refused"),
-            pytest.param(["--user"], 0, "active", id="user-allowed"),
+            pytest.param("ready", "active", card.ACTIVE_LIMIT, id="start"),
+            pytest.param("active", "review", card.REVIEW_LIMIT, id="review"),
         ],
     )
-    def test_move_start_at_limit_needs_user(
-        self, projects: Path, flags: list[str], exit_code: int, stage: str
+    @pytest.mark.parametrize(
+        ("flags", "moved"),
+        [
+            pytest.param([], False, id="agent-refused"),
+            pytest.param(["--user"], True, id="user-allowed"),
+        ],
+    )
+    def test_move_into_full_stage_needs_user(
+        self,
+        projects: Path,
+        source: str,
+        target: str,
+        limit: int,
+        flags: list[str],
+        moved: bool,
     ) -> None:
-        """At the work limit only the user can start another card.
+        """A full active or review stage takes a card only from the user.
 
-        The limit keeps the user's review queue short enough to clear.
-        Without it the staff agent would keep starting workers. The
-        user decides when the limit is full, so their start must work.
+        The limits keep the user's review queue short enough to clear.
+        Without them the staff agent would keep starting workers and
+        sending reviews. The user decides when a stage is full, so
+        their move must work.
         """
-        for number in range(2, 2 + card.WORK_LIMIT):
-            write_card(projects, f"PDEV-KB-{number:03d}", "review")
-        path = write_card(projects, KEY, "ready", "- [ ] Done.")
+        for number in range(2, 2 + limit):
+            write_card(projects, f"PDEV-KB-{number:03d}", target)
+        path = write_card(projects, KEY, source, "- [ ] Done.")
 
         code = run_card(
-            projects, "move", KEY, "active", *flags, "--by", "general-staff"
+            projects, "move", KEY, target, *flags, "--by", "general-staff"
         )
 
-        assert code == exit_code
+        assert code == (0 if moved else 1)
+        stage = target if moved else source
         assert f"stage: {stage}\n" in path.read_text()
+
+    def test_review_limit_skips_waiting_cards(
+        self, projects: Path
+    ) -> None:
+        """Cards waiting on others leave the review places free.
+
+        Pull requests that wait on another team's reviewers used to
+        fill review, so the user's own plans and questions could not
+        reach them. Counting waiting-on-others cards would bring that
+        back.
+        """
+        for number in range(2, 2 + card.REVIEW_LIMIT):
+            write_card(projects, f"PDEV-KB-{number:03d}", "waiting-on-others")
+        path = write_card(projects, KEY, "active")
+
+        code = run_card(
+            projects, "move", KEY, "review", "--by", "general-staff"
+        )
+
+        assert code == 0
+        assert "stage: review\n" in path.read_text()
 
 
 @pytest.fixture
@@ -742,6 +786,72 @@ class TestBoard:
         out = capsys.readouterr().out
         assert out.index("PDEV-KB-002 2026-11-01") < out.index(
             "PDEV-KB-001 2026-11-05"
+        )
+
+
+    def test_board_prints_each_stage_limit(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The board counts active and review against their own limits.
+
+        The hub reads this line to tell the user a stage is over its
+        limit. A combined count would hide a long review queue.
+        """
+        write_card(projects, "PDEV-KB-001", "active")
+        write_card(projects, "PDEV-KB-002", "review")
+        write_card(projects, "PDEV-KB-003", "review")
+
+        code = run_card(projects, "board")
+
+        assert code == 0
+        assert "active 1 of 8, review 2 of 6\n" in capsys.readouterr().out
+
+    def test_board_prints_waiting_lines_hub_reads(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The board prints the waiting-on-others lines the hub parses.
+
+        hub brief reads the count line and the list, longest wait first
+        with days and the newest reason, and the user may read it out in
+        a standup. Changed words drop the cards from the brief, and an
+        old reason sends the user to chase the wrong team.
+        """
+        write_card(projects, "PDEV-KB-001", "review", stage_date="2026-11-02")
+        path = write_card(projects, "PDEV-KB-003", "review")
+        for target, why in [
+            ("waiting-on-others", ["--why", "docs team's review"]),
+            ("review", []),
+            ("waiting-on-others", ["--why", "platform team's review"]),
+        ]:
+            run_card(
+                projects, "move", "PDEV-KB-003", target, *why, "--by", "hub"
+            )
+        path.write_text(
+            card.set_field(path.read_text(), "stage_date", "2026-10-30")
+        )
+        write_card(projects, "PDEV-KB-009", "waiting-on-others")
+        capsys.readouterr()
+
+        code = run_card(projects, "board")
+
+        assert code == 0
+        assert capsys.readouterr().out == (
+            "draft 0  ready 0  active 0\n"
+            "review 1  waiting-on-others 2\n"
+            "accepted 0  dropped 0\n"
+            "active 0 of 8, review 1 of 6\n"
+            "waiting-on-others 2, oldest 8 days\n"
+            "\n"
+            "REVIEW, oldest first (1)\n"
+            "- PDEV-KB-001 2026-11-02\n"
+            "  Some work\n"
+            "\n"
+            "WAITING-ON-OTHERS, oldest first (2)\n"
+            "- PDEV-KB-003 8 days\n"
+            "  Some work\n"
+            "  platform team's review\n"
+            "- PDEV-KB-009 1 day\n"
+            "  Some work\n"
         )
 
 

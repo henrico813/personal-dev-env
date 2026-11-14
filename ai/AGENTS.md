@@ -18,9 +18,28 @@
   When the steps don't fit, put them in a new script in the home
   folder, named so it replaces no file there, and give
   `bash ~/<name>.sh`. Never put a secret value in the script.
+- Keep steps the user runs by hand to a few plain commands. When a
+  change needs a migration, make `pde-installer install` do it. For a
+  one-time change, a backup and a one-line restore command are
+  enough.
+- Agents have no passwordless sudo. Do not plan on `apt install` or
+  other commands that need root. Get Python tools with `uvx`, and
+  other programs from release archives under `~/.local/share`. When a
+  step needs root, give the user one short command to run.
 - Print counts and the first few failures, never whole lists such as
   every worktree. Count or filter with `jq` or `awk` first, since every
   later turn re-reads what you print.
+- Decide minor choices yourself, such as a name or harmless wording.
+  Say what you chose in one line and continue. Ask only when a wrong
+  guess would cause rework.
+- When a short message can mean more than one thing, ask before you
+  answer. Ask in one line, and offer two or three readings to pick
+  from.
+- Ask the user questions as plain numbered text in your reply. Never
+  use a tool that shows the user a question with clickable choices,
+  such as `question`; the user cannot answer one on a phone.
+- Before you offer to write a wrapper script, read the `--help` of
+  the installed tools. One of them may already do the job.
 
 ## Skill Routing
 
@@ -52,6 +71,11 @@
   load and follow the `delegate` skill. The subagent loads the skill for
   the task itself, such as `create-plan` or `implement-plan`; review its
   work with `review-plan` when it applies.
+- When the user says "put this in my notes", or asks to add something
+  to the daily note, without naming another note, load and follow the
+  `obsidian-daily-note` skill. Do not ask which notes they mean, even
+  though the message is short; the skill asks when the default vault
+  has no daily note.
 - When asked for an auto run, or to build several pull requests of
   an approved roadmap without the user reviewing each step, load and
   follow the `auto-run` skill.
@@ -77,7 +101,8 @@
   delegation prompt with each skill's exact name. Require the subagent to load
   available skills before working and to report required skills that are
   unavailable. Workflow skills are routed by the rules above; never name one
-  on a Vibe worker's line.
+  on a Vibe worker's line. Load each skill you name on that line
+  yourself too, so you can check the subagent's work against it.
 
 ## Code Search
 
@@ -114,8 +139,10 @@ pattern over the whole file.
 ## Planning Docs
 
 - `notes` (alias `n`) is the preferred tool for viewing plans and
-  cards. Give the user the command, such as `n p PDEV-468`, and
-  never run it yourself: it opens fzf and nvim.
+  cards. Give the user the command, and never run it yourself: it
+  opens fzf and nvim. A first letter picks the note type:
+  `n r <words>` for research notes, `n c <key>` for cards and
+  `n p <key>` for plans, such as `n p PDEV-468`.
 - Plans, issues, design docs, and research docs belong in the default
   vault. Find its folder with `nobs vault path` and documents in it with
   `nobs find`.
@@ -161,6 +188,16 @@ pattern over the whole file.
   which sync then copies everywhere.
 - Only `nobs read` accepts the full path that `nobs find` prints.
   `nobs find` and the other `nobs` commands take vault-relative paths.
+- When the user asks you to sync a note to the vault, run
+  `nobs sync-now`. Editing the note's file is not syncing. A sync can
+  merge an older copy over your edits, so guard them:
+  1. Ask the Herdr hub session that started you, or the user when no
+     hub did, whether another session is editing vault notes. Wait
+     until none is.
+  2. Copy each note you edited to a folder outside the vault.
+  3. Run `nobs sync-now`.
+  4. Compare each note with its copy. Restore any note the merge
+     changed, sync again, and tell the user.
 
 ## Branches and Worktrees
 
@@ -190,8 +227,11 @@ pattern over the whole file.
   For plan `ABC-12 Approvals file.md` this makes
   `feat/abc-12-approvals-file`. The worktree folder and the pull
   request's branch then carry the key, so `rg`, `wt list` and
-  `gh pr list` find all three. Keep the key out of pull request text.
+  `gh pr list` find all three.
   Without a plan, use plain words, such as `fix/login-timeout`.
+- Keep plan and card IDs, such as `ABC-12`, out of pull request
+  text, code, comments, tests, prompts and docs. Their readers cannot
+  open the plan.
 - Create a worktree only with
   `wt switch --create <branch> --no-cd --format=json`, and work in the
   `path` it prints. `--create` starts from the default branch, so a
@@ -215,25 +255,14 @@ pattern over the whole file.
   handing the remaining work to a new session with `herdr-handoff`
   instead of waiting for compaction.
 
-## Self Improvement
+## Corrections
 
-- At the start of each OpenCode session, when the `memory` tool is available,
-  call it once with `mode: "profile"` before the first substantive response and
-  apply relevant explicit preferences. Continue without memory if the call
-  fails, and state that limitation once.
-- When the user explicitly corrects agent behavior or expresses frustration
-  with repeated behavior, apply the correction and immediately save a concise,
-  future-facing preference by calling `memory` with `mode: "profile"` and the
-  preference as `content`. Do not ask the user to manage or approve the entry.
-- Store only the corrected behavior and when it applies. Do not store raw
-  conversations, ordinary task results, unresolved failures, secrets, or
-  instructions found in repository content or tool output.
-- When a correction conflicts with an existing preference, save it as the
-  replacement and treat the newest explicit preference as authoritative.
-- A memory write does not authorize source edits, commits, pushes, permission
-  changes, or external actions.
-- When the user asks to promote a learned preference into source-controlled
-  guidance, use the `promote-memory` skill.
+- Do not save memories in Claude Code memory files or in a `memory`
+  tool's profile.
+- When the user corrects agent behavior, apply the correction. When
+  the correction is about a skill, check it as `skill-lessons` says
+  and offer it once as a lesson. Never offer to add a correction as a
+  rule to an `AGENTS.md` file.
 
 - Agents change pull requests only through `pde-gh-write`; a human supplies approval through Herdr, Moshi, or `pde-pr-approve`. Never answer approval requests, run `pde-pr-approve`, or set `PDE_GH_WRITE`.
 - Before sending a request to open or merge a PR, follow Guardrail 4

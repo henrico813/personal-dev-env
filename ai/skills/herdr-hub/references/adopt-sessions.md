@@ -3,7 +3,8 @@
 Read this when sessions run with no card, such as when a hub starts on
 a machine full of earlier sessions, or the user asks to turn sessions
 into cards and close them. Adopting makes a card that starts in
-`active` or `review`, skipping `draft` and `ready`. Only the user
+`active`, `review` or `waiting-on-others`, skipping `draft` and
+`ready`. Only the user
 adopts, so the user approves the list before any card exists.
 
 Copy this checklist into `notes.md` and tick it off:
@@ -53,7 +54,10 @@ user where it is, its counts and the decisions it needs.
   sessions show.
 - Stage `review` when the work waits only on the user, such as an
   open pull request, a plan to approve or a question. Stage `active`
-  when the session can go on alone. Never propose `draft` for running
+  when the session can go on alone. Stage `waiting-on-others` when
+  the user already reviewed the work and it waits only on people
+  outside the user's team; its `--why` names them, as Cards in
+  SKILL.md says. Never propose `draft` for running
   work: a draft card is one the user has not released yet.
 - For each session, propose its next step from step 6: keep, hand off
   or pause. Propose pause when the user wants it closed, and hand off
@@ -74,9 +78,9 @@ For a card that covers several sessions, add the others with
 `card link <KEY> --session <agent>`. Put what the sessions found and
 what is left in the card with `card add <KEY> Context "<text>"`.
 
-Adoption skips the board's limit, 8 cards in active and review
-together, as `card board` shows, so the board can go over it. Start
-no ready card until the board is back under the limit.
+Adoption skips the board's limits, 8 cards in active and 6 in
+review, as `card board` shows, so the board can go over them. Start
+no ready card until both counts are back within their limits.
 
 ## 6. Keep, hand off or pause
 

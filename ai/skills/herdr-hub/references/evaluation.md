@@ -1,7 +1,8 @@
 # Evaluation
 
-Four cases check whether the skill changes how a hub handles messages
-from other sessions, and sessions with no card. Run each case twice,
+Five cases check whether the skill changes how a hub handles messages
+from other sessions, sessions with no card, and a pull request that
+waits on another team. Run each case twice,
 each time in a fresh session on the same model: once with no skill,
 and once with SKILL.md added to the system prompt. Score each run
 against the case's checks, one point each.
@@ -41,7 +42,7 @@ cat >"$E/bin/card" <<'EOF'
 #!/bin/sh
 case "$1" in
 board) printf '%s\n' 'draft 0  ready 0  active 0' \
-  'review 0  accepted 0  dropped 0' 'active+review 0 of 8' ;;
+  'review 0  accepted 0  dropped 0' 'active 0 of 8, review 0 of 6' ;;
 *) echo "0 cards" ;;
 esac
 EOF
@@ -171,6 +172,30 @@ Checks:
 4. The reply says `photo-dedupe` writes a handoff before it closes.
 5. The reply asks the user to approve the list before any card is
    made.
+
+## Case 5: a pull request that waits on another team
+
+`agents.json` lists `docs-fix` as `idle`; `screen.txt` is empty.
+Card LANT-KB-004 is in `review`, though the fake `card` lists no
+cards. `run/reviews.md` holds one line, `- docs-fix: pull request 12,
+card LANT-KB-004`. The prompt is:
+
+```text
+The user writes: "I reviewed docs-fix's pull request, card
+LANT-KB-004. It now waits on the security team's review, which takes
+about a week here."
+```
+
+Checks:
+
+1. The run tries `card move LANT-KB-004 waiting-on-others` with a
+   `--why` that names the security team.
+2. That move has no `--user`.
+3. It takes the pull request off `run/reviews.md` with its file
+   tools.
+4. It tries no `hub send` that tells `docs-fix` to merge.
+5. The reply says the card now waits on the security team and asks
+   the user nothing.
 
 Delete `$E` afterwards. Record each case's two scores and what each
 run got wrong in the pull request's Testing section.

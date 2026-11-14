@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
+use super::machine::{self, FeedLine, Gauges};
 use crate::commands::status::describe_why;
 use crate::external::cards::{CardKey, CardNote, Stage};
 use crate::shared::decisions::{self, DecisionEntry};
@@ -41,8 +42,16 @@ pub(crate) struct Queue {
     pub questions: Vec<Question>,
     /// Sessions that wait on the user, by name.
     pub waiting: Vec<SessionLine>,
+    /// Every session, live or parked, by name, for the sessions panel.
+    pub sessions: Vec<SessionRow>,
+    pub gauges: Gauges,
+    /// The newest report files of the live runs, newest first.
+    pub feed: Vec<FeedLine>,
     /// True when no hub ran at the read, so Needs you says `NO_HUB`.
     pub no_hub: bool,
+    /// The run whose facts the board shows, where y in the clean dialog
+    /// cleans, or `None` with no hub running.
+    pub run: Option<PathBuf>,
     /// What `card show` gave for each open card a session, a parked
     /// record or a report names.
     /// The details page reads any other card when it opens.
@@ -84,6 +93,42 @@ pub(crate) struct SessionLine {
     pub card: Option<String>,
 }
 
+/// One session and the lifecycle verdict `hub clean` acts on.
+#[derive(Debug)]
+pub(crate) struct SessionRow {
+    pub name: String,
+    pub state: Lifecycle,
+    /// For a kept session, the reason's label, such as `unpushed`.
+    /// Otherwise the WHY cell of `hub status`, empty for its `-`.
+    pub why: String,
+    /// The stage of the session's card, when it has one.
+    pub stage: Option<Stage>,
+    /// The tokens in the session's context, when OpenCode gave them.
+    pub context_tokens: Option<u64>,
+}
+
+impl SessionRow {
+    /// Makes a row with `why` as `hub status` gives it. Its `-`, for
+    /// nothing to say, becomes an empty why, so the sessions panel shows
+    /// the state word instead.
+    pub(crate) fn new(
+        name: String,
+        state: Lifecycle,
+        why: String,
+        stage: Option<Stage>,
+        context_tokens: Option<u64>,
+    ) -> SessionRow {
+        let why = if why == "-" { String::new() } else { why };
+        SessionRow {
+            name,
+            state,
+            why,
+            stage,
+            context_tokens,
+        }
+    }
+}
+
 /// Reads the cards, sessions and questions once. Times print in
 /// `time_zone`. With no hub running, the queue holds the cards alone.
 ///
@@ -100,6 +145,9 @@ pub(crate) fn read_queue(
 ) -> Result<Queue, HubError> {
     let started = Instant::now();
     let mut problems = Vec::new();
+    // The state folder sits in the home folder, so its disk is the one
+    // that fills.
+    let gauges = machine::read_gauges(tools.state_folder);
     let runs = match hubs {
         Hubs::Given(path) => {
             let run = RunFolder::open(path)?;
@@ -146,7 +194,11 @@ pub(crate) fn read_queue(
             cards: cards.collect(),
             questions,
             waiting: Vec::new(),
+            sessions: Vec::new(),
+            gauges,
+            feed: Vec::new(),
             no_hub: true,
+            run: None,
             notes: BTreeMap::new(),
             problems,
         });
@@ -166,8 +218,19 @@ pub(crate) fn read_queue(
     problems.extend(collected.problems);
     let mut workers: BTreeMap<CardKey, Vec<String>> = BTreeMap::new();
     let mut waiting = Vec::new();
+    let mut sessions = Vec::new();
     for facts in &collected.sessions {
         let verdict = lifecycle::decide_lifecycle(facts);
+        sessions.push(SessionRow::new(
+            facts.name.clone(),
+            verdict.state,
+            match verdict.state {
+                Lifecycle::Kept(reason) => reason.label().to_owned(),
+                _ => describe_why(facts, &verdict, time_zone),
+            },
+            facts.card.as_ref().map(|card| card.stage),
+            facts.context_tokens,
+        ));
         if let Some(card) = &facts.card
             && is_worker(verdict.state)
         {
@@ -188,6 +251,9 @@ pub(crate) fn read_queue(
         }
     }
     waiting.sort_by(|left, right| left.name.cmp(&right.name));
+    sessions.sort_by(|left, right| left.name.cmp(&right.name));
+    let run_folders: Vec<&RunFolder> = runs.iter().map(|live| &live.run).collect();
+    let feed = machine::read_feed(&run_folders, time_zone);
     let cards = collected
         .cards
         .into_iter()
@@ -206,7 +272,11 @@ pub(crate) fn read_queue(
         cards,
         questions,
         waiting,
+        sessions,
+        gauges,
+        feed,
         no_hub: false,
+        run: Some(first_run.path().to_owned()),
         notes: collected.notes,
         problems,
     })
@@ -216,7 +286,7 @@ pub(crate) fn read_queue(
 fn is_on_board(stage: Stage) -> bool {
     matches!(
         stage,
-        Stage::Draft | Stage::Ready | Stage::Active | Stage::Review
+        Stage::Draft | Stage::Ready | Stage::Active | Stage::Review | Stage::WaitingOnOthers
     )
 }
 
