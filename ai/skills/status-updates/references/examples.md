@@ -44,12 +44,14 @@ Waiting on you
 2. Review the comments on the tag-page change (#19). In
    ~/src/inkwell/wt/tag-pages, run:
    rev 19
-3. Pages whose titles differ only by case, such as "Notes" and
-   "notes", get the same web address. Should the second get "-2"
-   added, or should the build stop?
 
-   I recommend "-2"; stopping blocks a build over a harmless clash.
-   The next three pull requests, which add search, wait on this.
+**3. Page addresses: what if two titles differ only by case?**
+- A: add "-2" to the second page's address **(rec)**
+- B: stop the build
+
+Reply like `3A`. Pages such as "Notes" and "notes" now get the same
+address. Stopping blocks a build over a harmless clash. The next
+three pull requests, which add search, wait on this.
 ```
 
 ## A recap after time away
@@ -70,9 +72,12 @@ In progress
 Waiting on you
 1. Approve #9, which texts you when a valve sticks, in the approval
    app. The request expires in about three hours.
-2. Should a bed with no plants be skipped or watered at half time?
-   Skipping saves water; half time keeps new seeds damp. I recommend
-   skipping. #8 finishes within a day either way.
+
+**2. Bed schedules: what does a bed with no plants get?**
+- A: no watering, which saves water **(rec)**
+- B: half the watering time, which keeps new seeds damp
+
+Reply like `2A`. #8 finishes within a day either way.
 ```
 
 ## A list of pull requests to review

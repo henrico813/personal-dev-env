@@ -288,9 +288,8 @@ the user's answer:
 
 When a session is `blocked`, read what it asks with
 `herdr agent read <name> --source recent-unwrapped --lines 40`. Tell
-the user which session waits, what it asks, and your recommendation.
-Keep this in every later message until the session no longer waits.
-Never answer the question yourself.
+the user which session waits, what it asks and your recommendation.
+The user answers in that session's pane; never answer it yourself.
 
 ## Cards
 
@@ -448,9 +447,8 @@ shows `you`. It waits on the same entry, not a new one. Close its tab
 yourself once the session that took over is running.
 
 Add `Depends on:` when the question rests on an earlier decision, and
-name who made it. Whenever a message to the user mentions an entry,
-show the entry in full. When the user answers, delete the entry, and
-record the answer in `rules.md` when it stands for later. Run
+name who made it. When the user answers, delete the entry, and record
+the answer in `rules.md` when it stands for later. Run
 `card note <key> "<the answer>" --answered` only when no other entry
 title starts with that key. Bring the user everything that waits on
 them with:
@@ -463,10 +461,12 @@ line follows. Then it prints `reviews.md` and every entry, and last
 the "Waiting on others (no action needed)" list, with each card's
 days in the stage, title and reason. That list is news for the user,
 such as for a standup, never a question, so do not repeat it in
-other messages unless the user asks. It exits 3, naming the
-entry, when one lacks its question, two choices, `Recommended:` or
-`If no reply:`.
-Fix the entry and run it again.
+other messages unless the user asks. It exits 3, naming the entry,
+when one lacks its question, two choices, `Recommended:` or
+`If no reply:`. Fix the entry and run it again. Show `reviews.md` as
+printed, and each entry in the short form of `status-updates`: its
+title's words, question, then key; `(rec)` on the `Recommended:`
+choice; its reason and other lines after the reply line.
 
 ## Merges
 
@@ -590,8 +590,8 @@ Close the merge worker's tab once you have read its summary.
 
 When you hand the hub to a new session, write its handoff with
 `herdr-handoff`, holding only the run's state and the output of
-`hub brief --run "<run folder>"`, word for word. Tell the new hub to
-show that output in its first reply. Then start it with:
+`hub brief --run "<run folder>"`, word for word. The new hub shows it
+in its first reply, each entry in the short form. Start it with:
 
     hub handoff --run "<run folder>" <name> <handoff file>
 

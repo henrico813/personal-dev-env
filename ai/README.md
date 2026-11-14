@@ -14,7 +14,7 @@ Shared skills include `git-messages` for commit and PR text, `pull-request` for 
 `code-documentation` for proportional source explanations,
 `comment-review` for putting code comments in front of the user,
 `plain-direct-english` for clear sentences in comments and docs,
-`status-updates` for status updates and recaps a new reader follows,
+`status-updates` for status updates, recaps and questions a new reader follows,
 `skill-lessons` for saving the user's corrections as lessons in a skill,
 `skill-development` for writing and reviewing skills,
 `session-review` for reviewing a session's token use, lessons and

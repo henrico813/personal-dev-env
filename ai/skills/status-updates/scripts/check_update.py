@@ -1,4 +1,4 @@
-"""Check a draft status update against the phone limits and sentence rules.
+"""Check a draft update's phone limits, question form and sentences.
 
 Reads the draft from a file or stdin and prints one line per problem,
 such as ``line 4: command has 41 characters, keep it under 35``. It
@@ -28,6 +28,12 @@ SENTENCE_CHECKS = (
     / "plain-direct-english/scripts/check_sentences.py"
 )
 LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s")
+# The short question form of references/waiting-on-you.md.
+QUESTION_TITLE = re.compile(r"^\*\*\d+\.\s+(.*?)\*\*\s*$")
+CHOICE = re.compile(r"^\s*[-*+]\s+(?:[A-Z]|\d+):\s")
+CARD_KEY = re.compile(r"^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+\b")
+REPLY_LINE = re.compile(r"^Reply like\b")
+MIN_CHOICES = 2
 
 
 def find_problems(text: str, sentences: ModuleType) -> list[tuple[int, str]]:
@@ -47,6 +53,7 @@ def find_problems(text: str, sentences: ModuleType) -> list[tuple[int, str]]:
         + find_long_commands(lines)
         + find_wide_tables(lines)
         + find_long_paragraphs(lines)
+        + find_question_problems(lines)
     )
     return sorted(problems)
 
@@ -140,6 +147,81 @@ def find_long_paragraphs(lines: list) -> list[tuple[int, str]]:
         for start, size in sizes.items()
         if size > MAX_PARAGRAPH
     ]
+
+
+def find_question_problems(lines: list) -> list[tuple[int, str]]:
+    """Return a problem for each short-form question with a missing part.
+
+    A question starts at a bold numbered title, and its choices are the
+    list lines right after it. One reply line must follow the last
+    question. Code block lines do not count, so an example in a fence
+    is never checked.
+
+    Args:
+        lines: The draft's lines from ``number_lines``.
+
+    Returns:
+        Pairs of line number and message.
+    """
+    prose = [line for line in lines if not line.in_code]
+    problems = []
+    last_title = None
+    for index, line in enumerate(prose):
+        title = QUESTION_TITLE.match(line.text)
+        if title:
+            last_title = line.number
+            rest = prose[index + 1 :]
+            problems += find_problems_in_question(
+                title.group(1), line.number, rest
+            )
+        elif last_title and REPLY_LINE.match(line.text.strip()):
+            last_title = None
+    if last_title:
+        message = "questions have no reply line, such as Reply like `1A`"
+        problems.append((last_title, message))
+    return problems
+
+
+def find_problems_in_question(
+    title: str, number: int, rest: list
+) -> list[tuple[int, str]]:
+    """Return the problems in one question's title and choices.
+
+    Args:
+        title: The title's text between the number and the closing bold.
+        number: The title's line number.
+        rest: The prose lines after the title.
+
+    Returns:
+        Pairs of line number and message.
+    """
+    problems = []
+    if CARD_KEY.match(title):
+        problems.append((number, "question title starts with a key"))
+    choices = []
+    for choice in rest:
+        if not CHOICE.match(choice.text):
+            break
+        choices.append(choice)
+    if len(choices) < MIN_CHOICES:
+        message = (
+            f"question needs {MIN_CHOICES} choices right under its title, "
+            "such as - A: ..."
+        )
+        problems.append((number, message))
+    recommended = sum("(rec)" in choice.text for choice in choices)
+    if choices and recommended != 1:
+        message = f"question has {recommended} (rec) marks, give it one"
+        problems.append((number, message))
+    for choice in choices:
+        # Bold and code marks do not show on screen.
+        shown = len(choice.text.strip().replace("**", "").replace("`", ""))
+        if shown > SCREEN_WIDTH:
+            message = (
+                f"choice has {shown} characters, keep it to {SCREEN_WIDTH}"
+            )
+            problems.append((choice.number, message))
+    return problems
 
 
 def screen_lines(text: str) -> int:

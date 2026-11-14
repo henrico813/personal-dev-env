@@ -114,7 +114,7 @@ Vibe binaries plus repo-managed AI config.
 | Model routing | `ai/skills/model-routing/` | `~/.agents/skills/model-routing/` | Shared guidance on which model runs each job and how local jobs are checked |
 | Code documentation | `ai/skills/code-documentation/` | `~/.agents/skills/code-documentation/` | Proportional source and test explanations |
 | Plain direct English | `ai/skills/plain-direct-english/` | `~/.agents/skills/plain-direct-english/` | Clear sentences in comments, docs and other prose, and breakdowns of hard ones |
-| Status updates | `ai/skills/status-updates/` | `~/.agents/skills/status-updates/` | Status updates and recaps a new reader understands on a phone |
+| Status updates | `ai/skills/status-updates/` | `~/.agents/skills/status-updates/` | Status updates, recaps and questions a new reader understands on a phone |
 | Skill lessons skill | `ai/skills/skill-lessons/` | `~/.agents/skills/skill-lessons/` | How to follow and save the lessons in a skill's Lessons section |
 | Skill development | `ai/skills/skill-development/` | `~/.agents/skills/skill-development/` | Writing and reviewing skills so each rule has one owner and reads plainly |
 | Comment review skill | `ai/skills/comment-review/` | `~/.agents/skills/comment-review/` | Saves code comments as a review you answer one per screen |

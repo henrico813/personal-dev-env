@@ -124,3 +124,81 @@ class TestCheckUpdate:
 
         assert result.returncode == 1
         assert result.stdout == 'line 1: filler word "robust"\n'
+
+
+SHORT_QUESTIONS = (
+    "**1. Lessons rework: how the repeat search survives squash merges**\n"
+    "- A: the merge step copies the fix lines into the squash message"
+    " **(rec)**\n"
+    "- B: merge fix PRs by rebase\n"
+    "- C: search merged PRs on GitHub\n"
+    "\n"
+    "**2. Model routing: do you want a routing table (DEMO-KB-7)?**\n"
+    "- 1: yes, redesign around them **(rec)**\n"
+    "- 2: no\n"
+    "\n"
+    "Reply like `1A 2-1`.\n"
+)
+
+
+class TestCheckUpdateQuestions:
+    """The checker reports a short-form question with a broken part."""
+
+    def test_passes_questions_in_short_form(self, tmp_path: Path) -> None:
+        """Questions in the form that waiting-on-you.md shows pass.
+
+        The draft is the skill's own example, with a card key after the
+        title's words. Its first choice is 74 characters with its bold
+        marks and 70 without, so the checker must leave the marks out.
+        """
+        result = check(tmp_path, SHORT_QUESTIONS)
+
+        assert result.returncode == 0
+        assert result.stdout == ""
+
+    @pytest.mark.parametrize(
+        ("draft", "finding"),
+        [
+            pytest.param(
+                SHORT_QUESTIONS.replace("Reply like `1A 2-1`.\n", ""),
+                "line 6: questions have no reply line,"
+                " such as Reply like `1A`",
+                id="no-reply-line",
+            ),
+            pytest.param(
+                SHORT_QUESTIONS.replace("them **(rec)**", "them"),
+                "line 6: question has 0 (rec) marks, give it one",
+                id="no-recommended",
+            ),
+            pytest.param(
+                SHORT_QUESTIONS.replace("**2. Model", "**2. DEMO-KB-7: Model"),
+                "line 6: question title starts with a key",
+                id="key-first",
+            ),
+            pytest.param(
+                SHORT_QUESTIONS.replace("- 2: no\n", "Or no.\n"),
+                "line 6: question needs 2 choices right under its title,"
+                " such as - A: ...",
+                id="one-choice",
+            ),
+            pytest.param(
+                SHORT_QUESTIONS.replace("- 2: no", "- 2: no, " + "w" * 70),
+                "line 8: choice has 79 characters, keep it to 72",
+                id="long-choice",
+            ),
+        ],
+    )
+    def test_reports_each_broken_part(
+        self, tmp_path: Path, draft: str, finding: str
+    ) -> None:
+        """Each broken part of the short form is reported at its line.
+
+        The user answers questions on a phone. Without one reply line,
+        one recommendation, two choices, the work named first and short
+        choices, the user has to read the whole message to know what to
+        type.
+        """
+        result = check(tmp_path, draft)
+
+        assert result.returncode == 1
+        assert result.stdout == f"{finding}\n"
