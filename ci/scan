@@ -12,16 +12,38 @@ set -euo pipefail
 usage='usage: scan staged | tree | commits BASE HEAD | text FILE'
 repo=$(git rev-parse --show-toplevel)
 terms_file=${PDE_PRIVATE_TERMS_FILE:-$HOME/.config/pde/private-terms.sops.yaml}
+config_file=$HOME/.config/pde/config.json
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
+# Returns the path of the PC's own list of work terms, or nothing when
+# the PC has none. PDE_WORK_TERMS_FILE wins over the work_terms_file
+# setting.
+read_work_terms_path() {
+    if [[ -n ${PDE_WORK_TERMS_FILE:-} ]]; then
+        printf '%s\n' "$PDE_WORK_TERMS_FILE"
+    elif [[ -f $config_file ]]; then
+        jq -r '.work_terms_file // empty' "$config_file"
+    fi
+}
+
+work_terms_file=$(read_work_terms_path) ||
+    { printf 'scan: cannot read work_terms_file in %s\n' "$config_file" >&2; exit 2; }
+# The setting may start with ~/, which jq leaves as it is.
+work_terms_file=${work_terms_file/#\~\//$HOME/}
+
 # CI passes the list in PRIVATE_TERMS. Elsewhere it comes from the sops
-# file that ci/terms edits.
+# file that ci/terms edits. A PC with a work-term list adds its terms,
+# skipping lines that start with #. A list that cannot be read stops the
+# scan, so a wrong path never turns the work terms off.
 read_terms() {
     if [[ -n ${PRIVATE_TERMS:-} ]]; then
         printf '%s\n' "$PRIVATE_TERMS"
     elif [[ -f $terms_file ]]; then
-        sops --decrypt --extract '["private_terms"]' --output-type json "$terms_file" | jq -r '.[]'
+        sops --decrypt --extract '["private_terms"]' --output-type json "$terms_file" | jq -r '.[]' || return
+    fi
+    if [[ -n $work_terms_file ]]; then
+        sed '/^[[:space:]]*#/d' "$work_terms_file"
     fi
 }
 
