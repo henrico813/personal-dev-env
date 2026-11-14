@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"pde-installer/internal/profile"
 )
@@ -140,6 +141,76 @@ func TestInstallArgumentKeepsOtherSavedSelection(t *testing.T) {
 			}
 			if got.Profile != test.wantProfile || got.Desktop != test.wantDesktop {
 				t.Fatalf("profile, desktop = %q, %q; want %q, %q", got.Profile, got.Desktop, test.wantProfile, test.wantDesktop)
+			}
+		})
+	}
+}
+
+// Install writes the interval into the update timer. A typo must stop the
+// install, or the owner's machine silently keeps the hourly default.
+func TestResolveInstallSelectionsReadsUpdateInterval(t *testing.T) {
+	tests := []struct {
+		name      string
+		saved     string
+		want      time.Duration
+		wantError string
+	}{
+		{
+			name:  "no key",
+			saved: `{"profile":"full"}`,
+			want:  time.Hour,
+		},
+		{
+			name:  "set",
+			saved: `{"profile":"full","update_interval":"90m"}`,
+			want:  90 * time.Minute,
+		},
+		{
+			name:      "under a minute",
+			saved:     `{"profile":"full","update_interval":"30s"}`,
+			wantError: `not "30s"`,
+		},
+		{
+			name:      "typo",
+			saved:     `{"profile":"full","update_interval":"6 hours"}`,
+			wantError: `not "6 hours"`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			home := profileHome(
+				t,
+				test.saved,
+			)
+
+			got, err := resolveInstallSelections(
+				config{Home: home},
+				nil,
+				"",
+			)
+
+			if test.wantError != "" {
+				if err == nil || !strings.Contains(
+					err.Error(),
+					test.wantError,
+				) {
+					t.Fatalf(
+						"error = %v, want one containing %s",
+						err,
+						test.wantError,
+					)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.UpdateInterval != test.want {
+				t.Fatalf(
+					"UpdateInterval = %v, want %v",
+					got.UpdateInterval,
+					test.want,
+				)
 			}
 		})
 	}

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 	"pde-installer/internal/colorprofile"
@@ -49,6 +50,7 @@ func TestCommandRejectsInvalidRepository(t *testing.T) {
 	}
 }
 
+// Doctor and list must see the same saved settings install does, or they check the wrong profile and timer.
 func TestCommandsRecoverProfiles(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("mutating commands intentionally reject UID 0")
@@ -58,7 +60,7 @@ func TestCommandsRecoverProfiles(t *testing.T) {
 			home := t.TempDir()
 			t.Setenv("HOME", home)
 			path := filepath.Join(home, ".config", "pde", "config.json")
-			writeCommandTestFile(t, path, `{"profile":"full","color_profile":"everforest-dark"}`+"\n")
+			writeCommandTestFile(t, path, `{"profile":"full","color_profile":"everforest-dark","update_interval":"90m"}`+"\n")
 			stage := filepath.Join(home, ".config", "pde", "recovered-config.json")
 			writeCommandTestFile(t, stage, `{"profile":"terminal","color_profile":"gruvbox-dark"}`+"\n")
 			journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: home})
@@ -71,9 +73,11 @@ func TestCommandsRecoverProfiles(t *testing.T) {
 
 			var got profile.Profile
 			var gotColor colorprofile.Profile
+			var gotInterval time.Duration
 			action := func(config config, _ run.Runner) error {
 				got = config.Profile
 				gotColor = config.ColorProfile
+				gotInterval = config.UpdateInterval
 				return nil
 			}
 			repoRoot := testRepositoryRoot(t)
@@ -92,6 +96,12 @@ func TestCommandsRecoverProfiles(t *testing.T) {
 			}
 			if gotColor != colorprofile.EverforestDark {
 				t.Fatalf("recovered color profile = %q, want %q", gotColor, colorprofile.EverforestDark)
+			}
+			if gotInterval != 90*time.Minute {
+				t.Fatalf(
+					"recovered update interval = %v, want 1h30m0s",
+					gotInterval,
+				)
 			}
 		})
 	}

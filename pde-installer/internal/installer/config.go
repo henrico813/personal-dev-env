@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"pde-installer/internal/colorprofile"
 	"pde-installer/internal/fsutil"
@@ -16,6 +17,7 @@ type config struct {
 	Profile                            profile.Profile
 	Desktop                            profile.Desktop
 	ColorProfile                       colorprofile.Profile
+	UpdateInterval                     time.Duration
 }
 
 func (c config) validate() error {

@@ -31,6 +31,9 @@ const (
 // Bounds each fetch try, so a stalled network cannot hold update.lock forever.
 const fetchTimeout = 2 * time.Minute
 
+// How often the update timer runs when config.json sets no update_interval.
+const defaultUpdateInterval = time.Hour
+
 // Describes the last update run, as saved in ~/.local/state/pde/update.json.
 type updateRecord struct {
 	Result    string `json:"result"`
@@ -39,11 +42,12 @@ type updateRecord struct {
 	CheckedAt string `json:"checked_at"`
 }
 
-// The keys update reads from ~/.config/pde/config.json. Install saves
-// install_path, and the owner may add update_url to fetch from elsewhere.
+// The keys update and its timer read from ~/.config/pde/config.json. Install
+// saves install_path, and the owner may add update_url and update_interval.
 type updateSettings struct {
-	InstallPath string `json:"install_path"`
-	UpdateURL   string `json:"update_url"`
+	InstallPath    string `json:"install_path"`
+	UpdateURL      string `json:"update_url"`
+	UpdateInterval string `json:"update_interval"`
 }
 
 // Returns the update command, which a timer runs from HOME with no terminal.
@@ -307,6 +311,26 @@ func readUpdateSettings(home string) (updateSettings, error) {
 		)
 	}
 	return settings, nil
+}
+
+// Returns how often the update timer runs, from update_interval in
+// config.json, such as "6h" or "90m". Install writes it into the timer.
+func loadUpdateInterval(home string) (time.Duration, error) {
+	settings, err := readUpdateSettings(home)
+	if err != nil {
+		return 0, err
+	}
+	if settings.UpdateInterval == "" {
+		return defaultUpdateInterval, nil
+	}
+	interval, err := time.ParseDuration(settings.UpdateInterval)
+	if err != nil || interval < time.Minute {
+		return 0, fmt.Errorf(
+			"update_interval in config.json must be a duration of at least 1m, such as \"6h\", not %q",
+			settings.UpdateInterval,
+		)
+	}
+	return interval, nil
 }
 
 // Returns why the checkout must stay where it is, or "" when it is on main
