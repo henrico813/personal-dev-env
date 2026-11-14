@@ -1,6 +1,6 @@
 """Check a checkout's skills for mistakes that break them.
 
-Prints up to ten errors and ten repeats, then a count line, and exits
+Prints up to ten problems of each kind, then a count line, and exits
 1 when any problem is an error. Files Git ignores are skipped. Read
 ``check_skills`` first. Its docstring lists each check in the order
 it runs.
@@ -22,7 +22,10 @@ from pathlib import Path
 INSTALLED_SKILLS = Path.home() / ".agents/skills"
 MAX_WIDTH = 72
 REPEAT_WORDS = 8
+MAX_SKILL_LINES = 500
+MAX_REFERENCE_LINES = 100
 MAX_SHOWN = 10
+REFERENCE_FOLDERS = ("references", "reference")
 LESSONS_MARKER = "<!-- skill-lessons:"
 # Remembering corrections and Lessons hold the same words in every
 # skill on purpose.
@@ -40,14 +43,21 @@ FENCE = re.compile(r"^\s*(```|~~~)")
 LIST_MARKER = re.compile(r"^\s*(?:[-*+]|\d+[.)])?\s*")
 WORD = re.compile(r"[a-z0-9][a-z0-9'_./-]*")
 HUNK = re.compile(r"^@@ -\S+ \+(\d+)(?:,(\d+))? @@")
+HEADING = re.compile(r"^#{1,6}\s+(?:\d+\.\s+)?(.+?)[\s#]*$")
+CONTENTS = re.compile(r"^#{1,6}\s+(?:table of\s+)?contents\s*$", re.IGNORECASE)
+# "step 2 of 3" counts steps, so a number after "of" is not a pointer.
+STEP_POINTER = re.compile(
+    r"\bsteps?\s+\d+(?:\s+(?:to|and|or)\s+\d+)?\s+of\b(?!\s+\d)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
 class Problem:
     """One finding, printed as ``path:line: kind: message``.
 
-    Its kind is "error", which fails the check, or "repeat", which the
-    author judges.
+    Its kind is "error", which fails the check, "repeat", which the
+    author judges, or "grown", which the pull request explains.
     """
 
     path: Path
@@ -95,23 +105,35 @@ def check_skills(skills_dir: Path, base: str | None) -> list[Problem]:
        that is missing from a skill with a Lessons section, is an
        error.
 
-    With base, two more checks report only on lines added since base.
+    With base, more checks report only on files and lines changed
+    since base, so a problem already on main fails no unrelated
+    change.
 
     7. An added line over 72 columns that could wrap is an error.
-    8. Eight words in a row that another skill or ``AGENTS.md`` also
-       has are a repeat, for the author to judge.
+    8. An added line that points at a step number, such as "step 6
+       of", is an error.
+    9. A SKILL.md body that the change made longer than 500 lines is
+       an error.
+    10. A changed reference file over 100 lines with no Contents
+        heading is an error.
+    11. A quote of a heading that the change removed or renamed is an
+        error, unless some file still has that heading.
+    12. Eight words in a row that another skill or ``AGENTS.md`` also
+        has are a repeat, for the author to judge.
+    13. A SKILL.md whose body has more lines than in base is reported
+        as grown, for the pull request to give a reason.
 
-    Checks 1, 2, 7 and 8 also read the ``AGENTS.md`` next to
+    Checks 1, 2, 7, 8, 11 and 12 also read the ``AGENTS.md`` next to
     skills_dir.
 
     Args:
         skills_dir: Folder with one subfolder per skill.
         base: Commit to compare with, or None to skip the checks of
-            added lines.
+            changes.
 
     Returns:
         The problems in the order of the checks, so errors come before
-        repeats.
+        repeats and grown skills.
 
     Raises:
         subprocess.CalledProcessError: When git fails, such as outside
@@ -129,10 +151,16 @@ def check_skills(skills_dir: Path, base: str | None) -> list[Problem]:
     if base is None:
         return problems
     added = find_added_lines(skills_dir, base, list(skills.prose))
+    before = read_changed_base_texts(skills_dir, base)
     return (
         problems
         + check_line_widths(skills, added)
+        + check_step_pointers(skills, added)
+        + check_skill_sizes(skills, before, added)
+        + check_reference_contents(skills, added)
+        + check_removed_headings(skills, before)
         + find_repeats(skills, added)
+        + find_grown_skills(skills, before)
     )
 
 
@@ -278,10 +306,7 @@ def find_link_targets(lines: list[str]) -> list[tuple[str, int]]:
     Returns:
         Each target path with the line number the link starts on.
     """
-    text = INLINE_CODE.sub(
-        lambda match: " " * len(match.group()),
-        "\n".join(lines),
-    )
+    text = join_prose(lines)
     targets = []
     for match in LINK.finditer(text):
         target = match.group(1).split("#")[0]
@@ -289,6 +314,24 @@ def find_link_targets(lines: list[str]) -> list[tuple[str, int]]:
             line = text.count("\n", 0, match.start()) + 1
             targets.append((target, line))
     return targets
+
+
+def join_prose(lines: list[str]) -> str:
+    """Join prose lines into one text with inline code blanked.
+
+    Blanking keeps each line's length, so a match's line number is one
+    more than the newlines before it.
+
+    Args:
+        lines: Prose lines from ``blank_code_lines``.
+
+    Returns:
+        The lines joined with newlines.
+    """
+    return INLINE_CODE.sub(
+        lambda match: " " * len(match.group()),
+        "\n".join(lines),
+    )
 
 
 def check_skill_names(skills: Skills) -> list[Problem]:
@@ -348,7 +391,7 @@ def check_references_linked(skills: Skills) -> list[Problem]:
     for skill in skills.folders:
         targets = find_link_targets(skills.prose[skill / "SKILL.md"])
         linked = {(skill / target).resolve() for target, _ in targets}
-        folders = (skill / "references", skill / "reference")
+        folders = [skill / name for name in REFERENCE_FOLDERS]
         for path in skills.files:
             in_folder = any(path.is_relative_to(folder) for folder in folders)
             if in_folder and path.resolve() not in linked:
@@ -542,6 +585,44 @@ def find_added_lines(
     return added
 
 
+def read_changed_base_texts(skills_dir: Path, base: str) -> dict[Path, str]:
+    """Return the base text of each Markdown file changed since base.
+
+    Covers the skills in skills_dir and the ``AGENTS.md`` beside it.
+    Deleted files are included. Files added since base are not, and a
+    renamed file counts as deleted at its old path.
+
+    Args:
+        skills_dir: Folder with one subfolder per skill.
+        base: Commit to compare with.
+
+    Returns:
+        The text each file had in base, by its path in the checkout.
+
+    Raises:
+        subprocess.CalledProcessError: When git fails, such as for a
+            base that does not exist.
+    """
+    top = Path(run_git(skills_dir, "rev-parse", "--show-toplevel").strip())
+    names = run_git(
+        top,
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "--diff-filter=MD",
+        "-z",
+        base,
+        "--",
+        str(skills_dir),
+        str(skills_dir.parent / "AGENTS.md"),
+    )
+    return {
+        top / name: run_git(top, "show", f"{base}:{name}")
+        for name in names.split("\0")
+        if name.endswith(".md")
+    }
+
+
 def check_line_widths(
     skills: Skills, added: dict[Path, set[int]]
 ) -> list[Problem]:
@@ -581,6 +662,175 @@ def needs_wrapping(line: str) -> bool:
         return False
     head = LIST_MARKER.sub("", line[: MAX_WIDTH + 1], count=1)
     return " " in head
+
+
+def check_step_pointers(
+    skills: Skills, added: dict[Path, set[int]]
+) -> list[Problem]:
+    """Report each added pointer to a step by its number.
+
+    A pointer such as "as step 6 of Change a skill says" sends the
+    reader to the wrong step once steps are added or moved. A pointer
+    that wraps onto a second line is found too.
+
+    Args:
+        skills: The skills from ``read_skills``.
+        added: Line numbers added since the base commit, by file.
+
+    Returns:
+        One error per pointer that touches an added line.
+    """
+    problems = []
+    for path, lines in skills.prose.items():
+        text = join_prose(lines)
+        for match in STEP_POINTER.finditer(text):
+            first = text.count("\n", 0, match.start()) + 1
+            last = first + match.group().count("\n")
+            if added.get(path, set()) & set(range(first, last + 1)):
+                pointer = " ".join(match.group().split())
+                message = f'"{pointer}" points at a number; name the step'
+                problems.append(Problem(path, first, "error", message))
+    return problems
+
+
+def check_skill_sizes(
+    skills: Skills, before: dict[Path, str], added: dict[Path, set[int]]
+) -> list[Problem]:
+    """Report each SKILL.md whose body the change made longer than 500 lines.
+
+    Every run of a skill loads its whole SKILL.md, so detail that only
+    some runs need belongs in a reference file. A change that keeps or
+    shortens a long body passes, so a skill over the limit can still
+    be fixed in steps. The frontmatter does not count.
+
+    Args:
+        skills: The skills from ``read_skills``.
+        before: Base text of each changed file, from
+            ``read_changed_base_texts``.
+        added: Line numbers added since the base commit, by file.
+
+    Returns:
+        One error per long SKILL.md whose body is new or grew.
+    """
+    problems = []
+    for skill in skills.folders:
+        path = skill / "SKILL.md"
+        if path not in added:
+            continue
+        count = count_body_lines(path.read_text(encoding="utf-8"))
+        old = count_body_lines(before[path]) if path in before else 0
+        if count > MAX_SKILL_LINES and count > old:
+            message = (
+                f"body has {count} lines, over {MAX_SKILL_LINES}; move "
+                "detail to references/"
+            )
+            problems.append(Problem(path, 1, "error", message))
+    return problems
+
+
+def count_body_lines(text: str) -> int:
+    """Return the number of lines after a SKILL.md's frontmatter.
+
+    Args:
+        text: Contents of a SKILL.md.
+
+    Returns:
+        The line count, or every line when the frontmatter is missing
+        or not closed.
+    """
+    lines = text.splitlines()
+    if lines[:1] != ["---"] or "---" not in lines[1:]:
+        return len(lines)
+    return len(lines) - lines.index("---", 1) - 1
+
+
+def check_reference_contents(
+    skills: Skills, added: dict[Path, set[int]]
+) -> list[Problem]:
+    """Report each changed reference file over 100 lines with no Contents.
+
+    An agent often reads only the start of a long file, so a Contents
+    list there shows what the rest holds.
+
+    Args:
+        skills: The skills from ``read_skills``.
+        added: Line numbers added since the base commit, by file.
+
+    Returns:
+        One error per long reference file with added lines and no
+        Contents heading.
+    """
+    problems = []
+    for path, lines in skills.prose.items():
+        is_reference = (
+            path.parent.name in REFERENCE_FOLDERS
+            and path.parent.parent in skills.folders
+        )
+        is_long = path in added and len(lines) > MAX_REFERENCE_LINES
+        has_contents = any(CONTENTS.match(line) for line in lines)
+        if is_reference and is_long and not has_contents:
+            message = (
+                f"{len(lines)} lines, over {MAX_REFERENCE_LINES}, "
+                "with no ## Contents list"
+            )
+            problems.append(Problem(path, 1, "error", message))
+    return problems
+
+
+def check_removed_headings(
+    skills: Skills, before: dict[Path, str]
+) -> list[Problem]:
+    """Report each quote of a heading that the change removed.
+
+    A pointer such as 'as "Change a skill" says' leads nowhere once
+    that heading is renamed. Only a quote of a whole heading counts,
+    so quoted text that names no section is never reported. A title
+    still used as a heading in any checked file is skipped, since the
+    quote may point there, as when a file moves.
+
+    Args:
+        skills: The skills from ``read_skills``.
+        before: Base text of each changed file, from
+            ``read_changed_base_texts``.
+
+    Returns:
+        One error per quote of a removed heading, in any checked file.
+    """
+    removed = set()
+    for text in before.values():
+        removed |= list_heading_titles(blank_code_lines(text))
+    for lines in skills.prose.values():
+        removed -= list_heading_titles(lines)
+    texts = {path: join_prose(lines) for path, lines in skills.prose.items()}
+    problems = []
+    for title in sorted(removed):
+        # A quote may wrap, so any run of spaces matches one space.
+        words = r"\s+".join(re.escape(word) for word in title.split())
+        quote = re.compile(f'"{words}"')
+        for path, text in texts.items():
+            for match in quote.finditer(text):
+                line = text.count("\n", 0, match.start()) + 1
+                message = f'quotes "{title}", a heading this change removed'
+                problems.append(Problem(path, line, "error", message))
+    return problems
+
+
+def list_heading_titles(lines: list[str]) -> set[str]:
+    """Return the title of each heading, without a step number.
+
+    Args:
+        lines: Prose lines from ``blank_code_lines``.
+
+    Returns:
+        Titles such as "Change a skill", or "Lessons" for a heading
+        "### 3. Lessons".
+    """
+    titles = set()
+    for line in lines:
+        match = HEADING.match(line)
+        if match:
+            titles.add(match.group(1))
+    return titles
 
 
 def find_repeats(skills: Skills, added: dict[Path, set[int]]) -> list[Problem]:
@@ -662,6 +912,36 @@ def read_words(lines: list[str]) -> list[tuple[str, int]]:
     return words
 
 
+def find_grown_skills(
+    skills: Skills, before: dict[Path, str]
+) -> list[Problem]:
+    """Report each SKILL.md whose body has more lines than in base.
+
+    Each run loads the whole SKILL.md, so a skill should grow only for
+    a reason that the pull request gives. A new skill is not reported,
+    and neither is a line added to the frontmatter only.
+
+    Args:
+        skills: The skills from ``read_skills``.
+        before: Base text of each changed file, from
+            ``read_changed_base_texts``.
+
+    Returns:
+        One grown problem per longer SKILL.md.
+    """
+    problems = []
+    for skill in skills.folders:
+        path = skill / "SKILL.md"
+        if path not in before:
+            continue
+        old = count_body_lines(before[path])
+        new = count_body_lines(path.read_text(encoding="utf-8"))
+        if new > old:
+            message = f"body grew from {old} to {new} lines; give the reason"
+            problems.append(Problem(path, 1, "grown", message))
+    return problems
+
+
 def run_git(folder: Path, *args: str) -> str:
     """Run git in folder and return its output.
 
@@ -732,16 +1012,18 @@ def main() -> int:
     except FileNotFoundError as error:
         print(f"skill_check: {error}", file=sys.stderr)
         return 2
-    errors = [problem for problem in problems if problem.kind == "error"]
-    repeats = [problem for problem in problems if problem.kind == "repeat"]
-    for kind, found in (("error", errors), ("repeat", repeats)):
+    counts = []
+    kinds = (("error", "errors"), ("repeat", "repeats"), ("grown", "grown"))
+    for kind, plural in kinds:
+        found = [problem for problem in problems if problem.kind == kind]
         for problem in found[:MAX_SHOWN]:
             path = os.path.relpath(problem.path)
             print(f"{path}:{problem.line}: {kind}: {problem.message}")
         if len(found) > MAX_SHOWN:
-            print(f"{len(found) - MAX_SHOWN} more {kind}s")
-    print(f"{len(errors)} errors, {len(repeats)} repeats")
-    return 1 if errors else 0
+            print(f"{len(found) - MAX_SHOWN} more {plural}")
+        counts.append(f"{len(found)} {plural}")
+    print(", ".join(counts))
+    return 1 if any(problem.kind == "error" for problem in problems) else 0
 
 
 if __name__ == "__main__":

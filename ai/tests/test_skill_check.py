@@ -33,6 +33,8 @@ Read [the soil guide](references/soil.md) before you plant.
 Pass leaves to the `compost` skill."""
 COMPOST_BODY = "Turn the pile once a week so the middle stays warm."
 GARDEN = "ai/skills/garden/SKILL.md"
+COMPOST = "ai/skills/compost/SKILL.md"
+SOIL = "ai/skills/garden/references/soil.md"
 AGENTS = "ai/AGENTS.md"
 
 
@@ -90,6 +92,17 @@ def replace_text(path: Path, old: str, new: str) -> None:
     text = path.read_text()
     assert old in text, (old, path)
     path.write_text(text.replace(old, new))
+
+
+def commit_all(repo: Path) -> None:
+    """Commit every change in the checkout, so it becomes the base.
+
+    Args:
+        repo: Checkout made by the ``repo`` fixture.
+    """
+    env = make_env(repo.parent)
+    for command in (["add", "."], ["commit", "-qm", "change"]):
+        subprocess.run(["git", *command], cwd=repo, env=env, check=True)
 
 
 def run_check(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -311,7 +324,7 @@ class TestSkillText:
 
 
 class TestAddedLines:
-    """``--base`` adds the width and repeat checks, on added lines only."""
+    """``--base`` adds the checks of added lines, such as width."""
 
     def test_base_reports_only_added_repeats(self, repo: Path) -> None:
         """Repeats are reported for added lines and new files only.
@@ -329,7 +342,9 @@ class TestAddedLines:
         result = run_check(repo, "--base", "HEAD")
 
         assert result.returncode == 0, result.stdout
-        assert result.stdout.splitlines()[-1] == "0 errors, 2 repeats"
+        assert result.stdout.splitlines()[-1].startswith(
+            "0 errors, 2 repeats,"
+        )
         assert "ai/skills/garden/SKILL.md:8: repeat: " in result.stdout
         assert "ai/skills/mulch/SKILL.md:8: repeat: " in result.stdout
 
@@ -396,3 +411,185 @@ class TestAddedLines:
         result = run_check(repo, "--base", "HEAD")
 
         assert result.returncode == code, result.stdout
+
+    @pytest.mark.parametrize(
+        "line,code",
+        [
+            pytest.param("Water as step 2 of Planting says.", 1, id="pointer"),
+            pytest.param(
+                "Water as steps 1\nto 2 of Planting say.", 1, id="wrapped"
+            ),
+            pytest.param(
+                "Say you are on step 2 of 3 in each update.", 0, id="count"
+            ),
+        ],
+    )
+    def test_step_pointers_fail_but_counts_pass(
+        self, repo: Path, line: str, code: int
+    ) -> None:
+        """An added pointer to a step by its number fails the check.
+
+        Renumbering a skill's steps sends every such pointer to the
+        wrong step, with no error. Pointers wrap at 72 columns like
+        any text. Progress such as "step 2 of 3" counts steps and
+        points at none, and evaluation files quote it.
+        """
+        replace_text(repo / GARDEN, "# Garden\n", f"# Garden\n\n{line}\n")
+
+        result = run_check(repo, "--base", "HEAD")
+
+        assert result.returncode == code, result.stdout
+
+
+def quote_soil_heading(repo: Path) -> None:
+    """Commit a soil heading that the compost skill quotes.
+
+    Args:
+        repo: Checkout made by the ``repo`` fixture.
+    """
+    (repo / SOIL).write_text("# Soil\n\n## Testing the soil\n\nDig.\n")
+    replace_text(
+        repo / COMPOST,
+        COMPOST_BODY,
+        f'{COMPOST_BODY}\nRead "Testing\nthe soil" in the `garden` skill.',
+    )
+    commit_all(repo)
+
+
+class TestChangedFiles:
+    """``--base`` adds the checks of changed files, such as size."""
+
+    @pytest.mark.parametrize(
+        "changed,old,new,code",
+        [
+            pytest.param(
+                COMPOST, "# Garden\n", "# Garden\n\nRake.\n", 1, id="grew"
+            ),
+            pytest.param(
+                GARDEN,
+                "# Garden\n",
+                "# Garden\n\nRake.\n",
+                0,
+                id="other-skill",
+            ),
+            pytest.param(
+                COMPOST, "Water bed 0 at dawn.\n", "", 0, id="shortened"
+            ),
+            pytest.param(
+                COMPOST,
+                "---\nname:",
+                "---\nlicense: MIT\nname:",
+                0,
+                id="frontmatter-line",
+            ),
+        ],
+    )
+    def test_long_skill_fails_only_when_grown(
+        self, repo: Path, changed: str, old: str, new: str, code: int
+    ) -> None:
+        """A SKILL.md body over 500 lines fails only a change that grows it.
+
+        Every run loads the whole SKILL.md, so a long one costs every
+        session. A long skill already on main must not fail changes
+        to other skills, or a change that shortens it, or no skill
+        change could merge until someone splits it. Only the body
+        counts, so a new frontmatter line, such as a scope tag, passes.
+        """
+        long_body = "\n".join(f"Water bed {n} at dawn." for n in range(501))
+        replace_text(repo / COMPOST, COMPOST_BODY, long_body)
+        commit_all(repo)
+        replace_text(repo / changed, old, new)
+
+        result = run_check(repo, "--base", "HEAD")
+
+        assert result.returncode == code, result.stdout
+
+    @pytest.mark.parametrize(
+        "head,code",
+        [
+            pytest.param("# Soil\n", 1, id="no-contents"),
+            pytest.param("# Soil\n\n## Contents\n", 0, id="contents"),
+        ],
+    )
+    def test_long_reference_needs_contents_list(
+        self, repo: Path, head: str, code: int
+    ) -> None:
+        """A changed reference file over 100 lines needs a Contents list.
+
+        An agent often reads only the start of a long file, so without
+        a Contents list it misses what the rest holds.
+        """
+        rows = "\n".join(f"Loam bed {n} holds water." for n in range(100))
+        (repo / SOIL).write_text(f"{head}\n{rows}\n")
+
+        result = run_check(repo, "--base", "HEAD")
+
+        assert result.returncode == code, result.stdout
+
+    def test_renamed_heading_fails_while_still_quoted(
+        self, repo: Path
+    ) -> None:
+        """Renaming a heading that another skill quotes fails the check.
+
+        A quoted heading is how skills point at a section, so after a
+        rename the pointer leads nowhere. The quote wraps across two
+        lines, as quotes in 72-column text do.
+        """
+        quote_soil_heading(repo)
+        replace_text(repo / SOIL, "## Testing the soil", "## Soil tests")
+
+        result = run_check(repo, "--base", "HEAD")
+
+        assert result.returncode == 1
+        assert 'error: quotes "Testing the soil"' in result.stdout
+
+    def test_heading_in_moved_file_passes(self, repo: Path) -> None:
+        """Moving a file keeps its quoted headings valid.
+
+        Renaming a skill's reference folder deletes each file at its
+        old path, but every heading still exists at the new path. A
+        check that compared one path's headings would block the move.
+        """
+        quote_soil_heading(repo)
+        moved = repo / "ai/skills/garden/reference/soil.md"
+        moved.parent.mkdir()
+        (repo / SOIL).rename(moved)
+        replace_text(repo / GARDEN, "references/soil", "reference/soil")
+
+        result = run_check(repo, "--base", "HEAD")
+
+        assert result.returncode == 0, result.stdout
+
+    @pytest.mark.parametrize(
+        "old,new,summary",
+        [
+            pytest.param(
+                "# Garden\n",
+                "# Garden\n\nRake.\n",
+                "0 errors, 0 repeats, 1 grown",
+                id="line-added",
+            ),
+            pytest.param(
+                "Pass leaves",
+                "Pass weeds",
+                "0 errors, 0 repeats, 0 grown",
+                id="line-changed",
+            ),
+        ],
+    )
+    def test_skill_reported_grown_only_when_longer(
+        self, repo: Path, old: str, new: str, summary: str
+    ) -> None:
+        """A SKILL.md with more lines is reported, without failing.
+
+        A skill should grow only for a reason the pull request gives,
+        so the author must see each growth. An edit that keeps the
+        length needs no reason, and a report for it would teach
+        authors to ignore the line.
+        """
+        replace_text(repo / GARDEN, old, new)
+
+        result = run_check(repo, "--base", "HEAD")
+
+        assert result.returncode == 0, result.stdout
+        assert result.stdout.splitlines()[-1] == summary
