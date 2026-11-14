@@ -99,6 +99,12 @@ func runUpdate(home, flagRoot string, runner run.Runner) error {
 		runner,
 	)
 	record.CheckedAt = time.Now().UTC().Format(time.RFC3339)
+	// Skill fix branches do not depend on the checkout, so they sync even
+	// when the update skipped or failed.
+	syncSkillFixes(
+		home,
+		runner,
+	)
 	if err := writeStateJSON(
 		home,
 		updateRecordPath(home),
@@ -578,6 +584,40 @@ func installWithNewInstaller(config config, runner run.Runner) error {
 		)
 	}
 	return nil
+}
+
+// Runs skill-fix sync when skill-fix is in ~/.local/bin, so fixes made
+// offline reach GitHub after each update. A failed sync only warns, because
+// the fixes wait on their branch for the next sync.
+func syncSkillFixes(home string, runner run.Runner) {
+	localBin := filepath.Join(
+		home,
+		".local",
+		"bin",
+	)
+	binary := filepath.Join(
+		localBin,
+		"skill-fix",
+	)
+	if _, err := os.Stat(binary); err != nil {
+		return
+	}
+	// A timer starts with a short PATH, and pde-gh-write is in ~/.local/bin.
+	path := "PATH=" + localBin + string(os.PathListSeparator) + os.Getenv("PATH")
+	if err := runner.Run(
+		"sync skill fixes",
+		run.Command{
+			Name: binary,
+			Args: []string{"sync"},
+			Env:  []string{path},
+		},
+	); err != nil {
+		fmt.Fprintf(
+			runner.Err(),
+			"warning: %v; run skill-fix sync to retry\n",
+			err,
+		)
+	}
 }
 
 // Returns a git command that runs in root.

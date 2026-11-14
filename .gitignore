@@ -14,6 +14,7 @@ __pycache__/
 venv/
 ai/.venv/
 skill-lessons/.venv/
+skill-fix/.venv/
 ENV/
 
 # IDE / Editor
