@@ -79,6 +79,8 @@ pub(crate) enum Kind {
     /// The `+ N more` line.
     More,
     Back,
+    /// The sessions panel's jump bar.
+    Bar,
     Text,
 }
 
@@ -90,6 +92,10 @@ pub(super) enum Action {
     Jump(Group),
     /// Act on the list line at this index, as Enter does.
     Line(usize),
+    /// Pick the session at this index in the queue's sessions.
+    Choose(usize),
+    /// Jump to the chosen session.
+    Go,
     Back,
 }
 
@@ -130,7 +136,8 @@ pub(crate) struct ScreenDump {
     /// The step that led here, or nothing for the first screen.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub step: Option<String>,
-    /// `list`, `details`, or `quit` once the board has quit.
+    /// `list`, `details`, `confirm` for the clean dialog, `clean` for
+    /// its output, or `quit` once the board has quit.
     pub page: &'static str,
     pub elements: Vec<Element>,
     /// The screen as text, one string per row.

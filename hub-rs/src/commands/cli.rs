@@ -71,7 +71,7 @@ one used last.
   go       Show the next hub
   gather   Put hubs at the sidebar top
   desk     Make the user's desk
-  board    Cards by stage, for a phone{after-help}",
+  board    Cards, sessions and gauges{after-help}",
     after_help = "\
 hub COMMAND --help says what one does,
 when to use it, and gives an example.
@@ -449,33 +449,62 @@ pub enum Command {
     Desk,
     // `verbatim_doc_comment` keeps the step list's columns, so every
     // line below is wrapped by hand at 40 columns.
-    /// Cards by stage, for a phone
+    /// Cards, sessions and gauges
     ///
-    /// Shows your cards in groups that fit a
-    /// 40x16 phone screen. The top line counts
-    /// the cards in progress and in review, and
-    /// what waits on you. Below it are five
-    /// groups, and Could not read on top when
-    /// a read fails. In progress, In review,
-    /// Ready and Draft hold cards from card
-    /// list. Needs you holds the questions in
-    /// decisions.md and the sessions that wait
-    /// on you, from every hub running on this
-    /// machine, each tagged with its hub. With
-    /// no hub running, it says so. Ready and
-    /// Draft start folded. It reads again
+    /// Shows four panels sized for a 40x16
+    /// phone screen. Panel 1, the queue, shows
+    /// your cards in groups. Its top line
+    /// counts the cards in progress and in
+    /// review, and what waits on you. Below it
+    /// are five groups, and Could not read on
+    /// top when a read fails. In progress, In
+    /// review, Ready and Draft hold cards from
+    /// card list. Needs you holds the questions
+    /// in decisions.md and the sessions that
+    /// wait on you, from every hub running on
+    /// this machine, each tagged with its hub.
+    /// With no hub running, it says so. Ready
+    /// and Draft start folded. It reads again
     /// every 10 seconds, or when you press r.
     ///
-    /// Tap a count to jump to its group, a
-    /// group to fold or open it, + N more to
-    /// see the rest, or a row to see the card
-    /// in full. j and k move the choice, and
-    /// Enter or space taps it. q quits from the
-    /// list. On a card, q, Esc or any tap goes
-    /// back. --print prints one screen as text,
-    /// and --dump prints its elements as JSON.
-    /// Both draw a new board, not the board
-    /// that listens.
+    /// Panel 2, kanban, lists cards by stage,
+    /// REVIEW first. Panel 3, sessions, groups
+    /// every session as hub clean decides, in
+    /// NEEDS YOU, WORKING, KEPT, SAFE TO CLOSE
+    /// and PARKED. Each row has a context bar,
+    /// full at 150K tokens, and why the session
+    /// is in its group. Panel 4, machine, shows
+    /// file-watch slots, free disk and the
+    /// newest reports. Tab or 1 to 4 picks a
+    /// panel. Below 100 columns the board shows
+    /// one panel, and from 100 all four side by
+    /// side.
+    ///
+    /// On the queue, tap a count to jump to its
+    /// group, a group to fold or open it, + N
+    /// more to see the rest, or a row to see
+    /// the card in full. j and k move the
+    /// choice, and Enter or space taps it. On
+    /// kanban and machine they scroll. q quits
+    /// from the list. On a card, q, Esc or any
+    /// tap goes back. --print prints one screen
+    /// as text, and --dump prints its elements
+    /// as JSON. Both draw a new board, not the
+    /// board that listens.
+    ///
+    /// On the sessions panel, a tap on a row
+    /// only chooses it. The bar at the bottom
+    /// then reads -> jump to NAME, and a tap on
+    /// it shows that session in Herdr. Enter
+    /// jumps too, but only after 0.7 seconds
+    /// with no input, so a stray Enter after a
+    /// tap does not jump. c, from any panel,
+    /// lists the SAFE TO CLOSE sessions, ending
+    /// in + N more when they do not fit. y,
+    /// once the list has been open 1 second and
+    /// no key came for 0.7 seconds, closes and
+    /// parks the listed sessions as hub clean
+    /// does. Any other key or a tap cancels.
     ///
     /// To let an agent drive the board you
     /// watch, start it with --listen. Then
@@ -491,7 +520,8 @@ pub enum Command {
     /// its first read ends, the board shows no
     /// cards and its hint says reading. Tests
     /// use the hidden --control, which reads
-    /// the same steps one per line.
+    /// the same steps one per line but never
+    /// jumps or cleans.
     ///
     /// Each step is one of these.
     ///   tap ID       tap an element by the id
@@ -501,22 +531,24 @@ pub enum Command {
     ///   press KEY    press a key
     ///   wheel up     scroll up
     ///   wheel down   scroll down
-    /// KEY is enter, esc, space, up, down,
-    /// pageup, pagedown, ctrl-c, or one
+    /// KEY is enter, esc, space, tab, up,
+    /// down, pageup, pagedown, ctrl-c, or one
     /// character, such as q, r, j or k.
     ///
     /// The JSON has step, the step sent, and
-    /// page, which is list, details or quit.
-    /// lines holds the screen as text, one
-    /// string per row. elements lists all the
-    /// page holds, top first. Each has id,
+    /// page, which is list, details, confirm
+    /// for the c list, clean for its output, or
+    /// quit. lines holds the screen as text,
+    /// one string per row. elements lists all
+    /// the page holds, top first. Each has id,
     /// kind, text and hidden, and tap when a
     /// tap does something. kind is count,
-    /// heading, item, more, back or text. tap
-    /// is jump, fold, unfold, show all, open
-    /// or back. A drawn element also has
-    /// column, row and width, and chosen is
-    /// true on the row Enter acts on.
+    /// heading, item, more, back, bar or text.
+    /// tap is jump, fold, unfold, show all,
+    /// open, back, choose or go. A drawn
+    /// element also has column, row and width,
+    /// and chosen is true on the row Enter acts
+    /// on.
     ///
     /// Rows scrolled off, cards in a folded
     /// group and cards behind + N more have

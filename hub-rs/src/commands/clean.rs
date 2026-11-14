@@ -25,9 +25,41 @@ pub fn run_clean(
     dry_run: bool,
     now: &Zoned,
 ) -> Result<Outcome, HubError> {
+    clean_sessions(tools, run, None, dry_run, now)
+}
+
+/// Runs the tidy pass as `run_clean` does, but only on the sessions in
+/// `names`, such as the ones the board's clean dialog listed. A listed
+/// session the pass now keeps stays open, with a `kept` line.
+///
+/// # Errors
+///
+/// As `run_clean`.
+pub fn run_clean_listed(
+    tools: &Tools<'_>,
+    run: &RunFolder,
+    names: &[String],
+    now: &Zoned,
+) -> Result<Outcome, HubError> {
+    clean_sessions(tools, run, Some(names), false, now)
+}
+
+/// Runs the tidy pass on every session, or on `only` when given.
+fn clean_sessions(
+    tools: &Tools<'_>,
+    run: &RunFolder,
+    only: Option<&[String]>,
+    dry_run: bool,
+    now: &Zoned,
+) -> Result<Outcome, HubError> {
     let lock = tools.parked.take_tidy_lock()?;
     let memory = events::load_memory(run)?;
-    let collected = facts::collect_session_facts(tools, run, &memory)?;
+    let mut collected = facts::collect_session_facts(tools, run, &memory)?;
+    if let Some(names) = only {
+        collected
+            .sessions
+            .retain(|facts| names.contains(&facts.name));
+    }
     let outcomes = tidy::run_tidy_pass(tools, run, &collected, &lock, now, dry_run)?;
     let mut lines: Vec<String> = outcomes
         .iter()
