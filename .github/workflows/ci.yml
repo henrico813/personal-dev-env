@@ -218,6 +218,23 @@ jobs:
       - name: check planning prompts
         run: uv sync --locked && uv run pytest -m "not local_ai"
 
+  # Checks only the skills a pull request changes, so a long skill on
+  # main fails only the pull request that edits it.
+  skills:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The merge base needs the base branch's history.
+          fetch-depth: 0
+      - name: check changed skills
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: >-
+          python3 ai/skills/skill-development/scripts/skill_check.py
+          --base "$(git merge-base "origin/$BASE_REF" HEAD)"
+
   skill-lessons:
     runs-on: ubuntu-latest
     defaults:
