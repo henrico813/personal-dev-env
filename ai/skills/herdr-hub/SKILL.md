@@ -452,6 +452,25 @@ request off the list. The worker then merges and reports once it has
 merged. When the worker is parked, do not message it, since a message
 reopens it; hand its merge to a merge worker, as below.
 
+The first message that shows the user a pull request or a research
+note says each of these:
+
+- What changes for the user.
+- The result the user can look for after trying it.
+- Why that result proves the change. When the change has no result
+  to look for, say "nothing visible", and quote the changed line and
+  the test that covers it.
+- What was tested and what was not.
+- For a new skill or tool, why no existing one can hold it.
+- Your recommendation.
+
+When a pull request has a script for the user to try it, its worker
+writes it as `~/test-pr-<n>.sh`, where `<n>` is the pull request's
+number. The script prints a `You should see: ...` line before `ok`.
+It shows the before and after where it can. It never suggests a
+command that competes with the hub's own commands, such as
+`hub next`.
+
 Hand any other merge first to a merge worker. A merge worker is a new
 Herdr session on the local model, as `model-routing` picks, never a
 subagent of the hub. A subagent ends when the hub's turn is
