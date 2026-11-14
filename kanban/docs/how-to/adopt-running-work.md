@@ -35,10 +35,10 @@ rather than a change. `card` prints the new card's name, such as
 `- 2026-11-06 active: adopted by user for the user. session ...`,
 then `- 2026-11-06 session: fix-login (opencode ses_...)`.
 
-Adoption skips the work limit and the check for acceptance criteria,
+Adoption skips the stage limits and the check for acceptance criteria,
 since the work is already running. The board can then show more than 8
-cards in `active` plus `review`. Until the count drops below 8, the
-staff agent starts no new card.
+cards in `active` or more than 6 in `review`. Until both counts are
+back within their limits, the staff agent starts no new card.
 
 ## 3. Fill in Context and Acceptance Criteria
 ---

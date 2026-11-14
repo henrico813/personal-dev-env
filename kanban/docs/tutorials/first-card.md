@@ -79,10 +79,11 @@ In the shell:
 card board
 ```
 
-It prints how many cards sit in each stage, and how many are `active`
-or in `review` out of the **work limit** of 8. That limit keeps the
-work waiting on you small enough to clear. Last comes the review
-queue, the cards waiting for you to accept them, oldest first.
+It prints how many cards sit in each stage, then the `active` count
+out of its limit of 8 and the `review` count out of its limit of 6.
+The limits keep the work waiting on you small enough to clear. Last
+comes the review queue, the cards waiting for you to accept them,
+oldest first.
 
 In Obsidian, open the note `500 Zettelkasten/Kanban.md`. Its Board
 view groups every card by stage, and its Review queue view shows the

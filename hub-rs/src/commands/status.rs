@@ -177,10 +177,7 @@ fn format_status_text(view: &StatusView) -> Vec<String> {
         "watcher stopped"
     };
     let board = match &view.board {
-        Ok(board) => format!(
-            "board {}/{}, review {}",
-            board.busy, board.limit, board.review
-        ),
+        Ok(board) => format!("board {board}"),
         Err(reason) => format!("board: {reason}"),
     };
     let counts = &view.counts;
@@ -236,8 +233,8 @@ fn format_status_json(view: &StatusView) -> String {
         Ok(board) => json!({
             "active": board.active,
             "review": board.review,
-            "busy": board.busy,
-            "limit": board.limit,
+            "active_limit": board.active_limit,
+            "review_limit": board.review_limit,
         }),
         Err(reason) => json!({"error": reason}),
     };
@@ -421,8 +418,8 @@ mod tests {
             board: Ok(BoardCounts {
                 active: 5,
                 review: 19,
-                busy: 24,
-                limit: 8,
+                active_limit: 8,
+                review_limit: 6,
             }),
             counts,
             unread: vec!["demo-kb-007-impl".to_owned(), "docs-fix".to_owned()],
@@ -446,7 +443,7 @@ mod tests {
             lines,
             [
                 "hub kanban-hub-18 131k, watcher running",
-                "board 24/8, review 19",
+                "board active 5 of 8, review 19 of 6",
                 "open 6: 1 working, 1 hub, 1 you,",
                 "  1 kept, 1 to-close, 1 to-park; 1 parked",
                 "unread 2: demo-kb-007-impl docs-fix",
@@ -513,7 +510,7 @@ mod tests {
             json!({
                 "hub": {"name": "kanban-hub-18", "context_tokens": 131_204},
                 "watcher": "running",
-                "board": {"active": 5, "review": 19, "busy": 24, "limit": 8},
+                "board": {"active": 5, "review": 19, "active_limit": 8, "review_limit": 6},
                 "counts": {
                     "working": 1,
                     "hub": 1,

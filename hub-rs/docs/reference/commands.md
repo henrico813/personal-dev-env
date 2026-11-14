@@ -117,7 +117,7 @@ the count per state, the unread reports and one row per session:
 
 ```text
 hub kanban-hub-18 131k, watcher running
-board 24/8, review 19
+board active 5 of 8, review 19 of 6
 open 6: 1 working, 1 hub, 1 you,
   1 kept, 1 to-close, 1 to-park; 1 parked
 unread 2: demo-kb-007-impl docs-fix
@@ -162,8 +162,8 @@ parks a session.
 - `timed message to N sessions: PATH (hub 131k)`: a message stored
   with `at` reached its time and is held for each session. PATH is
   the `--file` given to `at`.
-- `board over its limit: 25/8 (hub 131k)`: too many cards are active
-  or in review.
+- `board over its limit: active 10 of 8, review 18 of 6 (hub 131k)`:
+  active or review holds more cards than its limit.
 - `hand off now: hub at 152k`: the hub should hand off now.
 - `to-close NAMES: WHY; run hub clean`, or the same with `to-park`:
   sessions that finished, listed once.
@@ -235,9 +235,9 @@ date heading on the day's first line. Prints `noted HHMM`.
 ### brief
 
 `hub brief [--run DIR]` prints what waits on the user. The first line
-is `board 24/8, review 19; 4 decisions`, or `board: REASON`. Then come
-`reviews.md` and one `Decision: TITLE` section per entry in
-`decisions.md`, or `Nothing waits on the user.`
+is `board active 5 of 8, review 19 of 6; 4 decisions`, or
+`board: REASON`. Then come `reviews.md` and one `Decision: TITLE`
+section per entry in `decisions.md`, or `Nothing waits on the user.`
 
 - Exits 3 with `decisions.md entry 'TITLE' lacks ...` for an
   incomplete entry.
@@ -284,7 +284,7 @@ the key, else in a new workspace such as `demo-kb-007 impl`. Work
 with no card opens in the hub's workspace, so run it in the hub's
 own pane. `--workspace LABEL` opens it in that workspace, and makes
 the workspace if none has that label. A ready card moves to active
-first, so `card` checks the work limit before anything starts. After
+first, so `card` checks the active limit before anything starts. After
 the start, the card gets a `Handoff PATH` note and the worker's
 session, and `notes.md` gets a line. Prints:
 
@@ -299,7 +299,7 @@ The second line comes only when it made a workspace.
   live agent is named NAME, `card list` shows no card for the key, or
   work with no card runs outside the hub's pane.
 - Exits 1 with `card`'s message, and changes nothing, when `card`
-  refuses the move to active, such as past the work limit.
+  refuses the move to active, such as past the active limit.
 - A failure after the move begins `moved KEY to active, but REASON`.
   One after the start begins `started NAME` and lists each later step
   that finished, such as `started NAME, sent the handoff prompt,

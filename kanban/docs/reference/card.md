@@ -29,7 +29,7 @@ named vault.
 | `card new PROJECT --from FILE [--user] [--why TEXT]` | Makes a card in `draft` with the title, kind and section text from FILE, laid out as `card new --help` shows. Refuses any other heading, a repeated heading, and text before the first heading, so no line is lost. |
 | `card new PROJECT TITLE --adopt STAGE --user [--why TEXT] [--session [AGENT]]` | Makes a card straight in `active` or `review`, for work already under way. `--session` also records the agent's session, as `card link --session` does. |
 | `card list [--stage S] [--project P] [--kind K] [--tabs]` | Prints one line per card: key, stage, kind and title, in stage order. A long line is cut to 60 characters. With `--tabs`, each line holds the key, stage, kind, project folder and whole title, split by tabs, for scripts such as `hub board`. |
-| `card board` | Prints the count per stage, active plus review against the work limit, and the review queue by `stage_date`, oldest first. |
+| `card board` | Prints the count per stage, active and review each against its limit, and the review queue by `stage_date`, oldest first. |
 | `card show KEY [--section S]` | Prints the whole card, or one section with its items numbered from 1. |
 | `card grep PATTERN [--section S] [--stage S] [--project P] [--kind K]` | Prints each line that matches a regular expression, in any case, as `KEY Section: line`. Exits 1 when nothing matches. |
 | `card move KEY STAGE [--user] [--why TEXT]` | Moves a card, sets `stage_date` to today and adds a Log line. |
@@ -90,10 +90,10 @@ agent's kind and session id from `herdr agent get AGENT`, such as
 | new card -> `draft` | user or staff | |
 | `draft` -> `ready` | user | an Acceptance Criteria checkbox |
 | `ready` -> `draft` | user or staff | |
-| `ready` -> `active` | staff; the user past the work limit | a free slot, unless `--user` |
+| `ready` -> `active` | staff; the user past the active limit | a free slot, unless `--user` |
 | `active` -> `ready` | staff | work paused; `--why` names its handoff |
 | `active` -> `draft` | user | |
-| `active` -> `review` | staff | |
+| `active` -> `review` | staff; the user past the review limit | a free slot, unless `--user` |
 | `review` -> `active` | user | |
 | `review` -> `accepted` | user | |
 | any but `accepted` -> `dropped` | user | |
@@ -105,8 +105,8 @@ and `card` makes them without `--user`. The user can make a staff
 move too, with `--user`, so the Log says the user decided. Any move
 not in the table is refused. Only `draft` -> `ready` needs a
 checkbox, so paused work with no criteria can still go back to
-`ready`. The **work limit** is 8 cards in `active` plus `review`,
-counted across every project. Adoption skips the limit and the
+`ready`. The **limits** are 8 cards in `active` and 6 in `review`,
+each counted across every project. Adoption skips the limits and the
 Acceptance Criteria check.
 
 ## Frontmatter

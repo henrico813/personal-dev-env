@@ -41,7 +41,7 @@ cat >"$E/bin/card" <<'EOF'
 #!/bin/sh
 case "$1" in
 board) printf '%s\n' 'draft 0  ready 0  active 0' \
-  'review 0  accepted 0  dropped 0' 'active+review 0 of 8' ;;
+  'review 0  accepted 0  dropped 0' 'active 0 of 8, review 0 of 6' ;;
 *) echo "0 cards" ;;
 esac
 EOF

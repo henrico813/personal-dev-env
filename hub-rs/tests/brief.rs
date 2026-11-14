@@ -29,8 +29,8 @@ fn run_brief_prints_board_reviews_then_decisions() {
     test_tools.cards.board = Some(BoardCounts {
         active: 5,
         review: 19,
-        busy: 24,
-        limit: 8,
+        active_limit: 8,
+        review_limit: 6,
     });
     fs::write(
         test_tools.run_path().join("reviews.md"),
@@ -44,7 +44,7 @@ fn run_brief_prints_board_reviews_then_decisions() {
     assert_eq!(
         outcome.lines,
         [
-            "board 24/8, review 19; 1 decision",
+            "board active 5 of 8, review 19 of 6; 1 decision",
             "",
             "# PRs",
             "",
@@ -69,8 +69,8 @@ fn run_brief_says_when_nothing_waits() {
     test_tools.cards.board = Some(BoardCounts {
         active: 3,
         review: 0,
-        busy: 3,
-        limit: 8,
+        active_limit: 8,
+        review_limit: 6,
     });
 
     let outcome = run_brief(&test_tools.tools(), &test_tools.run()).unwrap();
@@ -78,7 +78,7 @@ fn run_brief_says_when_nothing_waits() {
     assert_eq!(
         outcome.lines,
         [
-            "board 3/8, review 0; 0 decisions",
+            "board active 3 of 8, review 0 of 6; 0 decisions",
             "",
             "Nothing waits on the user.",
         ]

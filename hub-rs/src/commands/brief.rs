@@ -39,10 +39,7 @@ pub fn run_brief(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubError
         count => format!("{count} decisions"),
     };
     let board_line = match tools.cards.read_board() {
-        Ok(board) => format!(
-            "board {}/{}, review {}; {decision_count}",
-            board.busy, board.limit, board.review
-        ),
+        Ok(board) => format!("board {board}; {decision_count}"),
         Err(error) => format!("board: {error}"),
     };
     let mut sections = vec![board_line];

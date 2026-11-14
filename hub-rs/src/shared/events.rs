@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use super::HubError;
 use super::messages::MessageId;
 use super::run_folder::RunFolder;
+use crate::external::cards::BoardCounts;
 
 /// The longest reason a line keeps, so each line stays one small write.
 const REASON_LIMIT: usize = 300;
@@ -75,10 +76,16 @@ pub(crate) enum EventKind {
     HubContextTold { session: String },
     /// `hub next` printed that the board went over its limit, or the
     /// run's first minute pass found it over and printed nothing.
-    BoardOver { busy: u32, limit: u32 },
+    BoardOver {
+        #[serde(flatten)]
+        counts: BoardCounts,
+    },
     /// The minute pass saw the board back within its limit, or within
     /// it at the run's first pass.
-    BoardUnder { busy: u32, limit: u32 },
+    BoardUnder {
+        #[serde(flatten)]
+        counts: BoardCounts,
+    },
     /// `hub next` printed that NAMES became `state`, `to-close` or
     /// `to-park`.
     Listed { state: String, names: Vec<String> },

@@ -306,28 +306,32 @@ fn run_next_asks_worker_handoff_once() {
 #[test]
 fn run_next_wakes_once_per_board_crossing() {
     let mut test_tools = TestTools::new();
-    let board = |busy| BoardCounts {
-        active: busy,
-        review: 0,
-        busy,
-        limit: 8,
+    // Review alone passes its limit; a combined count once hid this.
+    let board = |review| BoardCounts {
+        active: 2,
+        review,
+        active_limit: 8,
+        review_limit: 6,
     };
-    test_tools.cards.board = Some(board(25));
+    test_tools.cards.board = Some(board(9));
 
     let first = check_once(&test_tools);
     forget_minute_pass(&test_tools);
     let still_over = check_once(&test_tools);
-    test_tools.cards.board = Some(board(5));
+    test_tools.cards.board = Some(board(6));
     forget_minute_pass(&test_tools);
     let under = check_once(&test_tools);
-    test_tools.cards.board = Some(board(25));
+    test_tools.cards.board = Some(board(9));
     forget_minute_pass(&test_tools);
     let over_again = check_once(&test_tools);
 
     assert_eq!(first, "timeout (hub -)");
     assert_eq!(still_over, "timeout (hub -)");
     assert_eq!(under, "timeout (hub -)");
-    assert_eq!(over_again, "board over its limit: 25/8 (hub -)");
+    assert_eq!(
+        over_again,
+        "board over its limit: active 2 of 8, review 9 of 6 (hub -)"
+    );
 }
 
 /// A message the old hub left as `send-NAME.json` is never sent by

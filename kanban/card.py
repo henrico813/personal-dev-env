@@ -89,9 +89,10 @@ MOVES = {
 # Only the user brings work already under way onto the board, straight
 # into one of these stages. These are not moves, so MOVES leaves them out.
 ADOPT_STAGES = ["active", "review"]
-# Cards in active plus review across all projects. The user may start
-# a card past it with --user.
-WORK_LIMIT = 8
+# Cards in each stage across all projects. The user may move a card
+# past a limit with --user.
+ACTIVE_LIMIT = 8
+REVIEW_LIMIT = 6
 
 FIELDS = [
     "tags",
@@ -436,8 +437,8 @@ def format_moves() -> str:
     for (source, target), who in MOVES.items():
         lines.append(f"  {source} -> {target}: {who}")
     lines.append(
-        f"the user starts a card past the work limit of {WORK_LIMIT}"
-        " with ready -> active --user"
+        f"the user moves a card past the limits of {ACTIVE_LIMIT} active"
+        f" and {REVIEW_LIMIT} in review with --user"
     )
     lines.append("work already under way: card new --adopt STAGE --user")
     return "\n".join(lines)
@@ -681,8 +682,10 @@ def run_board(args: argparse.Namespace, projects: Path) -> int:
         counts[card.stage] = counts.get(card.stage, 0) + 1
     print("  ".join(f"{stage} {counts[stage]}" for stage in STAGES[:3]))
     print("  ".join(f"{stage} {counts[stage]}" for stage in STAGES[3:]))
-    busy = counts["active"] + counts["review"]
-    print(f"active+review {busy} of {WORK_LIMIT}")
+    print(
+        f"active {counts['active']} of {ACTIVE_LIMIT},"
+        f" review {counts['review']} of {REVIEW_LIMIT}"
+    )
     review = [card for card in cards if card.stage == "review"]
     review.sort(key=lambda card: (card.stage_date, card.key))
     print(f"\nREVIEW, oldest first ({len(review)})")
@@ -853,7 +856,7 @@ def check_move(
         current: The card's stage now.
         target: The stage to move to.
         user: True when the user made the move.
-        projects: The vault's Projects folder, for the work limit.
+        projects: The vault's Projects folder, for the stage limits.
 
     Raises:
         CardError: The move is not allowed, with the reason.
@@ -876,15 +879,14 @@ def check_move(
         raise CardError(
             f"add a '- [ ] ...' item to {CRITERIA} before moving to ready"
         )
-    if current == "ready" and target == "active" and not user:
-        busy = sum(
-            card.stage in ("active", "review")
-            for card in load_all_cards(projects)
-        )
-        if busy >= WORK_LIMIT:
+    # Only staff moves can fill active or review; the user's moves pass.
+    limit = {"active": ACTIVE_LIMIT, "review": REVIEW_LIMIT}.get(target)
+    if limit is not None and not user:
+        count = sum(card.stage == target for card in load_all_cards(projects))
+        if count >= limit:
             raise CardError(
-                f"{busy} cards are active or in review, the limit is"
-                f" {WORK_LIMIT}. Ask the user which to finish first."
+                f"{count} cards are in {target}, the limit is {limit}."
+                " Ask the user which to finish first."
             )
 
 
