@@ -107,6 +107,11 @@ When this skill is invoked:
   not a design brainstorm.
 - Prefer `make` commands in verification when suitable targets exist. Otherwise
   use the direct command.
+- When a change to a skill, a tool or a timed job gets installed and
+  run on a machine, end Verification with a real test, as Guardrail 4
+  of `pull-request` says. For a timed job that can run from the branch,
+  the step forces one run instead of waiting for its schedule. The
+  step names what that run leaves out.
 - Exact code in diff blocks is required for every implementation and
   verification change in the final plan.
 - Write each paragraph and list item of plan prose as one line, with no
