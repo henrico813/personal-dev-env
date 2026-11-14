@@ -20,6 +20,9 @@ use super::view::{Board, Step};
 use crate::commands::Outcome;
 use crate::shared::{HubError, Tools};
 
+/// What the clean output page shows under `--control`.
+const CONTROL_CLEAN: &str = "the clean pass runs only on the live board";
+
 /// Reads the hubs' state once and returns the board's first screen,
 /// `size` large, as one JSON line.
 ///
@@ -93,7 +96,16 @@ pub fn control_board(
                 board.show_card_note(&key, note);
                 board.dump(size.columns, size.rows, Some(step.to_owned()))
             }
-            Step::Stay => board.dump(size.columns, size.rows, Some(step.to_owned())),
+            // `--control` never moves the user's screen, so a jump only
+            // prints the board as it is.
+            Step::Jump(_) | Step::Stay => {
+                board.dump(size.columns, size.rows, Some(step.to_owned()))
+            }
+            // Nor does it close sessions, so y shows why nothing closed.
+            Step::Clean { .. } => {
+                board.show_clean_output(vec![CONTROL_CLEAN.to_owned()]);
+                board.dump(size.columns, size.rows, Some(step.to_owned()))
+            }
         };
         if !write_dump(output, &dump)? || dump.page == "quit" {
             break;
@@ -170,7 +182,7 @@ fn parse_step(step: &str, board: &Board) -> Result<Event, String> {
         }
         "press" => parse_key(rest)
             .map(Event::Key)
-            .ok_or_else(|| format!("{rest} is not a key such as q, esc or ctrl-c")),
+            .ok_or_else(|| format!("{rest} is not a key such as q, tab, esc or ctrl-c")),
         "wheel" => match rest {
             "up" => Ok(mouse(MouseEventKind::ScrollUp, 0, 0)),
             "down" => Ok(mouse(MouseEventKind::ScrollDown, 0, 0)),
@@ -186,12 +198,14 @@ fn parse_place(text: &str) -> Option<(u16, u16)> {
     Some((column.parse().ok()?, row.trim().parse().ok()?))
 }
 
-/// Reads a key name, such as `enter`, `pagedown` or one character.
+/// Reads a key name, such as `enter`, `tab`, `pagedown` or one
+/// character.
 fn parse_key(name: &str) -> Option<KeyEvent> {
     let code = match name {
         "ctrl-c" => return Some(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)),
         "enter" => KeyCode::Enter,
         "esc" => KeyCode::Esc,
+        "tab" => KeyCode::Tab,
         "space" => KeyCode::Char(' '),
         "up" => KeyCode::Up,
         "down" => KeyCode::Down,

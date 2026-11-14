@@ -29,13 +29,20 @@ pub(super) struct ListScreen<'a> {
     pub lines: &'a [Line],
     /// The bottom line's end, such as `read 10:42 0.6s`.
     pub status: &'a str,
+    /// The bottom line's start, such as `1/4 ` below 100 columns.
+    pub prefix: &'a str,
     pub color: bool,
 }
 
-/// Draws the counts on top, the list of groups, and the bottom line.
-/// The list scrolls so the chosen line in `list` shows.
-pub(super) fn draw_list(frame: &mut Frame, screen: &ListScreen<'_>, list: &mut ListState) {
-    let [top, middle, bottom] = split_screen(frame.area());
+/// Draws the counts on top, the list of groups, and the bottom line in
+/// `area`. The list scrolls so the chosen line in `list` shows.
+pub(super) fn draw_list(
+    frame: &mut Frame,
+    area: Rect,
+    screen: &ListScreen<'_>,
+    list: &mut ListState,
+) {
+    let [top, middle, bottom] = split_screen(area);
     frame.render_widget(count_line(screen.groups, screen.color), top);
     let width = usize::from(middle.width);
     let items: Vec<ListItem> = screen
@@ -46,8 +53,7 @@ pub(super) fn draw_list(frame: &mut Frame, screen: &ListScreen<'_>, list: &mut L
     let list_widget =
         List::new(items).highlight_style(Style::new().add_modifier(Modifier::REVERSED));
     frame.render_stateful_widget(list_widget, middle, list);
-    let hint = format!("q quit  tap open  {}", screen.status);
-    frame.render_widget(Paragraph::new(hint).style(dim()), bottom);
+    frame.render_widget(Paragraph::new(list_hint(screen)).style(dim()), bottom);
 }
 
 /// Draws an item's details page, wrapped to the width and scrolled
@@ -156,9 +162,14 @@ pub(super) fn list_elements(screen: &ListScreen<'_>, area: Rect, list: &ListStat
         elements.push(element);
         elements.extend(hidden_cards);
     }
-    let hint = format!("q quit  tap open  {}", screen.status);
-    elements.push(text_element("hint", &hint, bottom));
+    elements.push(text_element("hint", &list_hint(screen), bottom));
     elements
+}
+
+/// Returns the list page's bottom line, such as
+/// `1/4 q quit  tap open  read 10:42 0.6s`.
+fn list_hint(screen: &ListScreen<'_>) -> String {
+    format!("{}q quit  tap open  {}", screen.prefix, screen.status)
 }
 
 /// Returns the details page's elements as `draw_details` drew them in
@@ -208,9 +219,9 @@ fn wrap_details(details: &Details, middle: Rect) -> Vec<String> {
 
 /// Returns the row that line `index` is drawn on in `middle` with line
 /// `first` on top, or for a line off screen the step that scrolls
-/// toward it. Repeating that step always reaches the line, because
-/// PageDown moves the list's choice or the details page by a page.
-fn row_or_scroll(index: usize, first: usize, middle: Rect) -> Result<u16, &'static str> {
+/// toward it. On the page or panel keys act on, repeating that step
+/// reaches the line, since PageDown moves it by the rows it shows.
+pub(super) fn row_or_scroll(index: usize, first: usize, middle: Rect) -> Result<u16, &'static str> {
     if index < first {
         return Err("press pageup");
     }
@@ -302,7 +313,7 @@ fn describe_line(
 
 /// Returns an element that shows `text` on `area`'s first row and does
 /// nothing on a tap.
-fn text_element(id: &str, text: &str, area: Rect) -> Element {
+pub(super) fn text_element(id: &str, text: &str, area: Rect) -> Element {
     Element {
         id: id.to_owned(),
         kind: Kind::Text,
@@ -428,7 +439,7 @@ fn heading_style(group: Group, color: bool) -> Style {
 }
 
 /// Returns the style of hints and tags.
-fn dim() -> Style {
+pub(super) fn dim() -> Style {
     Style::new().add_modifier(Modifier::DIM)
 }
 
