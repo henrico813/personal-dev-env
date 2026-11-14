@@ -1,6 +1,7 @@
 package installer
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"pde-installer/internal/run"
 	"pde-installer/internal/testfile"
 )
 
@@ -289,6 +291,59 @@ func TestUpdateSkipsInstallOfInstalledMain(t *testing.T) {
 		t.Errorf(
 			"update.json = %+v, want current",
 			record,
+		)
+	}
+}
+
+// The timer's update is the sync that picks up fixes made offline. A failed
+// sync must not mark the update failed, because the fixes stay safe on their
+// branch until the next sync.
+func TestUpdateSurvivesFailedSkillFixSync(t *testing.T) {
+	fixture := setUpUpdateFixture(t)
+	testfile.WriteExecutable(
+		t,
+		filepath.Join(
+			fixture.home,
+			".local",
+			"bin",
+			"skill-fix",
+		),
+		"#!/bin/sh\nprintf '%s\\n' \"$*\" >>\"$HOME/skill-fix-calls\"\nexit 1\n",
+	)
+	var stderr bytes.Buffer
+
+	err := runUpdate(
+		fixture.home,
+		"",
+		run.Runner{
+			Stdout: io.Discard,
+			Stderr: &stderr,
+		},
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls := readFileOrEmpty(
+		t,
+		filepath.Join(
+			fixture.home,
+			"skill-fix-calls",
+		),
+	); calls != "sync\n" {
+		t.Errorf(
+			"skill-fix calls = %q, want sync",
+			calls,
+		)
+	}
+	if want := "run skill-fix sync to retry"; !strings.Contains(
+		stderr.String(),
+		want,
+	) {
+		t.Errorf(
+			"stderr = %q, want substring %q",
+			stderr.String(),
+			want,
 		)
 	}
 }

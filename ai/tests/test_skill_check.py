@@ -13,6 +13,8 @@ SKILL = """\
 ---
 name: {name}
 description: Plans garden beds. Use when planning a bed.
+metadata:
+  scope: personal
 ---
 
 # Garden
@@ -162,9 +164,10 @@ class TestSkillText:
         """The skills in this repository have no error.
 
         CI runs this test, so a change that breaks a link, a skill
-        name, a reference, a frontmatter name, a Lessons section or a
-        Remembering corrections line fails before it merges, whoever
-        wrote it and whatever skill they loaded.
+        name, a reference, a frontmatter name, a Lessons section, a
+        Remembering corrections line or a scope tag fails before it
+        merges, whoever wrote it and whatever skill they loaded. A new
+        skill without ``scope: personal`` fails here too.
         """
         result = subprocess.run(
             [sys.executable, str(SCRIPT)],
@@ -251,6 +254,20 @@ class TestSkillText:
                 'must say "with the skill name `garden`"',
                 id="lessons-without-skill-name",
             ),
+            pytest.param(
+                GARDEN,
+                "scope: personal",
+                "scope: work",
+                "metadata.scope must be personal",
+                id="work-scope-in-personal-repo",
+            ),
+            pytest.param(
+                GARDEN,
+                "metadata:\n  scope: personal\n",
+                "",
+                "metadata.scope must be personal",
+                id="scope-missing",
+            ),
         ],
     )
     def test_defect_fails_with_its_reason(
@@ -262,7 +279,9 @@ class TestSkillText:
         start. An agent that follows a link or skill name that leads
         nowhere misses the rule behind it. A Remembering corrections
         line copied from another skill saves the user's corrections to
-        that skill, with no visible failure.
+        that skill, with no visible failure. A work skill copied into
+        this public repository would publish work text, and a skill
+        with no scope tag cannot tell a fix which repository to go to.
         """
         replace_text(repo / file, old, new)
 
@@ -345,8 +364,8 @@ class TestAddedLines:
         assert result.stdout.splitlines()[-1].startswith(
             "0 errors, 2 repeats,"
         )
-        assert "ai/skills/garden/SKILL.md:8: repeat: " in result.stdout
-        assert "ai/skills/mulch/SKILL.md:8: repeat: " in result.stdout
+        assert "ai/skills/garden/SKILL.md:10: repeat: " in result.stdout
+        assert "ai/skills/mulch/SKILL.md:10: repeat: " in result.stdout
 
     def test_base_reports_repeat_overlapping_another(self, repo: Path) -> None:
         """Overlapping repeats from two skills are both reported.

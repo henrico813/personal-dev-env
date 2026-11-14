@@ -3,6 +3,7 @@ name: cleanup-plan
 description: 'Clean up a completed plan workflow, verifying and removing the worktree, branch, pull-request evidence, and main-checkout housekeeping, for requests like "clean up the plan worktree" or "tear down the branch now that the plan is done"; for authoring use create-plan, and for execution use implement-plan.'
 metadata:
   pde-workflow: "true"
+  scope: personal
 ---
 
 # Cleanup Plan

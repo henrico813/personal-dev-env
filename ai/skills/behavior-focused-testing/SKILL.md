@@ -1,6 +1,8 @@
 ---
 name: behavior-focused-testing
 description: Use when planning changes to, writing, updating, or reviewing automated tests, including proposed test diffs, regression tests, and test plans.
+metadata:
+  scope: personal
 ---
 
 Behavior-focused testing

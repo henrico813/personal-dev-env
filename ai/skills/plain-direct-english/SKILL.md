@@ -6,6 +6,8 @@ description: Writes and reviews English prose so each sentence has one
   docstrings, docs, pull request text and plans, or when the user asks
   why a sentence or comment is hard to read. Not needed for a typo or
   spelling fix alone.
+metadata:
+  scope: personal
 ---
 
 # Plain Direct English

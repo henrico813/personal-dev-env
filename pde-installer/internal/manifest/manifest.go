@@ -130,6 +130,11 @@ func Items() []Item {
 			Owner: Local,
 			Tier:  profile.Workstation,
 		},
+		{
+			Name:  "skill-fix",
+			Owner: Local,
+			Tier:  profile.Workstation,
+		},
 		{Name: "prs", Owner: Local, Tier: profile.Development},
 		{Name: "xwinwrap", Owner: Local, Tier: profile.Terminal, Desktop: "i3"},
 		{Name: "mpvpaper", Owner: Local, Tier: profile.Terminal, Desktop: "sway"},
