@@ -1,0 +1,19 @@
+{
+  "state_dir": "~/.local/state/dream",
+  "stop_starting_at": "06:00",
+  "work_items": {"adapter": "pde-cards", "per_night": 3},
+  "sessions": {
+    "adapter": "opencode",
+    "per_night": 10,
+    "min_cloud_tokens": 1000000,
+    "db": "~/.local/share/opencode/opencode.db",
+    "stats_script": "~/.agents/skills/session-review/scripts/session_stats.py",
+    "local_providers": ["goog"]
+  },
+  "model": {
+    "adapter": "openai-http",
+    "base_url": "http://127.0.0.1:4000/v1",
+    "key_file": "~/.config/opencode/goog.key",
+    "name": "qwen3.8-flash"
+  }
+}

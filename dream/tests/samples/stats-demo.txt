@@ -1,0 +1,24 @@
+session ses_demo01 demo export fix
+model cloud/big-model
+minutes open 42
+tokens read 7,200,325 (cache read 7,000,000, cache write 190,000, uncached 10,325)
+tokens written 41,000 (output 30,000, reasoning 11,000)
+user messages 2, model steps 140, steps logged with zero tokens 12
+peak context about 150,000 tokens at seq 300
+compactions 0
+skills loaded demo-skill (seq 9)
+subagents 2
+  cloud/small-model count 2 read 400,000 written 9,000
+largest subagents by tokens read
+  ses_demo02 cloud/small-model read 300,000 written 6,000 Review the export fix
+  ses_demo03 cloud/small-model read 100,000 written 3,000
+repeated commands 1
+  9x make test
+carry by tool
+  shell calls 116 tokens 52,993 carry 3,908,032
+  read calls 20 tokens 21,000 carry 900,000
+largest carried outputs
+  carry 1,316,820 tokens 12,910 later steps 102 seq 20 shell strings big-binary
+  carry 384,946 tokens 6,637 later steps 58 seq 53 shell git diff -M30%
+  carry 195,238 tokens 3,149 later steps 62 seq 9 skill demo-skill
+  2 more

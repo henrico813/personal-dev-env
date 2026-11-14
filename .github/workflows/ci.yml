@@ -240,3 +240,17 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - name: test on Python 3.10
         run: uvx pytest
+
+  dream:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dream
+    # Ubuntu 22.04, the oldest release pde-installer supports, ships 3.10.
+    env:
+      UV_PYTHON: "3.10"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: test on Python 3.10
+        run: uvx pytest
