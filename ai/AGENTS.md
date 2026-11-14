@@ -261,11 +261,8 @@ pattern over the whole file.
   tool's profile.
 - When the user corrects agent behavior, apply the correction. When
   the correction is about a skill, check it as `skill-lessons` says
-  and offer it once as a lesson. When the correction is not about a
-  skill, or it fails those checks, offer once to add it as a rule to
-  an `AGENTS.md` file. A rule for every repository goes in
-  `ai/AGENTS.md` in personal-dev-env. A rule for one repository goes
-  in that repository's `AGENTS.md`.
+  and offer it once as a lesson. Never offer to add a correction as a
+  rule to an `AGENTS.md` file.
 
 - Agents change pull requests only through `pde-gh-write`; a human supplies approval through Herdr, Moshi, or `pde-pr-approve`. Never answer approval requests, run `pde-pr-approve`, or set `PDE_GH_WRITE`.
 - Before sending a request to open or merge a PR, follow Guardrail 4
