@@ -181,6 +181,10 @@ Use `@pytest.mark.parametrize`, fixtures, and
 `pytest.param(..., id="descriptive-case")` where their mechanics fit. Read
 [testing](references/testing.md) for pytest-specific organization and cleanup.
 
+Group tests as the `behavior-focused-testing` skill says. Where
+nearby files group pytest tests into classes, name each class for the
+concept it tests, such as `TestApprovedText`.
+
 ## 8. Documentation
 
 Load and follow `code-documentation` when planning, writing, changing, or
@@ -220,6 +224,11 @@ lines only and report the rest; never reformat whole existing files. Run mypy in
 the project environment so imports resolve, and separate new errors from existing
 ones. Use `python -m pytest` when the project does not use uv. Use pyright or
 basedpyright only when configured by the repository.
+
+To run tests once on another Python version, use `uv run --isolated
+--python 3.12 pytest`. `uv run --python` without `--isolated` replaces
+the project's `.venv`. Later `uv run` calls then test on that version
+too.
 
 If `uv` or `uvx` is unavailable, use the repository's existing environment and
 configured commands, and run `python -m pytest` when possible. Report checks

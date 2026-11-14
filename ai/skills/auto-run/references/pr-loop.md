@@ -411,8 +411,8 @@ its entries parked.
   Limits allows it.
 - Edit a comment the user approved. Send the new wording as a reword
   in that pull request's comment review.
-- Amend or squash a branch after its first push, or once another
-  branch stacks on it; add a commit instead.
+- Amend or squash a pushed branch, as the `pull-request` skill
+  forbids, or one another branch stacks on; add a commit instead.
 - Make a commit on a pull request's branch that you do not push, or
   try or hand the user a commit that is not pushed.
 - Delete a test without a reviewer's finding that names the test still

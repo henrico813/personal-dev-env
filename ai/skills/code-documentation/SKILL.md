@@ -243,6 +243,20 @@ Give every test helper and fixture, private ones included, a one-line
 doc that says what it stands for, such as "A config file with no
 version line."
 
+## Docs folders
+
+A new component too large for one README, such as a tool with several
+commands, gets its own `docs/` folder. Split it into the four page
+types of the Diataxis docs framework: tutorials, how-to guides,
+explanation and reference. Ask the user which types they want before
+you write any.
+
+The folder's README only points the reader to the right page. It says
+which page to read for each task, with one sentence on what each page
+type is for. An explanation page shows how the parts work together.
+A reference page holds exact facts, such as paths and
+commands.
+
 ## Editing and review
 
 When source code or tests change:
@@ -409,6 +423,11 @@ win:
 - Follow a test's summary with a paragraph on why the test matters.
 - Never invent a docstring section, such as `Why it matters:`; write a
   plain paragraph instead.
+- A one-line doc is not enough for a helper or fixture that takes
+  arguments. Give it the argument section of its docstring format,
+  such as `Args:`.
+- Never cut an `Args:`, `Returns:` or `Raises:` section to shorten a
+  change, even when it repeats the signature.
 
 For Python files you add or change, `check-comments` also checks
 these rules, only in code your task added or changed. Changing any

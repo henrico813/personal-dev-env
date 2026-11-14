@@ -1,6 +1,11 @@
 ---
 name: obsidian-daily-note
-description: Use when adding a section or session summary to today's journal daily note in the main Obsidian vault. Never use it to read, search, or summarize a daily note.
+description: Adds a section or session summary to today's journal
+  daily note in the main Obsidian vault. Use when the user asks to add
+  something to the daily note, or says "put this in my notes" without
+  naming another note. Agents never read the journal folder. This
+  skill only appends the new section, so it needs no read. Never use
+  it to read, search, or summarize a daily note.
 ---
 
 # Obsidian Daily Note
