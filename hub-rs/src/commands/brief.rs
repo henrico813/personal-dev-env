@@ -3,13 +3,15 @@
 //! or more `- ` choices, `Recommended:` and `If no reply:`.
 
 use super::Outcome;
+use crate::external::cards::{Board, format_days};
 use crate::shared::decisions::{self, DecisionEntry};
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{HubError, Tools};
 
 /// Prints the board line, `reviews.md`, then every decision entry in
 /// full, so the user never has to ask what a numbered question was.
-/// A failed `card board` becomes a `board: REASON` line.
+/// A failed `card board` becomes a `board: REASON` line. Cards waiting
+/// on others come last, as news the user may chase but need not act on.
 ///
 /// # Errors
 ///
@@ -38,11 +40,14 @@ pub fn run_brief(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubError
         1 => "1 decision".to_owned(),
         count => format!("{count} decisions"),
     };
-    let board_line = match tools.cards.read_board() {
-        Ok(board) => format!("board {board}; {decision_count}"),
+    let board = tools.cards.read_board();
+    let mut board_lines = vec![match &board {
+        Ok(board) => format!("board {}; {decision_count}", board.counts),
         Err(error) => format!("board: {error}"),
-    };
-    let mut sections = vec![board_line];
+    }];
+    board_lines.extend(board.as_ref().ok().and_then(Board::waiting_line));
+    let waiting = board.map(|board| board.waiting).unwrap_or_default();
+    let mut sections = vec![board_lines.join("\n")];
     let pull_requests = run.read_optional_file("reviews.md")?;
     if !pull_requests.trim().is_empty() {
         sections.push(pull_requests.trim().to_owned());
@@ -54,6 +59,23 @@ pub fn run_brief(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubError
     }
     if pull_requests.trim().is_empty() && entries.is_empty() {
         sections.push("Nothing waits on the user.".to_owned());
+    }
+    if !waiting.is_empty() {
+        let mut section = vec!["Waiting on others (no action needed)".to_owned()];
+        for card in &waiting {
+            section.push(format!(
+                "- {}, {}",
+                card.key.as_str(),
+                format_days(card.days)
+            ));
+            section.extend(
+                [&card.title, &card.reason]
+                    .into_iter()
+                    .filter(|text| !text.is_empty())
+                    .map(|text| format!("  {text}")),
+            );
+        }
+        sections.push(section.join("\n"));
     }
     let text = sections.join("\n\n");
     Ok(Outcome {

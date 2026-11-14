@@ -286,7 +286,7 @@ pub(crate) fn read_queue(
 fn is_on_board(stage: Stage) -> bool {
     matches!(
         stage,
-        Stage::Draft | Stage::Ready | Stage::Active | Stage::Review
+        Stage::Draft | Stage::Ready | Stage::Active | Stage::Review | Stage::WaitingOnOthers
     )
 }
 

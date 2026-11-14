@@ -10,7 +10,9 @@ use std::process::Command;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use hub::external::cards::{BoardCounts, CardError, CardKey, CardNote, Cards, ListedCard, Stage};
+use hub::external::cards::{
+    Board, BoardCounts, CardError, CardKey, CardNote, Cards, ListedCard, Stage, WaitingCard,
+};
 use hub::external::herdr::{
     Agent, AgentKind, AgentStart, AgentStatus, Herdr, HerdrCode, HerdrError, HubKind, NewPlace,
     Pane, PlaceIds, ProcessInfo, Workspace,
@@ -441,6 +443,8 @@ pub struct InMemoryCards {
     pub card_notes: BTreeMap<String, CardNote>,
     /// `None` answers as `card` does without a vault.
     pub board: Option<BoardCounts>,
+    /// The waiting-on-others list `read_board` gives with `board`.
+    pub waiting: Vec<WaitingCard>,
     /// Each `add_note` call, as the card key and the text.
     pub notes: RefCell<Vec<(String, String)>>,
     /// When set, `add_note` fails with this message and records nothing.
@@ -500,10 +504,15 @@ impl Cards for InMemoryCards {
             .ok_or_else(|| CardError::Failed(format!("card: no card {}", key.as_str())))
     }
 
-    fn read_board(&self) -> Result<BoardCounts, CardError> {
-        self.board
+    fn read_board(&self) -> Result<Board, CardError> {
+        let counts = self
+            .board
             .clone()
-            .ok_or_else(|| CardError::Failed("card: no default vault".to_owned()))
+            .ok_or_else(|| CardError::Failed("card: no default vault".to_owned()))?;
+        Ok(Board {
+            counts,
+            waiting: self.waiting.clone(),
+        })
     }
 
     fn add_note(&self, key: &CardKey, text: &str) -> Result<(), CardError> {

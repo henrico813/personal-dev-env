@@ -18,7 +18,13 @@ use super::sessions::fit;
 use crate::external::cards::Stage;
 
 /// The stages the kanban panel shows, the user's next action first.
-const KANBAN_STAGES: [Stage; 4] = [Stage::Review, Stage::Active, Stage::Ready, Stage::Draft];
+const KANBAN_STAGES: [Stage; 5] = [
+    Stage::Review,
+    Stage::Active,
+    Stage::WaitingOnOthers,
+    Stage::Ready,
+    Stage::Draft,
+];
 
 /// The width from which the board shows all four panels at once.
 pub(super) const WIDE_COLUMNS: u16 = 100;

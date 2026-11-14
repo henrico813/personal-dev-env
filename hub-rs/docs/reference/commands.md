@@ -118,6 +118,7 @@ the count per state, the unread reports and one row per session:
 ```text
 hub kanban-hub-18 131k, watcher running
 board active 5 of 8, review 19 of 6
+waiting-on-others 1, oldest 8 days
 open 6: 1 working, 1 hub, 1 you,
   1 kept, 1 to-close, 1 to-park; 1 parked
 unread 2: demo-kb-007-impl docs-fix
@@ -137,6 +138,9 @@ no session: DEMO-KB-004 active
 - The hub's line adds `: hand off now` after its context at 150k or
   more.
 - The board line is `board: REASON` when `card` fails.
+- The `waiting-on-others` line shows only when a card is in that
+  stage, which waits on people outside the team and has no limit.
+  `hub next` never counts these cards.
 - STATE is one of `working`, `hub` (waits on the hub), `you` (waits
   on the user), `kept` (finished, but WHY says what keeps it open),
   `to-close`, `to-park` and `parked` (no tab, can reopen).
@@ -238,6 +242,16 @@ date heading on the day's first line. Prints `noted HHMM`.
 is `board active 5 of 8, review 19 of 6; 4 decisions`, or
 `board: REASON`. Then come `reviews.md` and one `Decision: TITLE`
 section per entry in `decisions.md`, or `Nothing waits on the user.`
+When cards wait on others, the board line is followed by
+`waiting-on-others 2, oldest 8 days`, and the brief ends with a list
+the user need not act on:
+
+```text
+Waiting on others (no action needed)
+- DEMO-KB-003, 8 days
+  Retry failed uploads
+  platform team's review
+```
 
 - Exits 3 with `decisions.md entry 'TITLE' lacks ...` for an
   incomplete entry.
@@ -362,7 +376,7 @@ record, adds the session to its card and closes its tab. Prints
 
 `hub board` shows four panels, sized for a 40x16 phone screen.
 Panel 1, the queue, shows the cards by stage: In progress, In
-review, Needs you, Ready and Draft. The cards come from
+review, Waiting on others, Needs you, Ready and Draft. The cards come from
 `card list`. Needs you holds the questions in each `decisions.md`
 and the sessions that wait on the user, from every hub on this
 machine that Herdr lists: each `~/.local/state/herdr-hub.*` folder
@@ -372,13 +386,15 @@ details page names the hub in full. With no hub running, Needs you
 shows `no hub running`. It ignores `HUB_RUN`, and the hidden
 `--run DIR` shows one run only. A Could not read group shows on
 top when a read fails. An open group shows four rows, then
-`+ N more`; Ready and Draft start folded. Each row starts with a
+`+ N more`; Waiting on others, Ready and Draft start folded, and
+Waiting on others shows only when it holds a card. Each row starts with a
 mark for its group: `*` in progress, `@` in review, `?` needs you,
 `o` ready, `.` draft and `!` could not read.
 
-Panel 2, kanban, lists the cards by stage: REVIEW, ACTIVE, READY
-and DRAFT. Panel 3, sessions, groups every session as `hub clean`
-decides: NEEDS YOU, WORKING, KEPT, SAFE TO CLOSE and PARKED. Each
+Panel 2, kanban, lists the cards by stage: REVIEW, ACTIVE,
+WAITING-ON-OTHERS, READY and DRAFT. Panel 3, sessions, groups
+every session as `hub clean` decides: NEEDS YOU, WORKING, KEPT,
+SAFE TO CLOSE and PARKED. Each
 row shows the name, a context bar full at 150K tokens, the context
 in thousands and why the session is in its group, such as
 `unpushed review`. A why too long for the row goes on the line

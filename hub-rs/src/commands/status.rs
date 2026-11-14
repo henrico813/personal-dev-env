@@ -7,7 +7,7 @@ use jiff::tz::TimeZone;
 use serde_json::{Value, json};
 
 use super::Outcome;
-use crate::external::cards::{BoardCounts, CardKey, Stage};
+use crate::external::cards::{Board, CardKey, Stage};
 use crate::shared::context::{HANDOFF_TOKENS, format_tokens};
 use crate::shared::events;
 use crate::shared::facts::{self, HubLine};
@@ -83,8 +83,8 @@ pub fn run_status(
 struct StatusView {
     hub: HubLine,
     watcher_running: bool,
-    /// The board counts, or why `card board` failed.
-    board: Result<BoardCounts, String>,
+    /// The board counts and waiting cards, or why `card board` failed.
+    board: Result<Board, String>,
     counts: StateCounts,
     unread: Vec<String>,
     rows: Vec<StatusRow>,
@@ -177,9 +177,10 @@ fn format_status_text(view: &StatusView) -> Vec<String> {
         "watcher stopped"
     };
     let board = match &view.board {
-        Ok(board) => format!("board {board}"),
+        Ok(board) => format!("board {}", board.counts),
         Err(reason) => format!("board: {reason}"),
     };
+    let waiting = view.board.as_ref().ok().and_then(Board::waiting_line);
     let counts = &view.counts;
     let open = view.rows.len() - counts.parked;
     let unread = if view.unread.is_empty() {
@@ -190,6 +191,9 @@ fn format_status_text(view: &StatusView) -> Vec<String> {
     let mut lines = vec![
         format!("hub {hub_name} {tokens}{hand_off}, {watcher}"),
         board,
+    ];
+    lines.extend(waiting);
+    lines.extend([
         format!(
             "open {open}: {} working, {} hub, {} you,",
             counts.working, counts.hub, counts.you
@@ -200,7 +204,7 @@ fn format_status_text(view: &StatusView) -> Vec<String> {
         ),
         unread,
         String::new(),
-    ];
+    ]);
     let mut table = vec![["NAME", "STATE", "CTX", "WHY"].map(str::to_owned)];
     table.extend(view.rows.iter().map(|row| {
         [
@@ -230,12 +234,28 @@ fn format_status_text(view: &StatusView) -> Vec<String> {
 /// Writes the view as one JSON object holding the same facts.
 fn format_status_json(view: &StatusView) -> String {
     let board = match &view.board {
-        Ok(board) => json!({
-            "active": board.active,
-            "review": board.review,
-            "active_limit": board.active_limit,
-            "review_limit": board.review_limit,
-        }),
+        Ok(board) => {
+            let waiting: Vec<Value> = board
+                .waiting
+                .iter()
+                .map(|card| {
+                    json!({
+                        "card": card.key.as_str(),
+                        "days": card.days,
+                        "title": card.title,
+                        "reason": card.reason,
+                    })
+                })
+                .collect();
+            let counts = &board.counts;
+            json!({
+                "active": counts.active,
+                "review": counts.review,
+                "active_limit": counts.active_limit,
+                "review_limit": counts.review_limit,
+                "waiting_on_others": waiting,
+            })
+        }
         Err(reason) => json!({"error": reason}),
     };
     let counts = &view.counts;
@@ -347,6 +367,7 @@ fn format_columns(table: &[[String; 4]]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::external::cards::{BoardCounts, WaitingCard};
     use crate::external::git::Unsaved;
     use crate::shared::lifecycle::KeptReason;
     use crate::shared::test_values::{make_facts, make_parked_record};
@@ -415,11 +436,19 @@ mod tests {
                 context_tokens: Some(131_204),
             },
             watcher_running: true,
-            board: Ok(BoardCounts {
-                active: 5,
-                review: 19,
-                active_limit: 8,
-                review_limit: 6,
+            board: Ok(Board {
+                counts: BoardCounts {
+                    active: 5,
+                    review: 19,
+                    active_limit: 8,
+                    review_limit: 6,
+                },
+                waiting: vec![WaitingCard {
+                    key: "DEMO-KB-003".parse().unwrap(),
+                    days: 8,
+                    title: "Retry failed uploads".to_owned(),
+                    reason: "platform team's review".to_owned(),
+                }],
             }),
             counts,
             unread: vec!["demo-kb-007-impl".to_owned(), "docs-fix".to_owned()],
@@ -444,6 +473,7 @@ mod tests {
             [
                 "hub kanban-hub-18 131k, watcher running",
                 "board active 5 of 8, review 19 of 6",
+                "waiting-on-others 1, oldest 8 days",
                 "open 6: 1 working, 1 hub, 1 you,",
                 "  1 kept, 1 to-close, 1 to-park; 1 parked",
                 "unread 2: demo-kb-007-impl docs-fix",
@@ -510,7 +540,18 @@ mod tests {
             json!({
                 "hub": {"name": "kanban-hub-18", "context_tokens": 131_204},
                 "watcher": "running",
-                "board": {"active": 5, "review": 19, "active_limit": 8, "review_limit": 6},
+                "board": {
+                    "active": 5,
+                    "review": 19,
+                    "active_limit": 8,
+                    "review_limit": 6,
+                    "waiting_on_others": [{
+                        "card": "DEMO-KB-003",
+                        "days": 8,
+                        "title": "Retry failed uploads",
+                        "reason": "platform team's review",
+                    }],
+                },
                 "counts": {
                     "working": 1,
                     "hub": 1,

@@ -256,7 +256,7 @@ fn run_minute_pass(
     now: &Zoned,
 ) -> Result<Option<BoardCounts>, HubError> {
     // A `card` failure skips the board, as `hub status` shows it.
-    let mut board = tools.cards.read_board().ok();
+    let mut board = tools.cards.read_board().ok().map(|board| board.counts);
     if let Some(counts) = &board {
         let is_over = counts.is_over();
         if !memory.board_known || (memory.board_over && !is_over) {

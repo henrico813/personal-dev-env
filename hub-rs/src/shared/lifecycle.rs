@@ -243,10 +243,12 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
                 make_verdict(Lifecycle::WaitsOnHub, "no reply yet")
             }
         }
-        // Rule 8. A finished worker waits for the user's review, and
-        // parking keeps a way back to it.
-        (Some(_), Some(Stage::Review)) => find_kept_reason(facts, agent, true)
-            .unwrap_or_else(|| make_verdict(Lifecycle::ToPark, "")),
+        // Rule 8. A finished worker waits for the user's review or for
+        // people outside the team, and parking keeps a way back to it.
+        (Some(_), Some(Stage::Review | Stage::WaitingOnOthers)) => {
+            find_kept_reason(facts, agent, true)
+                .unwrap_or_else(|| make_verdict(Lifecycle::ToPark, ""))
+        }
         // Rule 9. Nothing waits on a done card's session.
         (Some(_), _) => find_kept_reason(facts, agent, false)
             .unwrap_or_else(|| make_verdict(Lifecycle::ToClose, "card done")),
@@ -565,6 +567,11 @@ mod tests {
             Row {
                 id: "review-clean",
                 facts: base,
+                expected: Lifecycle::ToPark,
+            },
+            Row {
+                id: "waiting-on-others-clean",
+                facts: with_stage(Stage::WaitingOnOthers),
                 expected: Lifecycle::ToPark,
             },
             Row {

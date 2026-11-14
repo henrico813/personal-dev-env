@@ -14,6 +14,7 @@ pub(super) enum Group {
     Problems,
     InProgress,
     InReview,
+    WaitingOnOthers,
     NeedsYou,
     Ready,
     Draft,
@@ -32,6 +33,7 @@ impl Group {
             Group::Problems => "Could not read",
             Group::InProgress => "In progress",
             Group::InReview => "In review",
+            Group::WaitingOnOthers => "Waiting on others",
             Group::NeedsYou => "Needs you",
             Group::Ready => "Ready",
             Group::Draft => "Draft",
@@ -45,6 +47,7 @@ impl Group {
             Group::Problems => "could-not-read",
             Group::InProgress => "in-progress",
             Group::InReview => "in-review",
+            Group::WaitingOnOthers => "waiting-on-others",
             Group::NeedsYou => "needs-you",
             Group::Ready => "ready",
             Group::Draft => "draft",
@@ -58,6 +61,7 @@ impl Group {
             Group::Problems => "!",
             Group::InProgress => "◐",
             Group::InReview => "◕",
+            Group::WaitingOnOthers => "◷",
             Group::NeedsYou => "?",
             Group::Ready => "○",
             Group::Draft => "·",
@@ -72,6 +76,7 @@ impl Group {
             Group::Problems => Color::Red,
             Group::InProgress => Color::Yellow,
             Group::InReview => Color::Green,
+            Group::WaitingOnOthers => Color::Cyan,
             Group::NeedsYou => Color::Magenta,
             Group::Ready => Color::Blue,
             Group::Draft => Color::Reset,
@@ -116,7 +121,8 @@ impl Target {
 }
 
 /// Returns every group with its items, in screen order. The Could not
-/// read group shows only when a read failed.
+/// read group shows only when a read failed, and Waiting on others
+/// only when it holds a card.
 pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
     let cards_at = |stage: Stage| -> Vec<Item> {
         queue
@@ -169,10 +175,13 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
     groups.extend([
         (Group::InProgress, cards_at(Stage::Active)),
         (Group::InReview, cards_at(Stage::Review)),
+        (Group::WaitingOnOthers, cards_at(Stage::WaitingOnOthers)),
         (Group::NeedsYou, needs_you),
         (Group::Ready, cards_at(Stage::Ready)),
         (Group::Draft, cards_at(Stage::Draft)),
     ]);
+    // Most boards have no waiting card, and a phone has few rows.
+    groups.retain(|(group, items)| *group != Group::WaitingOnOthers || !items.is_empty());
     groups
 }
 

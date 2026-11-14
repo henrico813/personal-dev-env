@@ -164,7 +164,8 @@ impl Board {
         Board {
             queue: None,
             groups: Vec::new(),
-            // Ready and Draft hold most cards, so they start folded.
+            // Ready and Draft hold most cards, and Waiting on others holds
+            // nothing for the user to do, so they start folded.
             open: BTreeSet::from([Group::InProgress, Group::InReview, Group::NeedsYou]),
             shown_in_full: BTreeSet::new(),
             lines: Vec::new(),
