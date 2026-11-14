@@ -135,7 +135,7 @@ export function addUsageSlots(api, { catalogModels, quotaDir, rateLimitFile, lin
       );
       const lines = describeGroupLines(priced, describePlanLines(shown, { now: Date.now() }));
       return lines.length === 0 ? null : (
-        <box paddingLeft={2} flexDirection="column">
+        <box flexDirection="column">
           <text fg={api.theme.text.base}>
             <b>Usage</b>
           </text>
