@@ -90,6 +90,16 @@ describe("describePlanLines", () => {
       claudeView(0, { limitedUntil: WEEK_END }),
       ["Claude limit reached until Nov 18", "Claude weekly 48% used", "  resets Nov 18, 02:00"],
     ],
+    [
+      "long window name cut",
+      claudeView(120, {
+        windows: [
+          { name: "weekly", usedPercent: 48, resetsAt: null },
+          { name: "weekly Fable Sonnet", usedPercent: 100, resetsAt: null },
+        ],
+      }),
+      ["Claude weekly 48% used · 2h ago", "Claude weekly Fable Sonnet 100% used…"],
+    ],
   ];
   for (const [name, view, lines] of widthCases) {
     /**

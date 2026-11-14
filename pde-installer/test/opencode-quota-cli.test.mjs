@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { saveClaudeStatus } from "../../chezmoi/dot_config/opencode/pde-usage/quota/cli.js";
+import { readPlanFiles } from "../../chezmoi/dot_config/opencode/pde-usage/quota/store.js";
 import { makeFakeTools } from "./quota-fakes.mjs";
 
 const CLI = fileURLToPath(new URL("../../chezmoi/dot_config/opencode/pde-usage/quota/cli.js", import.meta.url));
@@ -91,5 +93,26 @@ describe("pde-quota", () => {
         lines: ["Claude weekly 48% used"],
       },
     ]);
+  });
+});
+
+describe("saveClaudeStatus", () => {
+  /**
+   * Claude Code runs the status line on every redraw. Without the one-minute
+   * wait, each redraw would rewrite the file and wake every OpenCode window.
+   */
+  test("skips same windows within a minute", (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "pde-quota-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const status = JSON.stringify({ rate_limits: { seven_day: { used_percentage: 48, resets_at: null } } });
+    const first = Date.UTC(2026, 10, 13, 9, 0);
+
+    saveClaudeStatus(status, { now: first, dir });
+    saveClaudeStatus(status, { now: first + 59_000, dir });
+    const early = readPlanFiles(dir)["claude-status-line"].checkedAt;
+    saveClaudeStatus(status, { now: first + 60_000, dir });
+    const late = readPlanFiles(dir)["claude-status-line"].checkedAt;
+
+    assert.deepEqual([early, late], [first, first + 60_000]);
   });
 });

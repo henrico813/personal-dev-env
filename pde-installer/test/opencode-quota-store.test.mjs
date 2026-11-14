@@ -78,6 +78,23 @@ describe("dueSources", () => {
     });
   }
 
+  /** Each case is a name, the time since a good check and whether it is due. */
+  const fiveMinuteCases = [
+    ["4m59s later, not due", 5 * MINUTE - 1000, []],
+    ["5m later, due", 5 * MINUTE, ["claude-usage"]],
+  ];
+  for (const [name, sinceMs, due] of fiveMinuteCases) {
+    /**
+     * Every OpenCode window asks for a refresh, so without the 5-minute wait
+     * each one would start `claude -p` about once a minute.
+     */
+    test(`asks good sources every 5 minutes, ${name}`, () => {
+      const files = { "claude-usage": usageFile({ checkedAt: NOW - sinceMs }) };
+
+      assert.deepEqual(dueSources(files, SETTINGS_ON, NOW), due);
+    });
+  }
+
   /**
    * Turning `quota_claude_usage_check` off is how the user stops the call
    * that skips their Claude Code settings, so it must stop every check.
