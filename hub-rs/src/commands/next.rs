@@ -86,10 +86,7 @@ enum News {
         session_id: String,
         tokens: u64,
     },
-    BoardOver {
-        busy: u32,
-        limit: u32,
-    },
+    BoardOver(BoardCounts),
     /// Sessions that became `state` for the same `why`.
     Finished {
         state: String,
@@ -261,7 +258,7 @@ fn run_minute_pass(
     // A `card` failure skips the board, as `hub status` shows it.
     let mut board = tools.cards.read_board().ok();
     if let Some(counts) = &board {
-        let is_over = counts.busy > counts.limit;
+        let is_over = counts.is_over();
         if !memory.board_known || (memory.board_over && !is_over) {
             record_board_state(run, counts, is_over, now)?;
         }
@@ -294,11 +291,11 @@ fn record_board_state(
     is_over: bool,
     now: &Zoned,
 ) -> Result<(), HubError> {
-    let (busy, limit) = (counts.busy, counts.limit);
+    let counts = counts.clone();
     let kind = if is_over {
-        EventKind::BoardOver { busy, limit }
+        EventKind::BoardOver { counts }
     } else {
-        EventKind::BoardUnder { busy, limit }
+        EventKind::BoardUnder { counts }
     };
     let event = Event {
         at: now.timestamp(),
@@ -467,13 +464,10 @@ fn choose_news(facts: &NewsFacts<'_>) -> Option<News> {
         });
     }
     if let Some(board) = facts.board
-        && board.busy > board.limit
+        && board.is_over()
         && !facts.memory.board_over
     {
-        return Some(News::BoardOver {
-            busy: board.busy,
-            limit: board.limit,
-        });
+        return Some(News::BoardOver(board.clone()));
     }
     if let Some(news) = find_unlisted_finished(facts.finished, facts.memory) {
         return Some(news);
@@ -556,9 +550,8 @@ fn record_news(news: &News) -> Option<EventKind> {
         News::HubHandOff { session_id, .. } => Some(EventKind::HubContextTold {
             session: session_id.clone(),
         }),
-        News::BoardOver { busy, limit } => Some(EventKind::BoardOver {
-            busy: *busy,
-            limit: *limit,
+        News::BoardOver(counts) => Some(EventKind::BoardOver {
+            counts: counts.clone(),
         }),
         News::Finished { state, names, .. } => Some(EventKind::Listed {
             state: state.clone(),
@@ -611,7 +604,7 @@ fn format_news_line(news: &News, hub_tokens: Option<u64>) -> String {
         News::HubHandOff { tokens, .. } => {
             format!("hand off now: hub at {}", format_tokens(Some(*tokens)))
         }
-        News::BoardOver { busy, limit } => format!("board over its limit: {busy}/{limit} {hub}"),
+        News::BoardOver(counts) => format!("board over its limit: {counts} {hub}"),
         News::Finished { state, names, why } => {
             format!("{state} {}: {why}; run hub clean", names.join(", "))
         }
@@ -646,7 +639,7 @@ fn format_news_json(news: &News, hub_tokens: Option<u64>) -> String {
         News::NotSent { name, reason } => ("not_sent", Some(name.clone()), Some(reason.clone())),
         News::Unsure { name, reason } => ("unsure", Some(name.clone()), Some(reason.clone())),
         News::HubHandOff { .. } => ("hand_off", None, None),
-        News::BoardOver { busy, limit } => ("board_over", None, Some(format!("{busy}/{limit}"))),
+        News::BoardOver(counts) => ("board_over", None, Some(counts.to_string())),
         News::Finished { state, names, why } => {
             (state.as_str(), Some(names.join(", ")), Some(why.clone()))
         }
@@ -848,9 +841,14 @@ mod tests {
             ),
             (
                 "board-over",
-                News::BoardOver { busy: 25, limit: 8 },
+                News::BoardOver(BoardCounts {
+                    active: 10,
+                    review: 18,
+                    active_limit: 8,
+                    review_limit: 6,
+                }),
                 Some(131_204),
-                r#"{"news":"board_over","name":null,"detail":"25/8","hub_context_tokens":131204}"#,
+                r#"{"news":"board_over","name":null,"detail":"active 10 of 8, review 18 of 6","hub_context_tokens":131204}"#,
             ),
         ];
 

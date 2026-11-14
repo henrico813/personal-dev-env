@@ -35,8 +35,9 @@ wait for the next report.
   `card move`, and links plans and PRs with `card link`.
 - Starts work. It starts `ready` cards oldest first, unless the user
   names one. Before starting one, it runs `card board`. When active
-  plus review is at the limit, it asks the user which card to finish
-  first.
+  is at its limit, it asks the user which card to finish first. When
+  review is full, it leaves finished cards in active and tells the
+  user.
 - Watches sessions with `fleet`. Each worker session is named after
   its card key, such as `pdev-kb-004-impl`.
 - Retires sessions. When a card is `accepted` or `dropped`, it closes
@@ -123,8 +124,8 @@ is missing, then renames the report to `report-<name>.read`.
 ## Set for the first week
 ---
 
-- The work limit is 8 cards in active plus review. The user revisits
-  it from that week's merges per day and the age of the oldest item
-  waiting on the user.
+- The limits are 8 cards in active and 6 in review. The user
+  revisits them from that week's merges per day and the age of the
+  oldest item waiting on the user.
 - Every session doing real work holds a card. A short chat, named
   `chat-<topic>`, does not.
