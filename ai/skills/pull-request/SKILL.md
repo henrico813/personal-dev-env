@@ -82,6 +82,14 @@ steps' defaults.
 
 1. Fetch and inspect the PR before editing. Keep each review round as one
    commit. Squash fixups within the current round before pushing.
+   Never amend or squash a commit you pushed. Add each later round as
+   a new commit, so the user sees what changed since their review.
+   `planner export` writes a plan's files into the worktree. After
+   it runs, commit only the lines that differ from the pushed branch.
+   - In a stack of pull requests, a child branch builds on a parent
+     branch. When the parent gets a new commit, bring that commit into
+     each child. The `auto-run` skill's `references/build.md` shows
+     how, under "Carry a parent's commit to a child".
 2. Write the round's commit message to COMMIT as a title, blank line, and
    short body without PR sections. Run `python3 ~/.agents/skills/git-messages/scripts/msg fmt COMMIT`, then
    `python3 ~/.agents/skills/git-messages/scripts/msg lint COMMIT`.

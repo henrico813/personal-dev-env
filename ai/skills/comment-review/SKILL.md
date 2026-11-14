@@ -26,7 +26,8 @@ commands below. Each takes `dir`, the checkout's absolute path.
 same JSON as the commands.
 
 The tool reads Go, Python and Rust comments. Show the comments of
-other languages to the user in the pull request or the chat instead.
+other languages to the user in the pull request instead. Never list
+comments in the chat for the user to answer.
 
 ## Steps
 
@@ -35,10 +36,11 @@ review's `status`, the `result`, an `error` with a `code` and a
 `message` when it refused, and `next`, the step to take.
 
 1. Never edit a comment the user approved, even when a plan says
-   to: ask to change it in step 3. Optional: before step 2, have a
-   fresh reviewer, such as a new agent session given only the changed
-   code, shorten or cut the comments you wrote the way the user's
-   earlier notes asked.
+   to: ask to change it in step 3. Before step 2, start a fresh
+   reviewer, such as a new agent session given only the changed code.
+   It shortens or cuts the comments you wrote, as the user's notes in
+   past comment reviews asked. When you cannot start one, say so in
+   your report.
 2. Run the comment check of the `code-documentation` skill until it
    reports no failures. `<task start>` is the commit your task
    started from:
@@ -131,4 +133,4 @@ review's `status`, the `result`, an `error` with a `code` and a
 
 If `glimmer` is not on `PATH`, tell the user that the
 comment review tool is not installed, and show the comments to the
-user in the pull request or the chat instead.
+user in the pull request instead.

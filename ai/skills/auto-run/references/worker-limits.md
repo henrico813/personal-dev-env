@@ -152,7 +152,7 @@ skills of your current step again.
   keep building other stacks, and end your turn when no stack can go
   on. After a blocker or finished work, end your turn at once. Update
   your status file and card before the report, never after. Never
-  prompt the hub, and never use an interactive question tool. A
+  prompt the hub. Ask questions as `ai/AGENTS.md` says. A
   question gives 2 or 3 choices, what each leads to, and your
   recommendation. Finished work gives the checks run, with results,
   and the checks not run. Progress-only news, such as a passed

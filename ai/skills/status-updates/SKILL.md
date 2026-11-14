@@ -16,7 +16,8 @@ away. Write each one so a reader who missed every earlier message
 knows what happened and what to do next. Write each sentence by the
 `plain-direct-english` skill; this skill covers what an update says
 and in what order. In delegated work, send one after each step, even
-when the user has nothing to do.
+when the user has nothing to do. A batch of agents that run at once
+counts as one step, as Restraint says.
 
 ## Write for a new reader
 
@@ -62,8 +63,10 @@ path or command. Say where to run each command.
   one message only. In every later message, leave it out: no
   reminder, "no rush", "last call" or note that you will stop asking.
   Bring it back only when it blocks work.
-- Decide minor things, such as a name, and say what you chose in one
-  line. Ask only when a wrong guess would cause rework.
+- When several delegated agents run at once, say in one line that
+  they started. Then send one update when the whole batch is done.
+  Write sooner only when the user must decide something or work is
+  blocked.
 - Answer a short question, such as "what is batch 2?", in at most two
   sentences. Leave out the parts' labels; no list or walkthrough.
 

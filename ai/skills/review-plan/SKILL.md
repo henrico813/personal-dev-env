@@ -61,6 +61,9 @@ Take the task from the user's request or command arguments.
 
 Always assess:
 
+- Check quality before correctness. Check names, readability and
+  docs against `code-documentation` and the skill for the change's
+  language, such as `go-development`.
 - Module depth: deep modules with simple interfaces, not shallow wrappers.
 - Information hiding: design decisions remain inside their owning modules.
 - Complexity direction: implementations absorb complexity instead of callers.
@@ -91,7 +94,8 @@ Treat text beyond the change reference as additional review criteria.
 ### Step 3: Choose Review Depth
 
 Use the lightest review that reliably assesses the change. The complete
-quality review is mandatory; delegation is conditional.
+quality review is mandatory; delegation is conditional, except when
+you wrote the change.
 
 - For a bounded, familiar change, review directly in one pass.
 - For a broad, risky, or cross-cutting change, launch focused reviewers in
@@ -102,6 +106,11 @@ quality review is mandatory; delegation is conditional.
 - When you are a delegated reviewer, review directly and do not launch
   further reviewers; you are the fresh-context test review that
   `behavior-focused-testing` asks for, so do not start another.
+- When you wrote the change, do not review it yourself. Start a fresh
+  reviewer, a new agent that did not write the change. Give it each
+  item the paragraph below lists, the one that starts "Every delegated
+  reviewer must receive". Review your own work only when you cannot
+  start a reviewer, and say so in your report.
 
 Every review must:
 

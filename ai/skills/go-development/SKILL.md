@@ -62,6 +62,12 @@ these defaults. Preserve package-wide consistency. Do not mix in a new style
 piecemeal or expand a small fix into a style migration. Explain a material
 conflict instead of silently ignoring it.
 
+In table-driven tests, write each case as a keyed struct literal,
+one `field: value` per line. Split a call or signature with several
+arguments into one argument per line, with a trailing comma. When you
+review code, keep both layouts. Never join such lines as a style
+migration.
+
 Preserve the guide's qualifications: "usually" is not "always," a soft limit is
 not a hard limit, and a performance suggestion is not a reason to optimize every
 path. Language correctness and the project's supported Go version take priority
