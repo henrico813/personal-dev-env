@@ -2,9 +2,10 @@
 
 Use this when an agent session in Herdr has been working for a while
 and has no card yet. **Adopting** makes a card that starts straight in
-`active` (a worker is on it) or `review` (the work waits only on
-you), instead of walking through `draft` and `ready`. Only you
-can adopt, so every command here passes `--user`.
+`active` (a worker is on it), `review` (the work waits only on
+you) or `waiting-on-others` (it waits only on people outside the
+team), instead of walking through `draft` and `ready`. Only you can
+adopt, so every command here passes `--user`.
 
 ## 1. Pick the stage
 ---
@@ -15,6 +16,9 @@ Read the session's pane or its latest report file.
   `active`.
 - The work waits only on you, such as an open pull request, a plan to
   approve or a question: adopt into `review`.
+- You reviewed the work and it waits only on people outside the team,
+  such as another team's reviewers: adopt into `waiting-on-others`,
+  with `--why` naming them, such as `--why "platform team's review"`.
 
 ## 2. Make the card
 ---
