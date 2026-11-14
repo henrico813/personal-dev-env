@@ -25,6 +25,9 @@ new_repo() {
 
 export PRIVATE_TERMS=$'zorblax\nquill pen'
 export PDE_PRIVATE_TERMS_FILE=$tmp/missing
+# The scan reads settings from the home folder, so the tests use their own.
+export HOME=$tmp/home
+mkdir -p "$HOME/.config/pde"
 
 # Names often appear inside longer words or wrapped across lines, and the
 # output lands in CI logs, so it must not repeat them.
@@ -103,5 +106,22 @@ status=0
 status=0
 (cd "$repo" && CI=true PRIVATE_TERMS='' bash ci/scan tree) >"$tmp/out" 2>&1 || status=$?
 [[ $status == 2 ]] || fail "CI without PRIVATE_TERMS must exit 2, got $status"
+
+# A PC can name a second list of terms in its settings. The scan finds
+# those terms like the others and never prints them.
+printf '# made-up product names\nfennick\n' >"$tmp/work-terms.txt"
+printf '{"work_terms_file": "%s"}\n' "$tmp/work-terms.txt" >"$HOME/.config/pde/config.json"
+printf 'Title\n\nClose FENNICK-12 first\n' >"$tmp/pr.md"
+if (cd "$repo" && bash ci/scan text "$tmp/pr.md") >"$tmp/out" 2>&1; then
+    fail "a work term in pull request text must fail"
+fi
+grep -qxF 'private-term text:3' "$tmp/out" || fail "missed the work term"
+! grep -qi 'fennick' "$tmp/out" || fail "the output repeats a work term"
+rm "$HOME/.config/pde/config.json"
+
+# A wrong path to the list must stop the scan, not skip the work terms.
+status=0
+(cd "$repo" && PDE_WORK_TERMS_FILE=$tmp/no-such-list bash ci/scan text "$tmp/pr.md") >"$tmp/out" 2>&1 || status=$?
+[[ $status == 2 ]] || fail "a missing work-term list must exit 2, got $status"
 
 echo "scan: ok"
