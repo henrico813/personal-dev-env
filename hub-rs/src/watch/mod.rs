@@ -8,17 +8,19 @@
 //! `hub next` line goes back to the hub, as a line its next `hub next`
 //! prints, and to the user's phone only when the hub is gone. The watch
 //! never types into a hub's pane, so the user's own chat gets nothing
-//! from it.
+//! from it. The phone also hears of each new failed or skipped
+//! `pde-installer update`.
 //!
 //! Its parts that no other command uses live beside it. `events` keeps
 //! its own kinds of line in the run's log, `wait` keeps workers' waits,
-//! and `background`, `process` and `phone` start the watch, check a
-//! PID and alert the phone.
+//! `update` reads the update's result, and `background`, `process` and
+//! `phone` start the watch, check a PID and alert the phone.
 
 pub mod background;
 mod events;
 mod phone;
 mod process;
+mod update;
 pub mod wait;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -170,7 +172,8 @@ impl RunWorkers {
     }
 }
 
-/// Takes the watch lock, then runs `check_once` every `poll`. A second
+/// Takes the watch lock, then runs `check_once` and passes on the last
+/// update's result every `poll`. A second
 /// watch, such as one systemd started while a `hub report` started
 /// another, waits here and takes over if the first ends. Each failure
 /// goes to `log` once while it lasts, and the next check runs, so a
@@ -194,10 +197,17 @@ pub fn run_watch(
     let mut last_failures = Vec::new();
     let mut checks = 0;
     while options.checks.is_none_or(|limit| checks < limit) {
-        let failures = match check_once(tools, options, &mut clock, &Zoned::now()) {
+        let mut failures = match check_once(tools, options, &mut clock, &Zoned::now()) {
             Ok(failures) => failures,
             Err(error) => vec![error.to_string()],
         };
+        // The update's notice needs no Herdr, so it goes out while Herdr
+        // is down too.
+        if let Err(error) =
+            update::pass_on_update_result(tools.state_folder, &folder, &options.notifier)
+        {
+            failures.push(error.to_string());
+        }
         // A lasting failure, such as Herdr being down, would otherwise
         // fill the log every few seconds.
         for failure in failures

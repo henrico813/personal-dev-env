@@ -507,6 +507,77 @@ fn run_watch_logs_herdr_error_then_continues() {
     assert_eq!(test_tools.herdr.marks.borrow().len(), 1);
 }
 
+/// Writes `update.json` in the state folder, as `pde-installer update`
+/// does.
+fn write_update_result(test_tools: &TestTools, result: &str, reason: &str, checked_at: &str) {
+    let update = json!({
+        "result": result,
+        "commit": "3f9c2e1a",
+        "reason": reason,
+        "checked_at": checked_at,
+    });
+    fs::write(
+        test_tools.state_folder().join("update.json"),
+        update.to_string(),
+    )
+    .unwrap();
+}
+
+/// A timer runs `pde-installer update` with no one watching, so the
+/// phone is the only place a failed update shows. The same failure
+/// every hour must not buzz the phone each time, even after the watch
+/// restarts, and a failure after an install is news again.
+#[test]
+fn run_watch_phones_once_per_failed_update() {
+    let test_tools = TestTools::new();
+    let notifier = test_tools.write_script("moshi-hook", "", "", 0);
+    let options = make_options(&test_tools, &notifier, 2);
+    let reason = "install: apt needs sudo";
+    let mut log = Vec::new();
+
+    // The same failure an hour later, after a restart, is no news.
+    write_update_result(&test_tools, "failed", reason, "2026-11-13T08:30:00Z");
+    run_watch(&test_tools.tools(), &options, &mut log).unwrap();
+    write_update_result(&test_tools, "failed", reason, "2026-11-13T09:30:00Z");
+    run_watch(&test_tools.tools(), &options, &mut log).unwrap();
+    // An install in between makes the same failure news again.
+    write_update_result(&test_tools, "installed", "", "2026-11-13T10:30:00Z");
+    run_watch(&test_tools.tools(), &options, &mut log).unwrap();
+    write_update_result(&test_tools, "failed", reason, "2026-11-13T11:30:00Z");
+    run_watch(&test_tools.tools(), &options, &mut log).unwrap();
+
+    let notice = [
+        "notify",
+        "--strict",
+        "--source",
+        "hub",
+        "--title",
+        "pde-installer update failed",
+        reason,
+    ];
+    assert_eq!(read_script_calls(&notifier), [notice, notice]);
+    assert!(log.is_empty(), "{}", String::from_utf8_lossy(&log));
+}
+
+/// Moshi refuses pushes past its rate limit. A refused update notice
+/// must stay unremembered and go again at the next check, or the only
+/// word of a skipped update is lost.
+#[test]
+fn run_watch_retries_refused_update_notice() {
+    let test_tools = TestTools::new();
+    let reason = "the checkout is on feat, not main";
+    write_update_result(&test_tools, "skipped", reason, "2026-11-13T08:30:00Z");
+    let refusing = test_tools.write_script("moshi-hook", "", "rate limit reached", 1);
+    let options = make_options(&test_tools, &refusing, 1);
+
+    run_watch(&test_tools.tools(), &options, &mut Vec::new()).unwrap();
+    test_tools.write_script("moshi-hook", "", "", 0);
+    run_watch(&test_tools.tools(), &options, &mut Vec::new()).unwrap();
+    run_watch(&test_tools.tools(), &options, &mut Vec::new()).unwrap();
+
+    assert_eq!(read_script_calls(&refusing).len(), 2);
+}
+
 /// OpenCode's background service can hand a tool command the
 /// `HERDR_PANE_ID` of another pane. The hub is found by its own session
 /// instead. Named from the pane, a worker would count as the run's

@@ -234,6 +234,9 @@ parse stops `install`, `doctor` and `list`. `systemctl --user list-timers
 pde-update.timer` shows the next run, and `journalctl --user -u
 pde-update.service` shows what each run printed.
 
+On a full install, `hub watch` reads `update.json` and sends the phone one
+notification for each new `skipped` or `failed` result.
+
 ## Global Option
 
 `--repo-root PATH` selects a checkout instead of using the environment or

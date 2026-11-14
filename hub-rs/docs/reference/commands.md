@@ -327,6 +327,13 @@ the last day. It never types into a hub's pane. Its lock and log are
 in `~/.local/state/pde/hub/`. The `hub-watch` systemd user unit keeps
 it running on full installs.
 
+The watch also reads `~/.local/state/pde/update.json`, which
+`pde-installer update` writes. For each new `failed` or `skipped`
+result it sends the phone one notification, titled
+`pde-installer update failed` or `pde-installer update skipped`, with
+the reason. The same result again sends nothing, even after a restart,
+since the watch keeps the last result in `hub/update-seen.json`.
+
 ### clean
 
 `hub clean [--run DIR] [--dry-run]` closes the tab of each `to-close`

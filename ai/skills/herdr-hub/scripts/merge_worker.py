@@ -4,13 +4,13 @@ merge-worker.sh runs this in its own session and saves what it prints
 as the summary the hub reads. It brings a branch that is behind its
 base up to date with a merge commit, runs merge_prep.py, sends the
 merge request through pde-gh-write, waits for the user's answer and
-prints the merge commit. With ``--install``, it then runs the install,
-so one local worker does the whole chore. Read ``merge_pull_request``
-first.
+prints the merge commit. With ``--update``, it then runs
+``pde-installer update``, so one local worker does the whole chore.
+Read ``merge_pull_request`` first.
 
 Example:
     python3 merge_worker.py 453 /tmp/job 'cd ai && uv run pytest' \
-        --install 'git pull --ff-only && pde-installer install'
+        --update
 """
 
 import argparse
@@ -46,26 +46,27 @@ def merge_pull_request(
     folder: Path,
     commands: list[str],
     remote: str | None,
-    install: str | None,
+    update: bool,
 ) -> int:
     """Update, check and merge PR number, printing each outcome.
 
     Stops at the first step that fails, so a conflict or a failed
-    check sends no merge request, and an unmerged PR installs nothing.
+    check sends no merge request, and an unmerged PR updates nothing.
 
     Args:
         number: Pull request number on GitHub.
         folder: Existing folder for ``prep/``, ``merge.log`` and
-            ``install.log``.
+            ``update.log``.
         commands: Test commands for merge_prep.py.
         remote: Git remote given with ``--remote``, or None for the
             repository's only remote.
-        install: Shell command to run after the merge, or None.
+        update: Whether to run ``pde-installer update`` after the
+            merge.
 
     Returns:
-        0 when the pull request merged and any install passed, 1 when
-        it did not merge or the install failed, and merge_prep.py's
-        code when it failed.
+        0 when the pull request merged and any update installed main,
+        1 when it did not merge or the update failed, and
+        merge_prep.py's code when it failed.
 
     Raises:
         subprocess.CalledProcessError: When git or gh fails.
@@ -91,30 +92,34 @@ def merge_pull_request(
         return 1
     commit = view_pr(number, "mergeCommit")["mergeCommit"] or {}
     print(f"merged: {commit.get('oid', 'unknown')}")
-    if install is None:
+    if not update:
         return 0
-    return run_install(install, folder / "install.log")
+    return run_update(folder / "update.log")
 
 
-def run_install(command: str, log: Path) -> int:
-    """Run the install command with bash and print whether it passed.
+def run_update(log: Path) -> int:
+    """Run ``pde-installer update`` and print its result.
+
+    The update moves the checkout that pde-installer installs from,
+    not the current folder, to the newest main and installs it.
 
     Args:
-        command: Shell command, such as
-            ``git pull --ff-only && pde-installer install``.
         log: File that gets the command's output.
 
     Returns:
-        0 when it passed, otherwise 1.
+        0 when the newest main is installed or already current,
+        otherwise 1.
     """
     with log.open("w") as output:
         code = subprocess.run(
-            ["bash", "-c", command], stdout=output, stderr=output
+            ["pde-installer", "update"], stdout=output, stderr=output
         ).returncode
+    # The update's last line gives its result, such as update current.
+    last = (log.read_text().strip().splitlines() or ["no output"])[-1]
     if code == 0:
-        print("install: passed")
+        print(last)
         return 0
-    print(f"install: failed with exit {code}; see install.log")
+    print(f"update: failed with exit {code}: {last}; see update.log")
     return 1
 
 
@@ -339,8 +344,8 @@ def main() -> int:
     """Merge the pull request and print what happened.
 
     Returns:
-        0 when it merged and any install passed, 1 when it did not
-        merge or the install failed, merge_prep.py's code when it
+        0 when it merged and any update installed main, 1 when it did
+        not merge or the update failed, merge_prep.py's code when it
         failed, and 2 when git or gh fails.
     """
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -348,7 +353,11 @@ def main() -> int:
     parser.add_argument("folder", type=Path, help="folder for the results")
     parser.add_argument("commands", nargs="+", help="test commands")
     parser.add_argument("--remote", help="git remote of the PR")
-    parser.add_argument("--install", help="shell command to run once merged")
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="run pde-installer update once merged",
+    )
     args = parser.parse_args()
     # merge_prep.py writes to the same summary, so lines go out in order.
     sys.stdout.reconfigure(line_buffering=True)
@@ -358,7 +367,7 @@ def main() -> int:
             args.folder,
             args.commands,
             args.remote,
-            args.install,
+            args.update,
         )
     except subprocess.CalledProcessError as error:
         detail = (error.stderr or "").strip().splitlines() or ["no output"]
