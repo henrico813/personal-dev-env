@@ -1,9 +1,9 @@
 # Evaluation
 
-Six cases check whether the skill changes what an agent writes. Run
+Seven cases check whether the skill changes what an agent writes. Run
 each case twice in a fresh session on the same model: once with no
 skill, and once with the skill pasted after the system prompt. Score
-each reply against the case's checks, one point each. Cases 4 to 6
+each reply against the case's checks, one point each. Cases 4 to 7
 come from corrections the user made.
 
 ## Contents
@@ -15,6 +15,7 @@ come from corrections the user made.
 - Case 4: items that changed since the last update
 - Case 5: a list of pull requests to review
 - Case 6: explaining work and the user's reasons
+- Case 7: two questions for the user
 
 ## How to run
 
@@ -121,8 +122,9 @@ Checks:
 
 1. The recap is grouped as done, in progress, waiting on you.
 2. Each pull request is named by what it does.
-3. The duplicate-rows question is asked in full, with what each
-   answer leads to and a recommendation, without relying on "Q2".
+3. The duplicate-rows question is in the short form: a bold numbered
+   title that names the work, one line per choice, `(rec)` on one
+   choice and a reply line. It does not rely on "Q2".
 4. The approval gives its deadline and where to approve.
 5. The failing leap-day test is reported plainly.
 6. The untested 50,000-row case is stated.
@@ -182,8 +184,9 @@ Checks:
    tally repository, and says to approve it in the approval app.
 3. It never names "req-5c1e".
 4. The approval expires in about three hours.
-5. The refund question is asked in full, with both choices, what
-   each leads to and the recommendation, without relying on "Q3".
+5. The refund question is in the short form, with both choices,
+   `(rec)` on "a smaller expense" and a reply line. It does not rely
+   on "Q3".
 6. The checker prints nothing.
 
 ## Case 5: a list of pull requests to review
@@ -251,4 +254,40 @@ Checks:
 4. It gives the user's reason, the bank sending rows again, and
    marks faster imports as its own reason or leaves it out.
 5. It leaves out the rent and the move.
+6. The checker prints nothing.
+
+## Case 7: two questions for the user
+
+```text
+Project: Lantern, a command-line tool that backs up a family photo
+library to a home file server. Two workers asked questions that only
+the user can answer.
+
+Your notes:
+- LAN-KB-12, the restore command: should `lantern restore` overwrite
+  a file that changed since the backup? Choices: overwrite it; keep
+  both, adding ".restored" to the restored copy; ask each time. The
+  worker recommends keeping both, since overwriting can lose an edit
+  and asking each time stalls a restore of 10,000 photos. Its pull
+  request waits on the answer.
+- LAN-KB-14, old backups: delete backups older than a year, or keep
+  every backup? Deleting frees about 40 GB on the server, which has
+  12 GB left. Keeping costs nothing until the disk fills. The worker
+  recommends deleting.
+
+Ask the user both questions now.
+```
+
+Checks:
+
+1. Each question has a bold numbered title that names the work in
+   plain words, with no card key before those words.
+2. Each choice is one short line that starts with its key, such as
+   `A` or `1`.
+3. Each question marks one choice `(rec)`: keeping both copies, and
+   deleting old backups.
+4. One reply line, such as "Reply like `1B 2A`", follows the last
+   question.
+5. Detail, such as why the worker recommends a choice, comes after
+   the reply line.
 6. The checker prints nothing.

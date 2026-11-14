@@ -6,7 +6,8 @@ description: Writes status updates, progress reports, recaps and
   reports only checked results, and has no AI filler. Use for any
   update to the user, including the update after each step of
   delegated work, a recap after time away, and a short answer about
-  an earlier update.
+  an earlier update. Also use for every question to the user, which
+  it asks in a short form made for a phone.
 metadata:
   scope: personal
 ---
@@ -20,6 +21,13 @@ knows what happened and what to do next. Write each sentence by the
 and in what order. In delegated work, send one after each step, even
 when the user has nothing to do. A batch of agents that run at once
 counts as one step, as Restraint says.
+
+Every question to the user, in an update or on its own, takes the
+short form in
+[references/waiting-on-you.md](references/waiting-on-you.md). A
+question on its own also passes the checker in Review before sending.
+It names the project only when the user may not know which work it
+is about.
 
 ## Write for a new reader
 
@@ -79,8 +87,11 @@ message, fix each miss, and send it only when every check passes:
 
 1. Each sentence passes the Final checks of `plain-direct-english`.
 2. The checker prints nothing. It adds the limits in
-   [references/phone-limits.md](references/phone-limits.md) to the
-   `plain-direct-english` checks. Without `draft.md`, it reads stdin:
+   [references/phone-limits.md](references/phone-limits.md) and the
+   question form in
+   [references/waiting-on-you.md](references/waiting-on-you.md) to
+   the `plain-direct-english` checks. Without `draft.md`, it reads
+   stdin:
 
    ```bash
    python3 ~/.agents/skills/status-updates/scripts/check_update.py draft.md
@@ -89,7 +100,8 @@ message, fix each miss, and send it only when every check passes:
 3. A new reader knows every label in the update.
 4. The user's actions come early, each with its link. Each file's
    command opens that file, not its card.
-5. Every question and approval still waiting is in the update.
+5. Every question and approval still waiting is in the update, and
+   each question is in the short form.
 6. You checked every number, and the update names what you did not.
 7. The update repeats no side item that an earlier message raised.
 
@@ -105,9 +117,10 @@ message, fix each miss, and send it only when every check passes:
 
 Follow every lesson in the Lessons section below. Each is a correction
 the user made, so a lesson wins when it disagrees with the text above.
-When the user corrects how you write an update, recap or handoff,
-follow [skill-lessons](../skill-lessons/SKILL.md) with the skill name
-`status-updates`, and offer once to save the correction as a lesson.
+When the user corrects how you write an update, recap, handoff or
+question, follow [skill-lessons](../skill-lessons/SKILL.md) with the
+skill name `status-updates`, and offer once to save the correction as
+a lesson.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

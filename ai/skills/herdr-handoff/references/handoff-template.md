@@ -1,8 +1,16 @@
 # Handoff Template
 
-Copy this outline into the handoff file and fill each part. Leave out
-a part with nothing in it. Keep the reader in mind: a new session that
-knows nothing of this one, and may reread the file after compaction.
+Copy the outline in the code block below into the handoff file and
+fill each part. Leave out a part with nothing in it. Keep the reader
+in mind: a new session that knows nothing of this one, and may reread
+the file after compaction.
+
+## Contents
+
+The outline's parts, in order: the title and opening lines, The
+project, What happened, What the user decided, Your work, Questions
+for the user, Coordination, Rules for the files you edit, and
+Appendix.
 
 ```markdown
 # Handoff: <the work, in a few words>
@@ -45,9 +53,11 @@ waiting on the user.>
 
 ## Questions for the user
 
-<Each open question, the choices, and this session's proposal. The
-new session asks these first. When a hub runs, the new session
-writes them to its report file instead.>
+<Each open question word for word, with its choices, the choice this
+session recommends and why. The new session asks these first, in the
+short form of the `status-updates` skill. When the handoff names a
+report file, the new session writes them there in full instead, as
+Coordination says.>
 
 ## Coordination
 

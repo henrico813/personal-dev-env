@@ -20,8 +20,8 @@ parts:
 - The work in order: propose a new layout for the design and wait for
   a yes, gather the pending design edits into one section, then
   change the build skill in a pull request stacked on an open one.
-- Open questions inside the task they belong to, each with the old
-  session's proposal.
+- Open questions inside the task they belong to, each with the choice
+  the old session recommends.
 - Coordination, the part that kept the two sessions apart:
 
   ```markdown

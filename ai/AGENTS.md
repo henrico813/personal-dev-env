@@ -33,11 +33,11 @@
   Say what you chose in one line and continue. Ask only when a wrong
   guess would cause rework.
 - When a short message can mean more than one thing, ask before you
-  answer. Ask in one line, and offer two or three readings to pick
-  from.
-- Ask the user questions as plain numbered text in your reply. Never
-  use a tool that shows the user a question with clickable choices,
-  such as `question`; the user cannot answer one on a phone.
+  answer, and offer two or three readings to pick from.
+- Ask the user questions as plain text in your reply, in the short
+  form of the `status-updates` skill. Never use a tool that shows the
+  user a question with clickable choices, such as `question`; the
+  user cannot answer one on a phone.
 - Before you offer to write a wrapper script, read the `--help` of
   the installed tools. One of them may already do the job.
 
@@ -84,8 +84,9 @@
   `session-review` skill.
 - When the user types `conclude-session` or asks to close out or
   wrap up a session, load and follow the `conclude-session` skill.
-- When writing a status update, progress report, recap or handoff
-  message to the user, load and follow the `status-updates` skill.
+- When writing a status update, progress report, recap, handoff
+  message or question to the user, load and follow the
+  `status-updates` skill.
 - When asked to hand work to a new session in Herdr, or to prepare
   long, repetitive work for a cheaper or local model, load and follow
   the `herdr-handoff` skill.
