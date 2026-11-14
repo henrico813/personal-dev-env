@@ -48,8 +48,9 @@ pub trait Cards {
     fn read_cards(&self, keys: &[CardKey]) -> Vec<Result<CardNote, CardError>> {
         keys.iter().map(|key| self.read_card(key)).collect()
     }
-    /// Returns the board's counts and their limits.
-    fn read_board(&self) -> Result<BoardCounts, CardError>;
+    /// Returns the board's counts, their limits and the cards that wait
+    /// on others.
+    fn read_board(&self) -> Result<Board, CardError>;
     /// Adds one line to the card's Log.
     fn add_note(&self, key: &CardKey, text: &str) -> Result<(), CardError>;
     /// Adds a live agent's session ID to the card's sessions list.
@@ -138,10 +139,14 @@ impl Cards for CardCli {
         notes
     }
 
-    fn read_board(&self) -> Result<BoardCounts, CardError> {
+    fn read_board(&self) -> Result<Board, CardError> {
         let printed = self.run_card(&["board"])?;
-        parse_board_counts(&printed)
-            .ok_or_else(|| CardError::Failed("card board printed no counts".to_owned()))
+        let counts = parse_board_counts(&printed)
+            .ok_or_else(|| CardError::Failed("card board printed no counts".to_owned()))?;
+        Ok(Board {
+            counts,
+            waiting: parse_waiting_cards(&printed),
+        })
     }
 
     fn add_note(&self, key: &CardKey, text: &str) -> Result<(), CardError> {
@@ -224,6 +229,9 @@ pub enum Stage {
     Ready,
     Active,
     Review,
+    /// Waits only on people outside the team, such as another team's
+    /// reviewers. No limit counts it.
+    WaitingOnOthers,
     Accepted,
     Dropped,
 }
@@ -236,6 +244,7 @@ impl Stage {
             Stage::Ready => "ready",
             Stage::Active => "active",
             Stage::Review => "review",
+            Stage::WaitingOnOthers => "waiting-on-others",
             Stage::Accepted => "accepted",
             Stage::Dropped => "dropped",
         }
@@ -249,6 +258,7 @@ impl Stage {
             Stage::Ready,
             Stage::Active,
             Stage::Review,
+            Stage::WaitingOnOthers,
             Stage::Accepted,
             Stage::Dropped,
         ]
@@ -318,6 +328,46 @@ impl fmt::Display for BoardCounts {
             "active {} of {}, review {} of {}",
             self.active, self.active_limit, self.review, self.review_limit
         )
+    }
+}
+
+/// What `card board` gives.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Board {
+    pub counts: BoardCounts,
+    /// The waiting-on-others cards, oldest first.
+    pub waiting: Vec<WaitingCard>,
+}
+
+impl Board {
+    /// Returns a line such as `waiting-on-others 2, oldest 8 days`, or
+    /// `None` when no card waits on others.
+    pub fn waiting_line(&self) -> Option<String> {
+        let oldest = self.waiting.iter().map(|card| card.days).max()?;
+        Some(format!(
+            "waiting-on-others {}, oldest {}",
+            self.waiting.len(),
+            format_days(oldest)
+        ))
+    }
+}
+
+/// A card in the waiting-on-others stage, from `card board`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WaitingCard {
+    pub key: CardKey,
+    /// Whole days since the card moved to the stage.
+    pub days: u32,
+    pub title: String,
+    /// Who the card waits on, from the move's `--why`, or empty.
+    pub reason: String,
+}
+
+/// Returns `1 day` or `N days`.
+pub fn format_days(days: u32) -> String {
+    match days {
+        1 => "1 day".to_owned(),
+        _ => format!("{days} days"),
     }
 }
 
@@ -459,9 +509,91 @@ fn parse_board_counts(text: &str) -> Option<BoardCounts> {
     })
 }
 
+/// Reads the `WAITING-ON-OTHERS` list of `card board` text. Each card
+/// is a `- KEY N days` line, then its title and its reason, each
+/// indented two spaces. A board without the list gives none.
+fn parse_waiting_cards(text: &str) -> Vec<WaitingCard> {
+    let mut lines = text
+        .lines()
+        .skip_while(|line| !line.starts_with("WAITING-ON-OTHERS"))
+        .skip(1)
+        .take_while(|line| !line.trim().is_empty())
+        .peekable();
+    let mut cards = Vec::new();
+    while let Some(line) = lines.next() {
+        let Some(entry) = line.strip_prefix("- ") else {
+            continue;
+        };
+        let mut words = entry.split_whitespace();
+        let key = words.next().and_then(|word| word.parse().ok());
+        let days = words.next().and_then(|word| word.parse().ok());
+        let mut details = Vec::new();
+        while let Some(detail) = lines.next_if(|next| next.starts_with("  ")) {
+            details.push(detail.trim().to_owned());
+        }
+        let (Some(key), Some(days)) = (key, days) else {
+            continue;
+        };
+        let mut details = details.into_iter();
+        cards.push(WaitingCard {
+            key,
+            days,
+            title: details.next().unwrap_or_default(),
+            reason: details.next().unwrap_or_default(),
+        });
+    }
+    cards
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `hub status` and `hub brief` show each waiting card's days and
+    /// reason from this list, and a `card` from before the stage prints
+    /// none. A card read wrong tells the user the wrong team to chase.
+    #[test]
+    fn parse_waiting_cards_reads_list_or_none() {
+        let board = "active 3 of 8, review 2 of 6\n\
+                     waiting-on-others 2, oldest 8 days\n\
+                     \n\
+                     REVIEW, oldest first (2)\n\
+                     - DEMO-KB-001 2026-11-02\n  \
+                       Fix the docs\n\
+                     \n\
+                     WAITING-ON-OTHERS, oldest first (2)\n\
+                     - DEMO-KB-003 8 days\n  \
+                       Retry failed uploads\n  \
+                       platform team's review\n\
+                     - DEMO-KB-009 1 day\n  \
+                       Add a cache\n";
+        let old_board = "active 3 of 8, review 2 of 6\n\
+                         \n\
+                         REVIEW, oldest first (2)\n\
+                         - DEMO-KB-001 2026-11-02\n  \
+                           Fix the docs\n";
+
+        let waiting = parse_waiting_cards(board);
+
+        assert_eq!(
+            waiting,
+            [
+                WaitingCard {
+                    key: "DEMO-KB-003".parse().unwrap(),
+                    days: 8,
+                    title: "Retry failed uploads".to_owned(),
+                    reason: "platform team's review".to_owned(),
+                },
+                WaitingCard {
+                    key: "DEMO-KB-009".parse().unwrap(),
+                    days: 1,
+                    title: "Add a cache".to_owned(),
+                    reason: String::new(),
+                },
+            ]
+        );
+        assert_eq!(parse_waiting_cards(old_board), []);
+    }
 
     /// `hub brief` and `hub status` print the board line from these
     /// counts, and the user decides from it whether to review before
