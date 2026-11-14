@@ -53,7 +53,8 @@ names the owner instead of copying it, such as "open it with the
 - Detail that only some runs need: a file in `references/`. Link it
   from SKILL.md and say when to read it. Give a reference over 100
   lines a Contents list. Keep the SKILL.md body under 500 lines by
-  moving such detail there.
+  moving such detail there. Both numbers come from Anthropic's "Skill
+  authoring best practices".
 - A step a program can do or check: a script in `scripts/`, tested in
   `ai/tests/`. Make the script handle its errors and say what went
   wrong.
@@ -81,13 +82,15 @@ other copy with a pointer.
   whether it means something new.
 - Wrap each prose line you add or change at 72 columns. Code blocks,
   table rows, headings and a line that holds only one long link may be
-  longer. Leave lines you did not change as they are.
+  longer. Leave lines you did not change as they are. At 72 columns a
+  phone shows each line whole.
 - Leave out task details, such as plan and card IDs, pull request
   numbers and dates. Name a repository only when a step must run in
   it. The skill's reader was not part of the task, so these details
   tell them nothing.
 - Write the description in the third person. Say what the skill does
-  and when to use it, in under 1024 characters.
+  and when to use it, in under 1024 characters, the most the Agent
+  Skills format allows.
 - Keep made-up skill names and example links inside code blocks. The
   check script reads names and links in the text as real ones.
 - Give a new skill the sections it needs from this list, in this
@@ -107,21 +110,33 @@ other copy with a pointer.
    Read the Lessons section of each one's installed copy in
    `~/.agents/skills/` too, since a lesson wins over the text.
 2. Place each rule you add or change as "Where a rule goes" says.
-3. For a new skill, name its folder in lowercase words joined by
-   hyphens, and give its frontmatter the same `name`. Give a skill
-   that runs a whole workflow, such as `create-plan`, the frontmatter
-   `pde-workflow: "true"` under `metadata:`. Vibe runs agents that
-   each do one task, so it leaves those skills out. Every skill also
-   gets `scope: personal` under `metadata:`. In a repository that
-   keeps its skills in a top-level `skills` folder, it gets
-   `scope: work` instead. The check script refuses a missing or
-   wrong tag.
-   - Add its files to Git, and its routing line to `ai/AGENTS.md`.
-   - List it everywhere the repository's own `AGENTS.md` says a new
-     skill goes, such as install lists and READMEs.
-   - Add `references/evaluation.md` with at least three cases, each
-     also run with no skill to compare.
-4. Run the check from the checkout's top folder, with the commit your
+3. For a new skill, also do what "Add a new skill" says.
+4. Check and review the change, and open the pull request, as "Check
+   and review a change" says.
+
+## Add a new skill
+
+A new skill needs these on top of the steps in "Change a skill":
+
+- Name its folder in lowercase words joined by hyphens, and give its
+  frontmatter the same `name`.
+- Give a skill that runs a whole workflow, such as `create-plan`, the
+  frontmatter `pde-workflow: "true"` under `metadata:`. Vibe runs
+  agents that each do one task, so it leaves those skills out.
+- Give every skill `scope: personal` under `metadata:`. In a
+  repository that keeps its skills in a top-level `skills` folder, it
+  gets `scope: work` instead. The check script refuses a missing or
+  wrong tag.
+- Add its files to Git, and its routing line to `ai/AGENTS.md`.
+- List it everywhere the repository's own `AGENTS.md` says a new
+  skill goes, such as install lists and READMEs.
+- Add `references/evaluation.md` with at least three cases, each also
+  run with no skill to compare. Anthropic's "Skill authoring best
+  practices" asks for three.
+
+## Check and review a change
+
+1. Run the check from the checkout's top folder, with the commit your
    branch started from:
 
    ```bash
@@ -133,15 +148,11 @@ other copy with a pointer.
    place of `main`. Fix every error. For each repeat, replace the copy
    with a pointer to its owner, or write down why it stays. The pull
    request gives that reason in Changes.
-5. Run the checks in `ai/evals/skill-routing.md` when its opening says
+2. Run the checks in `ai/evals/skill-routing.md` when its opening says
    to.
-6. Get the two reviews in "Review a skill change". Check the change
-   yourself against Final checks instead when you cannot start another
-   agent. Do the same when another agent gave you this task and did
-   not ask you to start reviewers. Then say in your report that the
-   fresh reviews did not run, so whoever gave you the task arranges
-   them. Open the pull request with the `pull-request` skill only
-   after both reviews ran.
+3. Get the two reviews in "Review a skill change".
+4. Open the pull request with the `pull-request` skill only after both
+   reviews ran.
 
 ## Turn saved lessons into skill text
 
@@ -168,8 +179,8 @@ Do this only when the user asks, as `skill-lessons` says.
    from one of its lessons. It reads no other file, so check by hand
    that a rule you put in another file copies no five words in a row
    from its lesson.
-4. Run the check script, the routing checks and the reviews, and open
-   the pull request, as steps 4 to 6 of "Change a skill" say.
+4. Check and review the change, and open the pull request, as "Check
+   and review a change" says.
 5. After the pull request merges, retire the lessons:
 
    ```bash
@@ -185,7 +196,14 @@ Do this only when the user asks, as `skill-lessons` says.
 ## Review a skill change
 
 The author of the change starts two fresh agents. Neither one wrote
-the change, and neither one starts another agent.
+the change, and neither one starts another agent. The two find
+different problems: one compares the change with the other skills,
+and the other reads it as someone who never saw the task.
+
+When another agent gave you this task and did not ask you to start
+reviewers, start none. Check the change yourself against Final checks
+instead. Then say in your report that the fresh reviews did not run,
+so whoever gave you the task arranges them.
 
 1. A consistency reviewer gets the diff, the check script's output and
    `ai/AGENTS.md`. It reads every skill on the same topics as the
@@ -235,8 +253,10 @@ that output reports the missing output as a finding.
   no `ai/skills` or `skills` folder, say so. Then check by hand each
   error that the `check_skills` docstring in `scripts/skill_check.py`
   lists. The consistency reviewer reports repeats.
-- If you cannot start another agent, do as step 6 of "Change a skill"
-  says.
+- If you cannot start another agent, check the change yourself
+  against Final checks instead of the two reviews. Then say in your
+  report that the fresh reviews did not run, so whoever gave you the
+  task arranges them.
 - If `skill-lessons` is not installed, turn no lessons into skill
   text, and say so.
 
@@ -247,7 +267,6 @@ that output reports the missing output as a finding.
 - Each rule you added has one owner, and every other mention points
   to it.
 - Each reference file is linked from SKILL.md with when to read it.
-- Each prose line you added or changed is at most 72 columns.
 - A new skill is listed everywhere the repository's `AGENTS.md` says
   a new skill goes.
 - Both reviews ran, or your report says they did not.
