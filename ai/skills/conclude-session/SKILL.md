@@ -95,9 +95,9 @@ everything that changed:
    default branch, as your instructions say. Edit only there. Make
    each skill edit as "Change a skill" in the `skill-development`
    skill says, including its two reviews. Commit with the
-   `git-messages` skill. Step 6 of "Change a skill" says when to open
-   the pull request. Open it with the
-   [pull-request](../pull-request/SKILL.md) skill. A rules file in
+   `git-messages` skill. The skill-development section "Check and
+   review a change" says when to open the pull request. Open it with
+   the [pull-request](../pull-request/SKILL.md) skill. A rules file in
    another repository gets its own branch and pull request there.
    When another session owns a rules file, send it the change
    instead, as session-review says.
