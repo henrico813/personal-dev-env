@@ -72,7 +72,7 @@ pub(crate) fn read_feed(runs: &[&RunFolder], time_zone: &TimeZone) -> Vec<FeedLi
             found.push((modified, name, unread));
         }
     }
-    found.sort_by(|left, right| right.0.cmp(&left.0));
+    found.sort_by_key(|(modified, _, _)| std::cmp::Reverse(*modified));
     found
         .into_iter()
         .take(FEED_LENGTH)
