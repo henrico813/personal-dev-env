@@ -22,6 +22,11 @@ limits discoverable where callers look.
 Tests and fixtures get docstrings too, as the "Python rules" section
 of the `code-documentation` skill says.
 
+Every function that takes arguments gets an argument section, such as
+`Args:`, helpers and fixtures included. A one-line docstring is not
+enough for them. Never cut an `Args:`, `Returns:` or `Raises:` section
+to shorten a change, even when it repeats the signature.
+
 ## PEP 257 docstring conventions
 
 Adapted and condensed from [PEP 257 — Docstring Conventions](https://peps.python.org/pep-0257/),

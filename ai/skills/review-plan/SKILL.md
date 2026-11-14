@@ -94,7 +94,8 @@ Treat text beyond the change reference as additional review criteria.
 ### Step 3: Choose Review Depth
 
 Use the lightest review that reliably assesses the change. The complete
-quality review is mandatory; delegation is conditional.
+quality review is mandatory; delegation is conditional, except when
+you wrote the change.
 
 - For a bounded, familiar change, review directly in one pass.
 - For a broad, risky, or cross-cutting change, launch focused reviewers in

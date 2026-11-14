@@ -73,7 +73,9 @@
   work with `review-plan` when it applies.
 - When the user says "put this in my notes", or asks to add something
   to the daily note, without naming another note, load and follow the
-  `obsidian-daily-note` skill. Do not ask which notes they mean.
+  `obsidian-daily-note` skill. Do not ask which notes they mean, even
+  though the message is short; the skill asks when the default vault
+  has no daily note.
 - When asked for an auto run, or to build several pull requests of
   an approved roadmap without the user reviewing each step, load and
   follow the `auto-run` skill.

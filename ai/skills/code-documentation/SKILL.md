@@ -239,9 +239,10 @@ must stay true and what a user or caller loses if it breaks, beyond
 what the test's name already says. Keep the language's docstring form,
 such as Python's summary line and paragraph.
 
-Give every test helper and fixture, private ones included, a one-line
-doc that says what it stands for, such as "A config file with no
-version line."
+Give every test helper and fixture, private ones included, at least a
+one-line doc that says what it stands for, such as "A config file with
+no version line." A language skill may ask for more, such as an
+argument section.
 
 ## Docs folders
 
@@ -423,11 +424,6 @@ win:
 - Follow a test's summary with a paragraph on why the test matters.
 - Never invent a docstring section, such as `Why it matters:`; write a
   plain paragraph instead.
-- A one-line doc is not enough for a helper or fixture that takes
-  arguments. Give it the argument section of its docstring format,
-  such as `Args:`.
-- Never cut an `Args:`, `Returns:` or `Raises:` section to shorten a
-  change, even when it repeats the signature.
 
 For Python files you add or change, `check-comments` also checks
 these rules, only in code your task added or changed. Changing any
@@ -445,8 +441,8 @@ Before declaring source or test work complete, check:
 - new prose does not merely repeat the code
 - stated reasons are supported
 - test explanations match what the assertions prove
-- every test has a short doc, and every test helper and fixture a
-  one-line doc
+- every test has a short doc, and every test helper and fixture at
+  least a one-line doc
 - the amount of documentation fits the code's complexity and risk
 - for Go, Python or Rust files, `check-comments` reports no
   failures, and each `verb-first` finding is renamed or, for a real

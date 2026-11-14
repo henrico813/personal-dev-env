@@ -17,8 +17,7 @@ knows what happened and what to do next. Write each sentence by the
 `plain-direct-english` skill; this skill covers what an update says
 and in what order. In delegated work, send one after each step, even
 when the user has nothing to do. A batch of agents that run at once
-counts as one step: a one-line note when it starts, and one update
-when it is done.
+counts as one step, as Restraint says.
 
 ## Write for a new reader
 

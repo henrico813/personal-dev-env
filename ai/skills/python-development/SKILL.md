@@ -225,8 +225,13 @@ the project environment so imports resolve, and separate new errors from existin
 ones. Use `python -m pytest` when the project does not use uv. Use pyright or
 basedpyright only when configured by the repository.
 
-To run tests once on another Python version, use `uv run --isolated
---python 3.12 pytest`. `uv run --python` without `--isolated` replaces
+To run tests once on another Python version, use:
+
+```bash
+uv run --isolated --python 3.12 pytest
+```
+
+`uv run --python` without `--isolated` replaces
 the project's `.venv`. Later `uv run` calls then test on that version
 too.
 
