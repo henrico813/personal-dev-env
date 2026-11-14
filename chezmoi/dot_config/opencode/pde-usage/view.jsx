@@ -244,7 +244,7 @@ function watchPlanFiles({ quotaDir, rateLimitFile, now = Date.now }) {
       files = readPlanFiles(quotaDir);
       saved = readJsonFile(rateLimitFile);
     }
-    setViews(pickProviderViews(files, readClaudeLimit(saved, now()), settings, now()));
+    setViews(pickProviderViews(files, readClaudeLimit(saved, now())));
     if (dueSources(files, settings, now()).length > 0 && now() - lastStartAt >= REFRESH_START_GAP_MS) {
       lastStartAt = now();
       startRefresh();

@@ -7,8 +7,6 @@ import { describePlanLines, levelOf } from "../../chezmoi/dot_config/opencode/pd
 const NOW = Date.UTC(2026, 10, 13, 9, 0);
 const WEEK_END = Date.UTC(2026, 10, 18, 2, 0);
 const MINUTE = 60_000;
-/** Settings with Claude Code's usage request on, as the default is. */
-const SETTINGS = { claudeUsageCheck: "on" };
 
 /** A Claude plan file from `source`, at 48% weekly, with fields a test can override. */
 const claudeFile = (source, fields = {}) => ({
@@ -42,7 +40,7 @@ describe("pickProviderViews", () => {
   test("hides providers without login", () => {
     const files = { "claude-usage": claudeFile("claude-usage", { checkedAt: null, windows: [], lastError: { at: NOW, code: "no-login" } }) };
 
-    assert.deepEqual(pickProviderViews(files, undefined, SETTINGS, NOW), []);
+    assert.deepEqual(pickProviderViews(files, undefined), []);
   });
 
   /** A status-line number from 2 minutes ago must beat a usage answer from 2 hours ago. */
@@ -52,7 +50,7 @@ describe("pickProviderViews", () => {
       "claude-status-line": claudeFile("claude-status-line", { checkedAt: NOW - 2 * MINUTE }),
     };
 
-    const [view] = pickProviderViews(files, undefined, SETTINGS, NOW);
+    const [view] = pickProviderViews(files, undefined);
 
     assert.equal(view.source, "claude-status-line");
   });
@@ -81,8 +79,8 @@ describe("describePlanLines", () => {
   /** Each case is a name, the view and the lines expected. */
   const widthCases = [
     [
-      "failed check drops note",
-      claudeView(120, { failed: "timeout", note: "may change" }),
+      "failed check shows reset date",
+      claudeView(120, { failed: "timeout" }),
       ["Claude weekly 48% used · 2h ago", "  check failed · resets Nov 18"],
     ],
     [

@@ -6,24 +6,21 @@ import { join } from "node:path";
 /**
  * @typedef {{provider: import("./store.js").Provider, source: import("./store.js").Source | null,
  *   checkedAt: number | null, failed: import("./store.js").ErrorCode | null, limitedUntil?: number,
- *   windows: import("./store.js").PlanWindow[],
- *   spent?: import("./store.js").Spent & {budgetDollars: number | null, usedPercent: number | null},
- *   note?: string}} ProviderView
+ *   windows: import("./store.js").PlanWindow[]}} ProviderView
  */
 
-const PROVIDER_ORDER = ["claude", "copilot", "codex"];
+const PROVIDER_ORDER = ["claude"];
 // These say the machine has no such plan, so the provider shows no line.
 const HIDDEN_CODES = new Set(["no-tool", "no-login", "no-plan"]);
 
 /**
- * Returns the views to show, in the order Claude, Copilot, Codex. Each
+ * Returns the views to show, one per provider. Each
  * provider shows its newest good answer among its sources. A provider with
  * no good answer shows `check failed`, unless its newest error says the
  * machine has no tool, login or plan for it, or it was never checked; then
- * it shows nothing. `claudeLimit` adds Claude's hard limit. `settings` and
- * `now` are for Copilot's budget, which Claude does not use.
+ * it shows nothing. `claudeLimit` adds Claude's hard limit.
  */
-export function pickProviderViews(files, claudeLimit, settings, now) {
+export function pickProviderViews(files, claudeLimit) {
   return PROVIDER_ORDER.flatMap((provider) => {
     const view = pickView(provider, Object.values(files).filter((file) => file.provider === provider));
     if (provider === "claude" && claudeLimit !== undefined) {
@@ -54,7 +51,7 @@ function pickView(provider, files) {
   if (good) {
     // A failure newer than the shown number is reported under it.
     const failed = good.lastError && good.lastError.at > good.checkedAt ? good.lastError.code : null;
-    return { provider, source: good.source, checkedAt: good.checkedAt, failed, windows: good.windows, ...(good.note && { note: good.note }) };
+    return { provider, source: good.source, checkedAt: good.checkedAt, failed, windows: good.windows };
   }
   const newest = files.filter((file) => file.lastError).sort((a, b) => b.lastError.at - a.lastError.at)[0];
   if (!newest || HIDDEN_CODES.has(newest.lastError.code)) return undefined;

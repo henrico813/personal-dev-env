@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { readSettings } from "../../chezmoi/dot_config/opencode/pde-usage/quota/settings.js";
 import {
   askClaudeUsage,
   readClaudeStatusWindows,
@@ -122,3 +123,22 @@ function makeEmptyDir(t) {
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
+
+describe("readSettings", () => {
+  /** Each case is a name, what `pde-installer setting get` does, and the setting expected. */
+  const settingCases = [
+    ["off is kept", () => "off\n", "off"],
+    ["unknown value is on", () => "maybe\n", "on"],
+    ["failed command is on", () => { throw new Error("unknown command"); }, "on"],
+  ];
+  for (const [name, run, expected] of settingCases) {
+    /**
+     * Turning the check off is how the user stops the call that skips their
+     * Claude Code settings, and a pde-installer without the setting must
+     * still check.
+     */
+    test(`reads quota_claude_usage_check, ${name}`, () => {
+      assert.deepEqual(readSettings({ run }), { claudeUsageCheck: expected });
+    });
+  }
+});

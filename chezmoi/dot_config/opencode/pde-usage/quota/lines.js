@@ -4,7 +4,7 @@
 
 /** @typedef {{text: string, level: "normal" | "warning" | "error"}} PlanLine */
 
-const PROVIDER_NAMES = { claude: "Claude", copilot: "Copilot", codex: "Codex" };
+const PROVIDER_NAMES = { claude: "Claude" };
 const PARTS = " · ";
 // A newer number than this needs no age, since checks run every 5 minutes.
 const AGE_SHOWN_MS = 10 * 60_000;
@@ -14,7 +14,7 @@ const SCOPED_SHOWN_PERCENT = 50;
 /**
  * Returns the lines for `views`, each within `width`. Each window gets a
  * line with its used share, and its age from 10 minutes, over a line with
- * `check failed`, its reset and any note, keeping as many as fit. A window
+ * `check failed` and its reset, keeping as many as fit. A window
  * that has reset since its check reads `unknown`. `timeZone` defaults to
  * the machine's own.
  */
@@ -35,9 +35,9 @@ export function describePlanLines(views, { now, width = 37, timeZone } = {}) {
       }
       const age = now - view.checkedAt >= AGE_SHOWN_MS ? `${PARTS}${formatAge(now - view.checkedAt)}` : "";
       lines.push({ text: cut(`${name} ${window.name} ${Math.round(window.usedPercent)}% used${age}`, width), level: levelOf(window.usedPercent) });
-      const short = Boolean(view.failed || view.note);
+      const short = Boolean(view.failed);
       const resets = window.resetsAt !== null && `resets ${formatReset(window.resetsAt, now, timeZone, short)}`;
-      const below = fitParts([view.failed && "check failed", resets, view.note].filter(Boolean), width);
+      const below = fitParts([view.failed && "check failed", resets].filter(Boolean), width);
       if (below !== "") lines.push(normal(below, width));
     }
     return lines;

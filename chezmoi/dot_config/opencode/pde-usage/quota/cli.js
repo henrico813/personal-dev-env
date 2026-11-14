@@ -90,7 +90,7 @@ export async function main(argv, { env = process.env, now = Date.now, stdin = pr
 export function showPlans({ now, width = 37, mode = "lines", dir, settings }) {
   const current = settings ?? readSettings();
   const files = readPlanFiles(dir);
-  const views = pickProviderViews(files, readClaudeLimit(readJsonFile(claudeLimitPath()), now), current, now);
+  const views = pickProviderViews(files, readClaudeLimit(readJsonFile(claudeLimitPath()), now));
   if (dueSources(files, current, now).length > 0) startRefresh();
   if (mode === "json") {
     const replies = views.map((view) => ({

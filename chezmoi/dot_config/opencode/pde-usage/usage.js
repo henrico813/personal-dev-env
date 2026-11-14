@@ -17,8 +17,8 @@ const PARTS = " · ";
 const CATALOG_URL = "https://models.dev/api.json";
 const CATALOG_TIMEOUT_MS = 10_000;
 
-/** OpenCode provider IDs whose use counts against a plan, such as `github-copilot` to `copilot`. */
-export const PLAN_PROVIDERS = { "claude-code": "claude", "github-copilot": "copilot", openai: "codex" };
+/** OpenCode provider IDs whose use counts against a plan, such as `claude-code` to `claude`. */
+export const PLAN_PROVIDERS = { "claude-code": "claude" };
 
 /**
  * Returns the subagents under a session, largest first, with their total
@@ -92,7 +92,7 @@ export function describeGroupLines(priced, planLines) {
 
 /**
  * Returns the plan providers a session group used, from its subagents' and
- * its own model providers, such as `["claude", "copilot"]`.
+ * its own model providers, such as `["claude"]`.
  */
 export function listPlanProvidersUsed(priced, rootProviderID) {
   const providerIDs = [rootProviderID, ...(priced?.rows ?? []).map((row) => row.providerID)];

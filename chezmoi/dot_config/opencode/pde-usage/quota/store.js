@@ -7,17 +7,15 @@ import { appendFileSync, mkdirSync, readdirSync, readFileSync, renameSync, statS
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-/** @typedef {"claude" | "copilot" | "codex"} Provider */
-/** @typedef {"claude-usage" | "claude-status-line" | "copilot-github" | "copilot-counted" | "codex-app-server"} Source */
+/** @typedef {"claude"} Provider */
+/** @typedef {"claude-usage" | "claude-status-line"} Source */
 /** @typedef {"no-tool" | "no-login" | "no-plan" | "timeout" | "unreachable" | "empty-answer" | "bad-answer"} ErrorCode */
 /** @typedef {{name: string, usedPercent: number, resetsAt: number | null}} PlanWindow */
-/** @typedef {{dollars: number, since: number}} Spent */
 /**
  * @typedef {{version: 1, provider: Provider, source: Source, checkedAt: number | null,
- *   windows: PlanWindow[], spent?: Spent, lastError: {at: number, code: ErrorCode} | null,
- *   note?: "may change"}} PlanFile
+ *   windows: PlanWindow[], lastError: {at: number, code: ErrorCode} | null}} PlanFile
  */
-/** @typedef {{ok: true, windows: PlanWindow[], spent?: Spent} | {ok: false, code: ErrorCode}} CheckResult */
+/** @typedef {{ok: true, windows: PlanWindow[]} | {ok: false, code: ErrorCode}} CheckResult */
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -27,13 +25,10 @@ const DAY = 24 * HOUR;
 export const SOURCE_PROVIDERS = {
   "claude-usage": "claude",
   "claude-status-line": "claude",
-  "copilot-github": "copilot",
-  "copilot-counted": "copilot",
-  "codex-app-server": "codex",
 };
 
 // The sources `pde-quota refresh` asks, how often, and whether settings turn
-// each on. Copilot and Codex join this table when their askers do.
+// each on.
 const ASKED_SOURCES = {
   "claude-usage": { everyMs: 5 * MINUTE, isOn: (settings) => settings.claudeUsageCheck === "on" },
 };
@@ -83,7 +78,7 @@ export function mergeCheck(old, source, result, now) {
   const base = { version: 1, provider: SOURCE_PROVIDERS[source], source, checkedAt: null, windows: [], lastError: null };
   if (!result.ok) return { ...base, ...old, lastError: { at: now, code: result.code } };
   const windows = result.windows.map((window) => ({ ...window, usedPercent: Math.min(100, Math.max(0, window.usedPercent)) }));
-  return { ...base, checkedAt: now, windows, ...(result.spent && { spent: result.spent }) };
+  return { ...base, checkedAt: now, windows };
 }
 
 /**

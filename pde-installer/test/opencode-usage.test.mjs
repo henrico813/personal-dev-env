@@ -200,11 +200,17 @@ test("describeGroupLines plan without subagents", () => {
   assert.deepEqual(describeGroupLines(priced(), []), [], "no plan");
 });
 
-/** A machine that runs Copilot through OpenCode shows no plan in its sidebar unless that use counts. */
-test("listPlanProvidersUsed maps Copilot use", () => {
-  const group = priced(row({ providerID: "github-copilot" }), row({ providerID: "ollama" }));
+/**
+ * The sidebar shows the Claude plan only for a session that used it, so a
+ * Claude subagent under a local-model session must count, and no Claude use
+ * must not.
+ */
+test("listPlanProvidersUsed finds Claude subagents", () => {
+  const withClaude = priced(row({ providerID: "claude-code" }), row({ providerID: "ollama" }));
+  const withoutClaude = priced(row({ providerID: "ollama" }));
 
-  assert.deepEqual(listPlanProvidersUsed(group, "claude-code"), ["claude", "copilot"]);
+  assert.deepEqual(listPlanProvidersUsed(withClaude, "ollama"), ["claude"]);
+  assert.deepEqual(listPlanProvidersUsed(withoutClaude, "ollama"), []);
 });
 
 /**
