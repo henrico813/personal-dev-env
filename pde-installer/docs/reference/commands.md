@@ -226,6 +226,14 @@ and `current`, `update` prints `update <result>: main is at <commit>`.
 Otherwise it exits with an error that gives the result and reason. A second
 update started while one runs exits at once with an error.
 
+On a full install, `pde-update.timer` runs `update` 15 minutes after it starts,
+at boot or install, and then once an hour. To change how often, set
+`update_interval` in `config.json` to a Go duration of at least a minute, such
+as `"6h"` or `"90m"`; the next `install` applies it. A value that does not
+parse stops `install`, `doctor` and `list`. `systemctl --user list-timers
+pde-update.timer` shows the next run, and `journalctl --user -u
+pde-update.service` shows what each run printed.
+
 On a full install, `hub watch` reads `update.json` and sends the phone one
 notification for each new `skipped` or `failed` result.
 

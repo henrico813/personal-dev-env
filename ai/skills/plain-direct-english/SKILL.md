@@ -12,17 +12,14 @@ description: Writes and reviews English prose so each sentence has one
 
 Write sentences a reader understands on the first pass. A sentence is
 hard to read when it packs many conditions onto one main clause or
-leaves the reader guessing who does what.
-
-Follow stricter rules from the repository or another loaded skill
-first. For code comments, `code-documentation` sets the length, colon
-and opening-verb rules, and those win over the steps below.
+leaves the reader guessing who does what. Stricter rules from the
+repository or another loaded skill win, such as the comment rules of
+`code-documentation`.
 
 ## Write a clear sentence
 
 1. Name the one fact this sentence gives the reader.
-2. Pick one subject, the thing that acts or is described, and put it
-   first.
+2. Put one subject first: the thing that acts or is described.
 3. Give it one main claim with an active verb, such as "The parser
    rejects ...".
 4. Move each extra condition into its own short sentence. If a length
@@ -32,108 +29,67 @@ and opening-verb rules, and those win over the steps below.
    code does with a plain present verb, such as "rejects" or "allows".
 6. Check the result against the patterns in
    [reference/dense-sentence-patterns.md](reference/dense-sentence-patterns.md).
+   They also cover a doc comment that opens with a verb.
 
-A doc comment may open with a verb and no subject, such as
-"Returns ...". Name the subject in every later sentence, because the
-sentence before it may have a different subject.
+## Write for a reader new to the work
+
+Assume the reader did not follow the task and knows none of its
+labels. Explain each project term, short name or ID the first time a
+text uses it, or write plain words in its place. Write "the pull
+request that skips copied files", not "P2".
 
 ## Cut AI filler
 
-- Filler words, such as "comprehensive", "robust", "seamless",
-  "leverage" and "ensure". Bad: "A robust fix to ensure seamless
-  resumes." Better: "Resuming skips files already copied."
-- Hedges. Bad: "This should probably fix it, I think." Better: "The
-  new test passes. I did not run it on Windows."
-- Restating the question. Bad: "You asked what batch 2 is. Batch 2
-  is ..." Better: "Batch 2 is ..."
-- "Great question" and other praise. Bad: "Great question! Batch 2
-  ..." Better: "Batch 2 ..."
-- Closing offers. Bad: "Let me know if you want any changes!"
-  Better: end on the last fact or the next step.
-- Summaries of summaries. Bad: "In summary, two PRs are ready" after
-  the list that says so. Better: cut it.
-- Emojis, including check marks and warning signs. Bad: a check-mark
-  emoji before "Merged". Better: "Merged".
-- The words "canonical" and "contract". Bad: "the canonical config",
-  "the API contract". Better: "the main config", "what the API
-  accepts".
+Cut filler words, such as "robust" and "ensure". Cut hedges, praise
+and closing offers. Cut a restated question and a summary of what the
+text above already says. Cut emojis and the words "canonical" and
+"contract".
+[reference/ai-filler.md](reference/ai-filler.md) shows a bad and a
+better version of each; read it when you are not sure a phrase is
+filler.
 
-## Break down a hard sentence
+Run the checker on each draft message, doc or pull request text
+before you send it, and fix each line it prints. It cannot find a
+restated question or a summary, so look for those yourself. If it
+cannot run, check the list above yourself. Leave out the file to read
+stdin:
 
-When the user asks why a sentence is hard to read, take it apart in
-this order:
-
-1. Quote each sentence on its own.
-2. Name the main clause and its subject. Say so when the subject is
-   missing and what the reader would have to guess.
-3. List the modifiers attached to the main clause and what each one
-   limits.
-4. Note the voice and any modal. Point out passive voice that hides
-   who acts and "must" that turns a description into a requirement.
-5. Check agreement, such as a singular subject with a plural
-   complement, and each "and" or "or" that could join two different
-   kinds of thing.
-6. Check each claim about code against the code, and report any claim
-   the code does not support.
-7. Propose a rewrite that keeps every requirement of the original.
-
-Explain each grammar term in plain words the first time you use it.
-Keep the answer short, as in this example:
-
-```text
-Sentence 2: "Reports a problem for every bad item and rename together"
-- Subject: missing. The sentence before is about "Each old", so the
-  reader has to guess that the function reports.
-- "and": "every bad item and rename" could mean bad renames or every
-  rename. The code checks each rename pair, so bad renames.
-Rewrite: "The parser reports every bad item and every bad rename in
-one run."
+```bash
+python3 ~/.agents/skills/plain-direct-english/scripts/check_sentences.py draft.md
 ```
 
 ## Guardrails
 
-- Keep the meaning. When the original can be read two ways, show both
-  readings and ask, rather than picking one.
-- Add no claim about code that you have not checked.
+- Keep the meaning and every requirement. When the original reads
+  two ways, show both readings and ask, rather than picking one.
+- Add no claim about code that you have not checked. When you cannot
+  read the code a sentence describes, say the sentence is unchecked.
 - Never edit a comment the owner approved. Propose the rewrite through
-  the `comment-review` skill.
-- Rewrite only the text the user asked about. A typo fix is just the
-  fix.
+  `comment-review`, or in your reply when that skill is not installed.
+- Rewrite only what the user asked about. A typo fix is just the fix.
 - When the user gives you wording for a comment, doc or PR text, use
   it as written. Change it only to fix a factual error, such as a
   wrong parameter name, or to pass a checker, and tell the user each
   change. If it breaks a rule no checker enforces, keep it and name
   the rule once. If it can be read two ways, ask.
-- Make no grammar claim the reference pages do not support. Call a
-  choice that is about readability a readability choice.
-
-## When a tool is missing
-
-- If you cannot read the code a sentence describes, say its claims are
-  unchecked.
-- If `comment-review` is not installed, show the proposed rewrite in
-  your reply and leave the comment as it is.
 
 ## Final checks
 
-- Each sentence has one subject and one main claim.
-- Every sentence after the first names who acts.
-- Each subject matches its complement in number.
-- Each "and" or "or" joins one kind of thing.
-- Passive voice appears only where who acts does not matter.
-- "must" marks only real requirements.
-- The rewrite keeps every requirement, and its claims match the code.
-- Code comments still meet the `code-documentation` limits.
-- No filler word, hedge, closing offer, emoji or banned word is left.
+- No filler is left. No sentence has a pattern from
+  [dense-sentence-patterns.md](reference/dense-sentence-patterns.md).
+- The checker printed nothing, or your reply says it did not run.
 
 ## Reference
 
-- [reference/grammar-terms.md](reference/grammar-terms.md): read when
-  you need a term's meaning and an example, such as subject, modifier,
-  determiner or passive voice.
+- [reference/sentence-breakdown.md](reference/sentence-breakdown.md):
+  read when the user asks why a sentence is hard to read.
+- [reference/grammar-terms.md](reference/grammar-terms.md): read
+  when you need a grammar term's meaning and an example.
 - [reference/dense-sentence-patterns.md](reference/dense-sentence-patterns.md):
-  read when reviewing or rewriting a sentence, for each pattern that
+  read when writing or reviewing a sentence, for each pattern that
   makes one dense, with a bad and a better version.
+- [reference/evaluation.md](reference/evaluation.md): read only when
+  testing or revising this skill.
 
 ## Remembering corrections
 

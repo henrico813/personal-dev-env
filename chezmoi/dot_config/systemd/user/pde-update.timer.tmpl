@@ -1,0 +1,14 @@
+{{- if not (index .pde "updateInterval") -}}
+{{ fail "this pde-installer is too old for the update timer; rebuild it with go build -C pde-installer -o ~/.local/bin/pde-installer ." }}
+{{- end -}}
+[Unit]
+Description=Install the newest main on a schedule
+
+[Timer]
+# Counts from when the timer starts, so enabling it during an install waits.
+OnActiveSec=15min
+# update_interval in ~/.config/pde/config.json sets this at the next install.
+OnUnitActiveSec={{ .pde.updateInterval }}
+
+[Install]
+WantedBy=timers.target
