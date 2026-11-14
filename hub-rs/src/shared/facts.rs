@@ -103,7 +103,13 @@ pub(crate) fn collect_session_facts(
         .filter(|key| {
             matches!(
                 stages.get(key),
-                Some(Stage::Draft | Stage::Ready | Stage::Active | Stage::Review)
+                Some(
+                    Stage::Draft
+                        | Stage::Ready
+                        | Stage::Active
+                        | Stage::Review
+                        | Stage::WaitingOnOthers
+                )
             )
         })
         .collect::<BTreeSet<_>>()
@@ -347,12 +353,12 @@ fn read_report_facts(name: &str, reported: &ReportedNames, memory: &Memory) -> R
 
 /// Tells whether a session could be parked or closed, so git must
 /// look first. Only an idle or done session on this machine needs it,
-/// and only when its card is in review, accepted or dropped, or when
-/// it has no card and a read report.
+/// and only when its card is in review, waiting on others, accepted or
+/// dropped, or when it has no card and a read report.
 fn needs_git_check(agent: &Agent, stage: Option<Stage>, report_read: bool) -> bool {
     let is_free = matches!(agent.status, AgentStatus::Idle | AgentStatus::Done);
     let could_finish = match stage {
-        Some(Stage::Review | Stage::Accepted | Stage::Dropped) => true,
+        Some(Stage::Review | Stage::WaitingOnOthers | Stage::Accepted | Stage::Dropped) => true,
         Some(Stage::Draft | Stage::Ready | Stage::Active) => false,
         None => report_read,
     };
