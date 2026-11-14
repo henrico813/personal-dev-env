@@ -30,7 +30,7 @@ repository or another loaded skill win, such as the comment rules of
 5. Use "must" only for a rule the reader has to follow. Describe what
    code does with a plain present verb, such as "rejects" or "allows".
 6. Check the result against the patterns in
-   [reference/dense-sentence-patterns.md](reference/dense-sentence-patterns.md).
+   [references/dense-sentence-patterns.md](references/dense-sentence-patterns.md).
    They also cover a doc comment that opens with a verb.
 
 ## Write for a reader new to the work
@@ -46,7 +46,7 @@ Cut filler words, such as "robust" and "ensure". Cut hedges, praise
 and closing offers. Cut a restated question and a summary of what the
 text above already says. Cut emojis and the words "canonical" and
 "contract".
-[reference/ai-filler.md](reference/ai-filler.md) shows a bad and a
+[references/ai-filler.md](references/ai-filler.md) shows a bad and a
 better version of each; read it when you are not sure a phrase is
 filler.
 
@@ -78,19 +78,19 @@ python3 ~/.agents/skills/plain-direct-english/scripts/check_sentences.py draft.m
 ## Final checks
 
 - No filler is left. No sentence has a pattern from
-  [dense-sentence-patterns.md](reference/dense-sentence-patterns.md).
+  [dense-sentence-patterns.md](references/dense-sentence-patterns.md).
 - The checker printed nothing, or your reply says it did not run.
 
 ## Reference
 
-- [reference/sentence-breakdown.md](reference/sentence-breakdown.md):
+- [references/sentence-breakdown.md](references/sentence-breakdown.md):
   read when the user asks why a sentence is hard to read.
-- [reference/grammar-terms.md](reference/grammar-terms.md): read
+- [references/grammar-terms.md](references/grammar-terms.md): read
   when you need a grammar term's meaning and an example.
-- [reference/dense-sentence-patterns.md](reference/dense-sentence-patterns.md):
+- [references/dense-sentence-patterns.md](references/dense-sentence-patterns.md):
   read when writing or reviewing a sentence, for each pattern that
   makes one dense, with a bad and a better version.
-- [reference/evaluation.md](reference/evaluation.md): read only when
+- [references/evaluation.md](references/evaluation.md): read only when
   testing or revising this skill.
 
 ## Remembering corrections
