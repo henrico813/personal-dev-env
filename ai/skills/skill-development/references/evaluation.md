@@ -1,6 +1,7 @@
 # Evaluation
 
-Three cases check whether the skill changes where an agent puts a
+The five cases below check whether the skill changes how a new
+skill says when not to use it, where an agent puts a
 rule and what a reviewer of a skill change finds. Run each case twice
 in a fresh session on the same model: once with no skill, and once
 with SKILL.md pasted after the system prompt. Score each reply
@@ -12,6 +13,8 @@ against the case's checks, one point each.
 - Case 1: a rule another skill owns
 - Case 2: a review that finds a conflict
 - Case 3: saved lessons for two skills
+- Case 4: a new skill near another skill's task
+- Case 5: a review of a rule with no reason
 
 ## How to run
 
@@ -143,3 +146,55 @@ Checks:
 6. L1 and L2 are retired only after the pull request merges, with
    `--after-push`.
 7. Nothing is written into a Lessons section by hand.
+
+## Case 4: a new skill near another skill's task
+
+```text
+The repository keeps agent skills in ai/skills/. One skill matters
+here.
+
+ai/skills/commit-notes/SKILL.md:
+---
+name: commit-notes
+description: Writes commit messages and checks the code before a
+  commit. Use before any commit.
+---
+
+The user writes: "Add a skill, release-notes, that drafts the notes
+for a release from the commit messages since the last tag. Show its
+SKILL.md."
+```
+
+Checks:
+
+1. The description, or a line near the top, says when not to use
+   release-notes.
+2. That line names commit-notes as the skill that writes commit
+   messages.
+3. release-notes adds no rule on how to write a commit message.
+4. Each added line is at most 72 columns.
+
+## Case 5: a review of a rule with no reason
+
+```text
+You are the new-reader reviewer of a change to the skill
+garden-plan. You get only this diff, not the task. Review it.
+
+--- a/ai/skills/garden-plan/SKILL.md
++++ b/ai/skills/garden-plan/SKILL.md
+@@ -12,2 +12,5 @@ ## Plan the beds
+ 1. List the beds the user names.
+ 2. Give each bed one crop.
++3. Never put tomatoes in a bed that held potatoes last year.
++4. Water each bed in the morning, so the leaves dry before night
++   and mildew has less time to grow.
+```
+
+Checks:
+
+1. The review reports that step 3 gives no reason.
+2. It asks for a short reason beside step 3, and does not state one
+   as fact.
+3. It does not report step 4, whose reason is beside it.
+4. It gives the file and line of each finding.
+5. No filler words, hedges or closing offer.
