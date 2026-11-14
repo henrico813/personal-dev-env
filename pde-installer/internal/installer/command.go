@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -263,5 +264,20 @@ func reconcile(config config, runner run.Runner) error {
 	if err := refreshOpenCodeServers(config.Home, runner); err != nil {
 		return fmt.Errorf("refresh OpenCode servers: %w", err)
 	}
+	// Runs last, so a failed install keeps the old shell.
+	setLoginShell(config, runner)
 	return nil
+}
+
+// Makes zsh the current user's login shell, and only warns when that fails.
+// The install is done by then, and an account outside /etc/passwd or a sudo
+// with no terminal would fail the same way on every run.
+func setLoginShell(config config, runner run.Runner) {
+	account, err := user.Current()
+	if err == nil {
+		err = ubuntu.New(config.Profile, config.Desktop, runner).SetLoginShell(account.Username)
+	}
+	if err != nil {
+		fmt.Fprintf(runner.Err(), "warning: login shell stays unchanged: %v\n", err)
+	}
 }

@@ -22,6 +22,13 @@ when no saved or legacy selection exists. An explicit selection is saved in
 `paths.env` state or a config containing `install_path` without `profile` is
 legacy full state and is saved during the next install.
 
+Every selection makes zsh the login shell. After the install succeeds, when the
+passwd entry names another shell, install runs `sudo usermod -s` with the zsh
+on `PATH`; `--dry-run` prints that command. When `/etc/shells` does not list
+that zsh, or any step fails, install warns and leaves the shell alone. New
+logins and terminals that read the login shell start zsh. Herdr and tmux servers
+keep the old shell until they restart.
+
 `install i3` or `install sway` saves that desktop as `desktop` in `config.json`,
 next to the saved profile, which it keeps. With no saved or legacy profile, it exits
 before any change and says to install a profile first. Installing a profile, and

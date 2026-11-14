@@ -7,7 +7,7 @@
 | Operating system | Ubuntu 22.04 or newer |
 | Kernel platform | Linux |
 | Architecture | amd64 |
-| User | Non-root; sudo access is required for missing apt packages |
+| User | Non-root; sudo access is required for missing apt packages and the login shell change |
 
 Mutating commands reject UID 0. `doctor` also reports UID 0 as a problem.
 
@@ -35,6 +35,7 @@ full profile manages all paths in this table. The installer checks that managed
 destinations stay under `HOME`. Journal files also stay under `HOME`;
 `XDG_STATE_HOME` does not move them.
 
-The exception to user-local writes is apt. `sudo apt-get update` and
-`sudo apt-get install` change system package state, and journals do not roll
-those changes back. `fc-cache -f` refreshes the font cache outside rollback.
+The exceptions to user-local writes are apt and the login shell.
+`sudo apt-get update` and `sudo apt-get install` change system package state,
+and `sudo usermod -s` changes the passwd entry. Journals do not roll these
+changes back. `fc-cache -f` refreshes the font cache outside rollback.

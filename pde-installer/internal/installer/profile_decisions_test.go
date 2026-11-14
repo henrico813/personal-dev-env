@@ -37,6 +37,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"migrate legacy PDE configuration",
 				"preview chezmoi changes",
 				"refresh OpenCode server environment",
+				"set login shell to zsh",
 			},
 			packages: []string{
 				"ca-certificates",
@@ -76,6 +77,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"preview chezmoi changes",
 				"render skill lessons when skill-lessons is installed",
 				"refresh OpenCode server environment",
+				"set login shell to zsh",
 			},
 			packages: []string{
 				"ca-certificates",
@@ -126,6 +128,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"build, verify, and atomically activate complete blink.cmp plugin tree",
 				"render skill lessons when skill-lessons is installed",
 				"refresh OpenCode server environment",
+				"set login shell to zsh",
 			},
 			packages: []string{
 				"build-essential",
@@ -316,7 +319,7 @@ func TestDryRunAddsDesktopToProfile(t *testing.T) {
 					sudo = append(sudo, strings.Join(strings.Fields(command)[:2], " "))
 				}
 			}
-			if want := []string{"apt-get update", "apt-get install"}; !slices.Equal(sudo, want) {
+			if want := []string{"apt-get update", "apt-get install", "usermod -s"}; !slices.Equal(sudo, want) {
 				t.Errorf("sudo commands = %q, want %q", sudo, want)
 			}
 		})
@@ -344,6 +347,7 @@ func writeMissingPackagesBin(t *testing.T) string {
 		"apt-get":    "#!/bin/sh\nexit 0\n",
 		"sudo":       "#!/bin/sh\nexit 0\n",
 		"dpkg-query": "#!/bin/sh\nexit 1\n",
+		"getent":     "#!/bin/sh\nprintf '%s\\n' 'tester:x:1000:1000::/nonexistent:/bin/bash'\n",
 	} {
 		testfile.WriteExecutable(t, filepath.Join(bin, name), script)
 	}

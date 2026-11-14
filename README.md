@@ -57,8 +57,9 @@ See the
 [command reference](pde-installer/docs/reference/commands.md) for details.
 
 Mutating commands reject UID 0. The installer uses `sudo apt-get` for missing
-Ubuntu dependencies. Other managed files stay below `HOME`. Use `--dry-run` to
-preview ordered work without making changes.
+Ubuntu dependencies, and `sudo usermod` to make zsh your login shell when it is
+not. Other managed files stay below `HOME`. Use `--dry-run` to preview ordered
+work without making changes.
 
 The installer saves which checkout it installed from in
 `~/.config/pde/config.json`. To tell Neovim and nobs where your Obsidian
@@ -219,7 +220,8 @@ repository and are never committed or printed.
 
 - An existing Git checkout and Go are required to build `pde-installer`.
 - Ubuntu 22.04 or newer on Linux amd64 is required.
-- Use an unprivileged user with `sudo` access for missing apt packages.
+- Use an unprivileged user with `sudo` access for missing apt packages and
+  the login shell change.
 - `vibe run` additionally expects Docker plus provider auth via env vars or `~/.pi/agent/auth.json`.
 
 ## Installer Tests
