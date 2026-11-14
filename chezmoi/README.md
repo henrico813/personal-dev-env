@@ -217,7 +217,7 @@ See the [maintenance guide](../pde-installer/docs/how-to/update-chezmoi-content.
 ## Agent GitHub approvals
 
 The full profile makes agents ask you before they write to a pull request; see
-the [approval docs](../pdev2/docs/README.md).
+the [approval docs](../pdev/docs/README.md).
 
 ## Comment review
 

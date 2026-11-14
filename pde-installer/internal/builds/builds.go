@@ -665,14 +665,14 @@ func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []bu
 		},
 		{
 			name:   "pde-gh-write",
-			source: filepath.Join(m.RepoRoot, "pdev2"),
+			source: filepath.Join(m.RepoRoot, "pdev"),
 			output: filepath.Join(stageRoot, "pde-gh-write"),
 			command: run.Command{
 				Name: goBinary,
 				Args: []string{
 					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "pde-gh-write"), ".",
 				},
-				Dir: filepath.Join(m.RepoRoot, "pdev2"), Env: environment,
+				Dir: filepath.Join(m.RepoRoot, "pdev"), Env: environment,
 			},
 			alias: approveAlias,
 			// pde-gh-write has no side-effect-free help mode, so it has no verifyArg.

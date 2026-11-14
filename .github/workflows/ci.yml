@@ -47,17 +47,17 @@ jobs:
         run: make check
       - run: go test -race -count=3 ./...
 
-  pdev2:
+  pdev:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: pdev2
+        working-directory: pdev
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: pdev2/go.mod
-          # The cache is keyed on go.sum, which pdev2 lacks: it has no dependencies.
+          go-version-file: pdev/go.mod
+          # The cache is keyed on go.sum, which pdev lacks: it has no dependencies.
           cache: false
       - run: go test -race -count=3 ./...
       - run: go vet ./...
