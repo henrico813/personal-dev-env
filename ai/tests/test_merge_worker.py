@@ -187,7 +187,7 @@ def run_worker(job: Job, *options: str) -> subprocess.CompletedProcess:
     Args:
         job: The run to start.
         options: Options after the test command, such as
-            ``--install``.
+            ``--update``.
 
     Returns:
         The finished script.
@@ -354,19 +354,31 @@ def test_merge_worker_waits_through_unanswered_request(tmp_path: Path) -> None:
     assert summary.endswith("merged: 5eed\nexit: 0\ndone\n")
 
 
-def test_merge_worker_stops_when_user_declines(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "options",
+    [
+        pytest.param((), id="plain"),
+        pytest.param(("--update",), id="update"),
+    ],
+)
+def test_merge_worker_stops_when_user_declines(
+    tmp_path: Path, options: tuple[str, ...]
+) -> None:
     """pde-gh-write's exit 4 means the user said no, so the script stops.
 
     A rerun of a declined request reads the same refusal again and
     again with no pause, and the hub must hear that the user said no
-    instead of waiting on a loop.
+    instead of waiting on a loop. With --update, a declined merge must
+    not install either, since main does not hold the pull request.
     """
     job = make_job(tmp_path, READY_PREP, exits="4 0")
+    write_fake_installer(tmp_path, "update installed: main is at 5eed", 0)
 
-    result = run_worker(job)
+    result = run_worker(job, *options)
 
     assert result.returncode == 1
     assert len(list_merge_requests(job)) == 1
+    assert "pde-installer update" not in job.log.read_text()
     summary = (job.folder / "summary.txt").read_text()
     assert "merged:" not in summary
     assert summary.endswith(
@@ -374,50 +386,69 @@ def test_merge_worker_stops_when_user_declines(tmp_path: Path) -> None:
     )
 
 
+def write_fake_installer(tmp_path: Path, last_line: str, code: int) -> None:
+    """Put a pde-installer on PATH that logs its call and prints a result.
+
+    Args:
+        tmp_path: The run's folder, whose ``bin`` comes first on PATH.
+        last_line: The line the fake prints last.
+        code: The fake's exit code.
+    """
+    fake = tmp_path / "bin/pde-installer"
+    fake.write_text(
+        "#!/bin/sh\n"
+        'echo "pde-installer $*" >> "$FAKE_LOG"\n'
+        "echo installing\n"
+        f"echo '{last_line}'\n"
+        f"exit {code}\n"
+    )
+    fake.chmod(0o755)
+
+
 @pytest.mark.parametrize(
-    ("install_exit", "code", "last_line"),
+    ("update_line", "update_exit", "code", "last_line"),
     [
-        (0, 0, "install: passed"),
-        (7, 1, "install: failed with exit 7; see install.log"),
+        pytest.param(
+            "update installed: main is at 5eed",
+            0,
+            0,
+            "update installed: main is at 5eed",
+            id="installed",
+        ),
+        pytest.param(
+            "update skipped: the checkout is on feat, not main",
+            1,
+            1,
+            "update: failed with exit 1: update skipped: the checkout is"
+            " on feat, not main; see update.log",
+            id="skipped",
+        ),
     ],
 )
-def test_merge_worker_installs_after_merge(
-    tmp_path: Path, install_exit: int, code: int, last_line: str
+def test_merge_worker_updates_after_merge(
+    tmp_path: Path,
+    update_line: str,
+    update_exit: int,
+    code: int,
+    last_line: str,
 ) -> None:
-    """With --install, the same run installs once the PR has merged.
+    """With --update, the same run updates once the PR has merged.
 
     The hub once started separate cloud sessions to install after a
     local merge, which cost over a million tokens on one day. The hub
-    trusts only the summary, so it must show the merge and whether the
-    install passed, and the exit code must show a failed install. The
-    install runs with the repository as its working directory, which
-    the ran.txt assertion checks.
+    trusts only the summary, so it must show the merge and the
+    update's result, and the exit code must show an update that left
+    the newest main uninstalled.
     """
     job = make_job(tmp_path, READY_PREP)
+    write_fake_installer(tmp_path, update_line, update_exit)
 
-    result = run_worker(
-        job, "--install", f"pwd > ../ran.txt; echo log; exit {install_exit}"
-    )
+    result = run_worker(job, "--update")
 
     assert result.returncode == code
-    assert (tmp_path / "ran.txt").read_text() == f"{job.repo}\n"
-    assert (job.folder / "install.log").read_text() == "log\n"
-    summary = (job.folder / "summary.txt").read_text()
-    assert summary.endswith(
-        f"merged: 5eed\n{last_line}\nexit: {code}\ndone\n"
+    assert "pde-installer update" in job.log.read_text().splitlines()
+    assert (job.folder / "update.log").read_text() == (
+        f"installing\n{update_line}\n"
     )
-
-
-def test_merge_worker_skips_install_without_merge(tmp_path: Path) -> None:
-    """A declined merge installs nothing.
-
-    Installing an unmerged branch would put code the user turned down
-    on the machine.
-    """
-    job = make_job(tmp_path, READY_PREP, exits="4 0")
-
-    result = run_worker(job, "--install", "touch ../ran.txt")
-
-    assert result.returncode == 1
-    assert not (tmp_path / "ran.txt").exists()
-    assert "install:" not in (job.folder / "summary.txt").read_text()
+    summary = (job.folder / "summary.txt").read_text()
+    assert summary.endswith(f"merged: 5eed\n{last_line}\nexit: {code}\ndone\n")
