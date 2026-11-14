@@ -91,5 +91,5 @@ It prints the skills read before and after the first edit and whether
 scratch file first. The review row checks only workflow routing, so a review
 that skips the Go or testing skills still passes. If a skill is missed, rerun
 once with an `Applicable skills:` line naming the expected skills and record
-both runs. Claude Code models also load the owner's global instructions and
-memory, so their runs see more than the task.
+both runs. Claude Code models also load the owner's global instructions, so
+their runs see more than the task.

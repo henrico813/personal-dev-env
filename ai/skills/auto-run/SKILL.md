@@ -229,9 +229,10 @@ send what it finds to the auto hub with `hub send`.
    the run folder, the run tier from `approved.md`, the away window,
    each rule that ends at a set time as one line ending in
    `until <YYYY-MM-DD HH:MM>`, the models that answered, and the
-   user's style rules from your notes and memory, such as comment
-   length or call layout. It is the run's one rules
-   file. Every handoff points to it and copies none of its rules.
+   user's style rules, such as comment length or call layout, from
+   your notes and from rules files such as `AGENTS.md`. It is the
+   run's one rules file. Every handoff points to it and copies none
+   of its rules.
    Also make the two files every worker appends to: an empty
    `<run folder>/requests.log`, and `<run folder>/requests.sh` with
    the line `# Run when back: bash requests.sh`. Write each of these

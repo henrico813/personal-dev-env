@@ -63,7 +63,8 @@ largest carried outputs
    is about 12,000 tokens, it was read in full early on, and about 75
    later steps read it again.
 3. Run `planner check` once after the last patch instead of after
-   each. It lives in a memory. Saves about 0.3M tokens (estimate).
+   each. It lives in a rules file. Saves about 0.3M tokens
+   (estimate).
 
 ## Lessons
 
@@ -126,8 +127,8 @@ Proposals
    about 1.1M tokens (estimate).
 2. Read plans with narrow rg (create-plan lesson). Saves about 0.9M
    tokens (estimate).
-3. One planner check after the last patch (memory). Saves about 0.3M
-   tokens (estimate).
+3. One planner check after the last patch (rules file). Saves about
+   0.3M tokens (estimate).
 
 Lessons to save, pick by number
 1. Keep the key out of the PR title -> pull-request
