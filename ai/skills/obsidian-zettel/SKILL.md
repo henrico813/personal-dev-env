@@ -1,6 +1,8 @@
 ---
 name: obsidian-zettel
 description: Use when creating a Zettel note, quick reference note, or durable technical note in the default Obsidian vault.
+metadata:
+  scope: personal
 ---
 
 # Obsidian Zettel

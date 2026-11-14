@@ -3,6 +3,7 @@ name: research-codebase
 description: 'Research and document how the codebase works as it exists today without proposing changes, for requests like "research this codebase" or "document how X works"; for planning changes to the code use create-plan.'
 metadata:
   pde-workflow: "true"
+  scope: personal
 ---
 
 # Research Codebase

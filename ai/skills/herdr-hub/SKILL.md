@@ -10,6 +10,7 @@ description: Runs the hub, the one Herdr session that other sessions
   use auto-run.
 metadata:
   pde-workflow: "true"
+  scope: personal
 ---
 
 # Herdr Hub

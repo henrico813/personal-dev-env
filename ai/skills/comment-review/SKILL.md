@@ -5,6 +5,8 @@ description: Saves code comments as a review that the user answers one
   written into the code with no AI involved. Use when you want to put
   code comments in front of the user for review, or a task's last step
   is the user's review of the comments.
+metadata:
+  scope: personal
 ---
 
 # Comment Review

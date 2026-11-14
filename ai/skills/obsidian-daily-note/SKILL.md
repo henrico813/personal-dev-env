@@ -6,6 +6,8 @@ description: Adds a section or session summary to today's daily
   naming another note. When the vault has no daily-note folder or no
   quick-note template, it asks the user which note to use. Never use
   it to read, search, or summarize a daily note.
+metadata:
+  scope: personal
 ---
 
 # Obsidian Daily Note

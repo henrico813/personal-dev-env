@@ -104,26 +104,28 @@ def check_skills(skills_dir: Path, base: str | None) -> list[Problem]:
     6. A Remembering corrections line that names another skill, or
        that is missing from a skill with a Lessons section, is an
        error.
+    7. A ``metadata.scope`` that is missing or names the other
+       repository is an error.
 
     With base, more checks report only on files and lines changed
     since base, so a problem already on main fails no unrelated
     change.
 
-    7. An added line over 72 columns that could wrap is an error.
-    8. An added line that points at a step number, such as "step 6
+    8. An added line over 72 columns that could wrap is an error.
+    9. An added line that points at a step number, such as "step 6
        of", is an error.
-    9. A SKILL.md body that the change made longer than 500 lines is
-       an error.
-    10. A changed reference file over 100 lines with no Contents
+    10. A SKILL.md body that the change made longer than 500 lines is
+        an error.
+    11. A changed reference file over 100 lines with no Contents
         heading is an error.
-    11. A quote of a heading that the change removed or renamed is an
+    12. A quote of a heading that the change removed or renamed is an
         error, unless some file still has that heading.
-    12. Eight words in a row that another skill or ``AGENTS.md`` also
+    13. Eight words in a row that another skill or ``AGENTS.md`` also
         has are a repeat, for the author to judge.
-    13. A SKILL.md whose body has more lines than in base is reported
+    14. A SKILL.md whose body has more lines than in base is reported
         as grown, for the pull request to give a reason.
 
-    Checks 1, 2, 7, 8, 11 and 12 also read the ``AGENTS.md`` next to
+    Checks 1, 2, 8, 9, 12 and 13 also read the ``AGENTS.md`` next to
     skills_dir.
 
     Args:
@@ -147,6 +149,7 @@ def check_skills(skills_dir: Path, base: str | None) -> list[Problem]:
         + check_frontmatter_names(skills)
         + check_lessons_sections(skills)
         + check_corrections_names(skills)
+        + check_scopes(skills)
     )
     if base is None:
         return problems
@@ -432,13 +435,78 @@ def read_frontmatter_name(text: str) -> str | None:
         The name, or None when the frontmatter is missing, is not
         closed, or has no name.
     """
-    lines = text.splitlines()
-    if lines[:1] != ["---"] or "---" not in lines[1:]:
-        return None
-    for line in lines[1 : lines.index("---", 1)]:
+    for line in list_frontmatter_lines(text):
         if line.startswith("name:"):
             return line.removeprefix("name:").strip()
     return None
+
+
+def check_scopes(skills: Skills) -> list[Problem]:
+    """Report each skill whose scope tag is missing or wrong.
+
+    The tag in ``metadata.scope`` names the repository that holds the
+    skill's source. Skills in an ``ai/skills`` folder, as in this
+    public repository, must say ``personal``. Skills in a top-level
+    ``skills`` folder, as in the private work repository, must say
+    ``work``. A work skill copied into the public repository would
+    publish work text.
+
+    Args:
+        skills: The skills from ``read_skills``.
+
+    Returns:
+        One error per skill whose tag is missing or does not match its
+        folder.
+    """
+    problems = []
+    for skill in skills.folders:
+        path = skill / "SKILL.md"
+        scope = read_frontmatter_scope(path.read_text(encoding="utf-8"))
+        in_ai_folder = skill.parent.parent.name == "ai"
+        expected = "personal" if in_ai_folder else "work"
+        if scope != expected:
+            message = f"metadata.scope must be {expected}"
+            problems.append(Problem(path, 1, "error", message))
+    return problems
+
+
+def read_frontmatter_scope(text: str) -> str | None:
+    """Return the ``scope`` value under ``metadata:`` in a SKILL.md.
+
+    Quotes around the value are dropped, so ``scope: "work"`` gives
+    ``work``.
+
+    Args:
+        text: Contents of a SKILL.md.
+
+    Returns:
+        The scope, or None when the frontmatter has no scope under
+        ``metadata:``.
+    """
+    in_metadata = False
+    for line in list_frontmatter_lines(text):
+        if not line.startswith((" ", "\t")):
+            in_metadata = line.rstrip() == "metadata:"
+        elif in_metadata and line.strip().startswith("scope:"):
+            value = line.strip().removeprefix("scope:").strip()
+            return value.strip("\"'")
+    return None
+
+
+def list_frontmatter_lines(text: str) -> list[str]:
+    """Return the lines between a SKILL.md's two ``---`` lines.
+
+    Args:
+        text: Contents of a SKILL.md.
+
+    Returns:
+        The frontmatter lines, or an empty list when the frontmatter is
+        missing or not closed.
+    """
+    lines = text.splitlines()
+    if lines[:1] != ["---"] or "---" not in lines[1:]:
+        return []
+    return lines[1 : lines.index("---", 1)]
 
 
 def check_lessons_sections(skills: Skills) -> list[Problem]:
