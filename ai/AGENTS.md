@@ -114,8 +114,10 @@ pattern over the whole file.
 ## Planning Docs
 
 - `notes` (alias `n`) is the preferred tool for viewing plans and
-  cards. Give the user the command, such as `n p PDEV-468`, and
-  never run it yourself: it opens fzf and nvim.
+  cards. Give the user the command, and never run it yourself: it
+  opens fzf and nvim. A first letter picks the note type:
+  `n r <words>` for research notes, `n c <key>` for cards and
+  `n p <key>` for plans, such as `n p PDEV-468`.
 - Plans, issues, design docs, and research docs belong in the default
   vault. Find its folder with `nobs vault path` and documents in it with
   `nobs find`.
