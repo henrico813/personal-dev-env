@@ -332,8 +332,8 @@ func TestFailedToolCheckRestoresEveryTool(t *testing.T) {
 	}
 }
 
-// A client laptop has no Go or Rust, so any build but skill-lessons, which
-// only zips Python files, would fail every client install.
+// A client laptop has no Go or Rust, so any build but skill-lessons and
+// skill-fix, which only zip Python files, would fail every client install.
 func TestClientBuildsOnlyPythonTools(t *testing.T) {
 	home, repoRoot := t.TempDir(), t.TempDir()
 	writeBuildSources(t, repoRoot)
@@ -348,8 +348,8 @@ func TestClientBuildsOnlyPythonTools(t *testing.T) {
 	if err := journal.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	if got := readBuildLog(t, logPath); got != "python\n" {
-		t.Fatalf("build log = %q, want one python build", got)
+	if got := readBuildLog(t, logPath); got != "python\npython\n" {
+		t.Fatalf("build log = %q, want two python builds", got)
 	}
 }
 
@@ -425,6 +425,19 @@ func writeBuildSources(t *testing.T, repoRoot string) {
 	writeBuildFile(t, filepath.Join(root, "build.py"), "build\n", 0o644)
 	writeBuildFile(t, filepath.Join(root, "src", "skill_lessons", "cli.py"), "cli\n", 0o644)
 	writeBuildFile(t, filepath.Join(root, "tests", "test_cli.py"), "tests\n", 0o644)
+	fix := filepath.Join(repoRoot, "skill-fix")
+	writeBuildFile(
+		t,
+		filepath.Join(fix, "build.py"),
+		"build\n",
+		0o644,
+	)
+	writeBuildFile(
+		t,
+		filepath.Join(fix, "src", "skill_fix", "cli.py"),
+		"cli\n",
+		0o644,
+	)
 }
 
 func newFixtureManager(t *testing.T, home, repoRoot, logPath string) Manager {
@@ -758,6 +771,7 @@ func assertBuildOutputs(t *testing.T, home string) {
 		"glimmer":              "cargo",
 		"hub":                  "cargo",
 		"skill-lessons":        "python",
+		"skill-fix":            "python",
 		"prs":                  "go",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "#!/bin/sh\nexit 0\n# built by "+tool+"\n")

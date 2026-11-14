@@ -238,6 +238,10 @@ The install runs with no terminal. When an apt package is missing, `sudo`
 fails at once instead of waiting for a password; run `pde-installer install` by
 hand then. Install also skips its question about restarting OpenCode servers.
 
+Then, whatever the result, it runs `skill-fix sync` when
+`~/.local/bin/skill-fix` exists, so skill fixes made offline reach GitHub. A
+failed sync prints a warning and leaves the result as it was.
+
 Each run writes `~/.local/state/pde/update.json`:
 
 ```json
