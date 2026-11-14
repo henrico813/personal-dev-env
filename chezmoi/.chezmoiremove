@@ -10,6 +10,9 @@
 {{ if has "workstation" .pde.tiers }}
 .config/opencode/plugins/pde-approval-session.js
 .config/opencode/commands/document_codebase.md
+# The opencode-mem plugin config. A terminal install never wrote it,
+# and its ~/.config/opencode may be a file.
+.config/opencode/opencode-mem.jsonc
 {{ end }}
 {{ if and (has "workstation" .pde.tiers) (not (has "development" .pde.tiers)) }}
 # Only full installs these, so client removes what a full install left.
@@ -91,6 +94,5 @@ Projects/CLAUDE.md
 .local/share/pde/herdr-plugins/pde-comment-review
 # auto-run took over roadmap-run's work.
 .agents/skills/roadmap-run
-# Installs remove the promote-memory skill and the opencode-mem plugin config.
+# Installs remove the promote-memory skill.
 .agents/skills/promote-memory
-.config/opencode/opencode-mem.jsonc

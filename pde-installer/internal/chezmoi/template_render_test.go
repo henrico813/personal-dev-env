@@ -250,7 +250,6 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".local/share/pde/herdr-plugins/pde-comment-review",
 		".agents/skills/roadmap-run",
 		".agents/skills/promote-memory",
-		".config/opencode/opencode-mem.jsonc",
 	}
 	developmentTools := []string{
 		".local/bin/pde-gh-write",
@@ -260,6 +259,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 	retiredAgentFiles := []string{
 		".config/opencode/plugins/pde-approval-session.js",
 		".config/opencode/commands/document_codebase.md",
+		".config/opencode/opencode-mem.jsonc",
 	}
 	fullOnlyFiles := []string{
 		".agents/skills/auto-run",
