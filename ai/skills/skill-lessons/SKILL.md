@@ -34,8 +34,8 @@ agent, unless the linking skill names someone else.
 
 ## Save a correction
 
-1. When the user makes a correction the skill counts, still save it to
-   memory as your instructions say.
+1. When the user makes a correction the skill counts, apply it at
+   once.
 2. If `skill-lessons` is installed, check the rule a correction teaches
    before you offer it as a lesson. Offer it only if all three hold:
    - True everywhere: it holds in every repository and task. A lesson

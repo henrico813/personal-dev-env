@@ -80,8 +80,8 @@ Checks:
 
 1. At most three proposals.
 2. Each proposal gives a saving marked measured or estimate.
-3. Each proposal says where it would live: a skill PR, lesson,
-   memory or rules file.
+3. Each proposal says where it would live: a skill PR, lesson or
+   rules file.
 4. No proposal suggests skipping a skill the work needs.
 5. Any AGENTS.md change goes to tally-hub, not edited here.
 6. The test-log correction appears as a numbered lesson to pick.
