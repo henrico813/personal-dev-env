@@ -170,8 +170,9 @@ own Herdr pane, with `HUB_RUN` set to your run folder.
      If the message is not there, delete the
      `demo-kb-001-impl.*.sending` file in `$HUB_RUN/sends/` and send
      the message again.
-   - `board over its limit: 25/8 (hub 131k)`: too many cards are in
-     progress. Tell the user, with the board line from `hub status`.
+   - `board over its limit: active 10 of 8, review 18 of 6 (hub 131k)`:
+     too many cards are in progress. Tell the user, with the board
+     line from `hub status`.
      Start no new work until the user says to go on.
    - `to-close docs-fix: report read; run hub clean`, or the same
      with `to-park`: those sessions finished. Run step 6.

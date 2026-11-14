@@ -46,7 +46,7 @@ It prints the hub's own line, the board, one count per state, the
 unread reports, then one row per session:
 
     hub kanban-hub-18 131k, watcher running
-    board 24/8, review 19
+    board active 5 of 8, review 19 of 6
     open 24: 4 working, 2 hub, 3 you,
       5 kept, 1 to-close, 2 to-park; 12 parked
     unread 2: demo-kb-007-impl docs-fix
@@ -152,10 +152,11 @@ are off by default. Most lines end with your own context, such as
   down gets its own `not sent` or `unsure` line.
 - `hand off now: hub at <N>k`: your context passed 150k. Hand off
   the hub now, as Hand off the hub says.
-- `board over its limit: N/M`: the cards in active and review passed
-  the board's limit. Tell the user at once, with the board line, and
-  start no new work until the count is back under the limit or the
-  user says to go on.
+- `board over its limit: active N of 8, review N of 6`: the cards
+  now in active or in review passed that stage's limit. Tell the
+  user at once, with the board line, and propose cards to pause as
+  Cards says. Start no ready card until both counts are back within
+  their limits or the user says to go on.
 - `to-close <names>: <why>; run hub clean`, or the same with
   `to-park`: those sessions finished. Run `hub clean` as Cleanup
   says.
@@ -297,13 +298,15 @@ vault. A hub never reports to a hub on another machine.
   card. A short chat holds none. A card is one piece of work, so
   sessions on the same work share one card, and its `sessions` list
   keeps each of them.
-- One limit, across every project: 8 cards in `active` and
-  `review` together, as `card board` shows. While it allows, start
-  the oldest ready card, or the one the user names. Never start one
-  past the limit; only the user does. When work is over the limit,
-  propose which cards to pause, and let the user decide. If `card`
-  refuses a start that the limit allows, pass `--user` and say so in
-  `--why`.
+- Two limits, each across every project: 8 cards in `active` and 6
+  in `review`, as `card board` shows. `card` refuses a move into a
+  full stage unless the move has `--user`. While active has room,
+  start the oldest ready card, or the one the user names. Pass
+  `--user` past a limit only when the user says so. When review is
+  full, leave a finished card in `active` and tell the user its work
+  waits on them. When work is over a limit, propose which cards to
+  pause, and let the user decide. If `card` refuses a move that the
+  limits allow, pass `--user` and say so in `--why`.
 - Move a card to `review` as soon as its work waits only on the user,
   such as an open pull request or a plan or question for the user,
   even when more work follows. When the user has answered or

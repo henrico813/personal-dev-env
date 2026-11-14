@@ -48,7 +48,7 @@ pub trait Cards {
     fn read_cards(&self, keys: &[CardKey]) -> Vec<Result<CardNote, CardError>> {
         keys.iter().map(|key| self.read_card(key)).collect()
     }
-    /// Returns the board's counts and its limit.
+    /// Returns the board's counts and their limits.
     fn read_board(&self) -> Result<BoardCounts, CardError>;
     /// Adds one line to the card's Log.
     fn add_note(&self, key: &CardKey, text: &str) -> Result<(), CardError>;
@@ -56,7 +56,7 @@ pub trait Cards {
     /// `card` reads the ID from Herdr, so the agent must still run.
     fn link_session(&self, key: &CardKey, agent_name: &str) -> Result<(), CardError>;
     /// Moves a ready card to active. `card` refuses a start past the
-    /// work limit, with its reason.
+    /// active limit, with its reason.
     fn move_to_active(&self, key: &CardKey) -> Result<(), CardError>;
 }
 
@@ -291,14 +291,34 @@ pub struct CardNote {
     pub next_step: Option<String>,
 }
 
-/// What `card board` gives.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// What `card board` gives. `board_over` and `board_under` events
+/// keep these fields.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BoardCounts {
     pub active: u32,
     pub review: u32,
-    /// Active plus review, from `active+review N of M`.
-    pub busy: u32,
-    pub limit: u32,
+    pub active_limit: u32,
+    pub review_limit: u32,
+}
+
+impl BoardCounts {
+    /// Returns true when active or review holds more cards than its
+    /// limit.
+    pub fn is_over(&self) -> bool {
+        self.active > self.active_limit || self.review > self.review_limit
+    }
+}
+
+/// Writes the counts as `card board` prints them, such as
+/// `active 10 of 8, review 18 of 6`.
+impl fmt::Display for BoardCounts {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "active {} of {}, review {} of {}",
+            self.active, self.active_limit, self.review, self.review_limit
+        )
+    }
 }
 
 /// A card call that failed.
@@ -413,28 +433,29 @@ fn parse_card_note(key: &CardKey, text: &str) -> CardNote {
 }
 
 /// Reads `card board` text. Returns `None` when the text lacks its
-/// `active N`, `review N` or `active+review N of M` count.
+/// `active N of M, review N of M` line.
 fn parse_board_counts(text: &str) -> Option<BoardCounts> {
-    let mut active = None;
-    let mut review = None;
-    let mut busy_and_limit = None;
-    for line in text.lines() {
+    text.lines().find_map(|line| {
         let words: Vec<&str> = line.split_whitespace().collect();
-        match words.as_slice() {
-            ["draft", .., "active", count] => active = count.parse().ok(),
-            ["review", count, ..] => review = count.parse().ok(),
-            ["active+review", busy, "of", limit] => {
-                busy_and_limit = busy.parse().ok().zip(limit.parse().ok());
-            }
-            _ => {}
-        }
-    }
-    let (busy, limit) = busy_and_limit?;
-    Some(BoardCounts {
-        active: active?,
-        review: review?,
-        busy,
-        limit,
+        let [
+            "active",
+            active,
+            "of",
+            active_limit,
+            "review",
+            review,
+            "of",
+            review_limit,
+        ] = words[..]
+        else {
+            return None;
+        };
+        Some(BoardCounts {
+            active: active.parse().ok()?,
+            review: review.parse().ok()?,
+            active_limit: active_limit.trim_end_matches(',').parse().ok()?,
+            review_limit: review_limit.parse().ok()?,
+        })
     })
 }
 
@@ -451,7 +472,7 @@ mod tests {
     fn parse_board_counts_reads_counts_or_none() {
         let board = "draft 79  ready 7  active 9\n\
                      review 24  accepted 43  dropped 4\n\
-                     active+review 33 of 8\n\
+                     active 9 of 8, review 24 of 6\n\
                      \n\
                      REVIEW, oldest first (24)\n\
                      - DEMO-KB-001 2026-11-02\n  \
@@ -463,8 +484,8 @@ mod tests {
                 Some(BoardCounts {
                     active: 9,
                     review: 24,
-                    busy: 33,
-                    limit: 8,
+                    active_limit: 8,
+                    review_limit: 6,
                 }),
             ),
             ("no-counts", "card: no default vault\n", None),
