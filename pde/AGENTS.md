@@ -17,7 +17,8 @@ PDE configuration is stored in `chezmoi/`; installation is owned by the
   `--desktop`. Profiles and desktops are defined in
   `pde-installer/internal/profile/profiles.yaml`.
 - Reject UID 0 for mutations.
-- Use apt for Ubuntu dependencies and sudo only for apt.
+- Use apt for Ubuntu dependencies, and sudo only for apt and the zsh login
+  shell change.
 - Keep other installer destinations under HOME.
 - Keep the existing amd64-only direct tmux 3.7b binary pinned, verified, and
 downloaded under HOME.

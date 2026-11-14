@@ -5,8 +5,8 @@ This tutorial builds the installer and reconciles one user account.
 ## 1. Check the Host
 
 Use Ubuntu 22.04 or newer on Linux amd64. Sign in as a regular user that can run
-`sudo apt-get`. You need Go 1.21 or newer to build the installer. On Ubuntu
-24.04, `sudo apt install golang-go` provides it.
+`sudo apt-get` and `sudo usermod`. You need Go 1.21 or newer to build the
+installer. On Ubuntu 24.04, `sudo apt install golang-go` provides it.
 
 Clone the repository before starting. The installer does not clone it.
 

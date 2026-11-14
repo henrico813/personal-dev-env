@@ -18,13 +18,14 @@ type Manager struct {
 	desktop       profile.Desktop
 	runner        run.Runner
 	osReleasePath string
+	shellsPath    string
 }
 
 // Tool profiles support this release. A desktop may need a newer one.
 const minimumRelease = "22.04"
 
 func New(selected profile.Profile, desktop profile.Desktop, runner run.Runner) Manager {
-	return Manager{profile: selected, desktop: desktop, runner: runner, osReleasePath: "/etc/os-release"}
+	return Manager{profile: selected, desktop: desktop, runner: runner, osReleasePath: "/etc/os-release", shellsPath: "/etc/shells"}
 }
 
 // Validate checks whether the host can install Ubuntu packages.

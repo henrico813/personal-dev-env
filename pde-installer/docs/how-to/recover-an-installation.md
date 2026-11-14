@@ -25,7 +25,8 @@ Do not delete journal files or backup paths by hand. They hold the information
 needed to restore earlier files.
 
 Recovery covers journaled changes under `HOME`. It does not undo packages or
-package-index changes made by `sudo apt-get`. A font-cache refresh by `fc-cache`
-also happens outside rollback.
+package-index changes made by `sudo apt-get`. It does not undo the login shell
+change made by `sudo usermod`. A font-cache refresh by `fc-cache` also happens
+outside rollback.
 
 See [journals and recovery](../explanation/journals-and-recovery.md).
