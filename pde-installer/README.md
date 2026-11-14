@@ -7,12 +7,16 @@
 
 - Ubuntu 22.04 or newer
 - Linux on amd64
-- An unprivileged user with `sudo` access for `apt-get`
+- An unprivileged user with `sudo` access for `apt-get` and `usermod`
 - Go 1.21 or newer to build the installer
 
 Do not run mutating commands as root. The installer uses `sudo apt-get` only
-for missing operating-system dependencies. Other managed files stay under
-`HOME`.
+for missing operating-system dependencies. At the end of every install it uses
+`sudo usermod` to make zsh your login shell, unless it already is. Other managed
+files stay under `HOME`.
+
+New logins and terminals that read the login shell start zsh. Herdr and tmux
+servers keep the old shell until they restart.
 
 ## Quick Start
 
@@ -29,8 +33,10 @@ pde-installer list
 pde-installer version
 ```
 
-The installer does not clone or update the checkout. It finds the checkout from
-the current directory, `--repo-root`, or `PDE_REPO_ROOT`.
+`install` does not clone or update the checkout. It finds the checkout from
+the current directory, `--repo-root`, or `PDE_REPO_ROOT`. `pde-installer update`
+fast-forwards a checkout on `main` to the newest `main` and installs it; see the
+[command reference](docs/reference/commands.md#pde-installer-update).
 
 Pick the profile for the machine:
 

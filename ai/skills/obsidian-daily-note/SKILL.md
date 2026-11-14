@@ -1,14 +1,20 @@
 ---
 name: obsidian-daily-note
-description: Use when adding a section or session summary to today's journal daily note in the main Obsidian vault. Never use it to read, search, or summarize a daily note.
+description: Adds a section or session summary to today's daily
+  note in the default Obsidian vault. Use when the user asks to add
+  something to the daily note, or says "put this in my notes" without
+  naming another note. When the vault has no daily-note folder or no
+  quick-note template, it asks the user which note to use. Never use
+  it to read, search, or summarize a daily note.
 ---
 
 # Obsidian Daily Note
 
-Add one approved section to today's daily note in the main vault. Write a
-quick note in the format `_createQuickNote()` produces, then run the vault's
-`_appendCurrQuickNotes()` Templater command inside the Obsidian app. Do not
-change vault templates or scripts.
+Add one approved section to today's daily note in the default vault,
+the one `nobs vault path` prints. Write a quick note in the format
+`_createQuickNote()` produces, then run the vault's
+`_appendCurrQuickNotes()` Templater command inside the Obsidian app.
+Do not change vault templates or scripts.
 
 ## Privacy
 
@@ -16,12 +22,12 @@ change vault templates or scripts.
   results are only a path, a boolean, a count, a status word, or the heading.
   For example, never run `read`, `daily:read`, `search`, `daily`, or an
   `eval` that returns note text.
-- Never read, list, search, or open anything under `300 Journal/`, and never
-  edit a journal file directly.
+- Never read, list, search, or open anything under the daily-note folder
+  `<folder>`, and never edit a file there directly.
 - Summarize only this session's work. Leave out secrets, tokens,
   credentials, private URLs, other people's details, and health, mood, or
   personal-life content.
-- Today only, main vault only.
+- Today only, default vault only.
 
 ## Block Rules
 
@@ -42,17 +48,19 @@ daily note's `# Notes` section.
 ## Commands
 
 Each agent tool call starts a new shell, so define this helper in the same
-shell command as its uses. It selects the vault and drops two noise lines:
+shell command as its uses. It selects the vault named `<vault-name>` and
+drops two noise lines:
 
 ```sh
 obsidian_main() {
-  obsidian vault="Main Vault" "$@" 2>&1 |
+  obsidian vault="<vault-name>" "$@" 2>&1 |
     grep -v -e 'Loading updated app package' -e 'installer is out of date'
 }
 ```
 
 Shell variables do not survive between tool calls. `<heading>` is the
-heading chosen before step 1; record `<vault>` in step 2, `<daily>` and
+heading chosen before step 1; record `<vault>`, `<vault-name>` and
+`<folder>` in step 2, `<daily>` and
 `<parent>` in step 3, and `<name>` and `<quick>` in step 5. Substitute them
 literally in every later command. Keep paths and the heading inside the
 quotes shown; paths with spaces stay inside one quoted value.
@@ -86,15 +94,28 @@ the full draft.
    `[ -n "$DISPLAY$WAYLAND_DISPLAY" ] && echo "display ok" || echo "no display"`.
    It passes on `display ok`. On `no display`, stop and report that
    Obsidian needs a display.
-2. Record the output of `nobs vault path main` as `<vault>`. If it
-   fails, stop and report its message; do not use another vault.
+2. Record the output of `nobs vault path` as `<vault>`. If it fails,
+   stop and report its message; do not use another vault. Record the
+   output of `basename "<vault>"` as `<vault-name>`.
    `obsidian_main vault info=path` must print exactly `<vault>`. Per the
    Obsidian CLI docs, the first command launches Obsidian if it is not
-   running.
-3. `obsidian_main daily:path` must print exactly
-   `300 Journal/301 Current Entries/<YYYY-MM-DD>.md` with today's date from
-   `date +%F`. Record it as `<daily>` and its basename without `.md` as
-   `<parent>`.
+   running. Then find the daily-note folder in the vault's Obsidian
+   settings, which hold no note text:
+
+   ```sh
+   jq -r '.folder // empty' "<vault>/.obsidian/daily-notes.json"
+   test -f "<vault>/000 Meta/001 Templates/_appendCurrQuickNotes().md" &&
+     test -d "<vault>/500 Zettelkasten" && echo "template ok"
+   ```
+
+   Record the folder it prints as `<folder>`. When the settings file is
+   missing, the folder is empty, or the second line does not print
+   `template ok`, the vault has no daily note this skill can add to.
+   Ask the user which note to put the section in, write nothing, and
+   end this skill.
+3. `obsidian_main daily:path` must print one path that starts with
+   `<folder>/` and ends in `.md`. Record it as `<daily>` and its
+   basename without `.md` as `<parent>`.
 4. Run `obsidian_main eval code='!!app.vault.getFileByPath("<daily>")'`
    every 2 seconds until it prints `=> true`, for up to 60 seconds. If it
    never does, stop and report that today's daily note does not exist. Do
@@ -114,7 +135,9 @@ the full draft.
    obsidian_main eval code='window.pdevDailyNote = { run: "<name>", count() { this.counts = "pending"; Promise.resolve().then(() => app.vault.read(app.vault.getFileByPath("<daily>"))).then(d => { const t = d.split("\n").map(x => x.trim()), i = t.indexOf("# Notes"); this.counts = [t.filter(x => x === "# Notes").length, i >= 0 && i + 1 < t.length ? 1 : 0, d.split(",,").length - 1, t.filter(x => x === "## <heading>").length].join(" "); }, () => { this.counts = "error"; }); } }; window.pdevDailyNote.count()'
    ```
 
-   Read `counts` every 2 seconds, for up to 30 seconds, until it is not
+   Read `counts` with the instant eval in Commands, `<key>` set to
+   `counts`, never a bare `window.pdevDailyNote.counts` eval. Read it
+   every 2 seconds, for up to 30 seconds, until it is not
    `=> pending`. It must print `=> 1 1 0 0`; otherwise stop. The four
    numbers are:
    - `# Notes` lines: must be 1.
@@ -225,11 +248,12 @@ step and reason. Do not quote the daily note.
 Follow every lesson in the Lessons section below. Each is a correction
 the user made, so a lesson wins when it disagrees with the text above,
 except that you still never read, list, search or open anything under
-`300 Journal/`, and never edit a journal file directly. When the user
-corrects how you pick the heading, write the section, run the checks or
-report the result, follow [skill-lessons](../skill-lessons/SKILL.md)
-with the skill name `obsidian-daily-note`, and offer once to save the
-correction as a lesson.
+the daily-note folder, and never edit a file there directly. When the
+user corrects how you pick the heading, write the section, run the
+checks or report the result, follow
+[skill-lessons](../skill-lessons/SKILL.md) with the skill name
+`obsidian-daily-note`, and offer once to save the correction as a
+lesson.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

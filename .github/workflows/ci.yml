@@ -47,17 +47,17 @@ jobs:
         run: make check
       - run: go test -race -count=3 ./...
 
-  pdev2:
+  pdev:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: pdev2
+        working-directory: pdev
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: pdev2/go.mod
-          # The cache is keyed on go.sum, which pdev2 lacks: it has no dependencies.
+          go-version-file: pdev/go.mod
+          # The cache is keyed on go.sum, which pdev lacks: it has no dependencies.
           cache: false
       - run: go test -race -count=3 ./...
       - run: go vet ./...
@@ -129,6 +129,11 @@ jobs:
           go vet ./...
           node test/opencode-herdr-subagents.test.mjs
           node test/opencode-secret-redaction.test.mjs
+          node test/opencode-usage.test.mjs
+          node test/opencode-quota-store.test.mjs
+          node test/opencode-quota-sources.test.mjs
+          node test/opencode-quota-lines.test.mjs
+          node test/opencode-quota-cli.test.mjs
           bash -n test/*.sh
           test/nvim-obsidian-sync.sh
           test/nvim-clipboard.sh
@@ -208,7 +213,7 @@ jobs:
           # The cache is keyed on go.sum, which planner lacks: it has no dependencies.
           cache: false
       - name: install test dependencies
-        run: sudo apt-get update && sudo apt-get install --yes zsh
+        run: sudo apt-get update && sudo apt-get install --yes zsh tmux
       - uses: astral-sh/setup-uv@v6
       - name: check planning prompts
         run: uv sync --locked && uv run pytest -m "not local_ai"

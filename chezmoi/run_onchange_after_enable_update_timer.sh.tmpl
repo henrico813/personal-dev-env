@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Turns on the timer that installs the newest main.
+# The hashes and interval below make chezmoi run this again when a unit file
+# or update_interval changes.
+# service {{ include "dot_config/systemd/user/pde-update.service" | sha256sum }}
+# timer {{ include "dot_config/systemd/user/pde-update.timer.tmpl" | sha256sum }}
+# interval {{ index .pde "updateInterval" }}
+set -euo pipefail
+
+# systemctl --user only works when a systemd user manager is running, which
+# Docker smoke tests lack.
+if ! command -v systemctl >/dev/null 2>&1 || ! systemctl --user show-environment >/dev/null 2>&1; then
+    exit 0
+fi
+systemctl --user daemon-reload
+systemctl --user enable --now pde-update.timer

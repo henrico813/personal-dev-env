@@ -283,7 +283,8 @@ version of the plan.
 - `push`: follow the reason. A failed check is never minor. When the
   parent moved, run Carry a parent's commit to a child, then rerun.
 - The stop after `push`: try the pushed commit with Check a deploy,
-  add the one-line result to Testing in `$D/FILE`, write the same
+  add the result as a try line of the checks list in Testing in
+  `$D/FILE`, write the same
   line, starting with the full hash from
   `git -C "$W" rev-parse HEAD`, to `$D/tested`, then file the request
   as pr-loop.md's Ship says.
@@ -337,7 +338,7 @@ skill, gets its model from `model-routing` instead.
 passed, so a failed try never ends in `done`. Each command's output
 is in `<PR folder>/deploy.log`.
 
-- `done` last: write the one-line result from the `pass` lines.
+- `done` last: write the try line from the `pass` lines.
 - A `FAIL` line last: the PR failed its try. That is the PR's result,
   not a failed job, so do not move the job to the cheap model. Fix the
   PR through the loop.

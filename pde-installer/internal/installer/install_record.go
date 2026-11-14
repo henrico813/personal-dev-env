@@ -141,7 +141,16 @@ func readCheckoutRevision(repoRoot string, runner run.Runner, args ...string) st
 }
 
 func writeInstallRecord(home string, record installRecord) error {
-	path := installRecordPath(home)
+	return writeStateJSON(
+		home,
+		installRecordPath(home),
+		record,
+	)
+}
+
+// Saves a value as indented JSON at a path within HOME. The file is replaced
+// whole, so a reader never sees half a record.
+func writeStateJSON(home, path string, value any) error {
 	if err := fsutil.GuardHome(
 		home,
 		path,
@@ -155,7 +164,7 @@ func writeInstallRecord(home string, record installRecord) error {
 		return err
 	}
 	data, err := json.MarshalIndent(
-		record,
+		value,
 		"",
 		"  ",
 	)
@@ -171,12 +180,12 @@ func writeInstallRecord(home string, record installRecord) error {
 	)
 }
 
-// Returns the version command. It reads only the install record, so it needs
-// no checkout and does not wait for a running install.
+// Returns the version command. It works from any folder and does not wait
+// for a running install or update.
 func newVersionCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print the commit, branch and time of the installed build",
+		Short: "Print the installed build and the last update",
 		Args:  cobra.NoArgs,
 		RunE: func(command *cobra.Command, _ []string) error {
 			home, err := os.UserHomeDir()
@@ -196,14 +205,30 @@ func newVersionCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, err = fmt.Fprintf(
+			if _, err := fmt.Fprintf(
 				command.OutOrStdout(),
 				"commit %s\nbranch %s\ninstalled %s\n",
 				record.Commit,
 				record.Branch,
 				record.InstalledAt,
-			)
-			return err
+			); err != nil {
+				return err
+			}
+			// A broken config.json names no checkout, and the main line says so.
+			settings, _ := readUpdateSettings(home)
+			for _, line := range readUpdateState(
+				home,
+				settings.InstallPath,
+				run.Runner{},
+			) {
+				if _, err := fmt.Fprintln(
+					command.OutOrStdout(),
+					line.text,
+				); err != nil {
+					return err
+				}
+			}
+			return nil
 		},
 	}
 }

@@ -376,7 +376,7 @@ class TestMove:
 
         Paused work goes back to ready to wait for a free slot, and
         adopted work may have no criteria yet. A refusal would leave
-        paused work counted as active against the work limit.
+        paused work counted against the active limit.
         """
         path = write_card(projects, KEY, "active")
 
@@ -409,30 +409,45 @@ class TestMove:
         assert path.read_text() == before
 
     @pytest.mark.parametrize(
-        ("flags", "exit_code", "stage"),
+        ("source", "target", "limit"),
         [
-            pytest.param([], 1, "ready", id="agent-refused"),
-            pytest.param(["--user"], 0, "active", id="user-allowed"),
+            pytest.param("ready", "active", card.ACTIVE_LIMIT, id="start"),
+            pytest.param("active", "review", card.REVIEW_LIMIT, id="review"),
         ],
     )
-    def test_move_start_at_limit_needs_user(
-        self, projects: Path, flags: list[str], exit_code: int, stage: str
+    @pytest.mark.parametrize(
+        ("flags", "moved"),
+        [
+            pytest.param([], False, id="agent-refused"),
+            pytest.param(["--user"], True, id="user-allowed"),
+        ],
+    )
+    def test_move_into_full_stage_needs_user(
+        self,
+        projects: Path,
+        source: str,
+        target: str,
+        limit: int,
+        flags: list[str],
+        moved: bool,
     ) -> None:
-        """At the work limit only the user can start another card.
+        """A full active or review stage takes a card only from the user.
 
-        The limit keeps the user's review queue short enough to clear.
-        Without it the staff agent would keep starting workers. The
-        user decides when the limit is full, so their start must work.
+        The limits keep the user's review queue short enough to clear.
+        Without them the staff agent would keep starting workers and
+        sending reviews. The user decides when a stage is full, so
+        their move must work.
         """
-        for number in range(2, 2 + card.WORK_LIMIT):
-            write_card(projects, f"PDEV-KB-{number:03d}", "review")
-        path = write_card(projects, KEY, "ready", "- [ ] Done.")
+        for number in range(2, 2 + limit):
+            write_card(projects, f"PDEV-KB-{number:03d}", target)
+        path = write_card(projects, KEY, source, "- [ ] Done.")
 
         code = run_card(
-            projects, "move", KEY, "active", *flags, "--by", "general-staff"
+            projects, "move", KEY, target, *flags, "--by", "general-staff"
         )
 
-        assert code == exit_code
+        assert code == (0 if moved else 1)
+        stage = target if moved else source
         assert f"stage: {stage}\n" in path.read_text()
 
 
@@ -743,6 +758,24 @@ class TestBoard:
         assert out.index("PDEV-KB-002 2026-11-01") < out.index(
             "PDEV-KB-001 2026-11-05"
         )
+
+
+    def test_board_prints_each_stage_limit(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The board counts active and review against their own limits.
+
+        The hub reads this line to tell the user a stage is over its
+        limit. A combined count would hide a long review queue.
+        """
+        write_card(projects, "PDEV-KB-001", "active")
+        write_card(projects, "PDEV-KB-002", "review")
+        write_card(projects, "PDEV-KB-003", "review")
+
+        code = run_card(projects, "board")
+
+        assert code == 0
+        assert "active 1 of 8, review 2 of 6\n" in capsys.readouterr().out
 
 
 class TestHandEditedCard:

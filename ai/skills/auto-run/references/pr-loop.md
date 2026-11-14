@@ -183,8 +183,9 @@ script-checked jobs to the local model says.
    every command, as in `git -C <worktree>`. Take `git status --short`
    of the main checkout both before that agent starts and after it
    ends, and move into the PR folder only the files that showed up
-   while it ran. Add the one-line result, and where it ran, to
-   Testing in `$D/FILE`. Write the same line, starting with the
+   while it ran. Add the result, and where it ran, as a try line of
+   the checks list in Testing in `$D/FILE`, as `git-messages` item 5
+   says. Write the same line, starting with the
    pushed commit's full hash, to `tested` in the PR folder.
    Then file the request:
    - While the user is away, as common.md's The run says, do not
@@ -410,8 +411,9 @@ its entries parked.
   Limits allows it.
 - Edit a comment the user approved. Send the new wording as a reword
   in that pull request's comment review.
-- Amend or squash a branch after its first push, or once another
-  branch stacks on it; add a commit instead.
+- Amend or squash a branch that is pushed or that another branch
+  stacks on; add a commit instead. The `pull-request` skill forbids
+  it.
 - Make a commit on a pull request's branch that you do not push, or
   try or hand the user a commit that is not pushed.
 - Delete a test without a reviewer's finding that names the test still

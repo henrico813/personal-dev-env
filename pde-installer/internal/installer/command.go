@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -36,6 +37,7 @@ func NewCommand() *cobra.Command {
 	root.AddCommand(readCommand("doctor", "Check host prerequisites and managed paths", &repoRoot, doctor))
 	root.AddCommand(readCommand("list", "List ownership and installed state", &repoRoot, list))
 	root.AddCommand(newVersionCommand())
+	root.AddCommand(newUpdateCommand(&repoRoot))
 	return root
 }
 
@@ -102,6 +104,9 @@ func resolveInstallSelections(cfg config, args []string, requestedColorProfile s
 	if cfg.ColorProfile, err = resolveColorProfile(cfg.Home, requestedColorProfile); err != nil {
 		return config{}, err
 	}
+	if cfg.UpdateInterval, err = loadUpdateInterval(cfg.Home); err != nil {
+		return config{}, err
+	}
 	return cfg, nil
 }
 
@@ -136,6 +141,10 @@ func readCommand(name, description string, repoRoot *string, action func(config,
 				return errors.Join(err, lock.Close())
 			}
 			config.ColorProfile, err = resolveColorProfile(config.Home, "")
+			if err != nil {
+				return errors.Join(err, lock.Close())
+			}
+			config.UpdateInterval, err = loadUpdateInterval(config.Home)
 			if err != nil {
 				return errors.Join(err, lock.Close())
 			}
@@ -234,7 +243,16 @@ func reconcile(config config, runner run.Runner) error {
 		}
 		journals = append(journals, pluginJournal)
 	}
-	chezmoiJournal, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.Desktop, config.ColorProfile, runner).Apply()
+	chezmoiJournal, err := chezmoibackend.New(
+		config.Home,
+		config.RepoRoot,
+		config.AquaRoot,
+		config.Profile,
+		config.Desktop,
+		config.ColorProfile,
+		config.UpdateInterval,
+		runner,
+	).Apply()
 	if err != nil {
 		return fail("chezmoi", err)
 	}
@@ -260,8 +278,28 @@ func reconcile(config config, runner run.Runner) error {
 			return fmt.Errorf("skill lessons: %w", err)
 		}
 	}
+	// Runs after CommitJournals, which deletes the replaced binaries this looks for.
+	refreshStaleProcesses(
+		config.Home,
+		runner,
+	)
 	if err := refreshOpenCodeServers(config.Home, runner); err != nil {
 		return fmt.Errorf("refresh OpenCode servers: %w", err)
 	}
+	// Runs last, so a failed install keeps the old shell.
+	setLoginShell(config, runner)
 	return nil
+}
+
+// Makes zsh the current user's login shell, and only warns when that fails.
+// The install is done by then, and an account outside /etc/passwd or a sudo
+// with no terminal would fail the same way on every run.
+func setLoginShell(config config, runner run.Runner) {
+	account, err := user.Current()
+	if err == nil {
+		err = ubuntu.New(config.Profile, config.Desktop, runner).SetLoginShell(account.Username)
+	}
+	if err != nil {
+		fmt.Fprintf(runner.Err(), "warning: login shell stays unchanged: %v\n", err)
+	}
 }

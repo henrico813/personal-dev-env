@@ -46,7 +46,7 @@ It prints the hub's own line, the board, one count per state, the
 unread reports, then one row per session:
 
     hub kanban-hub-18 131k, watcher running
-    board 24/8, review 19
+    board active 5 of 8, review 19 of 6
     open 24: 4 working, 2 hub, 3 you,
       5 kept, 1 to-close, 2 to-park; 12 parked
     unread 2: demo-kb-007-impl docs-fix
@@ -152,10 +152,11 @@ are off by default. Most lines end with your own context, such as
   down gets its own `not sent` or `unsure` line.
 - `hand off now: hub at <N>k`: your context passed 150k. Hand off
   the hub now, as Hand off the hub says.
-- `board over its limit: N/M`: the cards in active and review passed
-  the board's limit. Tell the user at once, with the board line, and
-  start no new work until the count is back under the limit or the
-  user says to go on.
+- `board over its limit: active N of 8, review N of 6`: the cards
+  now in active or in review passed that stage's limit. Tell the
+  user at once, with the board line, and propose cards to pause as
+  Cards says. Start no ready card until both counts are back within
+  their limits or the user says to go on.
 - `to-close <names>: <why>; run hub clean`, or the same with
   `to-park`: those sessions finished. Run `hub clean` as Cleanup
   says.
@@ -213,11 +214,12 @@ tools, so you never read half a report.
   Merges says.
 - Finished work: start the next step. For an open pull request, add
   it to the review list, as Merges says.
-- A merged pull request: check the merge, and its install where there
-  is one, then accept the work yourself, such as by moving its card to
-  accepted. Do not ask the user, who already approved the merge.
-  A merge worker's summary shows the merge and the install, so start
-  no other session to check either.
+- A merged pull request: check the merge. For a personal-dev-env pull
+  request, also check that `pde-installer update` ran. Then accept the
+  work yourself, such as by moving its card to accepted. Do not ask
+  the user, who already approved the merge. A merge worker's summary
+  shows the merge, and the update when it ran with `--update`, so
+  start no other session to check either.
 - Status-only news, such as a passed rehearsal: send the worker
   nothing, and tell the user nothing about it.
 - A change of owner: note it on the card with `card note`, and tell
@@ -296,13 +298,15 @@ vault. A hub never reports to a hub on another machine.
   card. A short chat holds none. A card is one piece of work, so
   sessions on the same work share one card, and its `sessions` list
   keeps each of them.
-- One limit, across every project: 8 cards in `active` and
-  `review` together, as `card board` shows. While it allows, start
-  the oldest ready card, or the one the user names. Never start one
-  past the limit; only the user does. When work is over the limit,
-  propose which cards to pause, and let the user decide. If `card`
-  refuses a start that the limit allows, pass `--user` and say so in
-  `--why`.
+- Two limits, each across every project: 8 cards in `active` and 6
+  in `review`, as `card board` shows. `card` refuses a move into a
+  full stage unless the move has `--user`. While active has room,
+  start the oldest ready card, or the one the user names. Pass
+  `--user` past a limit only when the user says so. When review is
+  full, leave a finished card in `active` and tell the user its work
+  waits on them. When work is over a limit, propose which cards to
+  pause, and let the user decide. If `card` refuses a move that the
+  limits allow, pass `--user` and say so in `--why`.
 - Move a card to `review` as soon as its work waits only on the user,
   such as an open pull request or a plan or question for the user,
   even when more work follows. When the user has answered or
@@ -311,6 +315,9 @@ vault. A hub never reports to a hub on another machine.
   When you move a card to `review`, add the user's one next step with
   `card note KEY "next: <step>"`, such as `next: review PR #498`.
   `hub board` shows it on the card's details page.
+- When one wake needs several card commands, such as `card note`,
+  `card move` and `card add`, put them in one shell script and run it
+  in one tool call.
 - Only the user moves a card from `draft` to `ready`, adopts work
   already under way, or drops a card. Never release a card the user
   described in a sentence: it stays in `draft` until the user has
@@ -434,12 +441,39 @@ Fix the entry and run it again.
 Each card's worker opens its own pull request by `pull-request`. Keep
 one list of the pull requests that wait for the user's review, in
 `<run folder>/reviews.md`, and bring the whole list to the user in
-one message. A merge or pull request edit request is never a routine
+one message. Show each pull request with the checks list that ends
+its Testing section, as `git-messages` item 5 says. Add a pull
+request to the list only after its reviews, tests and tries ran. A
+`not run` line may stay only when its reason shows the check cannot
+apply. When a check is missing, or `not run` for any other reason,
+send the pull request back to its worker before you add it. Name it
+in that same message to the user, with the check it waits on.
+
+A merge or pull request edit request is never a routine
 step. A worker sends one only after you tell it the user reviewed
 that pull request, so tell it once the user has, and take the pull
 request off the list. The worker then merges and reports once it has
 merged. When the worker is parked, do not message it, since a message
 reopens it; hand its merge to a merge worker, as below.
+
+The first message that shows the user a pull request or a research
+note says each of these:
+
+- What changes for the user.
+- The result the user can look for after trying it.
+- Why that result proves the change. When the change has no result
+  to look for, say "nothing visible", and quote the changed line and
+  the test that covers it.
+- What was tested and what was not.
+- For a new skill or tool, why no existing one can hold it.
+- Your recommendation.
+
+When a pull request has a script for the user to try it, its worker
+writes it as `~/test-pr-<n>.sh`, where `<n>` is the pull request's
+number. The script prints a `You should see: ...` line before `ok`.
+It shows the before and after where it can. It never suggests a
+command that competes with the hub's own commands, such as
+`hub next`.
 
 Hand any other merge first to a merge worker. A merge worker is a new
 Herdr session on the local model, as `model-routing` picks, never a
@@ -451,11 +485,12 @@ says for a local job. In that brief, put the command below in place
 of `bash <script>`, and name `<folder>/summary.txt` as the summary
 file. In a repository with
 several remotes, add `--remote <remote>` after the test command.
-When the merge changes what an install puts on this machine, add
-`--install '<install command>'` after the test command, so the same
-worker installs once the pull request has merged. For
-personal-dev-env, the install command is
-`git pull --ff-only && pde-installer install`.
+For a personal-dev-env pull request, add `--update` at the end, as in
+`'<test command>' --remote <remote> --update`. `--update` makes the
+same worker run `pde-installer update` once the pull request has
+merged. That command updates the checkout at `install_path` in
+`~/.config/pde/config.json` to the newest main and installs it, so
+the hub starts no separate session to install the merge.
 
 Start a merge worker only for a pull request whose Testing records that
 the change was deployed and tried, as `pull-request` Guardrail 4 asks.
@@ -481,11 +516,15 @@ merge request. The line before `exit:` says what happened:
 
 - `merged: <commit>`: handle it as a merged pull request, as Reports
   from sessions says.
-- `install: passed`: the merged line comes just before it. Handle it
-  as a merged pull request whose install you have checked.
-- `install: failed with exit <code>; see install.log`: the pull
-  request merged but its install failed. Tell the user, with the last
-  lines of `<folder>/install.log`.
+- `update installed: main is at <commit>` or
+  `update current: main is at <commit>`: the merged line comes just
+  before it. Handle it as a merged pull request; the update needs no
+  further check. The three `update` lines appear only with
+  `--update`.
+- `update: failed with exit <code>: <reason>; see update.log`: the
+  pull request merged, but this machine does not run the newest main.
+  Accept the merged work as above, and tell the user, with that line
+  and the last lines of `<folder>/update.log`.
 - `result: conflict with <base>: <files>`: resolving a conflict
   writes code, so it is a local job. Hand it to a worker as
   `herdr-handoff`'s "Hand a local job to a worker" says, with an edit

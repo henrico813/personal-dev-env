@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 
 use hub::commands::Outcome;
-use hub::commands::clean::{run_clean, run_park};
+use hub::commands::clean::{run_clean, run_clean_listed, run_park};
 use hub::external::cards::{CardNote, Stage};
 use hub::external::herdr::{Agent, AgentStatus, Pane};
 use hub::shared::HubError;
@@ -130,6 +130,44 @@ fn run_clean_dry_run_changes_nothing() {
     assert!(test_tools.cards.notes.borrow().is_empty());
     assert_eq!(read_parked_record(&test_tools, "demo-kb-007-impl"), None);
     assert!(read_events(&test_tools.run_path()).is_empty());
+}
+
+/// The board's y cleans only the sessions its dialog listed. A session
+/// that became safe to close after the list was made must stay open,
+/// or y would close a tab the user never saw named.
+#[test]
+fn run_clean_listed_keeps_unlisted_sessions_open() {
+    let mut test_tools = TestTools::new();
+    add_finished_worker(
+        &mut test_tools,
+        "demo-kb-001-impl",
+        "DEMO-KB-001",
+        Stage::Accepted,
+    );
+    add_finished_worker(
+        &mut test_tools,
+        "demo-kb-002-impl",
+        "DEMO-KB-002",
+        Stage::Accepted,
+    );
+    let now = make_time("2026-11-11T22:14:00+00:00[UTC]");
+
+    let outcome = run_clean_listed(
+        &test_tools.tools(),
+        &test_tools.run(),
+        &["demo-kb-001-impl".to_owned()],
+        &now,
+    )
+    .unwrap();
+
+    assert_eq!(
+        outcome.lines,
+        ["closed demo-kb-001-impl: DEMO-KB-001 accepted"]
+    );
+    assert_eq!(
+        *test_tools.herdr.closed_tabs.borrow(),
+        ["w1:t-demo-kb-001-impl"]
+    );
 }
 
 /// The hub runs `hub send` as a process of its own, beside `hub clean`.

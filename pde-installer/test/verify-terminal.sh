@@ -18,6 +18,8 @@ assert_absent_packages() {
 assert_absent_packages
 
 pde-installer install terminal --repo-root "$REPO_ROOT"
+# The image makes testuser with bash, so this checks a real usermod.
+[[ "$(getent passwd "$(id -un)" | cut -d: -f7)" == */zsh ]]
 export AQUA_ROOT_DIR="$HOME/.local/share/aquaproj-aqua"
 export AQUA_GLOBAL_CONFIG="$HOME/.config/aquaproj-aqua/aqua-terminal.yaml"
 export AQUA_CHECKSUMS_PATH="$HOME/.config/aquaproj-aqua/aqua-terminal-checksums.json"
@@ -94,13 +96,13 @@ fi
 grep -Fxq '{"keybinds":[]}' "$cli_home/.config/opencode/cli.json"
 rm "$cli_home/.config/opencode/cli.json"
 rendered="$(render_opencode_cli everforest-dark)"
-jq -e '. == {"theme":{"name":"everforest"},"tabs":{"mode":"off"},"keybinds":{"agent.cycle":"tab","agent.cycle.reverse":"shift+tab"}}' <<<"$rendered" >/dev/null
+jq -e '. == {"theme":{"name":"everforest"},"tabs":{"mode":"off"},"keybinds":{"agent.cycle":"tab","agent.cycle.reverse":"shift+tab"},"plugins":["./pde-usage"]}' <<<"$rendered" >/dev/null
 printf '{"plugins":["x","./herdr-opencode"]}\n' >"$cli_home/.config/opencode/cli.json"
 rendered="$(render_opencode_cli everforest-dark)"
-jq -e '.plugins == ["x","./herdr-opencode","-herdr.opencode.session-selection","./pde-herdr-opencode"]' <<<"$rendered" >/dev/null
-printf '{"plugins":["x","-herdr.opencode.session-selection","./pde-herdr-opencode"]}\n' >"$cli_home/.config/opencode/cli.json"
+jq -e '.plugins == ["x","./herdr-opencode","-herdr.opencode.session-selection","./pde-herdr-opencode","./pde-usage"]' <<<"$rendered" >/dev/null
+printf '{"plugins":["./pde-usage","x","-herdr.opencode.session-selection","./pde-herdr-opencode"]}\n' >"$cli_home/.config/opencode/cli.json"
 rendered="$(render_opencode_cli everforest-dark)"
-jq -e '.plugins == ["x"]' <<<"$rendered" >/dev/null
+jq -e '.plugins == ["x","./pde-usage"]' <<<"$rendered" >/dev/null
 rm -rf "$cli_home" "$git_stub"
 
 before_rollback="$(sha256sum "$HOME/.config/pde/config.json" "$HOME/.zshrc" "$HOME/.tmux.conf" "$HOME/.p10k.zsh")"

@@ -1,4 +1,4 @@
-// Package installer defines the pde-installer command and workflow.
-// Install and update reconcile every component. Config only migrates legacy
-// state and applies the repository's chezmoi source.
+// Package installer defines the pde-installer commands, where install
+// reconciles every component. Update fast-forwards the checkout to main and
+// runs install from it.
 package installer

@@ -239,9 +239,24 @@ must stay true and what a user or caller loses if it breaks, beyond
 what the test's name already says. Keep the language's docstring form,
 such as Python's summary line and paragraph.
 
-Give every test helper and fixture, private ones included, a one-line
-doc that says what it stands for, such as "A config file with no
-version line."
+Give every test helper and fixture, private ones included, at least a
+one-line doc that says what it stands for, such as "A config file with
+no version line." A language skill may ask for more, such as an
+argument section.
+
+## Docs folders
+
+A new component too large for one README, such as a tool with several
+commands, gets its own `docs/` folder. Split it into the four page
+types of the Diataxis docs framework: tutorials, how-to guides,
+explanation and reference. Ask the user which types they want before
+you write any.
+
+The folder's README only points the reader to the right page. It says
+which page to read for each task, with one sentence on what each page
+type is for. An explanation page shows how the parts work together.
+A reference page holds exact facts, such as paths and
+commands.
 
 ## Editing and review
 
@@ -426,8 +441,8 @@ Before declaring source or test work complete, check:
 - new prose does not merely repeat the code
 - stated reasons are supported
 - test explanations match what the assertions prove
-- every test has a short doc, and every test helper and fixture a
-  one-line doc
+- every test has a short doc, and every test helper and fixture at
+  least a one-line doc
 - the amount of documentation fits the code's complexity and risk
 - for Go, Python or Rust files, `check-comments` reports no
   failures, and each `verb-first` finding is renamed or, for a real

@@ -74,9 +74,9 @@ For a card that covers several sessions, add the others with
 `card link <KEY> --session <agent>`. Put what the sessions found and
 what is left in the card with `card add <KEY> Context "<text>"`.
 
-Adoption skips the board's limit, 8 cards in active and review
-together, as `card board` shows, so the board can go over it. Start
-no ready card until the board is back under the limit.
+Adoption skips the board's limits, 8 cards in active and 6 in
+review, as `card board` shows, so the board can go over them. Start
+no ready card until both counts are back within their limits.
 
 ## 6. Keep, hand off or pause
 

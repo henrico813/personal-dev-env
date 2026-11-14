@@ -43,7 +43,8 @@ for people and skills that used the Python one.
   after the archive fails, such as `card note`, the error starts with
   `archived report-NAME.HHMM.read, but`. The exit code is that failed
   step's own code.
-- `brief`'s first line is `board 24/8, review 19; 4 decisions`, or
+- `brief`'s first line is
+  `board active 5 of 8, review 19 of 6; 4 decisions`, or
   `board: REASON` when `card` fails. When nothing else waits, the
   board line is followed by `Nothing waits on the user.`, the same
   line the Python hub printed.
@@ -87,9 +88,10 @@ for people and skills that used the Python one.
   every other line but `no hub handoff`.
 - `next` runs a minute pass at most once a minute, and only after a
   session's state changed or a report was read. It reads
-  `card board`. Each time the board goes over its limit, it wakes the
-  hub once with `board over its limit: 25/8 (hub 131k)`. A board
-  already over its limit at the run's first pass prints nothing.
+  `card board`. Each time active or review goes over its limit, it
+  wakes the hub once with
+  `board over its limit: active 10 of 8, review 18 of 6 (hub 131k)`.
+  A board already over a limit at the run's first pass prints nothing.
 - The minute pass never closes or parks a session. It lists each
   session that becomes `to-close` or `to-park` once, in one line per
   state and why, such as

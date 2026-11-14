@@ -29,9 +29,14 @@ Follow the repository's documented style first. Otherwise use these defaults.
    Testing: one or two sentences of real results, naming the version
    or commit they ran on, with at most one short line of real output,
    such as `20 passed`. For an evaluation, give one concrete example
-   with and without the change, and its limits. End with one line on
-   what was not done, if anything. Report only checks actually run,
-   and never refer to commits the squash removes.
+   with and without the change, and its limits. Add one line on what
+   was not done, if anything. End Testing with a checks list in a
+   fenced code block. A try runs the changed behavior on an installed
+   or deployed copy. The block's first line reads `Checks`. Each line
+   after it covers one review, test or try, and starts with `pass`,
+   `fail` or `not run`. A `not run` line gives the reason. Mark a
+   check `pass` or `fail` only when it ran. Never refer to commits
+   the squash removes.
 6. Leave out branch-only commit hashes, meaningless test counts, private
    tracker references, unexplained project terms, and AI attribution.
    Never name a private machine, the user's employer or work, private
@@ -74,5 +79,12 @@ Example pull request:
 
     On version 2.3.0, `./tool --dry-run` listed the planned file
     changes and the working tree stayed clean.
+
+    ```
+    Checks
+    pass  tests (20 passed)
+    pass  dry-run try on version 2.3.0
+    not run  Windows try: no Windows machine
+    ```
 
 Bad titles: `fix: update stuff.`; `feat: improve things for everyone`.

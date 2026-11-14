@@ -10,6 +10,7 @@
 - [Resolve a key collision](how-to/resolve-a-key-collision.md)
 - [Add a run phase](how-to/add-a-run-phase.md)
 - [Use shared skills](how-to/use-shared-skills.md)
+- [Choose a model](how-to/choose-a-model.md)
 
 ## Explanation
 

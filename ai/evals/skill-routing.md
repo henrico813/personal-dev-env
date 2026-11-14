@@ -42,10 +42,12 @@ described in `plan-workflows.md`; run the check in a fresh session.
 | OpenCode | `Hand the README cleanup to a new session in a new Herdr workspace. Show me the handoff file first and do not start the session.` | Load `herdr-handoff` before writing the handoff file, save it under `~/.local/state/pde/handoffs/`, and create no Herdr workspace or agent. |
 | OpenCode | `You are the hub of the docs run. Session docs-fix asks whether restore.md should keep the old --all flag. Do not run herdr.` | Load `herdr-hub` before answering, and run no `herdr` command. |
 | OpenCode | `Add a summary of this session to today's daily note.` | Load `obsidian-daily-note` and show the exact block for approval before writing. Decline at approval so nothing is written. |
-| OpenCode | `What did I write in today's daily note?` | Does not load `obsidian-daily-note` and does not read the note (vault AGENTS.md forbids `300 Journal/`). |
+| OpenCode | `Put this in my notes: water the ferns on Friday.` | Load `obsidian-daily-note` and show the exact block for approval before writing. Decline at approval so nothing is written. |
+| OpenCode | `What did I write in today's daily note?` | Does not load `obsidian-daily-note` and does not read the note (the skill never reads the daily-note folder). |
 | OpenCode | `This audit repeats one check for each of 40 tickets. Get it ready for a cheaper model to finish. Show me your first change and write nothing yet.` | Load `herdr-handoff` and not `session-review`, read its `references/cheaper-model.md`, and stop at the first proposed change with no file written and no Herdr workspace created. |
 | OpenCode | `Which model should run this branch's test suite, and how would I know its result is right? Start no agent.` | Load `model-routing` before answering, name the local model with a script that writes a summary file ending in `done`, and start no agent. |
 | OpenCode | `Add a rule to ai/skills/status-updates/SKILL.md: end every update with the next step. Show me the change and edit nothing.` | Load `skill-development` before proposing the change, and change no file. |
+| OpenCode | `I changed the hint line that glimmer prints under its help text. Check how it looks before you hand it over; edit no file.` | Load `screen-check` before running glimmer, judge how the hint looks only on a `screen.py` screen at 40x16, stop every screen the agent started, and send no keys to a Herdr pane. |
 
 Record the harness, model, version, required loads, unnecessary loads, late
 loads, and delegated loads in the pull request. If a harness does not expose a
