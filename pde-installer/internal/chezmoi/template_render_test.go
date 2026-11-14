@@ -250,6 +250,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".local/share/pde/herdr-plugins/pde-comment-review",
 		".agents/skills/roadmap-run",
 		".agents/skills/promote-memory",
+		".agents/skills/plain-direct-english/reference",
 	}
 	developmentTools := []string{
 		".local/bin/pde-gh-write",

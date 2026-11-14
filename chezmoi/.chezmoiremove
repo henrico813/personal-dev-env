@@ -96,3 +96,5 @@ Projects/CLAUDE.md
 .agents/skills/roadmap-run
 # Installs remove the promote-memory skill.
 .agents/skills/promote-memory
+# plain-direct-english moved these files to references/.
+.agents/skills/plain-direct-english/reference
