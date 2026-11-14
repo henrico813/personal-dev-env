@@ -130,6 +130,10 @@ jobs:
           node test/opencode-herdr-subagents.test.mjs
           node test/opencode-secret-redaction.test.mjs
           node test/opencode-usage.test.mjs
+          node test/opencode-quota-store.test.mjs
+          node test/opencode-quota-sources.test.mjs
+          node test/opencode-quota-lines.test.mjs
+          node test/opencode-quota-cli.test.mjs
           bash -n test/*.sh
           test/nvim-obsidian-sync.sh
           test/nvim-clipboard.sh

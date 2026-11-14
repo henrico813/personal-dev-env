@@ -1,0 +1,18 @@
+{
+  "subscription_type": "max",
+  "rate_limits_available": true,
+  "rate_limits": {
+    "five_hour": null,
+    "seven_day": { "utilization": 48, "resets_at": "2026-11-18T02:00:00Z" },
+    "limits": [
+      { "kind": "weekly_all", "group": "weekly", "percent": 48, "resets_at": "2026-11-18T02:00:00Z" },
+      {
+        "kind": "weekly_scoped",
+        "group": "weekly",
+        "percent": 0,
+        "resets_at": "2026-11-18T02:00:00Z",
+        "scope": { "model": { "display_name": "Fable" } }
+      }
+    ]
+  }
+}

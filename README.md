@@ -142,6 +142,7 @@ Vibe binaries plus repo-managed AI config.
 | prs | `prs/` | `~/.local/bin/prs` (full only) | Reads your open pull requests on a phone; see [GitHub Pull Request Reviews](chezmoi/README.md#github-pull-request-reviews) |
 | Automatic updates | `chezmoi/` | `~/.config/systemd/user/pde-update.{service,timer}` (full only) | Runs `pde-installer update` every hour; set `update_interval` in `~/.config/pde/config.json` to change it. See the [update reference](pde-installer/docs/reference/commands.md#pde-installer-update) |
 | pde-check | `chezmoi/` | `~/.local/bin/pde-check` (client and full) | Runs test and lint commands, saves each command's output to a log, and prints a summary of at most 10 lines. Run `pde-check` with no arguments to see how to use it |
+| pde-quota | `chezmoi/` | `~/.local/bin/pde-quota` (client and full) | Shows how much of each plan limit is used, such as `Claude weekly 48% used`, from numbers it saves in `~/.local/state/pde/quota/`; the OpenCode usage sidebar reads the same numbers. Run `pde-quota show` |
 
 Shared configuration lives in `chezmoi/`, including local-file mappings for the complete `ai/` source tree and checksummed remote externals.
 

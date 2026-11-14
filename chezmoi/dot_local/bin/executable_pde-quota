@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Shows and refreshes plan usage for Claude, Copilot and Codex; see `pde-quota show`.
+exec node "${XDG_CONFIG_HOME:-$HOME/.config}/opencode/pde-usage/quota/cli.js" "$@"
