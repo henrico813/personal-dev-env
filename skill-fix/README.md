@@ -39,6 +39,9 @@ skill-fix held [list|show|drop|retry] [N]
 Each command prints one JSON object, except `held show`, which prints
 the held commit. Exit codes: 0 when the command worked or the fix was
 committed or held, 1 when a fix rule refused it, and 2 on an error.
+The `case` rule refuses a fix that adds no correction case, a new
+JSON file in the skill's `evals/` with `"correction": true`; the
+session-review skill's `references/trials.md` says how to write one.
 
 A skill's `metadata.scope` tag picks its repository: `personal` is
 the checkout pde-installer runs from, and `extra` is the checkout that
