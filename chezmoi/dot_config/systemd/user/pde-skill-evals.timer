@@ -1,0 +1,10 @@
+[Unit]
+Description=Run every skill's eval cases once a week
+
+[Timer]
+OnCalendar=weekly
+# A machine that was off at that time runs the job when it next starts.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

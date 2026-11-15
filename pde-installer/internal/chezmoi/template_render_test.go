@@ -51,6 +51,9 @@ func TestIgnoreListMatchesEachProfile(t *testing.T) {
 		".config/systemd/user/pde-update.service",
 		".config/systemd/user/pde-update.timer",
 		"enable_update_timer.sh",
+		".config/systemd/user/pde-skill-evals.service",
+		".config/systemd/user/pde-skill-evals.timer",
+		"enable_skill_evals_timer.sh",
 	}
 	terminalIgnores := []string{
 		".config/alacritty",

@@ -1,0 +1,18 @@
+[Unit]
+Description=Run every skill's eval cases on the local model
+
+[Service]
+Type=oneshot
+# The checkout the last install came from, so the cases match the
+# installed skills. trials.py finds the skills from this folder.
+WorkingDirectory={{ env "PDE_REPO_ROOT" }}
+# Keep --model the first Local model in model-routing's Models list.
+ExecStart=/usr/bin/python3 {{ env "PDE_REPO_ROOT" }}/ai/skills/session-review/scripts/trials.py --all-skills --without --model goog/qwen3.8-flash
+# trials.py runs opencode, from ~/.local/bin, and git.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+# Print each case line to the journal as it ends, not at exit.
+Environment=PYTHONUNBUFFERED=1
+# Each run stops after 10 minutes, but every case of every skill, three
+# times each, can take hours on the local model.
+TimeoutStartSec=6h
+Nice=10

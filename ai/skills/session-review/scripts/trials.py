@@ -7,12 +7,15 @@ of the current Git repository, gets that skill's SKILL.md instead.
 The script sends the rules and prompt to ``opencode run`` N times and
 grades each answer with the case's patterns. ``--at`` and
 ``--without`` add runs on the skill's old text and on no rules, to
-compare. Read ``main`` first.
+compare. ``--last-validated`` runs nothing and reports each skill's
+last call from the saved results. Read ``main`` first.
 
 Example:
     python3 ~/.agents/skills/session-review/scripts/trials.py -n 5
     python3 trials.py --case stale-approval --variant high
     python3 trials.py --skill skill-development --at main --without
+    python3 trials.py --all-skills --without
+    python3 trials.py --last-validated
 """
 
 import argparse
@@ -60,6 +63,11 @@ def main(argv: list[str] | None = None) -> int:
         1 when a case cannot be used, else 0, whatever the pass rate.
     """
     args = parse_args(argv)
+    if args.last_validated:
+        saved = read_saved_runs(args.trials / "results.jsonl")
+        for line in list_last_validated(saved):
+            print(line)
+        return 0
     try:
         cases = load_cases(args)
     except CaseError as error:
@@ -75,6 +83,14 @@ def main(argv: list[str] | None = None) -> int:
     saved = read_saved_runs(log) if args.without else []
     version = read_opencode_version()
     total = count = 0
+    # A killed run leaves a half line; a new line would glue onto it.
+    if log.is_file() and log.stat().st_size:
+        with log.open("rb") as handle:
+            handle.seek(-1, os.SEEK_END)
+            needs_newline = handle.read(1) != b"\n"
+        if needs_newline:
+            with log.open("a", encoding="utf-8") as handle:
+                handle.write("\n")
     with open(log, "a", encoding="utf-8") as results:
         for case in cases:
             graded = []
@@ -119,6 +135,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="run this skill's cases in this Git repository, repeatable",
     )
     parser.add_argument(
+        "--all-skills",
+        action="store_true",
+        help="run the cases of every skill in the checkout that has evals/",
+    )
+    parser.add_argument(
         "--at", help="also run each skill case on its SKILL.md at this commit"
     )
     parser.add_argument(
@@ -126,9 +147,16 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         action="store_true",
         help="also run each case with no rules, reusing saved runs",
     )
+    parser.add_argument(
+        "--last-validated",
+        action="store_true",
+        help="print each skill's last call from results.jsonl, run nothing",
+    )
     args = parser.parse_args(argv)
-    if args.at and not args.skill:
-        parser.error("--at needs --skill")
+    if args.at and not (args.skill or args.all_skills):
+        parser.error("--at needs --skill or --all-skills")
+    if args.skill and args.all_skills:
+        parser.error("--skill and --all-skills cannot be used together")
     return args
 
 
@@ -136,9 +164,10 @@ def load_cases(args: argparse.Namespace) -> list[dict]:
     """Read and check every chosen case, so a bad one stops the script early.
 
     Args:
-        args: The command-line options. With ``--skill``, the cases
-            come from each skill's ``evals/`` in the checkout instead
-            of the trials folder's ``cases/``.
+        args: The command-line options. With ``--skill`` or
+            ``--all-skills``, the cases come from each skill's
+            ``evals/`` in the checkout instead of the trials folder's
+            ``cases/``.
 
     Returns:
         The chosen cases, each with its case hash and skill texts added.
@@ -147,10 +176,14 @@ def load_cases(args: argparse.Namespace) -> list[dict]:
         CaseError: A case is broken, its rules are missing, or a
             wanted ID names no case.
     """
-    if args.skill:
+    if args.skill or args.all_skills:
         top = Path(run_git(Path.cwd(), "rev-parse", "--show-toplevel").strip())
+        names = args.skill
+        if args.all_skills:
+            found = (top / "ai/skills").glob("*/evals")
+            names = sorted(folder.parent.name for folder in found)
         folders = [
-            (top / "ai/skills" / name / "evals", name) for name in args.skill
+            (top / "ai/skills" / name / "evals", name) for name in names
         ]
     else:
         top = None
@@ -170,6 +203,8 @@ def load_cases(args: argparse.Namespace) -> list[dict]:
     ]
     if not cases:
         names = ", ".join(str(folder) for folder, _ in folders)
+        if not names:
+            raise CaseError("no skill has an evals/ folder")
         raise CaseError(f"no cases in {names}")
     for case in cases:
         case["skill_texts"] = list_skill_texts(case, args, top)
@@ -315,11 +350,16 @@ def run_git(top: Path, *args: str) -> str:
 
 
 def read_saved_runs(log: Path) -> list[dict]:
-    """Return every line of ``results.jsonl``, oldest first."""
+    """Return each valid JSON line, oldest first, skipping cut-short ones."""
     if not log.exists():
         return []
-    lines = log.read_text(encoding="utf-8").splitlines()
-    return [json.loads(line) for line in lines]
+    runs = []
+    for line in log.read_text(encoding="utf-8").splitlines():
+        try:
+            runs.append(json.loads(line))
+        except ValueError:
+            continue
+    return runs
 
 
 def find_saved_runs(
@@ -397,6 +437,44 @@ def summarize_case(
     return f"{line} - {failures[0][0]}: {failures[0][1]}"
 
 
+def list_last_validated(saved: list[dict]) -> list[str]:
+    """Return one line per skill on the last call that ran its cases.
+
+    A call is the runs that share one answers folder. The line counts
+    only that call's runs of the skill's own text, the "new" skill text,
+    so a reused or no-skill run cannot make the skill look better. Lines
+    of cases in the trials folder name no skill and are skipped.
+
+    Args:
+        saved: The lines of ``results.jsonl``, oldest first.
+
+    Returns:
+        Lines sorted by skill, such as ``skill-development 2026-11-20
+        goog/qwen3.8-flash 13/15 rules 1a2b3c4d5e6f``.
+    """
+    runs = [
+        run for run in saved if run.get("skill") and run["skill_text"] == "new"
+    ]
+    last = {run["skill"]: run for run in runs}
+    lines = []
+    for skill, newest in sorted(last.items()):
+        call = Path(newest["answer"]).parent
+        same = [
+            run
+            for run in runs
+            if run["skill"] == skill and Path(run["answer"]).parent == call
+        ]
+        passed = sum(run["passed"] for run in same)
+        variant = newest["variant"]
+        model = newest["model"] + (f"#{variant}" if variant else "")
+        day = newest["time"][:10]
+        lines.append(
+            f"{skill} {day} {model} {passed}/{len(same)}"
+            f" rules {newest['rules_hash']}"
+        )
+    return lines
+
+
 def run_trial(
     case: dict,
     skill_text: dict,
@@ -426,6 +504,7 @@ def run_trial(
     return {
         "time": datetime.datetime.now().isoformat(timespec="seconds"),
         "case": case["id"],
+        "skill": case["skill"],
         "run": number,
         "skill_text": skill_text["name"],
         "model": args.model,

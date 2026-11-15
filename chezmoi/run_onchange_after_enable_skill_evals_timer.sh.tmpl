@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Turns on the weekly timer that runs every skill's eval cases.
+# The hashes and checkout below make chezmoi run this again when a unit
+# file changes or an install comes from another checkout.
+# service {{ include "dot_config/systemd/user/pde-skill-evals.service.tmpl" | sha256sum }}
+# timer {{ include "dot_config/systemd/user/pde-skill-evals.timer" | sha256sum }}
+# checkout {{ env "PDE_REPO_ROOT" }}
+set -euo pipefail
+
+# systemctl --user only works when a systemd user manager is running, which
+# Docker smoke tests lack.
+if ! command -v systemctl >/dev/null 2>&1 || ! systemctl --user show-environment >/dev/null 2>&1; then
+    exit 0
+fi
+systemctl --user daemon-reload
+systemctl --user enable --now pde-skill-evals.timer

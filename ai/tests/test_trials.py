@@ -1,5 +1,6 @@
 """Behavior tests for the session-review skill's trials script."""
 
+import datetime
 import json
 import os
 import subprocess
@@ -548,3 +549,120 @@ class TestSkillCases:
         )
 
         assert result.stdout.splitlines()[0] == summary
+
+    def test_all_skills_runs_every_evals_folder(self, tmp_path: Path) -> None:
+        """Run the cases of each skill that has ``evals/``, and skip the rest.
+
+        The weekly timer runs ``--all-skills`` with no one watching. If
+        it missed a skill's folder, that skill would look checked while
+        no run tested it, and a skill with no cases must not stop the
+        other skills' runs.
+        """
+        repo = make_skill_checkout(tmp_path)
+        orchard = repo / "ai/skills/orchard"
+        (orchard / "evals").mkdir(parents=True)
+        (orchard / "SKILL.md").write_text("# Orchard\n\nPrune in winter.\n")
+        case = {
+            "id": "prune-time",
+            "source": "a made-up correction",
+            "rule": "Orchard",
+            "prompt": "When do you prune?",
+            "pass": ["winter"],
+        }
+        (orchard / "evals/prune-time.json").write_text(json.dumps(case))
+        (repo / "ai/skills/notes").mkdir()
+        (repo / "ai/skills/notes/SKILL.md").write_text("# Notes\n")
+
+        result = run_trials(tmp_path, "-n", "1", "--all-skills", cwd=repo)
+
+        assert result.returncode == 0, result.stderr
+        cases = [r["case"] for r in read_results(tmp_path / "trials")]
+        assert sorted(cases) == ["prune-time", "water-time"]
+
+    def test_last_validated_counts_last_call_only(
+        self, tmp_path: Path
+    ) -> None:
+        """Report each skill's last call, counting only its own text's runs.
+
+        The user reads this line to decide whether a skill still works
+        on the model. Counting an older call would mix in runs of text
+        or cases that have since changed, and counting no-skill runs
+        would credit the skill with answers it did not shape. Every real
+        log starts with lines from before skill cases, which have no
+        skill or skill text, and they must not break the report.
+        """
+        repo = make_skill_checkout(tmp_path)
+        trials = tmp_path / "trials"
+        trials.mkdir()
+        old_line = {
+            "case": "stale-ask",
+            "model": "test/model",
+            "variant": None,
+            "rules_hash": "4f1c2a9e0b7d",
+            "case_hash": "9d8e7f6a5b4c",
+            "passed": True,
+        }
+        (trials / "results.jsonl").write_text(json.dumps(old_line) + "\n")
+        options = ("--skill", "garden", "--model", "test/model")
+        run_trials(tmp_path, "-n", "1", *options, answers=("noon",), cwd=repo)
+        run_trials(
+            tmp_path,
+            "-n",
+            "2",
+            *options,
+            "--without",
+            answers=("I water at dawn.",),
+            cwd=repo,
+        )
+
+        result = run_trials(tmp_path, "--last-validated")
+
+        results = read_results(trials)[1:]
+        new_runs = [r for r in results if r["skill_text"] == "new"]
+        rules = new_runs[-1]["rules_hash"]
+        today = datetime.date.today().isoformat()
+        assert result.stdout.splitlines() == [
+            f"garden {today} test/model 2/2 rules {rules}"
+        ]
+
+    def test_cut_short_log_line_is_skipped(self, tmp_path: Path) -> None:
+        """Read past a saved line cut short, so later runs still run.
+
+        The weekly timer runs unattended, and a run killed while writing
+        leaves half a line at the end of ``results.jsonl``. One such line
+        must not break every later run.
+        """
+        repo = make_skill_checkout(tmp_path)
+        trials = tmp_path / "trials"
+        trials.mkdir()
+        old_line = {
+            "case": "stale-ask",
+            "model": "test/model",
+            "variant": None,
+            "rules_hash": "4f1c2a9e0b7d",
+            "case_hash": "9d8e7f6a5b4c",
+            "passed": True,
+        }
+        (trials / "results.jsonl").write_text(
+            json.dumps(old_line) + '\n{"case": "stale'
+        )
+
+        result = run_trials(
+            tmp_path,
+            "--skill",
+            "garden",
+            "-n",
+            "1",
+            "--without",
+            "--model",
+            "test/model",
+            answers=("I water at dawn.",),
+            cwd=repo,
+        )
+
+        lines = (trials / "results.jsonl").read_text().splitlines()
+        assert result.returncode == 0, result.stderr
+        assert lines[1] == '{"case": "stale'
+        runs = [json.loads(line) for line in lines[2:]]
+        assert json.loads(lines[0]) == old_line
+        assert [run["case"] for run in runs] == ["water-time"] * 2

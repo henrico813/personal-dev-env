@@ -15,6 +15,7 @@ skill's cases" says how.
 - Run the trials
 - Write a case
 - Run a skill's cases
+- Weekly runs
 - Write a skill case
 
 ## Run the trials
@@ -110,6 +111,8 @@ at `main`, and with no skill:
 
 - `--skill NAME` runs that skill's cases instead of the trials
   folder's. Repeat it for more skills.
+- `--all-skills` runs the cases of every skill that has an `evals/`
+  folder.
 - `--at REF` also runs each case on the skill's SKILL.md at that
   Git commit or branch, the old text.
 - `--without` also runs each case with no skill. Such a run depends
@@ -125,8 +128,35 @@ each skill text, `new`, `old` and `none`:
 `saved` after a skill text marks its runs as reused. A case that
 passed every run of every skill text ends with "every run passed, so no
 difference". It cannot show what the skill changes, so make it harder
-or drop it. Each line in `results.jsonl` also names its skill text and
-the commit its SKILL.md came from, or none for an uncommitted edit.
+or drop it. Each line in `results.jsonl` also names its skill, its
+skill text and the commit its SKILL.md came from, or none for an
+uncommitted edit.
+
+## Weekly runs
+
+On a full install, a timer runs every skill's cases once a week on the
+local model, each case also once with no skill to compare, from the
+checkout the installer used. It runs whatever that checkout holds at the
+time, such as a branch left checked out. To see the last call that ran
+each skill's cases:
+
+    python3 ~/.agents/skills/session-review/scripts/trials.py \
+        --last-validated
+
+It runs nothing and prints one line per skill:
+
+    skill-development 2026-11-20 goog/qwen3.8-flash 13/15 rules 1a2b3c4d5e6f
+
+The line gives the day, the model, and how many runs of the skill's
+own text passed in that call. When the count drops and the rules hash
+stays the same, the text did not change, so compare the model and the
+OpenCode version in `results.jsonl`. To start the timer's job now
+without waiting for it to finish:
+
+    systemctl --user start --no-block pde-skill-evals.service
+
+Then `journalctl --user -u pde-skill-evals.service` shows each case's
+line as it ends.
 
 ## Write a skill case
 

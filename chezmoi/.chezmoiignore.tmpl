@@ -39,6 +39,11 @@ enable_sweep_timer.sh
 .config/systemd/user/pde-update.service
 .config/systemd/user/pde-update.timer
 enable_update_timer.sh
+# Only full installs run agents and reach the local model the weekly eval
+# job runs on.
+.config/systemd/user/pde-skill-evals.service
+.config/systemd/user/pde-skill-evals.timer
+enable_skill_evals_timer.sh
 {{- if not (has "workstation" .pde.tiers) }}
 # Terminal VMs have no editor or agents, so they skip these files.
 .config/alacritty
