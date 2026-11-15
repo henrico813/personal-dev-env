@@ -12,8 +12,6 @@ import (
 	"pde-installer/internal/run"
 )
 
-// Returns extra_skills_repo from config.json with a leading ~/ expanded, or ""
-// when the file or the key is missing. Only a PC with extra skills sets it.
 func loadExtraSkillsRepo(home string) (string, error) {
 	data, err := os.ReadFile(filepath.Join(
 		home,
@@ -56,8 +54,6 @@ func loadExtraSkillsRepo(home string) (string, error) {
 	return repo, nil
 }
 
-// Fast-forwards the extra_skills_repo checkout and returns whether it moved.
-// A failure only warns, because the personal update does not need it.
 func updateExtraSkills(home string, runner run.Runner) bool {
 	root, err := loadExtraSkillsRepo(home)
 	if err == nil && root == "" {
@@ -80,9 +76,6 @@ func updateExtraSkills(home string, runner run.Runner) bool {
 	return moved
 }
 
-// Fast-forwards root to the main of the remote its main tracks, and returns
-// whether HEAD moved. Like the personal checkout, a checkout off main or with
-// changes to tracked files stays where it is.
 func fastForwardExtraSkills(root string, runner run.Runner) (bool, error) {
 	reason, err := findSkipReason(
 		root,

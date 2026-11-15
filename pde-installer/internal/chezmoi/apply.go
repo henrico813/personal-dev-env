@@ -23,9 +23,7 @@ type Manager struct {
 	ColorProfile             colorprofile.Profile
 	UpdateInterval           time.Duration
 	Runner                   run.Runner
-	// The extra skills checkout that templates read as PDE_EXTRA_SKILLS_REPO,
-	// or "" to install no extra skills.
-	ExtraSkillsRepo string
+	ExtraSkillsRepo          string
 }
 
 // New returns a chezmoi manager for the supplied installation roots.

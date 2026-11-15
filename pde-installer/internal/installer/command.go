@@ -91,9 +91,6 @@ func mutatingCommand(use, description string, repoRoot *string, action func(conf
 	return command
 }
 
-// Returns cfg with the profile, desktop and color profile that install's
-// argument and flag select. config.json supplies what they leave out, and
-// the extra skills checkout.
 func resolveInstallSelections(cfg config, args []string, requestedColorProfile string) (config, error) {
 	var err error
 	if cfg.Profile, err = resolveInstallArgument(cfg.Home, args); err != nil {

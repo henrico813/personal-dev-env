@@ -223,8 +223,8 @@ func TestApplyPassesProfileTiersToChezmoi(t *testing.T) {
 	}
 }
 
-// Templates choose extra skill files from this folder, so a value that never
-// reaches chezmoi installs extra skills on no PC, or on the wrong one.
+// Templates choose extra skill files from this folder, so chezmoi must get
+// the configured checkout to install the right extra skills.
 func TestApplyPassesExtraSkillsToChezmoi(t *testing.T) {
 	fixture := newApplyFixture(t, "unchanged")
 	extra := filepath.Join(t.TempDir(), "extra-skills")
