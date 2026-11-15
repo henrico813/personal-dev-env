@@ -22,7 +22,7 @@ Mutating commands reject UID 0. `doctor` also reports UID 0 as a problem.
 | `~/.local/share/pde/tmux/<version>/` | Existing amd64-only direct tmux 3.7b binary |
 | `~/.local/share/fonts/pde/` | Managed fonts (client and full) |
 | `~/.local/state/pde/` | Installer and update locks, journals, build state, `install.json`, the installed build that `version` prints, and `update.json`, the last `update` result |
-| `~/.config/pde/config.json` | Install path, component/color profiles, migrated vault settings, and the optional `update_url` and `update_interval` |
+| `~/.config/pde/config.json` | Install path, component/color profiles, migrated vault settings, and the optional `update_url`, `update_interval`, and `extra_skills_repo` |
 | `~/.config/systemd/user/pde-update.{service,timer}` | Full only: the timer that runs `pde-installer update` |
 | `~/.config/herdr/config.toml` | Client and full Herdr workspace UI configuration |
 | `~/.config/` and other home paths | Chezmoi-managed configuration |

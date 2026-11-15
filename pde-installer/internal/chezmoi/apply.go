@@ -23,6 +23,9 @@ type Manager struct {
 	ColorProfile             colorprofile.Profile
 	UpdateInterval           time.Duration
 	Runner                   run.Runner
+	// The extra skills checkout that templates read as PDE_EXTRA_SKILLS_REPO,
+	// or "" to install no extra skills.
+	ExtraSkillsRepo string
 }
 
 // New returns a chezmoi manager for the supplied installation roots.
@@ -242,6 +245,7 @@ func (m Manager) environment() []string {
 		"AQUA_CHECKSUMS_PATH=" + filepath.Join(aquaConfig, checksumsName),
 		"PDE_COLOR_PROFILE=" + string(m.ColorProfile),
 		"PDE_REPO_ROOT=" + m.RepoRoot,
+		"PDE_EXTRA_SKILLS_REPO=" + m.ExtraSkillsRepo,
 		"HOME=" + m.Home,
 		"PATH=" + path,
 	}

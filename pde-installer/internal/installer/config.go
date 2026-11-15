@@ -18,6 +18,8 @@ type config struct {
 	Desktop                            profile.Desktop
 	ColorProfile                       colorprofile.Profile
 	UpdateInterval                     time.Duration
+	// The extra skills checkout from config.json, or "" on a PC without one.
+	ExtraSkillsRepo string
 }
 
 func (c config) validate() error {
