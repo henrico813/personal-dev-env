@@ -2,12 +2,15 @@ package run
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -18,6 +21,9 @@ type Command struct {
 	Dir   string
 	Env   []string
 	Stdin string
+	// Stops the command and every process it started after this long.
+	// Zero means no limit.
+	Timeout time.Duration
 }
 
 // Runner executes commands and routes their output.
@@ -60,12 +66,12 @@ func (r Runner) Run(description string, command Command) error {
 	if r.DryRun {
 		return r.Plan(description, &command)
 	}
-	cmd, err := prepare(command)
+	cmd, finish, err := prepare(command)
 	if err != nil {
 		return fmt.Errorf("%s: %w", description, err)
 	}
 	cmd.Stdout, cmd.Stderr = r.Out(), r.Err()
-	if err := cmd.Run(); err != nil {
+	if err := finish(cmd.Run()); err != nil {
 		return fmt.Errorf("%s: %w", description, err)
 	}
 	return nil
@@ -73,14 +79,14 @@ func (r Runner) Run(description string, command Command) error {
 
 // RunOutput executes a command while retaining its combined output.
 func (r Runner) RunOutput(description string, command Command) ([]byte, error) {
-	cmd, err := prepare(command)
+	cmd, finish, err := prepare(command)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", description, err)
 	}
 	var output bytes.Buffer
 	cmd.Stdout = io.MultiWriter(r.Out(), &output)
 	cmd.Stderr = io.MultiWriter(r.Err(), &output)
-	if err := cmd.Run(); err != nil {
+	if err := finish(cmd.Run()); err != nil {
 		return output.Bytes(), fmt.Errorf("%s: %w", description, err)
 	}
 	return output.Bytes(), nil
@@ -88,14 +94,14 @@ func (r Runner) RunOutput(description string, command Command) ([]byte, error) {
 
 // Query executes a command and returns its standard output.
 func (r Runner) Query(description string, command Command) ([]byte, error) {
-	cmd, err := prepare(command)
+	cmd, finish, err := prepare(command)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", description, err)
 	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
-	if err != nil {
+	if err = finish(err); err != nil {
 		if message := strings.TrimSpace(stderr.String()); message != "" {
 			return nil, fmt.Errorf("%s: %s: %w", description, message, err)
 		}
@@ -121,22 +127,48 @@ func (r Runner) Retry(description string, attempts int, fn func() error) error {
 	return err
 }
 
-func prepare(command Command) (*exec.Cmd, error) {
+// Builds the process for command. Pass the error from running it to the
+// returned function, which releases the time limit and reports a timeout.
+func prepare(command Command) (*exec.Cmd, func(error) error, error) {
 	name := command.Name
 	env := environment(command.Env...)
 	if !strings.ContainsRune(name, filepath.Separator) {
 		var err error
 		name, err = LookPath(name, envValue(env, "PATH"))
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	cmd := exec.Command(name, command.Args...)
+	finish := func(err error) error { return err }
+	if command.Timeout > 0 {
+		cmd, finish = limitCommandTime(name, command)
+	}
 	cmd.Dir, cmd.Env = command.Dir, env
 	if command.Stdin != "" {
 		cmd.Stdin = strings.NewReader(command.Stdin)
 	}
-	return cmd, nil
+	return cmd, finish, nil
+}
+
+// Kills the whole process group at the limit, so a child such as a hung
+// network call cannot keep the output pipes open.
+func limitCommandTime(name string, command Command) (*exec.Cmd, func(error) error) {
+	ctx, cancel := context.WithTimeout(context.Background(), command.Timeout)
+	cmd := exec.CommandContext(ctx, name, command.Args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	cmd.WaitDelay = time.Second
+	finish := func(err error) error {
+		defer cancel()
+		if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return fmt.Errorf("timed out after %s", command.Timeout)
+		}
+		return err
+	}
+	return cmd, finish
 }
 
 func environment(overrides ...string) []string {

@@ -39,6 +39,17 @@ GARDEN = "ai/skills/garden/SKILL.md"
 COMPOST = "ai/skills/compost/SKILL.md"
 SOIL = "ai/skills/garden/references/soil.md"
 AGENTS = "ai/AGENTS.md"
+ROUTE_GARDEN_BODY = """\
+Read [the build notes](references/build.md) and
+[the cases](references/evaluation.md) before you plant.
+
+```text
+python3 scripts/pde_route.py plan-review --start opencode-subagent
+```"""
+ROUTING = "ai/skills/model-routing/SKILL.md"
+TABLE = "ai/skills/model-routing/routing.json"
+BUILD = "ai/skills/garden/references/build.md"
+EVALUATION = "ai/skills/garden/references/evaluation.md"
 
 
 def make_env(tmp_path: Path) -> dict[str, str]:
@@ -659,3 +670,318 @@ class TestChangedFiles:
 
         assert result.returncode == 0, result.stdout
         assert result.stdout.splitlines()[-1] == summary
+
+
+def commit_new_repo(repo: Path) -> None:
+    """Make a Git checkout of the files in repo and commit them.
+
+    Args:
+        repo: Folder that holds the sample files.
+    """
+    env = make_env(repo.parent)
+    for command in (["init", "-q"], ["add", "."], ["commit", "-qm", "base"]):
+        subprocess.run(["git", *command], cwd=repo, env=env, check=True)
+
+
+@pytest.fixture
+def route_repo(tmp_path: Path) -> Path:
+    """A committed checkout with a model-routing skill and its table.
+
+    The table lists garden for kind plan-review, and garden calls
+    ``pde_route.py plan-review``. garden links the reference files
+    ``build.md`` and ``evaluation.md``. compost calls no kind. The fake
+    home has no installed table.
+
+    Args:
+        tmp_path: Test folder for the checkout and the fake home.
+
+    Returns:
+        The checkout.
+    """
+    repo = tmp_path / "repo"
+    write_skill(repo, "model-routing", "Pick with `pde_route.py <kind>`.")
+    table = {
+        "plan-review": {
+            "effort": "high",
+            "skills": ["garden"],
+            "opencode": [["claude-code/claude-opus-5-5[1m]"]],
+        },
+        "web-lookup": {
+            "effort": "none",
+            "skills": [],
+            "opencode": [["openai/gpt-6-luna"]],
+        },
+    }
+    (repo / TABLE).write_text(json.dumps(table, indent=2) + "\n")
+    garden = write_skill(repo, "garden", ROUTE_GARDEN_BODY)
+    (garden.parent / "references").mkdir()
+    (repo / BUILD).write_text("# Build\n")
+    (repo / EVALUATION).write_text("# Evaluation\n")
+    write_skill(repo, "compost", COMPOST_BODY)
+    commit_new_repo(repo)
+    return repo
+
+
+@pytest.fixture
+def extra(tmp_path: Path) -> Path:
+    """A committed extra with a top-level skills folder and no table.
+
+    Its one skill, garden, has ``extra``. The fake home has no
+    installed table either.
+
+    Args:
+        tmp_path: Test folder for the checkout and the fake home.
+
+    Returns:
+        The checkout.
+    """
+    repo = tmp_path / "work"
+    garden = repo / "skills/garden/SKILL.md"
+    garden.parent.mkdir(parents=True)
+    text = SKILL.format(name="garden", body=COMPOST_BODY)
+    garden.write_text(text.replace("scope: personal", "extra"))
+    commit_new_repo(repo)
+    return repo
+
+
+class TestRouteChecks:
+    """Checks of ``pde_route.py`` calls, role phrases and model names."""
+
+    @pytest.mark.parametrize(
+        "file,old,new,reason",
+        [
+            pytest.param(
+                GARDEN,
+                "pde_route.py plan-review",
+                "pde_route.py no-such-kind",
+                "ai/skills/garden/SKILL.md:14: error: "
+                "no route kind named no-such-kind",
+                id="unknown-route-kind",
+            ),
+            pytest.param(
+                GARDEN,
+                "python3 scripts/pde_route.py plan-review --start "
+                "opencode-subagent\n",
+                "",
+                f"{TABLE}:2: error: kind plan-review lists garden, "
+                "which has no call for it",
+                id="listed-skill-lacks-call",
+            ),
+            pytest.param(
+                COMPOST,
+                COMPOST_BODY,
+                f"{COMPOST_BODY}\n\n```text\n"
+                "python3 scripts/pde_route.py plan-review\n```",
+                "ai/skills/compost/SKILL.md:13: error: "
+                "kind plan-review in routing.json does not list compost",
+                id="unlisted-skill-calls-kind",
+            ),
+            pytest.param(
+                COMPOST,
+                COMPOST_BODY,
+                f"{COMPOST_BODY}\nAsk the local model to turn it.",
+                'ai/skills/compost/SKILL.md:11: error: "local model" names',
+                id="role-phrase-local",
+            ),
+            pytest.param(
+                COMPOST,
+                COMPOST_BODY,
+                f"{COMPOST_BODY}\nAsk the cheap roles to turn it.",
+                'ai/skills/compost/SKILL.md:11: error: "cheap roles" names',
+                id="role-phrase-plural-role",
+            ),
+            pytest.param(
+                COMPOST,
+                COMPOST_BODY,
+                f"{COMPOST_BODY}\nAsk the review model to turn it.",
+                'ai/skills/compost/SKILL.md:11: error: "review model" names',
+                id="role-phrase-review",
+            ),
+            pytest.param(
+                BUILD,
+                "# Build\n",
+                "# Build\n\nAsk the local model to build it.\n",
+                f'{BUILD}:3: error: "local model" names',
+                id="role-phrase-in-reference",
+            ),
+            pytest.param(
+                COMPOST,
+                COMPOST_BODY,
+                f"{COMPOST_BODY}\nTurn it with claude-code/claude-sonnet-5.",
+                "ai/skills/compost/SKILL.md:11: error: "
+                "claude-code/claude-sonnet-5. names a model",
+                id="model-name-outside-routing",
+            ),
+        ],
+    )
+    def test_route_defect_fails_with_its_reason(
+        self, route_repo: Path, file: str, old: str, new: str, reason: str
+    ) -> None:
+        """Each route defect fails the check, naming its file and line.
+
+        A skill that calls an unknown kind starts its agent with no
+        model, and a table whose ``skills`` lists drift from the calls
+        misleads whoever changes a kind's models. A role phrase or a
+        model name in a skill picks a model that the table does not
+        control. Reference files that are not evaluation files hold
+        real starts, so a skip list that hid them would hide these.
+        """
+        replace_text(route_repo / file, old, new)
+
+        result = run_check(route_repo, "--base", "HEAD")
+
+        assert result.returncode == 1, result.stdout
+        assert reason in result.stdout
+
+    @pytest.mark.parametrize(
+        "file,old,new,base",
+        [
+            pytest.param(
+                ROUTING,
+                "# Garden\n",
+                "# Garden\n\nAsk the review model to plan.\n",
+                "HEAD~1",
+                id="inside-model-routing",
+            ),
+            pytest.param(
+                GARDEN,
+                "# Garden\n",
+                "# Garden\n\nAsk the review model to plan.\n",
+                "HEAD",
+                id="unchanged-line",
+            ),
+            pytest.param(
+                EVALUATION,
+                "# Evaluation\n",
+                "# Evaluation\n\nBad answer: ask the review model.\n",
+                "HEAD~1",
+                id="evaluation-file",
+            ),
+        ],
+    )
+    def test_role_phrase_passes_where_allowed(
+        self, route_repo: Path, file: str, old: str, new: str, base: str
+    ) -> None:
+        """A role phrase passes in model-routing, old lines and eval files.
+
+        model-routing maps roles to kinds, and evaluation files quote
+        wrong answers on purpose. Lines already on main hold role
+        phrases until a later change converts them, so failing them
+        now would block every skill change. The change is committed,
+        so base ``HEAD~1`` makes its line added and ``HEAD`` does not.
+        """
+        replace_text(route_repo / file, old, new)
+        commit_all(route_repo)
+
+        result = run_check(route_repo, "--base", base)
+
+        assert result.returncode == 0, result.stdout
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            pytest.param("pde_route.py <kind>", id="placeholder-kind"),
+            pytest.param("pde_route.py check", id="check-command"),
+            pytest.param("pde_route.py audit --since 1d", id="audit-command"),
+        ],
+    )
+    def test_kind_check_skips_placeholders_and_commands(
+        self, route_repo: Path, call: str
+    ) -> None:
+        """A placeholder kind or a command is not read as a kind.
+
+        model-routing's own examples write ``<kind>`` and run the
+        ``check`` and ``audit`` commands. Reading those as kinds would
+        fail CI on every pull request.
+        """
+        replace_text(route_repo / GARDEN, "```text\n", f"```text\n{call}\n")
+
+        result = run_check(route_repo, "--base", "HEAD")
+
+        assert result.returncode == 0, result.stdout
+
+    @pytest.mark.parametrize(
+        "line,warns",
+        [
+            pytest.param(
+                "Ask the review model, or claude-code/claude-sonnet-5.",
+                False,
+                id="role-and-model-name",
+            ),
+            pytest.param(
+                "```text\npython3 scripts/pde_route.py plan-review\n```",
+                True,
+                id="call-warns",
+            ),
+        ],
+    )
+    def test_checkout_without_table_skips_route_checks(
+        self, extra: Path, line: str, warns: bool
+    ) -> None:
+        """A extra with no routing table passes the route checks.
+
+        extra sit in a top-level ``skills`` folder with no
+        model-routing skill, and CI has no installed table. Failing
+        there would block every pull request of a extra. A
+        call whose kind cannot be checked is still named on stderr.
+        """
+        garden = extra / "skills/garden/SKILL.md"
+        replace_text(garden, "# Garden\n", f"# Garden\n\n{line}\n")
+
+        result = run_check(extra, "--base", "HEAD")
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert ("could not check kinds" in result.stderr) == warns
+
+    @pytest.mark.parametrize(
+        "kind,reason",
+        [
+            pytest.param("plan-review", None, id="known-kind"),
+            pytest.param(
+                "no-such-kind",
+                "skills/garden/SKILL.md:13: error: "
+                "no route kind named no-such-kind",
+                id="unknown-kind",
+            ),
+        ],
+    )
+    def test_installed_table_checks_work_kinds_only(
+        self, extra: Path, kind: str, reason: str | None
+    ) -> None:
+        """A extra gets only the kind check from the installed table.
+
+        Every personal machine has the installed table, and its
+        ``skills`` lists name personal skills that a extra
+        lacks. Running the other route checks there would fail every
+        work pull request; dropping the table would let a mistyped
+        kind through.
+        """
+        table = extra.parent / "home/.agents/skills/model-routing"
+        table.mkdir(parents=True)
+        (table / "routing.json").write_text(
+            json.dumps(
+                {
+                    "plan-review": {
+                        "effort": "high",
+                        "skills": ["review-plan"],
+                        "opencode": [["claude-code/claude-opus-5-5[1m]"]],
+                    }
+                }
+            )
+        )
+        garden = extra / "skills/garden/SKILL.md"
+        line = (
+            "Ask the review model, or claude-code/claude-sonnet-5.\n\n"
+            f"```text\npython3 scripts/pde_route.py {kind}\n```"
+        )
+        replace_text(garden, "# Garden\n", f"# Garden\n\n{line}\n")
+
+        result = run_check(extra, "--base", "HEAD")
+
+        output = result.stdout + result.stderr
+        if reason is None:
+            assert result.returncode == 0, output
+            assert "could not check kinds" not in result.stderr
+        else:
+            assert result.returncode == 1, output
+            assert reason in result.stdout

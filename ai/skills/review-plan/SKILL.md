@@ -113,6 +113,27 @@ you wrote the change.
   reviewer must receive". Review your own work only when you cannot
   start a reviewer, and say so in your report.
 
+Pick each reviewer's model with `model-routing`'s script. Use
+`plan-review` for a plan or design doc and `code-review` for code.
+Use `risky-review` for either one when the change is risky by the
+rule below:
+
+```sh
+python3 ~/.agents/skills/model-routing/scripts/pde_route.py plan-review --start <start>
+python3 ~/.agents/skills/model-routing/scripts/pde_route.py code-review --start <start>
+python3 ~/.agents/skills/model-routing/scripts/pde_route.py risky-review --start <start>
+```
+
+Start the reviewer with the printed model, and begin its description
+with the printed run ID. `model-routing` says which start to pass and
+what to do when the start fails.
+
+A review is risky when the code it checks can change or delete the
+user's files or data, such as a backup or cleanup script. Another
+skill may also mark its own reviews as risky. This rule picks the
+model only. The "broad, risky, or cross-cutting change" above decides
+how many reviewers to start.
+
 Every review must:
 
 - remain read-only unless the user explicitly requests a review artifact; do
@@ -198,6 +219,11 @@ Give only the matching verdict line: Plan for a plan, Code for code.
 5. Reward the smallest set of edits needed for a sound change.
 6. Preserve user-approved decisions unless new evidence invalidates them.
 7. Read enough complete context to avoid partial-file errors.
+
+## References
+
+- [references/evaluation.md](references/evaluation.md): read only
+  when testing or revising this skill.
 
 ## Remembering corrections
 

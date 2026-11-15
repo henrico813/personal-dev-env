@@ -51,6 +51,22 @@ STEP_POINTER = re.compile(
     r"\bsteps?\s+\d+(?:\s+(?:to|and|or)\s+\d+)?\s+of\b(?!\s+\d)",
     re.IGNORECASE,
 )
+ROUTING_TABLE = "model-routing/routing.json"
+INSTALLED_TABLE = INSTALLED_SKILLS / ROUTING_TABLE
+ROUTE_CALL = re.compile(r"pde_route\.py\s+([^\s`]+)")
+ROUTE_COMMANDS = ("check", "audit")
+ROLE_PHRASE = re.compile(
+    r"\b(local|cheap|review|strongest) (model|role)s?\b", re.IGNORECASE
+)
+MODEL_NAME = re.compile(
+    r"\b(claude-code|github-copilot|goog|openai|opencode-go)/\S+"
+)
+# These files quote models and wrong answers on purpose.
+ROUTE_SKIPPED = (
+    "references/evaluation.md",
+    "references/example.md",
+    "references/trials.md",
+)
 
 
 @dataclass(frozen=True)
@@ -91,6 +107,30 @@ class Skills:
     owners: dict[Path, str]
 
 
+@dataclass(frozen=True)
+class Routes:
+    """The routing table and the skill lines that the route checks read.
+
+    Attributes:
+        table: The checkout's ``model-routing/routing.json``, else the
+            installed copy, or None when neither exists.
+        own: Whether the table is the checkout's own.
+        kinds: The skills each kind lists, empty without a table.
+        lines: Raw lines of each skill's Markdown files, except the
+            files in ``ROUTE_SKIPPED`` and ``evals/`` folders.
+        owners: The skill each file in lines belongs to.
+        calls: Each ``pde_route.py <kind>`` call in lines, as file,
+            line number and kind.
+    """
+
+    table: Path | None
+    own: bool
+    kinds: dict[str, list[str]]
+    lines: dict[Path, list[str]]
+    owners: dict[Path, str]
+    calls: list[tuple[Path, int, str]]
+
+
 def check_skills(skills_dir: Path, base: str | None) -> list[Problem]:
     """Run every check on the skills in skills_dir, in this order.
 
@@ -107,30 +147,50 @@ def check_skills(skills_dir: Path, base: str | None) -> list[Problem]:
        error.
     7. A ``metadata.scope`` that is missing or names the other
        repository is an error.
-    8. A case in a skill's ``evals/``, a test prompt that trials.py
-       runs, whose ``rule`` is not a heading of that skill's SKILL.md
-       is an error, since no one can then tell which rule it tests.
+    8. A ``pde_route.py <kind>`` call whose kind is not in the routing
+       table is an error. Placeholders such as ``<kind>``, flags and
+       the ``check`` and ``audit`` commands are skipped.
+    9. A skill that a kind's ``skills`` list names but whose files
+       hold no call for that kind is an error, and so is a call from
+       a skill the list leaves out.
+    10. An OpenCode model name, such as ``openai/gpt-6-luna``, outside
+        model-routing is an error.
+    11. A case in a skill's ``evals/``, a test prompt that trials.py
+        runs, whose ``rule`` is not a heading of that skill's SKILL.md
+        is an error, since no one can then tell which rule it tests.
 
     With base, more checks report only on files and lines changed
     since base, so a problem already on main fails no unrelated
     change.
 
-    9. An added line over 72 columns that could wrap is an error.
-    10. An added line that points at a step number, such as "step 6
+    12. An added line over 72 columns that could wrap is an error.
+    13. An added line that points at a step number, such as "step 6
         of", is an error.
-    11. A SKILL.md body that the change made longer than 500 lines is
+    14. An added role phrase outside model-routing, such as "the
+        review model", is an error.
+    15. A SKILL.md body that the change made longer than 500 lines is
         an error.
-    12. A changed reference file over 100 lines with no Contents
+    16. A changed reference file over 100 lines with no Contents
         heading is an error.
-    13. A quote of a heading that the change removed or renamed is an
+    17. A quote of a heading that the change removed or renamed is an
         error, unless some file still has that heading.
-    14. Eight words in a row that another skill or ``AGENTS.md`` also
+    18. Eight words in a row that another skill or ``AGENTS.md`` also
         has are a repeat, for the author to judge.
-    15. A SKILL.md whose body has more lines than in base is reported
+    19. A SKILL.md whose body has more lines than in base is reported
         as grown, for the pull request to give a reason.
 
-    Checks 1, 2, 9, 10, 13 and 14 also read the ``AGENTS.md`` next to
+    Checks 1, 2, 12, 13, 17 and 18 also read the ``AGENTS.md`` next to
     skills_dir.
+
+    The route checks, 8, 9, 10 and 14, read the raw lines of skill
+    Markdown files, code included. They skip
+    ``references/evaluation.md``, ``references/example.md``,
+    ``references/trials.md`` and ``evals/`` folders. Check 8 reads the
+    table from skills_dir, else from ``~/.agents/skills``. With neither,
+    it warns "could not check kinds" on stderr when a skill calls
+    ``pde_route.py``, and does not fail. Checks 9, 10 and 14 run only
+    when skills_dir holds the table, so a extra gets check 8
+    alone.
 
     Args:
         skills_dir: Folder with one subfolder per skill.
@@ -144,8 +204,11 @@ def check_skills(skills_dir: Path, base: str | None) -> list[Problem]:
     Raises:
         subprocess.CalledProcessError: When git fails, such as outside
             a checkout or for a base that does not exist.
+        ValueError: When the routing table is not valid JSON or a kind
+            has no ``skills`` list.
     """
     skills = read_skills(skills_dir)
+    routes = read_routes(skills, skills_dir)
     problems = (
         check_links(skills)
         + check_skill_names(skills)
@@ -154,6 +217,9 @@ def check_skills(skills_dir: Path, base: str | None) -> list[Problem]:
         + check_lessons_sections(skills)
         + check_corrections_names(skills)
         + check_scopes(skills)
+        + check_route_kinds(routes)
+        + check_route_skills(routes)
+        + check_model_names(routes)
         + check_case_rules(skills)
     )
     if base is None:
@@ -164,6 +230,7 @@ def check_skills(skills_dir: Path, base: str | None) -> list[Problem]:
         problems
         + check_line_widths(skills, added)
         + check_step_pointers(skills, added)
+        + check_role_phrases(routes, added)
         + check_skill_sizes(skills, before, added)
         + check_reference_contents(skills, added)
         + check_removed_headings(skills, before)
@@ -616,6 +683,206 @@ def check_corrections_names(skills: Skills) -> list[Problem]:
     return problems
 
 
+def read_routes(skills: Skills, skills_dir: Path) -> Routes:
+    """Read the routing table and the skill lines the route checks need.
+
+    Args:
+        skills: The skills from ``read_skills``.
+        skills_dir: Folder with one subfolder per skill.
+
+    Returns:
+        The table, if found, and each checked file's raw lines and
+        calls.
+
+    Raises:
+        ValueError: When the table is not valid JSON or a kind has no
+            ``skills`` list.
+    """
+    own_table = skills_dir / ROUTING_TABLE
+    table: Path | None = None
+    for candidate in (own_table, INSTALLED_TABLE):
+        if candidate.is_file():
+            table = candidate
+            break
+    kinds = read_routing_table(table) if table else {}
+    lines = {}
+    owners = {}
+    for path, owner in skills.owners.items():
+        if owner == "AGENTS.md":
+            continue
+        relative = path.relative_to(skills_dir / owner)
+        if relative.as_posix() in ROUTE_SKIPPED or "evals" in relative.parts:
+            continue
+        lines[path] = path.read_text(encoding="utf-8").splitlines()
+        owners[path] = owner
+    calls = find_route_calls(lines)
+    return Routes(table, table == own_table, kinds, lines, owners, calls)
+
+
+def read_routing_table(path: Path) -> dict[str, list[str]]:
+    """Return the skills each kind in a routing table lists.
+
+    Only the ``skills`` field is read. ``pde_route.py`` checks the
+    other fields when it loads the table.
+
+    Args:
+        path: A ``routing.json`` file.
+
+    Returns:
+        Each kind with its ``skills`` list.
+
+    Raises:
+        ValueError: When the file is not valid JSON, is not an object
+            of kinds, or a kind has no list of skill names.
+    """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise ValueError(f"{path} is not valid JSON: {error}") from error
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} must hold an object of kinds")
+    kinds = {}
+    for kind, entry in data.items():
+        names = entry.get("skills") if isinstance(entry, dict) else None
+        if not isinstance(names, list) or not all(
+            isinstance(name, str) for name in names
+        ):
+            raise ValueError(f"{path}: kind {kind} needs a skills list")
+        kinds[kind] = names
+    return kinds
+
+
+def find_route_calls(
+    lines: dict[Path, list[str]],
+) -> list[tuple[Path, int, str]]:
+    """List each ``pde_route.py <kind>`` call with its kind.
+
+    The kind is the word after ``pde_route.py``. A placeholder such as
+    ``<kind>``, a flag and the ``check`` and ``audit`` commands name no
+    kind, so they are skipped.
+
+    Args:
+        lines: Raw lines of each checked file.
+
+    Returns:
+        Each call's file, line number and kind.
+    """
+    calls = []
+    for path, path_lines in lines.items():
+        for number, line in enumerate(path_lines, 1):
+            for match in ROUTE_CALL.finditer(line):
+                kind = match.group(1)
+                skipped = kind.startswith(("<", "-"))
+                if not skipped and kind not in ROUTE_COMMANDS:
+                    calls.append((path, number, kind))
+    return calls
+
+
+def check_route_kinds(routes: Routes) -> list[Problem]:
+    """Report each ``pde_route.py`` call whose kind the table lacks.
+
+    ``pde_route.py`` exits 2 on an unknown kind, so the agent starts
+    with no model. With no table to read, this prints a warning to
+    stderr when a skill calls ``pde_route.py``, and reports nothing.
+
+    Args:
+        routes: The table and calls from ``read_routes``.
+
+    Returns:
+        One error per call with an unknown kind.
+    """
+    if routes.table is None:
+        if routes.calls:
+            print(
+                "skill_check: could not check kinds; no routing.json in the "
+                "checkout or ~/.agents/skills",
+                file=sys.stderr,
+            )
+        return []
+    return [
+        Problem(path, line, "error", f"no route kind named {kind}")
+        for path, line, kind in routes.calls
+        if kind not in routes.kinds
+    ]
+
+
+def check_route_skills(routes: Routes) -> list[Problem]:
+    """Report each mismatch between a kind's ``skills`` list and the calls.
+
+    The list tells a reader of the table which skills a model change
+    affects. A listed skill whose call was deleted is reported at the
+    kind's line in the table.
+
+    Args:
+        routes: The table and calls from ``read_routes``.
+
+    Returns:
+        One error per listed skill with no call for the kind, and one
+        per call from a skill the kind does not list. None when the
+        checkout does not hold the table.
+    """
+    table = routes.table
+    if not routes.own or table is None:
+        return []
+    table_lines = table.read_text(encoding="utf-8").splitlines()
+    called = {(routes.owners[path], kind) for path, _, kind in routes.calls}
+    problems = []
+    for kind, names in routes.kinds.items():
+        for name in names:
+            if (name, kind) not in called:
+                line = find_kind_line(table_lines, kind)
+                message = f"kind {kind} lists {name}, which has no call for it"
+                problems.append(Problem(table, line, "error", message))
+    for path, line, kind in routes.calls:
+        owner = routes.owners[path]
+        if kind in routes.kinds and owner not in routes.kinds[kind]:
+            message = f"kind {kind} in routing.json does not list {owner}"
+            problems.append(Problem(path, line, "error", message))
+    return problems
+
+
+def find_kind_line(table_lines: list[str], kind: str) -> int:
+    """Return the line number of a kind's key in the routing table.
+
+    Args:
+        table_lines: Lines of ``routing.json``.
+        kind: A kind in the table.
+
+    Returns:
+        The number of the first line that starts with the quoted kind,
+        or 1 when no line does.
+    """
+    for number, line in enumerate(table_lines, 1):
+        if line.lstrip().startswith(f'"{kind}"'):
+            return number
+    return 1
+
+
+def check_model_names(routes: Routes) -> list[Problem]:
+    """Report each OpenCode model name outside model-routing.
+
+    A skill that names a model keeps it after the table moves on.
+
+    Args:
+        routes: The lines from ``read_routes``.
+
+    Returns:
+        One error per name, or none when the checkout does not hold
+        the table.
+    """
+    if not routes.own:
+        return []
+    problems = []
+    for path, lines in routes.lines.items():
+        if routes.owners[path] == "model-routing":
+            continue
+        for number, line in enumerate(lines, 1):
+            for match in MODEL_NAME.finditer(line):
+                message = f"{match.group()} names a model; call pde_route.py"
+                problems.append(Problem(path, number, "error", message))
+    return problems
+
+
 def check_case_rules(skills: Skills) -> list[Problem]:
     """Report each eval case whose ``rule`` is not a heading of its skill.
 
@@ -812,6 +1079,35 @@ def check_step_pointers(
                 pointer = " ".join(match.group().split())
                 message = f'"{pointer}" points at a number; name the step'
                 problems.append(Problem(path, first, "error", message))
+    return problems
+
+
+def check_role_phrases(
+    routes: Routes, added: dict[Path, set[int]]
+) -> list[Problem]:
+    """Report each added role phrase, such as "the cheap model".
+
+    Kinds in the routing table replace roles, so a role phrase outside
+    model-routing names a model that no table picks.
+
+    Args:
+        routes: The lines from ``read_routes``.
+        added: Line numbers added since the base commit, by file.
+
+    Returns:
+        One error per phrase on an added line, or none when the
+        checkout does not hold the table.
+    """
+    if not routes.own:
+        return []
+    problems = []
+    for path, lines in routes.lines.items():
+        if routes.owners[path] == "model-routing":
+            continue
+        for number in sorted(added.get(path, set())):
+            for match in ROLE_PHRASE.finditer(lines[number - 1]):
+                message = f'"{match.group()}" names a role; call pde_route.py'
+                problems.append(Problem(path, number, "error", message))
     return problems
 
 
@@ -1131,7 +1427,7 @@ def main() -> int:
             f"skill_check: git failed: {error.stderr.strip()}", file=sys.stderr
         )
         return 2
-    except FileNotFoundError as error:
+    except (FileNotFoundError, ValueError) as error:
         print(f"skill_check: {error}", file=sys.stderr)
         return 2
     counts = []

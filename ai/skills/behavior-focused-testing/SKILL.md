@@ -96,6 +96,15 @@ Run relevant tests and inspect collection, names, and failures. For a regression
 
 After writing tests, have a new subagent review them:
 
+- Pick its model with `model-routing`'s script, as a `test-review`
+  job. When the risky-review rule in review-plan's Step 3 calls the
+  change risky, use `risky-review` instead:
+
+  ```sh
+  python3 ~/.agents/skills/model-routing/scripts/pde_route.py test-review --start <start>
+  python3 ~/.agents/skills/model-routing/scripts/pde_route.py risky-review --start <start>
+  ```
+
 - Give it only the new tests, the code they test, the task, and the
   low-value rules in section 4.
 - It lists each test to delete, with a one-line reason. It does not
@@ -123,6 +132,9 @@ Dan North: Introducing BDD: connect requirements, behavior, and examples.
 pytest: Good Integration Practices and parametrization: discovery, organization, and case IDs.
 
 Skill structure and trigger descriptions follow Anthropic's skill-building guide, OpenAI's skills overview, and Claude's authoring practices.
+
+[references/evaluation.md](references/evaluation.md): read only when
+testing or revising this skill.
 
 ## Remembering corrections
 

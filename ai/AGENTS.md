@@ -92,8 +92,9 @@
   the `herdr-handoff` skill.
 - When the user or a handoff makes this session the hub of other
   Herdr sessions, load and follow the `herdr-hub` skill.
-- When choosing the model for a subagent, a new session, a worker or
-  a job script, load and follow the `model-routing` skill. Its choices
+- Before starting any agent, such as a subagent, a new session, a
+  worker or a job script, load the `model-routing` skill and get the
+  agent's model from `pde_route.py`, as that skill says. Its picks
   count as the user's explicit request to set a subagent's model.
 - When creating, changing or reviewing an agent skill, or
   writing a user's correction into skill text, load and follow the

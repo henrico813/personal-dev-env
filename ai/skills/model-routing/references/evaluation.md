@@ -1,10 +1,20 @@
 # Evaluation
 
-Five cases check whether the skill changes which model an agent picks
-and what it does when a model is missing or a local job fails. Run
-each case twice on the same model, each time in a fresh session: once
-with no skill, and once with SKILL.md in the prompt. Score each reply
-against the case's checks, one point each.
+Five cases check whether the skill changes which kind an agent picks
+and what it does when a model fails or a local job fails its check.
+Cases 2 and 4 also give a bad answer, the mistake the case catches.
+Run each case twice on the same model, each time in a fresh session:
+once with no skill, and once with SKILL.md in the prompt. Score each
+reply against the case's checks, one point each.
+
+## Contents
+
+- How to run
+- Case 1: pick a kind for each job
+- Case 2: a local job fails its check twice
+- Case 3: a failing test is a result
+- Case 4: a reviewer hits a usage limit
+- Case 5: code that a local model could not write
 
 ## How to run
 
@@ -32,41 +42,41 @@ opencode run --standalone -m $m "$(cat prompt.txt case1.txt)"
 opencode run --standalone -m $m "$(cat prompt.txt SKILL.md case1.txt)"
 ```
 
-Score each reply with a script that looks for each check's model
-names and key words, then read the reply to confirm each point.
+Score each reply with a script that looks for each check's kind,
+flag and key words, then read the reply to confirm each point.
 
-## Case 1: pick a model for each job
+## Case 1: pick a kind for each job
 
 ```text
-You are about to start four agents. `opencode models` lists
-goog/qwen3.8-flash, openai/gpt-6-luna, claude-code/claude-sonnet-5 and
-claude-code/claude-opus-5-5[1m].
+You are about to start four agents with OpenCode's subagent tool.
 
 1. Run `make test` in a scratch clone and report which tests fail.
 2. Review a pull request that changes how backups are deleted.
 3. Draft a two-page design doc for a new sync feature from your notes.
 4. Sort twelve tasks into "needs the user" and "can run alone".
 
-Say which model runs each job and why, in one line each.
+Say how you pick the model for each job, in one line each.
 ```
 
 Checks:
 
-1. Job 1 goes to `goog/qwen3.8-flash`.
-2. Job 2 goes to Opus, since the change can delete the user's data.
-3. Job 3 goes to `openai/gpt-6-luna`, and a stronger model checks the
+1. Each job's model comes from `pde_route.py` with
+   `--start opencode-subagent`, not from a model named by hand.
+2. Job 1 is a `local-script` job.
+3. Job 2 is a `risky-review` job, since the change can delete the
+   user's data.
+4. Job 3 is a `cheap-draft` job, and a stronger model checks the
    draft.
-4. Job 4 goes to `openai/gpt-6-luna`, not the local model, and the
-   session reads each line.
+5. Job 4 is a `cheap-draft` job, and the session reads each line.
 
-## Case 2: a local job fails its check
+## Case 2: a local job fails its check twice (`failed-check-skips-group`)
 
 ```text
-`opencode models` lists goog/qwen3.8-flash, openai/gpt-6-luna,
-claude-code/claude-sonnet-5 and claude-code/claude-opus-5-5[1m].
-You gave goog/qwen3.8-flash this job: run `bash jobs/lint.sh`, then
-print jobs/lint.txt. It replied "All lint checks passed, done." You open
-jobs/lint.txt. It is empty.
+`pde_route.py local-script --start opencode-subagent` printed
+goog/qwen3.8-flash. You gave it this job: run `bash jobs/lint.sh`,
+then print jobs/lint.txt. It replied "All lint checks passed, done."
+You open jobs/lint.txt. It is empty. You ran the job once more on the
+same model, and jobs/lint.txt is empty again.
 
 Say what you do next.
 ```
@@ -74,13 +84,13 @@ Say what you do next.
 Checks:
 
 1. Does not accept the model's reply as the result.
-2. Counts the empty summary as a failed check.
-3. Runs the job once more on `goog/qwen3.8-flash` with the same brief.
-4. Says that a second failure moves the job to `openai/gpt-6-luna`
-   once.
-5. Says that later failures move up one model at a time, to Sonnet
-   and then Opus, and that an Opus failure stops the job and gets
-   reported.
+2. Counts each empty summary as a failed check.
+3. Runs `pde_route.py local-script --start opencode-subagent` again
+   with `--check-failed goog/qwen3.8-flash`.
+4. Runs the job once on the printed model, with the same brief.
+
+Bad answer: runs the script with `--failed goog/qwen3.8-flash`, which
+brings back the second local model.
 
 ## Case 3: a failing test is a result
 
@@ -104,39 +114,44 @@ Checks:
 3. Hands the two failing tests to the work that owns the pull
    request, such as a fix or a report to the user.
 
-## Case 4: the role's model is missing
+## Case 4: a reviewer hits a usage limit (`limit-error-asks-next-model`)
 
 ```text
-You need a plan reviewed before it is built. `opencode models` lists
-goog/qwen3.8-flash, openai/gpt-6-luna and
-claude-code/claude-opus-5-5[1m]. No Sonnet model is listed.
+`pde_route.py plan-review --start opencode-subagent` printed
+claude-code/claude-opus-5-5[1m]#high and run ID rt-4b1e09. You started
+the plan reviewer on it. The subagent call failed at once with
+"usage limit reached for claude-code".
 
-Say which model reviews the plan, and why, in two lines.
+Say what you do next, in two lines.
 ```
 
 Checks:
 
-1. Does not give the review to `goog/qwen3.8-flash` or
-   `openai/gpt-6-luna`.
-2. Gives the review to `claude-code/claude-opus-5-5[1m]`.
-3. Says the review's usual model is missing, so the job moves to a
-   stronger model rather than a weaker one.
+1. Runs `pde_route.py plan-review --start opencode-subagent` again
+   with `--failed` and `claude-code/claude-opus-5-5[1m]`, with or
+   without `#high`.
+2. Starts the reviewer on the model the script prints, with the new
+   run ID first in its description.
+
+Bad answer: starts the reviewer again on
+`claude-code/claude-opus-5-5[1m]`, or names another model by hand.
 
 ## Case 5: code that a local model could not write
 
 ```text
-`opencode models` lists goog/qwen3.8-flash, openai/gpt-6-luna,
-claude-code/claude-sonnet-5 and claude-code/claude-opus-5-5[1m].
-A script runs `make lint` and writes jobs/lint.txt, whose last line
-is `done` only when lint passes. You gave goog/qwen3.8-flash this job:
-fix the lint errors in src/sync.py, then run the script. It failed
-the check twice: jobs/lint.txt still lists two errors.
+`pde_route.py step-code --start opencode-subagent` printed
+goog/qwen3.8-flash. A script runs `make lint` and writes
+jobs/lint.txt, whose last line is `done` only when lint passes. You
+gave goog/qwen3.8-flash this job: fix the lint errors in src/sync.py,
+then run the script. It failed the check twice: jobs/lint.txt still
+lists two errors.
 
-Say which model gets the job next, and why, in two lines.
+Say how you pick the model that gets the job next, in two lines.
 ```
 
 Checks:
 
-1. Gives the job to `claude-code/claude-opus-5-5[1m]`.
-2. Does not give it to `openai/gpt-6-luna` or
-   `claude-code/claude-sonnet-5`, since neither writes code.
+1. Runs `pde_route.py step-code --start opencode-subagent` again with
+   `--check-failed goog/qwen3.8-flash`.
+2. Gives the job to the model the script prints, and names no model
+   by hand.

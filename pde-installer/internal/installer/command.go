@@ -277,6 +277,10 @@ func reconcile(config config, runner run.Runner) error {
 		if err := renderSkillLessons(config.Home, runner); err != nil {
 			return fmt.Errorf("skill lessons: %w", err)
 		}
+		// Needs the model-routing skill that the chezmoi apply installed.
+		if err := checkModelRoutes(config.Home, runner, routeCheckLimit); err != nil {
+			return fmt.Errorf("model routes: %w", err)
+		}
 	}
 	// Runs after CommitJournals, which deletes the replaced binaries this looks for.
 	refreshStaleProcesses(

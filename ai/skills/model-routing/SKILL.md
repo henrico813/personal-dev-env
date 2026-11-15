@@ -1,11 +1,11 @@
 ---
 name: model-routing
-description: Holds the one list of models, and says which model runs
-  each kind of agent job, how to check that a model is available, how
-  to brief a local model, and what to do when a job fails its check.
-  Use when choosing the model for a subagent, a new Herdr session, a
-  worker or a job script, when the user's chosen model cannot run,
-  and when another skill points here.
+description: Holds the table of job kinds and their models, and the
+  script that picks each agent's model from it. Says how to start an
+  agent with the picked model, what to do when a model fails, and how
+  to brief and check a local model. Use when choosing the model for a
+  subagent, a new Herdr session, a worker or a job script, when the
+  user's chosen model cannot run, and when another skill points here.
 metadata:
   scope: personal
 ---
@@ -17,132 +17,135 @@ A local model costs no cloud tokens and still runs when cloud access
 fails. You cannot trust a local model's own report on a job, though.
 So a job goes to a local model only when a script checks its result.
 
-This skill holds the only list of models. Other skills name a role
-only, such as "the local model, as `model-routing` picks". A choice
-made here counts as the user's explicit request to set a subagent's
-model.
+Each job has a kind, such as `plan-review` or `local-read`.
+`routing.json` in this folder maps each kind to its reasoning level
+and an ordered list of models. The list comes in groups. A group
+holds models a failed check skips together, such as the two local
+models. `scripts/pde_route.py` picks the first model this machine can
+run and logs the pick. A pick counts as the user's explicit request
+to set a subagent's model.
 
 ## Inputs
 
-- The job: what the agent does and what it hands back.
-- The harness that starts the job: OpenCode or Claude Code.
-- In OpenCode, the models on the machine that runs the job, from
-  `opencode models`. Names differ between machines, so take each
-  exact name from that list.
-
-## Roles
-
-Each job has one role, set by what the job needs. The roles run from
-weakest to strongest.
-
-1. Local: a script checks the result. Examples are running tests,
-   linters, git commands, merge checks or `planner check`, and quoting
-   lines that a script finds in their source file or web page. Small
-   chores are local jobs too, such as checking whether a file exists
-   or what its mode and size are. The model only has
-   to follow a short brief and call tools. Such a job is a local job.
-   Writing code is a local job too, inside or outside a plan step.
-   A script runs tests and linters to check the code.
-2. Cheap: either the job needs little judgment, or a stronger model
-   or the session checks the output. Examples are web lookups that
-   failed their check twice or that the local model could not fetch,
-   long prose drafts that a stronger model then checks, and sorting
-   or labelling by meaning when the session reads each line.
-3. Review: the job needs judgment over a bounded input. Its model
-   runs at medium reasoning. Examples are reviews of plans, diffs,
-   comments and tests, including `code-documentation` and
-   `behavior-focused-testing` reviews. Drafting text that no stronger
-   model checks, such as pull request text, is a review job too.
-4. Strongest: the job needs the deepest reasoning and a long context,
-   up to one million tokens for a large plan. Examples are plans,
-   decisions, risky reviews and the last try of any failed job.
-   Strongest jobs run at high reasoning. A review is risky when the
-   code it checks can change or delete the user's files or data. A
-   skill may also mark its own reviews as risky.
-
-The strongest model also directs other agents, at a lower reasoning
-level:
-
-- The hub of other sessions runs at medium reasoning.
-- An orchestrator is a worker session that directs other agents,
-  such as one that hands plan steps to the local model and review
-  jobs to the review model. It runs at low reasoning. It is not a
-  hub. A session the user started, such as an auto run's
-  front hub, keeps the model and level the user started it on.
-
-Neither the cheap nor the review model writes code or directs other
-agents.
-
-## Models
-
-Each role has an ordered list of models for each harness. The first
-name is the default, and later names are fallbacks.
-
-OpenCode, for `--model` and the subagent tool's `model`:
-
-- Local: `goog/qwen3.8-flash`, `goog/qwen3.8`.
-- Cheap: `openai/gpt-6-luna`, `opencode-go/gpt-6-luna`,
-  `claude-code/claude-haiku-4-5-20251001`.
-- Review: `claude-code/claude-sonnet-5`,
-  `github-copilot/claude-sonnet-5`.
-- Strongest: `claude-code/claude-opus-5-5[1m]`. The `[1m]` marks the
-  one-million-token version. Use the reasoning level that the Roles
-  section gives the job, where the harness takes it.
-
-Adding `#low`, `#medium` or `#high` to a name, as in
-`claude-code/claude-sonnet-5#medium`, sets that reasoning level where
-the tool takes a variant. The availability check compares the name
-without the suffix.
-
-Claude Code, for a subagent's `model` and `claude --model`:
-
-- Local: the subagent tool cannot reach a local model. Run a local
-  job from the shell with `opencode run --standalone -m <model>`,
-  with the model from the OpenCode list.
-- Cheap: `haiku`.
-- Review: `sonnet`.
-- Strongest: `opus`.
-
-Each Claude Code alias follows the newest model of its kind.
-
-## Check that a model is available
-
-- OpenCode: the name must be in `opencode models` on the machine that
-  runs the job. Before you start a session or worker on a model, send
-  that model a one-line job. When it does not answer, skip it and try
-  the next name:
-
-  ```sh
-  opencode run --standalone -m <model> "reply OK"
-  ```
-
-- Claude Code: no command lists the models. Each alias always
-  resolves to a current model. Count a model as unavailable when a
-  call fails with a not-found, login or limit error.
+- The job's kind: the one the skill that owns the job names, else the
+  one in Job kinds that fits.
+- The tool that will start the agent. It sets `--start`, as Pick the
+  model says.
 
 ## Pick the model
 
-1. Use the model the user asks for. When it is unavailable, offer the
-   first available model of the job's role instead. For work a script
-   checks, such as a plan whose steps all have tests, that first model
-   is the local model. The local model runs even while the cloud is
-   down.
-2. Otherwise, use the role a skill names for one of its own jobs. The
-   skill, or one of its lessons, may also set the job's reasoning
-   level.
-3. Otherwise, use the role in the Roles section whose description
-   fits the job.
-4. When no role fits, keep the session's model, or the model the
-   configuration sets. Never pick a cheaper model on your own to save
-   tokens.
-5. When a role fits, take the first available model in its list. A
-   web lookup that falls back to the cheap role is the one exception,
-   as Web lookups says.
-6. When no model of the role is available, step up to the next
-   stronger role. Never step down. A job that writes code skips the
-   cheap and review roles and steps from local to strongest. When no
-   strongest model is available, stop and report to the user, or to
-   the session that gave you the work.
+Run the script with the kind and the start:
+
+```sh
+python3 ~/.agents/skills/model-routing/scripts/pde_route.py <kind> --start <start>
+```
+
+The start names the tool that starts the agent, not the session's own
+harness:
+
+- `opencode-subagent`: OpenCode's `subagent` tool. A Claude Code
+  session in OpenChamber starts agents through this tool too.
+- `opencode-cli`: `opencode run --standalone -m <model>`, from the
+  shell or in a Herdr tab. A Claude Code session runs local jobs this
+  way too.
+- `claude-agent`: Claude Code's `Agent` tool.
+- `claude-cli`: `claude --model`, from the shell or in a Herdr tab.
+
+The script prints one JSON line, such as:
+
+```json
+{"model": "github-copilot/claude-opus-5.5#high", "effort": "high", "run_id": "rt-7f3a2c"}
+```
+
+Start the agent with that model, and begin its description with the
+run ID, such as `rt-7f3a2c plan review`.
+Under `claude-cli`, also pass any printed effort as
+`claude --effort`. A `-cli` start has no description, so it needs no
+run ID. Under `claude-agent` the script prints no effort, since the
+`Agent` tool takes none.
+
+1. When the user names a model, pass it with `--model <name>`. The
+   script checks that the machine lists it and logs it. When it exits
+   1, the machine lacks that model: tell the user, and offer the
+   kind's own pick.
+2. Otherwise, use the kind the skill that owns the job names.
+3. Otherwise, use the kind in Job kinds that fits the job. When no
+   kind fits, keep the session's model, or the model the
+   configuration sets.
+4. Never pick a model by hand, and never move a job to a cheaper
+   kind to save tokens.
+
+A skill that still names a role, such as "the review model", means
+the kind this list gives. The list goes away when every skill names a
+kind:
+
+- local: `local-read`, or `local-script` for a script job and
+  `step-code` for code.
+- cheap: `cheap-draft`.
+- review: `plan-review` for a plan reviewer, `code-review` for a code
+  reviewer, such as auto-run's T1 reviewer, and `test-review` for a
+  test reviewer.
+- strongest: `plan-write`, or `hub` and `orchestrator` for a session
+  that directs others.
+
+## Job kinds
+
+Each line says which jobs a kind covers. The table gives the models.
+
+- `plan-review`: a review of a plan or design doc.
+- `code-review`: a review of a pull request's code, or of a diff.
+- `risky-review`: a review that review-plan's rule calls risky, such
+  as one of code that can delete the user's files.
+- `test-review`, `docs-review`, `comment-review`, `skill-review`: a
+  review of tests, source documentation, code comments or skill text.
+- `session-check`, `deploy-check`: a check of a session's token use,
+  or of a deployed change.
+- `pr-text`: pull request text that no stronger model checks.
+- `research-read`: reading code or notes when no script checks the
+  answer.
+- `plan-write`: writing a plan or a decision.
+- `cheap-draft`: a long draft that a stronger model then checks, or
+  sorting by meaning when the session reads each line.
+- `web-lookup`: a web lookup after the local model failed it, as Web
+  lookups says.
+- `step-code`: writing code that tests and linters check. It moves
+  from the local model straight to Opus.
+- `step-fix`: fixing code that `step-code` could not get right.
+- `local-script`: a script job, such as running tests, linters, git
+  commands or `planner check`.
+- `local-read`: reading or searching whose answer a script checks,
+  such as quoting lines from files or web pages.
+- `merge-script`, `merge-session`: a merge by the merge worker script,
+  or a merge a cloud session runs from the start.
+- `orchestrator`: a worker session that directs other agents. It is
+  not a hub.
+- `hub`: a Herdr session that other sessions report to.
+- `eval-scorer`: the scorer of the skill trials.
+
+A session the user started, such as an auto run's front hub, keeps
+the model and level the user started it on.
+
+## When a model fails to start
+
+A start fails with a not-found, login or limit error. Run the script
+again with the same kind and start, and add `--failed` with the model
+that failed:
+
+```sh
+python3 ~/.agents/skills/model-routing/scripts/pde_route.py <kind> --start <start> --failed <model>
+```
+
+The script prints the next model, which may be the same model at
+another provider. You may pass the printed name as it is, with its
+`#` suffix. The script keeps no state between calls, so repeat each
+earlier `--failed` and `--check-failed` flag of the job. When no model
+is left, the script exits 1 and prints each model with why it was
+skipped. Stop and report that to the user, or to the session that
+gave you the work.
+
+Under a `-cli` start, the script itself sends each model a one-line
+job first and skips one that does not answer, so a Herdr tab never
+starts on a dead model.
 
 ## Brief a local model
 
@@ -167,7 +170,12 @@ Each Claude Code alias follows the newest model of its kind.
    script. The brief names the input files, the one answer file the
    model writes, and that file's exact format, such as one JSON line
    per match with the file name and an exact quote. The brief also
-   says to write nothing else.
+   says to write nothing else. Pick its model as a `local-read` job:
+
+   ```sh
+   python3 ~/.agents/skills/model-routing/scripts/pde_route.py local-read --start <start>
+   ```
+
 5. For a script job, read the summary file yourself. The job passes
    its check only when the file's last line is `done`. For an edit
    job, run its check script yourself after the model stops. For a
@@ -186,19 +194,19 @@ Each Claude Code alias follows the newest model of its kind.
 
 ## Web lookups
 
-A web lookup that only quotes pages is a local reading job. Brief it
+A web lookup that only quotes pages is a `local-read` job. Brief it
 as step 4 of Brief a local model says. Use one JSON line per answer,
 holding `url` and `quote`. Check it as step 5 says. The script
 fetches each page itself.
 
 When the check fails twice, or the local model cannot fetch pages,
-run the lookup on a subagent of the cheap role. It is the one
-exception to taking the first model in the list.
-Pick the cheap model from the provider of the session's own model,
-since that provider is known to work. Set the subagent tool's `model`
-to it. In OpenCode, also pick the `web-search-researcher` agent. If
-the tool cannot take that model, or the call fails, run the lookup
-without setting a model.
+run the lookup as a `web-lookup` job:
+
+```sh
+python3 ~/.agents/skills/model-routing/scripts/pde_route.py web-lookup --start <start>
+```
+
+In OpenCode, also pick the `web-search-researcher` agent.
 
 ## When the check fails
 
@@ -209,67 +217,67 @@ is a result, not a failed job. Hand that result to the skill that owns
 the job.
 
 1. Run the job once more on the same model, with the same brief.
-2. When it fails again, step up one role and run it once, with the
-   same brief and script. A job that writes code skips the cheap and
-   review roles and steps up to the strongest. The skill that owns the
-   job may give a stronger model other work instead, such as fixing
-   the job.
-3. Each time it fails again, step up one more role and try once,
-   until the strongest model has tried. A job that starts on the
-   local model can try the local, cheap, review and strongest models.
-4. When the strongest model fails too, stop. Report the job, the check
-   and the last summary to the user, or to the session that gave you
-   the work.
+2. When it fails again, run the script again with `--check-failed`
+   and that model. It skips every model in that model's group, such
+   as the second local model, and prints the first model of the next
+   group. Run the job once on it, with the same brief and script:
+
+   ```sh
+   python3 ~/.agents/skills/model-routing/scripts/pde_route.py <kind> --start <start> --check-failed <model>
+   ```
+
+3. Each time it fails again, add one more `--check-failed` with the
+   model that failed, and try once on the printed model. The skill
+   that owns the job may name another kind instead, such as a fix
+   job.
+4. When the script exits 1, stop. Report the job, the check and the
+   last summary to the user, or to the session that gave you the
+   work.
+
+## Check the machine and the log
+
+- `pde_route.py check` lists each table model this machine lacks. It
+  exits 1 when some kind has no model here. The installer runs it.
+- `pde_route.py audit --since 1d` pairs each subagent start with its
+  pick by run ID. It names each start with no pick, no model or
+  another model, and exits 1 when it finds one.
 
 ## Output format
 
 Each report on a job names the model that ran it. When that is not
-the role's default, the report also says why, such as "the default
-did not answer".
+the kind's first model, the report also says why, as the script's log
+gives it, such as "not on this machine".
 
 ## Guardrails
 
 - A local model writes no plan, review, decision or pull request
   text.
-- The cheap and review models write no code and direct no agents.
-- Never step a job down to a weaker role, even when its model is
-  unavailable.
-- Never move a job to a cheaper model only to save tokens. A job's
-  model comes from the user, a rule such as one in `ai/AGENTS.md`,
-  or a role that a skill names, including the Roles section here.
+- Never pick a model by hand. A job's model comes from the user, a
+  rule such as one in `ai/AGENTS.md`, or the kind a skill names.
 - Never pass a weaker model as Claude Code's `--fallback-model`.
-- A role a skill names for one of its own jobs wins over the role
-  here.
+- A kind a skill names for one of its own jobs wins over the kind
+  Job kinds gives.
 
 ## When a tool is missing
 
-- If `opencode models` does not run, use the names in Models and say
-  you could not check them.
-- If a model does not answer, use the next name in its role's list.
-  When the list runs out, step up a role as Pick the model says.
+- If the script exits 2 with "cannot read the model list", report
+  that `opencode models` failed. Do not start the agent on a guessed
+  model.
+- If `python3` does not run, keep the session's model and say you
+  could not pick one.
 - If a local job's model stops answering partway, count it as a
   failed check.
 
 ## Final checks
 
-- Each job ran on the first available model of its role, or its
-  report says why not. A web lookup ran on the local model first.
-  It ran on the cheap model of the session's own provider only
-  when the check failed twice or the local model could not fetch
-  pages.
-- No job moved to a weaker role.
+- Each agent started on the model the script printed, with the run ID
+  first in its description.
+- Each failed start ran the script again with `--failed`, and each
+  failed check with `--check-failed`, repeating the earlier flags.
 - Each local job passed its check. A script job's summary file ends
   in `done`. For an edit job or a reading or search job, its check
   script passed when you ran it.
 - You read the summary file or ran the check script yourself.
-- A job that failed its check twice stepped up one role at a time,
-  with one try on each. The skill that owns the job may instead have
-  given a stronger model other work. Either way, the job stopped after
-  the strongest model.
-- A job that writes code ran on the local model, or on the strongest
-  after the local model failed. It skipped the cheap and review
-  roles.
-- Each hub ran at medium reasoning, and each orchestrator at low.
 - No local model wrote a plan, review, decision or pull request text.
 
 ## References
