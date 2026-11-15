@@ -91,8 +91,6 @@ func mutatingCommand(use, description string, repoRoot *string, action func(conf
 	return command
 }
 
-// Returns cfg with the profile, desktop and color profile that install's
-// argument and flag select. config.json supplies what they leave out.
 func resolveInstallSelections(cfg config, args []string, requestedColorProfile string) (config, error) {
 	var err error
 	if cfg.Profile, err = resolveInstallArgument(cfg.Home, args); err != nil {
@@ -105,6 +103,9 @@ func resolveInstallSelections(cfg config, args []string, requestedColorProfile s
 		return config{}, err
 	}
 	if cfg.UpdateInterval, err = loadUpdateInterval(cfg.Home); err != nil {
+		return config{}, err
+	}
+	if cfg.ExtraSkillsRepo, err = loadExtraSkillsRepo(cfg.Home); err != nil {
 		return config{}, err
 	}
 	return cfg, nil
@@ -265,7 +266,7 @@ func reconcile(config config, runner run.Runner) error {
 		}
 		journals = append(journals, pluginJournal)
 	}
-	chezmoiJournal, err := chezmoibackend.New(
+	chezmoiManager := chezmoibackend.New(
 		config.Home,
 		config.RepoRoot,
 		config.AquaRoot,
@@ -274,7 +275,9 @@ func reconcile(config config, runner run.Runner) error {
 		config.ColorProfile,
 		config.UpdateInterval,
 		runner,
-	).Apply()
+	)
+	chezmoiManager.ExtraSkillsRepo = config.ExtraSkillsRepo
+	chezmoiJournal, err := chezmoiManager.Apply()
 	if err != nil {
 		return fail("chezmoi", err)
 	}

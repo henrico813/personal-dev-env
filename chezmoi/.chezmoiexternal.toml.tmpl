@@ -352,6 +352,24 @@ url = 'file://{{ $repoRoot }}/ai/{{ . }}'
 {{- end }}
 {{- end }}
 {{- end }}
+{{- /* Only a PC whose config.json names a extra skills checkout installs extra skills. */}}
+{{- $extraRepo := env "PDE_EXTRA_SKILLS_REPO" }}
+{{- if $extraRepo }}
+{{- $personal := print "\x00" (output "git" "-C" (print $repoRoot "/ai") "ls-files" "-z" "--" "skills") }}
+{{- range splitList "\x00" (output "git" "-C" $extraRepo "ls-files" "-z" "--" "skills") }}
+{{- if . }}
+{{- $skill := index (splitList "/" .) 1 }}
+{{- /* One skill would overwrite the other on every install. */}}
+{{- if contains (print "\x00skills/" $skill "/") $personal }}
+{{- fail (printf "extra skill %s/skills/%s has the same name as %s/ai/skills/%s" $extraRepo $skill $repoRoot $skill) }}
+{{- end }}
+
+[".agents/{{ . }}"]
+type = "file"
+url = 'file://{{ $extraRepo }}/{{ . }}'
+{{- end }}
+{{- end }}
+{{- end }}
 {{- if has "development" .pde.tiers }}
 
 [".pi/agent/AGENTS.md"]
