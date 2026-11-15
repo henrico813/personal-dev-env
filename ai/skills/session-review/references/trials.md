@@ -17,6 +17,7 @@ skill's cases" says how.
 - Run a skill's cases
 - Weekly runs
 - Write a skill case
+- Write a correction case
 
 ## Run the trials
 
@@ -118,6 +119,21 @@ at `main`, and with no skill:
 - `--without` also runs each case with no skill. Such a run depends
   only on the case and the model, so a later call reuses the saved
   runs of the same case file, model and effort.
+- `--changed BASE` runs the cases of each skill whose files differ
+  from BASE, a commit or branch. Edits not yet committed count, but
+  new files that git does not track do not. When no changed skill has
+  cases, it says so and exits 0.
+- `--gate` runs only correction cases, as "Write a correction case"
+  says, and exits 1 when one fails more than half its runs on the
+  skill text `new`. For each such case it prints a line at the end,
+  such as `blocked: public-name-says-what new 1/3`.
+- `--check-cases` checks the chosen cases and their known answers,
+  and runs no model.
+
+A merge check runs:
+
+    python3 ~/.agents/skills/session-review/scripts/trials.py \
+        --changed main --gate
 
 A run gets only SKILL.md, since the model has no tools to open the
 skill's other files. The line for each case gives the passed runs on
@@ -169,3 +185,69 @@ A skill case has the same fields as a case above, with two changes:
   skill can read its cases.
 
 Save it as `ai/skills/<skill>/evals/<id>.json`.
+
+## Write a correction case
+
+A correction case is a skill case made from a correction the user
+gave, such as "a one-word public name says nothing". When a pull
+request changes a skill, the merge checks run that skill's correction
+cases three times each, with `--changed` and `--gate`. A case that
+fails 2 of the 3 runs blocks the merge. One failed run does not,
+since a model's answers change between runs. Other cases only report,
+in the weekly run.
+
+A correction case adds these fields to a skill case:
+
+```json
+{
+  "id": "public-name-says-what",
+  "source": "the user's corrections to one-word public names",
+  "rule": "Function names",
+  "correction": true,
+  "prompt": "You review a pull request in a Go repository. ...",
+  "pass": ["(?s)\\bResolve\\b.{0,400}(rename|vague|unclear)"],
+  "judge": ["Does the answer say the name Resolve does not tell a caller what it returns, and suggest a name that does?"],
+  "good": "pricing/pricing.go:12 `Resolve` is unclear: a caller cannot tell from the name what the function returns. Rename it to something like `PriceForPlan`, which names the price it gives and the plan it prices.",
+  "bad": "pricing/pricing.go:12 `Resolve` is a vague name; rename it to `ResolveIt`, which reads more naturally and keeps the verb."
+}
+```
+
+- `correction`: `true` marks a case made from a correction. Only these
+  cases can block a merge.
+- `judge`: optional yes-or-no questions, for what a pattern cannot
+  tell, such as whether a suggested name says more than the old one.
+  A blind scorer answers them only when every pattern passes. It sees
+  the prompt, the answer and the questions, never the skill, the
+  text's name or the model. A run passes only on a yes to each.
+- `good` and `bad`: a right answer and a wrong one, the known
+  answers. A correction case or a judged case needs both. The script
+  stops before any run when `good` misses a pattern, or when `bad`
+  passes every pattern of a case with no `judge`. In a judged case,
+  make `bad` a near miss that passes the patterns, so only the scorer
+  can fail it and `--check-scorer` tests it on a hard answer.
+- `pass` is optional in a case with `judge`.
+
+Write the prompt as a made-up situation that tests the rule without
+naming it. Use other names than the skill text's examples, so an
+answer that copies an example does not pass. Run the case once with
+`--at main --without` before you commit it. A case that passes on the
+old text and with no skill does not show that the fix works.
+
+A run gets only SKILL.md. For a fix in a reference file, the case
+checks that the answer says to read that file at the right step.
+
+The scorer is `--scorer`, by default the first Review model in
+`model-routing`, at medium effort. To check a scorer, run it on each
+judged case's known answers:
+
+    python3 ~/.agents/skills/session-review/scripts/trials.py \
+        --all-skills --check-scorer --scorer goog/qwen3.8
+
+It prints how many of the scorer's verdicts were right, on each
+case's good answer and its bad one, then in total:
+
+    public-name-says-what good 3/3 bad 3/3
+    scorer goog/qwen3.8 agreed 6/6
+
+Make a local model the default scorer only when its total equals the
+cloud scorer's on the same cases.

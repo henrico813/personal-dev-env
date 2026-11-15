@@ -5,16 +5,29 @@ behavior as its answer key. A case in ``<trials>/cases/*.json`` lists
 its rules files. A skill's case, in ``ai/skills/<skill>/evals/*.json``
 of the current Git repository, gets that skill's SKILL.md instead.
 The script sends the rules and prompt to ``opencode run`` N times and
-grades each answer with the case's patterns. ``--at`` and
-``--without`` add runs on the skill's old text and on no rules, to
-compare. ``--last-validated`` runs nothing and reports each skill's
-last call from the saved results. Read ``main`` first.
+grades each answer with the case's patterns. A case with ``judge``
+questions also needs a yes to each from a blind scorer, the
+``--scorer`` model, which sees only the prompt and the answer.
+``--at`` and ``--without`` add runs on the skill's old text and on no
+rules, to compare.
+
+``--changed BASE`` runs the cases of each skill whose files differ
+from BASE. ``--gate`` runs only cases with ``correction`` and exits 1
+when one fails more than half its runs on the current text; the merge
+check uses both. ``--check-cases`` and ``--last-validated`` run
+nothing: one checks the cases and their known answers, the other
+reports each skill's last call from the saved results.
+``--check-scorer`` runs only the scorer, on each judged case's good
+and bad answers. Read ``main`` first.
 
 Example:
     python3 ~/.agents/skills/session-review/scripts/trials.py -n 5
     python3 trials.py --case stale-approval --variant high
     python3 trials.py --skill skill-development --at main --without
     python3 trials.py --all-skills --without
+    python3 trials.py --changed origin/main --gate
+    python3 trials.py --all-skills --check-cases
+    python3 trials.py --all-skills --check-scorer --scorer goog/qwen3.8
     python3 trials.py --last-validated
 """
 
@@ -35,8 +48,18 @@ from pathlib import Path
 TRIALS = Path.home() / ".local/state/pde/session-reviews/trials"
 # A case in the trials folder also needs "rules", the files it lists.
 # A skill case needs "rule" instead, the SKILL.md heading it tests.
-REQUIRED = {"id", "source", "prompt", "pass"}
-OPTIONAL = {"fail"}
+REQUIRED = {"id", "source", "prompt"}
+OPTIONAL = {"pass", "fail", "judge", "correction", "good", "bad"}
+# Keep the first Review model in model-routing's Models list, at medium.
+SCORER = "claude-code/claude-sonnet-5#medium"
+# The scorer gets no rules, skill text or model name, so it can judge
+# only what the answer says.
+SCORER_NOTE = (
+    "You check an answer to a task. Read the task and the answer, then"
+    " answer each numbered question with yes or no. Reply with one line"
+    " per question, such as '1: yes', and nothing else."
+)
+VERDICT = re.compile(r"^\W*(\d+)\W+(yes|no)\b", re.I | re.M)
 # Denying every permission takes all tools away from the model, so a
 # case cannot act out the hub actions its prompt describes.
 NO_TOOLS = '{"permission": {"*": "deny"}}'
@@ -60,7 +83,11 @@ def main(argv: list[str] | None = None) -> int:
         argv: Command-line options, or None for ``sys.argv``.
 
     Returns:
-        1 when a case cannot be used, else 0, whatever the pass rate.
+        1 when a case cannot be used, ``--check-scorer`` gets cases
+        but none with judge questions, or ``--gate`` finds a case whose
+        "new" skill text failed more than half its runs, else 0,
+        whatever the pass rate. No chosen case at all, such as from an
+        empty ``--changed``, gives 0.
     """
     args = parse_args(argv)
     if args.last_validated:
@@ -73,6 +100,14 @@ def main(argv: list[str] | None = None) -> int:
     except CaseError as error:
         print(f"trials: {error}", file=sys.stderr)
         return 1
+    if args.check_cases:
+        print(f"{len(cases)} cases ok")
+        return 0
+    if not cases:
+        print("trials: no cases to run")
+        return 0
+    if args.check_scorer:
+        return check_scorer(cases, args)
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     (args.trials / "answers").mkdir(parents=True, exist_ok=True)
     # The random suffix keeps two calls started in the same second apart.
@@ -91,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         if needs_newline:
             with log.open("a", encoding="utf-8") as handle:
                 handle.write("\n")
+    blocked = []
     with open(log, "a", encoding="utf-8") as results:
         for case in cases:
             graded = []
@@ -110,9 +146,16 @@ def main(argv: list[str] | None = None) -> int:
                 total += sum(run["passed"] for run in runs)
                 count += len(runs)
             print(summarize_case(case, graded))
+            # The first skill text is always "new", the text being merged.
+            _, runs, _ = graded[0]
+            passed, n = sum(run["passed"] for run in runs), len(runs)
+            if args.gate and (n - passed) * 2 > n:
+                blocked.append(f"blocked: {case['id']} new {passed}/{n}")
     model = args.model + (f"#{args.variant}" if args.variant else "")
     print(f"total {total}/{count} on {model}, answers in {answers}")
-    return 0
+    for line in blocked:
+        print(line)
+    return 1 if blocked else 0
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -140,6 +183,16 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="run the cases of every skill in the checkout that has evals/",
     )
     parser.add_argument(
+        "--changed",
+        metavar="BASE",
+        help="run the cases of each skill whose files differ from BASE",
+    )
+    parser.add_argument(
+        "--gate",
+        action="store_true",
+        help="run only correction cases; exit 1 when one fails over half",
+    )
+    parser.add_argument(
         "--at", help="also run each skill case on its SKILL.md at this commit"
     )
     parser.add_argument(
@@ -152,9 +205,24 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         action="store_true",
         help="print each skill's last call from results.jsonl, run nothing",
     )
+    parser.add_argument(
+        "--scorer",
+        default=SCORER,
+        help="model that answers each case's judge questions",
+    )
+    parser.add_argument(
+        "--check-cases",
+        action="store_true",
+        help="check the chosen cases and their known answers, run nothing",
+    )
+    parser.add_argument(
+        "--check-scorer",
+        action="store_true",
+        help="score each judged case's good and bad answers N times",
+    )
     args = parser.parse_args(argv)
-    if args.at and not (args.skill or args.all_skills):
-        parser.error("--at needs --skill or --all-skills")
+    if args.at and not (args.skill or args.all_skills or args.changed):
+        parser.error("--at needs --skill, --all-skills or --changed")
     if args.skill and args.all_skills:
         parser.error("--skill and --all-skills cannot be used together")
     return args
@@ -164,24 +232,27 @@ def load_cases(args: argparse.Namespace) -> list[dict]:
     """Read and check every chosen case, so a bad one stops the script early.
 
     Args:
-        args: The command-line options. With ``--skill`` or
-            ``--all-skills``, the cases come from each skill's
-            ``evals/`` in the checkout instead of the trials folder's
-            ``cases/``.
+        args: The command-line options. With ``--skill``,
+            ``--all-skills`` or ``--changed``, the cases come from each
+            skill's ``evals/`` in the checkout instead of the trials
+            folder's ``cases/``.
 
     Returns:
-        The chosen cases, each with its case hash and skill texts added.
+        The chosen cases, each with its case hash and skill texts
+        added. The list is empty only with ``--changed`` or ``--gate``.
 
     Raises:
         CaseError: A case is broken, its rules are missing, or a
             wanted ID names no case.
     """
-    if args.skill or args.all_skills:
+    if args.skill or args.all_skills or args.changed:
         top = Path(run_git(Path.cwd(), "rev-parse", "--show-toplevel").strip())
         names = args.skill
         if args.all_skills:
             found = (top / "ai/skills").glob("*/evals")
             names = sorted(folder.parent.name for folder in found)
+        elif args.changed:
+            names = list_changed_skills(top, args.changed)
         folders = [
             (top / "ai/skills" / name / "evals", name) for name in names
         ]
@@ -201,7 +272,9 @@ def load_cases(args: argparse.Namespace) -> list[dict]:
     cases = [
         case for case in cases if not args.case or case["id"] in args.case
     ]
-    if not cases:
+    if args.gate:
+        cases = [case for case in cases if case.get("correction")]
+    if not cases and not (args.changed or args.gate):
         names = ", ".join(str(folder) for folder, _ in folders)
         if not names:
             raise CaseError("no skill has an evals/ folder")
@@ -209,6 +282,19 @@ def load_cases(args: argparse.Namespace) -> list[dict]:
     for case in cases:
         case["skill_texts"] = list_skill_texts(case, args, top)
     return cases
+
+
+def list_changed_skills(top: Path, base: str) -> list[str]:
+    """Return each skill with an ``evals/`` folder that differs from BASE.
+
+    Uncommitted edits count, but new files git does not track do not,
+    since ``git diff`` does not list them.
+    """
+    out = run_git(top, "diff", "--name-only", "-z", base, "--", "ai/skills")
+    names = {Path(path).parts[2] for path in out.split("\0") if path}
+    return sorted(
+        name for name in names if (top / "ai/skills" / name / "evals").is_dir()
+    )
 
 
 def read_case(path: Path, skill: str | None) -> dict:
@@ -237,22 +323,51 @@ def read_case(path: Path, skill: str | None) -> dict:
     # The ID names answer files, so ``../`` would write outside the folder.
     if not isinstance(case["id"], str) or not CASE_ID.fullmatch(case["id"]):
         raise CaseError(f"{path}: id must be lowercase letters, digits, -")
-    for field in ("rules", "pass", "fail"):
+    for field in ("rules", "pass", "fail", "judge"):
         value = case.get(field, [])
         if not isinstance(value, list) or not all(
             isinstance(item, str) for item in value
         ):
             raise CaseError(f"{path}: {field} must be a list of strings")
-    if not case["pass"]:
-        raise CaseError(f"{path}: pass needs at least one pattern")
+    if not case.get("pass") and not case.get("judge"):
+        raise CaseError(f"{path}: needs a pass pattern or a judge question")
     try:
-        for pattern in case["pass"] + case.get("fail", []):
+        for pattern in case.get("pass", []) + case.get("fail", []):
             re.compile(pattern)
     except re.error as error:
         raise CaseError(f"{path}: bad pattern {pattern!r}: {error}") from error
+    check_known_answers(path, case)
     case["skill"] = skill
     case["case_hash"] = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
     return case
+
+
+def check_known_answers(path: Path, case: dict) -> None:
+    """Check a case's ``good`` and ``bad`` answers against its patterns.
+
+    The good answer must pass. The bad one must fail, unless judge
+    questions can still fail it. A correction case blocks merges, and
+    a judged one is how ``--check-scorer`` tests a scorer, so both need
+    the two answers.
+
+    Raises:
+        CaseError: An answer is missing or not text, or the patterns
+            grade it wrongly.
+    """
+    if not isinstance(case.get("correction", False), bool):
+        raise CaseError(f"{path}: correction must be true or false")
+    needs = case.get("correction") or case.get("judge")
+    if needs and not {"good", "bad"} <= set(case):
+        raise CaseError(f"{path}: needs good and bad answers")
+    for field in ("good", "bad"):
+        if not isinstance(case.get(field, ""), str):
+            raise CaseError(f"{path}: {field} must be a string")
+    if "good" in case and grade(case, case["good"]):
+        reason = grade(case, case["good"])[0]
+        raise CaseError(f"{path}: good answer fails, {reason}")
+    if "bad" in case and not case.get("judge"):
+        if not grade(case, case["bad"]):
+            raise CaseError(f"{path}: bad answer passes every pattern")
 
 
 def list_skill_texts(
@@ -367,10 +482,10 @@ def find_saved_runs(
 ) -> list[dict]:
     """Return N saved runs of the "none" skill text to use instead of new ones.
 
-    A run with no rules depends only on the case and the model, so runs
-    of the same case file, model and effort give the same evidence. A
-    run whose ``opencode`` call failed, such as by a timeout, holds no
-    answer, so it is never reused.
+    A run with no rules depends only on the case, the model and, for a
+    judged case, the scorer, so runs that match on all three give the
+    same evidence. A run whose ``opencode`` call failed, such as by a
+    timeout, holds no answer, so it is never reused.
 
     Returns:
         The last N matching runs, or an empty list when fewer are
@@ -378,12 +493,14 @@ def find_saved_runs(
     """
     if skill_text["name"] != "none":
         return []
+    scorer = args.scorer if case.get("judge") else None
     found = [
         run
         for run in saved
         if run["case_hash"] == case["case_hash"]
         and run["rules_hash"] == skill_text["hash"]
         and (run["model"], run["variant"]) == (args.model, args.variant)
+        and run.get("scorer") == scorer
         and not any(r.startswith("opencode ") for r in run["reasons"])
     ]
     return found[-args.n :] if len(found) >= args.n else []
@@ -475,6 +592,41 @@ def list_last_validated(saved: list[dict]) -> list[str]:
     return lines
 
 
+def check_scorer(cases: list[dict], args: argparse.Namespace) -> int:
+    """Score each judged case's good and bad answers N times and print it.
+
+    The scorer agrees on a run when it passes the good answer, or fails
+    the bad one by a verdict rather than a failed call. Run it once per
+    scorer and compare the totals before switching scorers.
+
+    Returns:
+        1 when no chosen case has judge questions, else 0.
+    """
+    judged = [case for case in cases if case.get("judge")]
+    if not judged:
+        print("trials: no chosen case has judge questions", file=sys.stderr)
+        return 1
+    total = count = 0
+    for case in judged:
+        parts = [case["id"]]
+        for field in ("good", "bad"):
+            agreed = 0
+            for _ in range(args.n):
+                reasons = ask_scorer(case, case[field], args)
+                if field == "good":
+                    agreed += not reasons
+                else:
+                    agreed += bool(reasons) and not reasons[0].startswith(
+                        "opencode "
+                    )
+            parts.append(f"{field} {agreed}/{args.n}")
+            total += agreed
+            count += args.n
+        print(" ".join(parts))
+    print(f"scorer {args.scorer} agreed {total}/{count}")
+    return 0
+
+
 def run_trial(
     case: dict,
     skill_text: dict,
@@ -482,7 +634,7 @@ def run_trial(
     args: argparse.Namespace,
     answers: Path,
 ) -> dict:
-    """Run one trial in a new empty folder, grade it and save its answer.
+    """Run one trial, grade it, ask the scorer and save its answer.
 
     Args:
         case: A case from ``load_cases``.
@@ -495,10 +647,13 @@ def run_trial(
         The line to add to ``results.jsonl``.
     """
     started = time.monotonic()
-    with tempfile.TemporaryDirectory(prefix="trial-") as folder:
-        answer, reasons = ask_model(case, skill_text, Path(folder), args)
-    if not reasons:
-        reasons = grade(case, answer)
+    model = args.model + (f"#{args.variant}" if args.variant else "")
+    message = f"{skill_text['text']}\n{NO_TOOLS_NOTE}\n{case['prompt']}"
+    answer, failure = ask_opencode(model, message, args.timeout)
+    reasons = [f"opencode {failure}"] if failure else grade(case, answer)
+    # Each scorer call costs a run, so it judges only passing answers.
+    if not reasons and case.get("judge"):
+        reasons = ask_scorer(case, answer, args)
     path = answers / f"{case['id']}-{skill_text['name']}-{number}.txt"
     path.write_text(answer, encoding="utf-8")
     return {
@@ -509,6 +664,7 @@ def run_trial(
         "skill_text": skill_text["name"],
         "model": args.model,
         "variant": args.variant,
+        "scorer": args.scorer if case.get("judge") else None,
         "rules_hash": skill_text["hash"],
         "case_hash": case["case_hash"],
         "commit": skill_text["commit"],
@@ -519,18 +675,55 @@ def run_trial(
     }
 
 
-def ask_model(
-    case: dict, skill_text: dict, scratch: Path, args: argparse.Namespace
-) -> tuple[str, list[str]]:
-    """Send the skill text's rules and the prompt to ``opencode run``.
+def ask_scorer(case: dict, answer: str, args: argparse.Namespace) -> list[str]:
+    """Ask the scorer the case's judge questions about one answer.
+
+    The scorer sees only the prompt, the answer and the questions,
+    never the skill text, the rules or the model, so it cannot favor
+    one skill text.
 
     Returns:
-        The answer text, and one reason when the run failed.
+        Each question it did not answer yes, or how its call failed.
+        Empty when the answer passes.
     """
-    model = args.model + (f"#{args.variant}" if args.variant else "")
+    questions = [
+        f"{number}. {question}"
+        for number, question in enumerate(case["judge"], start=1)
+    ]
+    message = "\n".join(
+        [
+            SCORER_NOTE,
+            "===== task =====",
+            case["prompt"],
+            "===== answer =====",
+            answer,
+            "===== questions =====",
+            *questions,
+        ]
+    )
+    reply, failure = ask_opencode(args.scorer, message, args.timeout)
+    if failure:
+        return [f"opencode scorer {failure}"]
+    verdicts: dict[int, str] = {}
+    for number, verdict in VERDICT.findall(reply):
+        verdicts.setdefault(int(number), verdict.lower())
+    return [
+        f"scorer said {verdicts.get(number, 'nothing')} to question {number}"
+        for number in range(1, len(case["judge"]) + 1)
+        if verdicts.get(number) != "yes"
+    ]
+
+
+def ask_opencode(
+    model: str, message: str, timeout: int
+) -> tuple[str, str | None]:
+    """Send one message to ``opencode run`` in a new empty folder.
+
+    Returns:
+        The answer text, and how the call failed, or None.
+    """
     command = ["opencode", "run", "--standalone", "-m", model]
-    command += ["--format", "json"]
-    command.append(f"{skill_text['text']}\n{NO_TOOLS_NOTE}\n{case['prompt']}")
+    command += ["--format", "json", message]
     # A config file in a folder above the scratch folder, or one these
     # variables name, could change the model or give tools back.
     env = {
@@ -545,10 +738,11 @@ def ask_model(
         # would turn parent-folder config back on.
         "OPENCODE_CONFIG_PROJECT_DISABLE": "1",
     }
-    code, output, error = run_bounded(command, scratch, env, args.timeout)
+    with tempfile.TemporaryDirectory(prefix="trial-") as folder:
+        code, output, error = run_bounded(command, Path(folder), env, timeout)
     if code != 0:
-        return "", [f"opencode {describe_failure(code, error, args.timeout)}"]
-    return read_answer(output), []
+        return "", describe_failure(code, error, timeout)
+    return read_answer(output), None
 
 
 def run_bounded(
@@ -625,7 +819,7 @@ def grade(case: dict, answer: str) -> list[str]:
         return ["tool call instead of answer"]
     missed = [
         f"missed pass /{pattern}/"
-        for pattern in case["pass"]
+        for pattern in case.get("pass", [])
         if not re.search(pattern, answer, re.I)
     ]
     matched = [

@@ -37,9 +37,12 @@ if sleep != "0":
     # A child holds the output open, so killing only the fake would hang.
     subprocess.Popen(["sleep", sleep])
     time.sleep(float(sleep))
-if os.environ.get("FAKE_EXIT", "0") != "0":
+code = int(os.environ.get("FAKE_EXIT", "0"))
+if sys.argv[4:5] == [os.environ.get("FAKE_FAIL_MODEL")]:
+    code = 3
+if code:
     print("Error: model not found", file=sys.stderr)
-    sys.exit(int(os.environ["FAKE_EXIT"]))
+    sys.exit(code)
 answers = json.loads(os.environ["FAKE_ANSWERS"])
 text = answers[len(calls) % len(answers)]
 print(json.dumps({{"type": "step_start", "part": {{}}}}))
@@ -75,7 +78,7 @@ def make_trials(home: Path, **fields: object) -> Path:
     return home / "trials"
 
 
-def make_skill_checkout(home: Path) -> Path:
+def make_skill_checkout(home: Path, **fields: object) -> Path:
     """A checkout whose skill ``garden`` has one case and an edited SKILL.md.
 
     The committed SKILL.md says "Water at dusk." and the working tree
@@ -83,6 +86,7 @@ def make_skill_checkout(home: Path) -> Path:
 
     Args:
         home: Folder that holds the checkout.
+        fields: Case fields that replace or add to the defaults.
 
     Returns:
         The checkout.
@@ -97,8 +101,15 @@ def make_skill_checkout(home: Path) -> Path:
         "rule": "Garden",
         "prompt": "When do you water the beds?",
         "pass": ["dawn"],
-    }
+    } | fields
     (skill / "evals/water-time.json").write_text(json.dumps(case))
+    commit_paths(repo, ".")
+    (skill / "SKILL.md").write_text("# Garden\n\nWater at dawn.\n")
+    return repo
+
+
+def commit_paths(repo: Path, *paths: str) -> None:
+    """Commit these paths as a test author, making a repository if needed."""
     env = os.environ | {
         "GIT_CONFIG_GLOBAL": os.devnull,
         "GIT_CONFIG_NOSYSTEM": "1",
@@ -107,10 +118,9 @@ def make_skill_checkout(home: Path) -> Path:
         "GIT_COMMITTER_NAME": "Test",
         "GIT_COMMITTER_EMAIL": "test@example.com",
     }
-    for command in (["init", "-q"], ["add", "."], ["commit", "-qm", "base"]):
+    commands = (["init", "-q"], ["add", *paths], ["commit", "-qm", "test"])
+    for command in commands:
         subprocess.run(["git", *command], cwd=repo, env=env, check=True)
-    (skill / "SKILL.md").write_text("# Garden\n\nWater at dawn.\n")
-    return repo
 
 
 def run_trials(
@@ -121,6 +131,7 @@ def run_trials(
     exit_code: int = 0,
     lines: tuple[str, ...] = (),
     cwd: Path | None = None,
+    fail_model: str = "",
 ) -> subprocess.CompletedProcess[str]:
     """Run the script with a fake ``opencode`` first on PATH.
 
@@ -136,6 +147,7 @@ def run_trials(
         exit_code: The fake's exit code, with an error line, when not 0.
         lines: Raw output lines the fake prints before each answer.
         cwd: Folder to run in, such as a checkout for ``--skill``.
+        fail_model: A model whose calls exit 3, such as the scorer's.
 
     Returns:
         The finished process with captured output.
@@ -152,6 +164,7 @@ def run_trials(
         "FAKE_SLEEP": str(sleep),
         "FAKE_EXIT": str(exit_code),
         "FAKE_LINES": json.dumps(lines),
+        "FAKE_FAIL_MODEL": fail_model,
         "OPENCODE_CONFIG": str(home / "stray.json"),
         "OPENCODE_CONFIG_DIR": str(home / "stray"),
         "OPENCODE_CONFIG_PROJECT_DISABLE": "0",
@@ -338,7 +351,24 @@ class TestRules:
                 {"answer": "x"}, "unknown fields", id="unknown-field"
             ),
             pytest.param({"id": "../../x"}, "id must be", id="id-not-slug"),
-            pytest.param({"pass": []}, "pass needs", id="empty-pass"),
+            pytest.param(
+                {"pass": []}, "needs a pass pattern", id="empty-pass"
+            ),
+            pytest.param(
+                {"good": "I list it.", "bad": "I list it."},
+                "good answer fails",
+                id="good-misses-pattern",
+            ),
+            pytest.param(
+                {"good": "I recheck first.", "bad": "I recheck later."},
+                "bad answer passes",
+                id="bad-passes-patterns",
+            ),
+            pytest.param(
+                {"correction": True},
+                "needs good and bad",
+                id="correction-without-answers",
+            ),
         ],
     )
     def test_broken_case_stops_before_any_run(
@@ -350,7 +380,9 @@ class TestRules:
         found after an hour of runs wastes that hour, and a misspelled
         field such as ``fial`` would grade every answer without its key.
         An ID such as ``../../x`` would write answers outside the trials
-        folder, and an empty ``pass`` list would pass every answer.
+        folder, and an empty ``pass`` list would pass every answer. A
+        good answer the patterns fail, or a bad one they pass, shows
+        patterns that grade the model wrongly.
         """
         make_trials(tmp_path, **fields)
 
@@ -359,6 +391,220 @@ class TestRules:
         assert result.returncode == 1
         assert error in result.stderr
         assert not (tmp_path / "calls.jsonl").exists()
+
+    def test_check_cases_accepts_checkout_cases(self) -> None:
+        """Pass every skill case in this checkout, without running a model.
+
+        CI has no model, so this is the only check a pull request gets
+        on a case file before a merge check runs it. A good answer that
+        misses its own patterns would block every merge of its skill.
+        """
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--all-skills", "--check-cases"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.endswith(" cases ok\n")
+
+
+class TestScorer:
+    """The blind scorer that answers a case's judge questions."""
+
+    def test_judged_case_fails_on_scorer_no(self, tmp_path: Path) -> None:
+        """Fail a run the scorer says no to.
+
+        Patterns cannot tell a vague answer from one that does the job,
+        so a judged case passes only when the scorer says yes to each
+        question.
+        """
+        trials = make_trials(
+            tmp_path,
+            judge=["Does the answer check the ask again before listing it?"],
+            good="I recheck first.",
+            bad="I list it.",
+        )
+
+        run_trials(
+            tmp_path,
+            "-n",
+            "2",
+            "--scorer",
+            "test/scorer",
+            answers=(
+                "I recheck first.",
+                "1: yes",
+                "I recheck, I guess.",
+                "1: no",
+            ),
+        )
+
+        results = read_results(trials)
+        assert [r["passed"] for r in results] == [True, False]
+        assert results[1]["reasons"] == ["scorer said no to question 1"]
+
+    def test_scorer_sees_answer_but_not_rules(self, tmp_path: Path) -> None:
+        """Send the scorer the answer, but not the rules the run had.
+
+        A scorer that saw the rules could favor the run that had the
+        skill, and the skill texts' counts would mean nothing.
+        """
+        make_trials(
+            tmp_path,
+            judge=["Does it recheck?"],
+            good="I recheck first.",
+            bad="I list it.",
+        )
+
+        run_trials(
+            tmp_path,
+            "-n",
+            "1",
+            "--scorer",
+            "test/scorer",
+            answers=("I recheck first.", "1: yes"),
+        )
+
+        scorer_call = read_calls(tmp_path)[1]["argv"]
+        assert scorer_call[3] == "test/scorer"
+        assert "I recheck first." in scorer_call[-1]
+        assert "Recheck an approval ask" not in scorer_call[-1]
+
+    def test_scorer_call_failure_fails_the_run(self, tmp_path: Path) -> None:
+        """Fail a run whose scorer call exits nonzero, and say so.
+
+        A scorer that is down or misnamed gives no verdict. Counting
+        that as a pass would let a correction case pass every merge
+        check without anyone judging the answers.
+        """
+        trials = make_trials(
+            tmp_path,
+            judge=["Does it recheck?"],
+            good="I recheck first.",
+            bad="I list it.",
+        )
+
+        run_trials(
+            tmp_path,
+            "-n",
+            "1",
+            "--scorer",
+            "test/scorer",
+            fail_model="test/scorer",
+        )
+
+        [result] = read_results(trials)
+        assert result["passed"] is False
+        assert result["reasons"] == [
+            "opencode scorer exited 3 Error: model not found"
+        ]
+
+    def test_check_scorer_counts_agreement_per_answer(
+        self, tmp_path: Path
+    ) -> None:
+        """Count agreement only on a pass for good and a fail for bad.
+
+        The user switches the scorer to the local model only when its
+        total matches the cloud scorer's. Counting a yes to the bad
+        answer as agreement would make a scorer that says yes to
+        everything look perfect.
+        """
+        make_trials(
+            tmp_path,
+            judge=["Does it recheck?"],
+            good="I recheck first.",
+            bad="I list it.",
+        )
+
+        result = run_trials(
+            tmp_path,
+            "-n",
+            "1",
+            "--check-scorer",
+            "--scorer",
+            "test/scorer",
+            answers=("1: yes",),
+        )
+
+        assert result.stdout.splitlines() == [
+            "stale-ask good 1/1 bad 0/1",
+            "scorer test/scorer agreed 1/2",
+        ]
+
+    def test_check_scorer_without_judge_exits_one(
+        self, tmp_path: Path
+    ) -> None:
+        """Exit 1 when no chosen case has judge questions.
+
+        The author reads the result to trust a scorer. A 0 with no
+        answer checked would read as a scorer that agrees.
+        """
+        make_trials(tmp_path)
+
+        result = run_trials(tmp_path, "--check-scorer")
+
+        assert result.returncode == 1
+        assert result.stderr == (
+            "trials: no chosen case has judge questions\n"
+        )
+
+    def test_none_reuse_needs_same_scorer(self, tmp_path: Path) -> None:
+        """Reuse saved no-skill runs only under the scorer that made them.
+
+        A judged run's pass comes from the scorer's verdicts, so
+        reusing runs judged by another model compares skill texts
+        against grades no chosen scorer gave.
+        """
+        repo = make_skill_checkout(
+            tmp_path,
+            judge=["Does the answer say when to water?"],
+            good="I water at dawn.",
+            bad="I water at noon.",
+        )
+        options = ("-n", "1", "--skill", "garden", "--without")
+        answers = ("I water at dawn.", "1: yes")
+        # Seeds results.jsonl with a none run judged by test/scorer-a.
+        run_trials(
+            tmp_path,
+            *options,
+            "--scorer",
+            "test/scorer-a",
+            answers=answers,
+            cwd=repo,
+        )
+
+        run_b = run_trials(
+            tmp_path,
+            *options,
+            "--scorer",
+            "test/scorer-b",
+            answers=answers,
+            cwd=repo,
+        )
+        run_a = run_trials(
+            tmp_path,
+            *options,
+            "--scorer",
+            "test/scorer-a",
+            answers=answers,
+            cwd=repo,
+        )
+
+        assert run_b.returncode == 0, run_b.stderr
+        assert "saved" not in run_b.stdout
+        assert "none 1/1 saved" in run_a.stdout
+        assert [
+            (r["skill_text"], r["scorer"])
+            for r in read_results(tmp_path / "trials")
+        ] == [
+            ("new", "test/scorer-a"),
+            ("none", "test/scorer-a"),
+            ("new", "test/scorer-b"),
+            ("none", "test/scorer-b"),
+            ("new", "test/scorer-a"),
+        ]
 
 
 class TestTools:
@@ -579,6 +825,56 @@ class TestSkillCases:
         cases = [r["case"] for r in read_results(tmp_path / "trials")]
         assert sorted(cases) == ["prune-time", "water-time"]
 
+    def test_changed_runs_only_changed_skills_cases(
+        self, tmp_path: Path
+    ) -> None:
+        """Run the cases of skills that differ from BASE, and no others.
+
+        The merge check runs ``--changed`` with the pull request's base
+        commit, and each case costs minutes of model time. Running an
+        unchanged skill's cases wastes them, and missing a changed
+        skill lets its broken correction merge.
+        """
+        repo = make_skill_checkout(tmp_path)
+        orchard = repo / "ai/skills/orchard"
+        (orchard / "evals").mkdir(parents=True)
+        (orchard / "SKILL.md").write_text("# Orchard\n\nPrune in winter.\n")
+        case = {
+            "id": "prune-time",
+            "source": "a made-up correction",
+            "rule": "Orchard",
+            "prompt": "When do you prune?",
+            "pass": ["winter"],
+        }
+        (orchard / "evals/prune-time.json").write_text(json.dumps(case))
+        commit_paths(repo, "ai/skills/orchard")
+
+        result = run_trials(tmp_path, "-n", "1", "--changed", "HEAD", cwd=repo)
+
+        assert result.returncode == 0, result.stderr
+        cases = [r["case"] for r in read_results(tmp_path / "trials")]
+        assert cases == ["water-time"]
+
+    def test_changed_without_cases_exits_zero(self, tmp_path: Path) -> None:
+        """Pass a change to a skill that has no cases, running no model.
+
+        The merge check runs on every pull request, and most change no
+        skill with cases. Failing them for having nothing to run would
+        block every such merge.
+        """
+        repo = make_skill_checkout(tmp_path)
+        notes = repo / "ai/skills/notes/SKILL.md"
+        notes.parent.mkdir()
+        notes.write_text("# Notes\n")
+        commit_paths(repo, ".")
+        notes.write_text("# Notes\n\nKeep them short.\n")
+
+        result = run_trials(tmp_path, "--changed", "HEAD", cwd=repo)
+
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == "trials: no cases to run\n"
+        assert not (tmp_path / "calls.jsonl").exists()
+
     def test_last_validated_counts_last_call_only(
         self, tmp_path: Path
     ) -> None:
@@ -666,3 +962,75 @@ class TestSkillCases:
         runs = [json.loads(line) for line in lines[2:]]
         assert json.loads(lines[0]) == old_line
         assert [run["case"] for run in runs] == ["water-time"] * 2
+
+
+class TestGate:
+    """``--gate``, which blocks a merge on a failing correction case."""
+
+    @pytest.mark.parametrize(
+        ("answers", "code", "last"),
+        [
+            pytest.param(
+                ("dawn", "dawn", "noon"),
+                0,
+                "total 2/3",
+                id="one-of-three-fails",
+            ),
+            pytest.param(
+                ("dawn", "noon", "noon"),
+                1,
+                "blocked: water-time new 1/3",
+                id="two-of-three-fail",
+            ),
+        ],
+    )
+    def test_gate_blocks_only_on_failed_majority(
+        self, tmp_path: Path, answers: tuple[str, ...], code: int, last: str
+    ) -> None:
+        """Exit 1 when a correction case fails 2 of 3 runs, not 1 of 3.
+
+        Model output varies, so the user chose to block only on a
+        failed majority. Blocking on one failed run would stop good
+        merges, and missing two would let a broken correction merge.
+        The merge check shows its output's last line, so the blocked
+        line must come last.
+        """
+        repo = make_skill_checkout(
+            tmp_path, correction=True, good="dawn", bad="noon"
+        )
+
+        result = run_trials(
+            tmp_path,
+            "--skill",
+            "garden",
+            "--gate",
+            answers=answers,
+            cwd=repo,
+        )
+
+        assert result.returncode == code, result.stderr
+        assert result.stdout.splitlines()[-1].startswith(last)
+
+    def test_gate_skips_cases_not_from_corrections(
+        self, tmp_path: Path
+    ) -> None:
+        """Run no case without ``correction``, so it cannot block a merge.
+
+        The user chose that only cases made from their corrections may
+        block. Running the others in the merge check would also spend
+        minutes on cases the weekly run covers.
+        """
+        repo = make_skill_checkout(tmp_path)
+
+        result = run_trials(
+            tmp_path,
+            "--skill",
+            "garden",
+            "--gate",
+            answers=("noon",),
+            cwd=repo,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == "trials: no cases to run\n"
+        assert not (tmp_path / "calls.jsonl").exists()
