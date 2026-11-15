@@ -4,6 +4,16 @@
 # Block raw pull-request writes. Only pde-gh-write sets PDE_GH_WRITE=1 after approval.
 set -euo pipefail
 
+# Without this config, aqua's gh shim runs the first gh on PATH, which is this guard.
+# Systemd units set no AQUA_GLOBAL_CONFIG, so they hit that loop.
+export AQUA_GLOBAL_CONFIG=${AQUA_GLOBAL_CONFIG:-$HOME/.config/aquaproj-aqua/aqua.yaml}
+# Each exec keeps the pid, so a loop back into this guard shows up as the same pid.
+if [[ ${PDE_GH_GUARD_PID:-} == "$$" ]]; then
+    printf 'gh guard found itself again through %s; set AQUA_GLOBAL_CONFIG to a config that installs gh\n' "$AQUA_GLOBAL_CONFIG" >&2
+    exit 1
+fi
+export PDE_GH_GUARD_PID=$$
+
 self=$(readlink -f "$0")
 real_gh=''
 old_ifs=$IFS
