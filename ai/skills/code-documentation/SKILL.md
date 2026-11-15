@@ -213,6 +213,13 @@ Avoid vague names such as `check` and `save`. Use module or class
 context to avoid repetition while keeping call sites understandable.
 Put additional detail in the body.
 
+Read each public name as its caller writes it, with the package,
+module or receiver in front, such as `store.Load(id)`. When that call
+does not say what it returns or does, rename it, such as
+`store.LoadInvoice(id)`. A verb alone, such as `Process`, `Handle` or
+`Run`, is as vague as a bare noun. When you review a change, report
+each public name that fails this test.
+
 Avoid function names that differ by one letter, like `check_comment`
 beside `check_comments`; readers confuse them. The exception is a
 plural that only runs the singular on each item.
@@ -385,8 +392,9 @@ Act on each failure by its rule:
 - Any other rule: rename the function or fix the comment.
 
 `verb-first` and `restated-name` are reported, never failed. Rename
-the function when the word is not a verb, and when it is, keep the
-name and list the finding in your final message.
+the function when the word is not a verb, or when the call fails
+the caller test in "Function names". Otherwise keep the name and list
+the finding in your final message.
 
 Run the check again until `result.failures` is empty. `next` is then
 `make_feedback_request_list`, even when findings are reported. Never
@@ -446,6 +454,8 @@ Before declaring source or test work complete, check:
 - every test has a short doc, and every test helper and fixture at
   least a one-line doc
 - the amount of documentation fits the code's complexity and risk
+- each public name you add or review says what it does when read as
+  its caller writes it
 - for Go, Python or Rust files, `check-comments` reports no
   failures, and each `verb-first` finding is renamed or, for a real
   verb, listed in your final message

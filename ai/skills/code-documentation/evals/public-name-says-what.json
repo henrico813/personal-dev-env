@@ -1,0 +1,15 @@
+{
+  "id": "public-name-says-what",
+  "source": "the user's corrections to one-word public names in plan reviews",
+  "rule": "Function names",
+  "correction": true,
+  "prompt": "You review a pull request in a Go repository. Reply with only your review findings, one per item, each naming the file and line it is about.\n\nThe pull request adds pricing/pricing.go:\n\n```go\n1  // Package pricing works out what an order costs.\n2  package pricing\n3\n4  // An amount of money and its currency.\n5  type Value struct {\n6  \tCents    int64\n7  \tCurrency string\n8  }\n9\n10 // Applies the shop's discount rules to one order line and\n11 // returns what the line costs after them.\n12 func Resolve(line OrderLine, rules []Rule) Value {\n13 \tprice := line.UnitPrice.Cents * int64(line.Quantity)\n14 \tfor _, rule := range rules {\n15 \t\tprice = rule.Apply(line, price)\n16 \t}\n17 \treturn Value{Cents: price, Currency: line.UnitPrice.Currency}\n18 }\n```\n\nand changes checkout/cart.go:\n\n```go\n41 \tfor _, line := range cart.Lines {\n42 \t\ttotal += pricing.Resolve(line, rules).Cents\n43 \t}\n```\n",
+  "pass": [
+    "(?s)\\bResolve\\b.{0,400}(rename|vague|unclear|generic|does not say|doesn't say|what .{0,30}resolv)"
+  ],
+  "judge": [
+    "Does the answer say the name Resolve does not tell a caller what it resolves or returns, and suggest a name that does?"
+  ],
+  "good": "pricing/pricing.go:12 `Resolve`: a caller reads `pricing.Resolve(line, rules)` and cannot tell what is resolved. The function returns a line's price after discounts, so rename it `DiscountedLinePrice`.",
+  "bad": "pricing/pricing.go:12 `Resolve` is a verb, so the name is fine; no rename needed.\ncheckout/cart.go:42 ignores the currency; check that every line uses the same one."
+}
