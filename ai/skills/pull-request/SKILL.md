@@ -37,6 +37,10 @@ steps' defaults.
    needs its parent merged, tell the user and do not send the
    request. To undo a test install, install again from the default
    branch.
+5. When the user says "deploy" a change that has an open PR, install
+   the PR's branch build on this PC. Back up what the install
+   replaces, and give a one-line restore command. A deploy is not a
+   merge: it sends no merge request and leaves the PR open.
 
 ## Discover
 
