@@ -174,13 +174,13 @@ class TestSync:
         tells pde-installer update to warn.
         """
         fix()
-        work = tmp_path / "work"
-        run_git(tmp_path, "init", "--quiet", "-b", "main", str(work))
+        extra = tmp_path / "extra"
+        run_git(tmp_path, "init", "--quiet", "-b", "main", str(extra))
         write_settings(
             repos.home,
             install_path=str(repos.checkout),
             skill_fix_label="desk",
-            work_skills_repo=str(work),
+            extra_skills_repo=str(extra),
         )
         write(repos.home / "stub/gh-fails", "")
 
@@ -188,7 +188,7 @@ class TestSync:
 
         states = [(e["repo"], e["sync"]) for e in reply.body["repos"]]
         assert reply.code == 2
-        assert states == [("personal", "error"), ("work", "skipped")]
+        assert states == [("personal", "error"), ("extra", "skipped")]
 
     def test_sync_files_one_request_per_batch(
         self, fix: Callable[..., Reply], repos: Repos

@@ -192,8 +192,8 @@ def sync_repos(name: str | None) -> dict:
                     "request": result.request,
                 }
             )
-    if name == "work" and not results:
-        results.append({"repo": "work", "sync": "skipped"})
+    if name == "extra" and not results:
+        results.append({"repo": "extra", "sync": "skipped"})
     failed = [entry["repo"] for entry in results if entry["sync"] == "error"]
     if failed:
         return {
@@ -216,7 +216,7 @@ def manage_held(action: str, number: int | None) -> dict | None:
 
     ``show`` prints the held commit for the user and returns None.
     The list names each fix's number and skill only, because a held
-    fix's title may hold a extra.
+    fix's title may hold an extra term.
 
     Raises:
         ToolError: The action needs a number, or no held fix has it.
@@ -288,7 +288,7 @@ def build_parser() -> argparse.ArgumentParser:
     commit.add_argument("skill")
     commit.add_argument("--message-file", required=True)
     sync = commands.add_parser("sync", help="push and open the fix PR")
-    sync.add_argument("--repo", choices=["personal", "work"])
+    sync.add_argument("--repo", choices=["personal", "extra"])
     commands.add_parser("status", help="show each repo's fix PR")
     held = commands.add_parser("held", help="list, show, drop or retry")
     held.add_argument(

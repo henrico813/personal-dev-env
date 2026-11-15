@@ -143,9 +143,9 @@ the table below says:
   "Fix committed; it reaches every PC after you merge the fix PR."
   When `sync` is not `pushed`, `pr_open` or `pr_waiting`, act on it
   as [references/replies.md](references/replies.md) says.
-- `held`: the fix holds a extra, a word from the file that
-  `work_terms_file` in `~/.config/pde/config.json` names. It stays
-  on this PC. Say only: "This fix matched the extra list and is
+- `held`: the fix holds an extra term, a word from the file that
+  `extra_terms_file` in `~/.config/pde/config.json` names. It stays
+  on this PC. Say only: "This fix matched the extra-term list and is
   held on this PC; run `skill-fix held` to see it." Never name or
   guess the term.
 - `refused`: `rule` names the fix rule that failed, and `detail`

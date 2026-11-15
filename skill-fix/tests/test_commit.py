@@ -20,12 +20,12 @@ from conftest import (
     write_settings,
 )
 
-extra = """\
+EXTRA_SKILL = """\
 ---
 name: tool
-description: Use when a test needs a extra.
+description: Use when a test needs an extra skill.
 metadata:
-  extra
+  scope: extra
 ---
 
 # Tool
@@ -41,7 +41,7 @@ class TestStart:
         ("skill", "repo", "skills_dir"),
         [
             pytest.param("demo", "personal", "ai/skills", id="personal"),
-            pytest.param("tool", "work", "skills", id="work"),
+            pytest.param("tool", "extra", "skills", id="extra"),
         ],
     )
     def test_start_routes_skill_by_scope_tag(
@@ -55,31 +55,31 @@ class TestStart:
     ) -> None:
         """A skill's scope tag picks the repo whose worktree it gets.
 
-        A extra routed to the personal repo would put work text in
-        a public repository, and a personal one routed to the extra
+        An extra skill routed to the personal repo would put private text in
+        a public repository, and a personal one routed to the extra repo
         would never reach the other PCs.
         """
-        work = tmp_path / "work"
-        run_git(tmp_path, "init", "--quiet", "-b", "main", str(work))
-        write(work / "skills/tool/SKILL.md", extra)
-        run_git(work, "add", ".")
-        run_git(work, "commit", "--quiet", "-m", "Add tool")
+        extra = tmp_path / "extra"
+        run_git(tmp_path, "init", "--quiet", "-b", "main", str(extra))
+        write(extra / "skills/tool/SKILL.md", EXTRA_SKILL)
+        run_git(extra, "add", ".")
+        run_git(extra, "commit", "--quiet", "-m", "Add tool")
         run_git(
             tmp_path,
             "clone",
             "--quiet",
             "--bare",
-            str(work),
-            str(tmp_path / "work.git"),
+            str(extra),
+            str(tmp_path / "extra.git"),
         )
-        run_git(work, "remote", "add", "origin", str(tmp_path / "work.git"))
-        run_git(work, "fetch", "--quiet", "origin")
-        install_skill(repos.home, "tool", extra)
+        run_git(extra, "remote", "add", "origin", str(tmp_path / "extra.git"))
+        run_git(extra, "fetch", "--quiet", "origin")
+        install_skill(repos.home, "tool", EXTRA_SKILL)
         write_settings(
             repos.home,
             install_path=str(repos.checkout),
             skill_fix_label="desk",
-            work_skills_repo=str(work),
+            extra_skills_repo=str(extra),
         )
 
         reply = run("start", skill)
@@ -313,22 +313,22 @@ class TestCommit:
             {"rule": "repeats", "path": "ai/skills/demo/SKILL.md", "line": 12}
         ]
 
-    def test_commit_holds_fix_matching_extra(
+    def test_commit_holds_fix_matching_extra_term(
         self, fix: Callable[..., Reply], repos: Repos
     ) -> None:
-        """A fix with a extra goes to a held branch, not the fix branch.
+        """A fix with an extra term goes to a held branch, not the fix branch.
 
-        The personal repo is public, so a extra on its fix branch
+        The personal repo is public, so an extra term on its fix branch
         would be pushed. The reply names no term, and the worktree ends
         clean for the next fix.
         """
-        terms = repos.home / ".config/pde/extra.txt"
+        terms = repos.home / ".config/pde/extra-terms.txt"
         write(terms, "# made-up terms\nexjira\n")
         write_settings(
             repos.home,
             install_path=str(repos.checkout),
             skill_fix_label="desk",
-            work_terms_file=str(terms),
+            extra_terms_file=str(terms),
         )
 
         reply = fix("Close the EXJIRA-12 worker first.")
@@ -356,16 +356,16 @@ class TestHeld:
     ) -> None:
         """A plain ``git push`` of a held branch fails.
 
-        A held fix holds a extra. The missing push remote is the
+        A held fix holds an extra term. The missing push remote is the
         last guard when someone pushes it by hand.
         """
-        terms = repos.home / ".config/pde/extra.txt"
+        terms = repos.home / ".config/pde/extra-terms.txt"
         write(terms, "exjira\n")
         write_settings(
             repos.home,
             install_path=str(repos.checkout),
             skill_fix_label="desk",
-            work_terms_file=str(terms),
+            extra_terms_file=str(terms),
         )
         fix("Close the EXJIRA-12 worker first.")
         run_git(repos.worktree, "switch", "--quiet", "fix/skill-fixes-held-1")
@@ -390,19 +390,19 @@ class TestHeld:
     def test_retry_holds_until_term_is_gone(
         self, fix: Callable[..., Reply], run: Run, repos: Repos
     ) -> None:
-        """A retry holds the fix again while its extra is listed.
+        """A retry holds the fix again while its extra term is listed.
 
         Once the term is gone, the fix commits and its held branch is
-        deleted. A retry that committed early would push a extra,
+        deleted. A retry that committed early would push an extra term,
         and a held branch left behind would be retried again later.
         """
-        terms = repos.home / ".config/pde/extra.txt"
+        terms = repos.home / ".config/pde/extra-terms.txt"
         write(terms, "exjira\n")
         write_settings(
             repos.home,
             install_path=str(repos.checkout),
             skill_fix_label="desk",
-            work_terms_file=str(terms),
+            extra_terms_file=str(terms),
         )
         fix("Close the EXJIRA-12 worker first.")
 

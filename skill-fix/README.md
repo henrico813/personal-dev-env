@@ -29,7 +29,7 @@ skill-fix --version                 print the version
 skill-fix start SKILL [--reset]     get the fix worktree ready
 skill-fix commit SKILL --message-file FILE
                                     check, commit and sync one fix
-skill-fix sync [--repo personal|work]
+skill-fix sync [--repo personal|extra]
                                     push fixes, open the fix PR
 skill-fix status                    show each repo's fix PR
 skill-fix held [list|show|drop|retry] [N]
@@ -41,8 +41,8 @@ the held commit. Exit codes: 0 when the command worked or the fix was
 committed or held, 1 when a fix rule refused it, and 2 on an error.
 
 A skill's `metadata.scope` tag picks its repository: `personal` is
-the checkout pde-installer runs from, and `work` is the checkout that
-`work_skills_repo` names.
+the checkout pde-installer runs from, and `extra` is the checkout that
+`extra_skills_repo` names.
 
 ## Settings
 
@@ -51,8 +51,8 @@ skill-fix reads these keys in `~/.config/pde/config.json`:
 | Key | Meaning |
 | --- | --- |
 | `skill_fix_label` | A plain word for this PC, such as `desk`, in lowercase letters and digits |
-| `work_skills_repo` | The checkout of the extra repository, when this PC has one |
-| `work_terms_file` | A list of extra; a personal fix that holds one stays on this PC as a held fix |
+| `extra_skills_repo` | The checkout of the extra skills repository, when this PC has one |
+| `extra_terms_file` | A list of extra terms; a personal fix that holds one stays on this PC as a held fix |
 
 The label appears in public branch names and pull request titles, so
 it must name no machine. Until it is set, fixes are committed but

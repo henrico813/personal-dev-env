@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"pdev/internal/approval"
@@ -33,8 +37,12 @@ func requestWrite(args []string) int {
 		return printError(errors.New("cannot find the real gh executable"))
 	}
 	req = scopeRequest(req)
-	state, err := loadOrCreate(req, gh, retry)
 	var refused refusedError
+	if err := scanPublicText(req); errors.As(err, &refused) {
+		fmt.Fprintf(stderr, "pde-gh-write: %v\n", err)
+		return exitRejected
+	}
+	state, err := loadOrCreate(req, gh, retry)
 	if errors.As(err, &refused) {
 		fmt.Fprintf(stderr, "pde-gh-write: %v\n", err)
 		return exitRejected
@@ -132,6 +140,39 @@ func scopeRequest(req approval.Request) approval.Request {
 	req.Directory, _ = os.Getwd()
 	req.ID = approval.RequestID(req)
 	return req
+}
+
+// A checkout with a ci/scan script, such as a public repository's, gets its
+// title and body scanned before anyone is asked to approve them. The scan
+// prints only rule and place, so its output is safe to show.
+func scanPublicText(req approval.Request) error {
+	if !req.HasTitle && !req.HasBody {
+		return nil
+	}
+	top, err := exec.Command("git", "-C", req.Directory, "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return nil
+	}
+	root := strings.TrimSpace(string(top))
+	script := filepath.Join(root, "ci", "scan")
+	if _, err := os.Stat(script); err != nil {
+		return nil
+	}
+	scan := exec.Command("bash", script, "text", "/dev/stdin")
+	scan.Dir = root
+	scan.Stdin = strings.NewReader(req.Title + "\n\n" + req.Body + "\n")
+	var output bytes.Buffer
+	scan.Stdout = &output
+	err = scan.Run()
+	var exit *exec.ExitError
+	switch {
+	case err == nil:
+		return nil
+	case errors.As(err, &exit) && exit.ExitCode() == 1:
+		return refusedError{fmt.Sprintf("ci/scan found private text; line 1 is the title:\n%sreplace it and ask again", output.String())}
+	default:
+		return refusedError{fmt.Sprintf("ci/scan could not check the text (%v); run it by hand", err)}
+	}
 }
 
 func waitForAnswer(id, gh string) int {

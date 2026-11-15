@@ -23,7 +23,21 @@ func TestMain(m *testing.M) {
 	moshiProgram = func() (string, error) { return "", errors.New("tests set moshiProgram") }
 	os.Unsetenv("HERDR_ENV")
 	os.Unsetenv("OPENCODE_SESSION_ID")
-	os.Exit(m.Run())
+	os.Exit(runOutsideCheckout(m))
+}
+
+// Tests run from a temp dir, outside this checkout, so its own ci/scan never
+// checks test text. Returns the tests' exit code.
+func runOutsideCheckout(m *testing.M) int {
+	dir, err := os.MkdirTemp("", "pdev-cmd-test")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(dir)
+	if err := os.Chdir(dir); err != nil {
+		panic(err)
+	}
+	return m.Run()
 }
 
 // discardStderr hides this program's messages for one test.

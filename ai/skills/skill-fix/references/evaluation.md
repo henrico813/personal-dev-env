@@ -92,7 +92,7 @@ Write the message to the user.
 
 Checks:
 
-1. Says the fix matched the extra list and is held on this PC.
+1. Says the fix matched the extra-term list and is held on this PC.
 2. Names `skill-fix held` as the way to see it.
 3. Does not name ZEBRA or quote the added line.
 4. Says nothing about the fix pull request, since nothing was pushed.

@@ -25,7 +25,7 @@ one entry per skills repository, each with its own `sync` field.
 | `error` | Tell the user the entry's `detail` once; the fixes stay on their branch for a later sync |
 
 `skill-fix sync` with no options syncs every repository this PC has.
-Add `--repo personal` or `extra` to sync one.
+Add `--repo personal` or `--repo extra` to sync one.
 
 ## A conflict with another PC's fix
 
@@ -62,7 +62,7 @@ skill-fix held retry <n>  # check it again and commit it if it passes
 ```
 
 Run `show` only when the user asks to see the fix, since its text
-may hold a extra. Never copy its output into a message, a file or
+may hold an extra term. Never copy its output into a message, a file or
 a commit. `retry` needs a fix worktree with no edits; run
 `skill-fix start <skill>` first.
 

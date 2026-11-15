@@ -189,7 +189,7 @@ def check_skills(skills_dir: Path, base: str | None) -> list[Problem]:
     table from skills_dir, else from ``~/.agents/skills``. With neither,
     it warns "could not check kinds" on stderr when a skill calls
     ``pde_route.py``, and does not fail. Checks 9, 10 and 14 run only
-    when skills_dir holds the table, so a extra gets check 8
+    when skills_dir holds the table, so an extra checkout gets check 8
     alone.
 
     Args:
@@ -519,9 +519,9 @@ def check_scopes(skills: Skills) -> list[Problem]:
     The tag in ``metadata.scope`` names the repository that holds the
     skill's source. Skills in an ``ai/skills`` folder, as in this
     public repository, must say ``personal``. Skills in a top-level
-    ``skills`` folder, as in the private extra, must say
-    ``work``. A extra copied into the public repository would
-    publish work text.
+    ``skills`` folder, as in the private extra skills repository, must say
+    ``extra``. An extra skill copied into the public repository would
+    publish private text.
 
     Args:
         skills: The skills from ``read_skills``.
@@ -535,7 +535,7 @@ def check_scopes(skills: Skills) -> list[Problem]:
         path = skill / "SKILL.md"
         scope = read_frontmatter_scope(path.read_text(encoding="utf-8"))
         in_ai_folder = skill.parent.parent.name == "ai"
-        expected = "personal" if in_ai_folder else "work"
+        expected = "personal" if in_ai_folder else "extra"
         if scope != expected:
             message = f"metadata.scope must be {expected}"
             problems.append(Problem(path, 1, "error", message))
@@ -545,8 +545,8 @@ def check_scopes(skills: Skills) -> list[Problem]:
 def read_frontmatter_scope(text: str) -> str | None:
     """Return the ``scope`` value under ``metadata:`` in a SKILL.md.
 
-    Quotes around the value are dropped, so ``extra"`` gives
-    ``work``.
+    Quotes around the value are dropped, so ``scope: "extra"`` gives
+    ``extra``.
 
     Args:
         text: Contents of a SKILL.md.

@@ -48,7 +48,7 @@ are back.
   whole only the passages your work changes.
 - Never edit or commit a real `.code-comments.json`.
 - Nothing public (code, docs, commits, branches, pull request text)
-  names the extra, work, private projects, personal data or
+  names the other PC, private projects, personal data or
   secrets. No card or plan keys in code, docs, tests or pull request
   text. No emojis; never the words "canonical" or "contract". Never
   print secret values.

@@ -335,7 +335,7 @@ def open_fix_pr(repo: Repo, branch: str, label: str) -> SyncResult:
 def run_scan(repo: Repo, *args: str) -> bool:
     """Run the worktree's ``ci/scan`` and return whether it found nothing.
 
-    A scan that cannot run, such as with a missing extra list,
+    A scan that cannot run, such as with a missing extra-term list,
     counts as a refusal, so nothing is pushed unchecked.
     """
     result = run_tool(repo, [str(repo.worktree / "ci/scan"), *args])

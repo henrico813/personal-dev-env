@@ -25,6 +25,11 @@ posts:
   `gh` may take it as that option's value.
 - `--` and everything after it.
 
+Refused before anyone is asked, when the checkout has a `ci/scan`
+script: a title or body that `ci/scan text` finds private text in, or
+cannot check. The message shows the scan's rule and line, where line 1
+is the title, and never the text.
+
 Refused to keep a stack of PRs in order, one approval per PR:
 
 - `pr create --base BRANCH` when `BRANCH` is not the default branch

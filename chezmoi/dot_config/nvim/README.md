@@ -119,8 +119,8 @@ A few non-obvious bindings worth memorizing because you'll use them constantly:
 
 ### Find a note
 
-`<leader>om` and `<leader>ow` list the notes in the vaults named `main`
-and `work`, and `<leader>oo` lists the notes in every vault. The lists
+`<leader>om` lists the notes in the vault named `main`, `<leader>o2`
+those in the first other vault, and `<leader>oo` lists the notes in every vault. The lists
 include notes the vault's `.gitignore` skips, which may be all of them;
 press Alt-i to hide those. Folders whose names start with a dot, such
 as `.obsidian`, are left out.
