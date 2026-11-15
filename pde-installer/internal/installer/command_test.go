@@ -166,3 +166,27 @@ func testRepositoryRoot(t *testing.T) string {
 	}
 	return filepath.Clean(filepath.Join(directory, "..", "..", ".."))
 }
+
+// Doctor run from an old checkout must still check the installed one, or
+// it compares the install against the wrong history.
+func TestFindInstalledRootPrefersInstallPath(t *testing.T) {
+	installed := t.TempDir()
+	for _, path := range []string{"chezmoi/.keep", "planner/go.mod", "pde-installer/go.mod"} {
+		writeCommandTestFile(t, filepath.Join(installed, path), "")
+	}
+	home := t.TempDir()
+	writeCommandTestFile(
+		t,
+		filepath.Join(home, ".config", "pde", "config.json"),
+		`{"install_path": "`+installed+`"}`,
+	)
+	t.Setenv("HOME", home)
+	t.Setenv("PDE_REPO_ROOT", "")
+
+	if got := findInstalledRoot(""); got != installed {
+		t.Fatalf("findInstalledRoot(\"\") = %q, want %q", got, installed)
+	}
+	if got := findInstalledRoot("/flag"); got != "/flag" {
+		t.Fatalf("findInstalledRoot(\"/flag\") = %q, want the flag", got)
+	}
+}

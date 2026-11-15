@@ -117,11 +117,33 @@ func rejectUID(uid int, command string) error {
 	return nil
 }
 
+// Returns flagRoot, else the saved install_path, so doctor and list check the
+// installed checkout rather than whichever checkout holds the current folder.
+// Returns "" to keep the current-folder search when PDE_REPO_ROOT is set or
+// install_path is not a checkout.
+func findInstalledRoot(flagRoot string) string {
+	if flagRoot != "" || os.Getenv("PDE_REPO_ROOT") != "" {
+		return flagRoot
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	settings, err := readUpdateSettings(home)
+	if err != nil {
+		return ""
+	}
+	if root, ok := repository(settings.InstallPath); ok {
+		return root
+	}
+	return ""
+}
+
 func readCommand(name, description string, repoRoot *string, action func(config, run.Runner) error) *cobra.Command {
 	return &cobra.Command{
 		Use: name, Short: description, Args: cobra.NoArgs,
 		RunE: func(command *cobra.Command, _ []string) error {
-			config, err := detectConfig(*repoRoot)
+			config, err := detectConfig(findInstalledRoot(*repoRoot))
 			if err != nil {
 				return err
 			}
