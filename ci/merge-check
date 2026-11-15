@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Runs the correction cases of each skill a pull request changes, and
+# fails when one fails 2 of 3 runs. merge-check.sh runs it from the
+# merged tree:
+#
+#   bash ci/merge-check BASE
+#
+# Results go to merge-trials beside the user's trials folder, so
+# --last-validated keeps reporting the weekly runs.
+set -eu
+
+# Keep --model the first Review model in model-routing's Models list.
+# It runs at its default reasoning, as the cases were tried, while the
+# scorer runs at medium.
+exec python3 ai/skills/session-review/scripts/trials.py \
+  --changed "$1" --gate -n 3 --model claude-code/claude-sonnet-5 \
+  --trials "$HOME/.local/state/pde/session-reviews/merge-trials"

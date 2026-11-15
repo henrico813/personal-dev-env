@@ -271,6 +271,31 @@ class TestMergePrep:
         assert last.startswith("result: not ready: ")
         assert last.removeprefix("result: not ready: ").split("; ") == reasons
 
+    def test_ci_merge_check_gets_base_commit(self, clone: Path) -> None:
+        """Run the merged tree's ``ci/merge-check`` with the base commit.
+
+        This repository blocks a merge on its skills' correction cases
+        through that script, whatever test commands merge_prep.py got. If
+        it did not run, or got no base commit, a broken correction
+        could merge with every check passing.
+        """
+        remote = clone.parent / "remote"
+        run_git(remote, "switch", "-q", "pr")
+        (remote / "ci").mkdir()
+        (remote / "ci/merge-check").write_text('echo "base $1"\n')
+        run_git(remote, "add", "ci")
+        run_git(remote, "commit", "-q", "-m", "add ci/merge-check")
+        run_git(remote, "update-ref", f"refs/pull/{PR_NUMBER}/head", "pr")
+        run_git(clone, "fetch", "-q")
+        write_pr(clone)
+
+        result = run_merge_prep(clone, "true")
+
+        assert result.returncode == 0, result.stdout
+        base = run_git(clone, "rev-parse", "origin/main").strip()
+        log = clone.parent / "out/tests/test2.log"
+        assert log.read_text() == f"base {base}\n"
+
     def test_squash_message_lists_only_fix_commits(self, clone: Path) -> None:
         """A fix commit's title, Missed and Intent lines follow the Overview.
 

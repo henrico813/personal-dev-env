@@ -150,18 +150,22 @@ uncommitted edit.
 
 ## Weekly runs
 
-On a full install, a timer runs every skill's cases once a week on the
-local model, each case also once with no skill to compare, from the
-checkout the installer used. It runs whatever that checkout holds at the
-time, such as a branch left checked out. To see the last call that ran
-each skill's cases:
+On a full install, a timer runs every skill's cases once a week on
+the first Review model in `model-routing`, each case also once with
+no skill to compare, from the checkout the installer used. It uses the
+default scorer, described below. It runs whatever that checkout holds
+at the time, such as a branch left checked out. Move the timer to the
+local model only when `--check-scorer` gives the local scorer the same
+total as the cloud one. When `model-routing` changes its Review model,
+run every case once by hand with `--all-skills` rather than wait for
+the timer. To see the last call that ran each skill's cases:
 
     python3 ~/.agents/skills/session-review/scripts/trials.py \
         --last-validated
 
 It runs nothing and prints one line per skill:
 
-    skill-development 2026-11-20 goog/qwen3.8-flash 13/15 rules 1a2b3c4d5e6f
+    skill-development 2026-11-20 claude-code/claude-sonnet-5 13/15 rules 1a2b3c4d5e6f
 
 The line gives the day, the model, and how many runs of the skill's
 own text passed in that call. When the count drops and the rules hash

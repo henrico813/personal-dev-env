@@ -7,6 +7,8 @@
 # Each COMMAND runs with sh -c from the clone's root, with its output in
 # OUT_DIR/test<N>.log. OUT_DIR/summary.txt gets one line per command
 # and ends with "done". Exits 1 on a merge conflict or a failed command.
+# When the merged tree has ci/merge-check, "bash ci/merge-check BASE"
+# runs as one more command, last.
 set -u
 
 if [ $# -lt 4 ]; then
@@ -42,6 +44,11 @@ mkdir "$state" || exit 1
 git clone -q --shared --no-checkout \
   "$(git rev-parse --path-format=absolute --git-common-dir)" "$src" &&
   git -C "$src" checkout -q "$commit" || exit 1
+# A repository adds its own checks of a merge here, such as model runs
+# of the cases of the skills the pull request changes, which need the base commit.
+if [ -f "$src/ci/merge-check" ]; then
+  set -- "$@" "bash ci/merge-check $base"
+fi
 
 failed=0
 n=0

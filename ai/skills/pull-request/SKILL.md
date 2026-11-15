@@ -131,8 +131,13 @@ model, as `model-routing` picks.
    The script's summary file holds the command's output, with `done`
    as its last line. You do steps 2 to 6.
 2. It runs the tests on the PR merged into its base, in a scratch
-   clone, so no checkout changes. It also lists the changed files and
-   counts GitHub's checks. When its last line starts with
+   clone, so no checkout changes. When the merged tree has a
+   `ci/merge-check` script, it runs that last, with the base commit,
+   as one more test. This repository's script runs each changed
+   skill's correction cases, tests made from the user's corrections,
+   three times each at a few minutes a run, so run step 1 with a long
+   timeout. It also lists the changed files and counts GitHub's
+   checks. When its last line starts with
    `result: not ready`, that line names each problem. On an `error:`
    line, stop and report it. Stop on any problem but `squash
    message`, which step 3 fixes. Full test output is in
