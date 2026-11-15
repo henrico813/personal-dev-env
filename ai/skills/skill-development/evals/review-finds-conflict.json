@@ -1,0 +1,11 @@
+{
+  "id": "review-finds-conflict",
+  "source": "pull request #522, evaluation Case 2",
+  "rule": "Review a skill change",
+  "prompt": "You work on a repository of agent skills. Reply with only the message you would send to the user. Show each file change as a diff.\n\nReview this pull request to a repository of agent skills.\n\n--- a/ai/skills/hub-runner/SKILL.md\n+++ b/ai/skills/hub-runner/SKILL.md\n@@ -20,1 +20,3 @@ ## Questions\n Pass each worker's question to the user.\n+Tell the user about each open question once. Do not repeat it in\n+later updates; the user reads the first one.\n\nOther text in the repository:\n\nai/skills/update-writer/SKILL.md, line 31:\nRepeat every open question in each update until the user answers,\nsince the user reads updates out of order.\n\nai/AGENTS.md:\n- When writing a status update to the user, load and follow the\n  `update-writer` skill.\n",
+  "pass": [
+    "conflict|contradict",
+    "update-writer",
+    "\\b31\\b"
+  ]
+}

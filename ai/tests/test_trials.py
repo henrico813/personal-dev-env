@@ -10,10 +10,13 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "ai/skills/session-review/scripts/trials.py"
-# Stands in for ``opencode run``. It logs each call, then fails or prints
-# the next answer as OpenCode's JSON events.
+# Stands in for ``opencode run``. It logs each call except a version call,
+# then fails or prints the next answer as OpenCode's JSON events.
 FAKE_OPENCODE = f"""#!{sys.executable}
 import json, os, pathlib, subprocess, sys, time
+if sys.argv[1:] == ["--version"]:
+    print("opencode v0.0.1")
+    sys.exit()
 log = pathlib.Path(os.environ["FAKE_LOG"])
 calls = log.read_text().splitlines() if log.exists() else []
 names = [
@@ -71,6 +74,44 @@ def make_trials(home: Path, **fields: object) -> Path:
     return home / "trials"
 
 
+def make_skill_checkout(home: Path) -> Path:
+    """A checkout whose skill ``garden`` has one case and an edited SKILL.md.
+
+    The committed SKILL.md says "Water at dusk." and the working tree
+    says "Water at dawn.", so HEAD holds the old text.
+
+    Args:
+        home: Folder that holds the checkout.
+
+    Returns:
+        The checkout.
+    """
+    repo = home / "repo"
+    skill = repo / "ai/skills/garden"
+    (skill / "evals").mkdir(parents=True)
+    (skill / "SKILL.md").write_text("# Garden\n\nWater at dusk.\n")
+    case = {
+        "id": "water-time",
+        "source": "a made-up correction",
+        "rule": "Garden",
+        "prompt": "When do you water the beds?",
+        "pass": ["dawn"],
+    }
+    (skill / "evals/water-time.json").write_text(json.dumps(case))
+    env = os.environ | {
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_AUTHOR_NAME": "Test",
+        "GIT_AUTHOR_EMAIL": "test@example.com",
+        "GIT_COMMITTER_NAME": "Test",
+        "GIT_COMMITTER_EMAIL": "test@example.com",
+    }
+    for command in (["init", "-q"], ["add", "."], ["commit", "-qm", "base"]):
+        subprocess.run(["git", *command], cwd=repo, env=env, check=True)
+    (skill / "SKILL.md").write_text("# Garden\n\nWater at dawn.\n")
+    return repo
+
+
 def run_trials(
     home: Path,
     *args: str,
@@ -78,6 +119,7 @@ def run_trials(
     sleep: float = 0,
     exit_code: int = 0,
     lines: tuple[str, ...] = (),
+    cwd: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run the script with a fake ``opencode`` first on PATH.
 
@@ -92,6 +134,7 @@ def run_trials(
         sleep: Seconds the fake waits before it answers.
         exit_code: The fake's exit code, with an error line, when not 0.
         lines: Raw output lines the fake prints before each answer.
+        cwd: Folder to run in, such as a checkout for ``--skill``.
 
     Returns:
         The finished process with captured output.
@@ -117,6 +160,7 @@ def run_trials(
         env=env,
         capture_output=True,
         text=True,
+        cwd=cwd,
     )
 
 
@@ -346,3 +390,161 @@ class TestTools:
             }
         ] * 2
         assert "You have no tools." in calls[0]["argv"][-1]
+
+
+class TestSkillCases:
+    """Cases in a skill's ``evals/``, run on new, old and no skill text."""
+
+    def test_each_skill_text_sends_its_own_text(self, tmp_path: Path) -> None:
+        """Send the checkout's SKILL.md, the old one, and no skill text.
+
+        The author compares the skill texts' pass counts to judge a skill
+        change. If the old skill text got the checkout's text, or the no-skill
+        skill text got any skill text, the counts would match for the wrong
+        reason and a harmful change would look safe.
+        """
+        repo = make_skill_checkout(tmp_path)
+
+        result = run_trials(
+            tmp_path,
+            "-n",
+            "1",
+            "--skill",
+            "garden",
+            "--at",
+            "HEAD",
+            "--without",
+            answers=("I water at dawn.",),
+            cwd=repo,
+        )
+
+        prompts = [call["argv"][-1] for call in read_calls(tmp_path)]
+        assert result.returncode == 0, result.stderr
+        assert len(prompts) == 3
+        assert "Water at dawn." in prompts[0]
+        assert "Water at dusk." in prompts[1]
+        assert "Water at" not in prompts[2]
+        assert "When do you water the beds?" in prompts[2]
+        results = read_results(tmp_path / "trials")
+        assert [r["skill_text"] for r in results] == ["new", "old", "none"]
+
+    def test_uncommitted_skill_logs_no_commit(self, tmp_path: Path) -> None:
+        """Log no commit for a SKILL.md edited since HEAD.
+
+        A result names the commit its text came from. Naming HEAD for
+        an edit that HEAD does not hold would send a reader to the
+        wrong text.
+        """
+        repo = make_skill_checkout(tmp_path)
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+        result = run_trials(
+            tmp_path,
+            "-n",
+            "1",
+            "--skill",
+            "garden",
+            "--at",
+            "HEAD",
+            answers=("I water at dawn.",),
+            cwd=repo,
+        )
+
+        assert result.returncode == 0, result.stderr
+        results = read_results(tmp_path / "trials")
+        assert [r["commit"] for r in results] == [None, head]
+
+    def test_none_reused_only_for_same_inputs(self, tmp_path: Path) -> None:
+        """Reuse saved no-skill runs only for the same case, note and model.
+
+        A no-skill run depends only on the case, the no-tools note and
+        the model, and reusing it halves the cost of each later
+        comparison. Reusing it for another model, after the case's
+        prompt or patterns changed, or after the note changed, would
+        compare against runs that got another prompt or answer key.
+        """
+        repo = make_skill_checkout(tmp_path)
+        options = ("-n", "2", "--skill", "garden", "--without")
+        case_file = repo / "ai/skills/garden/evals/water-time.json"
+        trials = tmp_path / "trials"
+        log = trials / "results.jsonl"
+        run_trials(tmp_path, *options, cwd=repo)
+
+        again = run_trials(tmp_path, *options, cwd=repo)
+        run_trials(tmp_path, *options, "--model", "test/other", cwd=repo)
+        case_file.write_text(case_file.read_text() + "\n")
+        run_trials(tmp_path, *options, cwd=repo)
+        # A saved line with another rules hash stands for a changed note.
+        saved = [r | {"rules_hash": "0" * 12} for r in read_results(trials)]
+        log.write_text("".join(json.dumps(r) + "\n" for r in saved))
+        run_trials(tmp_path, *options, cwd=repo)
+
+        skill_texts = [r["skill_text"] for r in read_results(trials)]
+        new, none = ["new"] * 2, ["none"] * 2
+        assert skill_texts == new + none + new + (new + none) * 3
+        assert "none 0/2 saved" in again.stdout
+
+    def test_none_reuse_skips_failed_runs(self, tmp_path: Path) -> None:
+        """Run the no-skill skill text again when its saved runs failed to run.
+
+        A timeout or an OpenCode error leaves no answer. Reusing such
+        runs would report the case as failing with no skill on every
+        later comparison, with no answer behind the count.
+        """
+        repo = make_skill_checkout(tmp_path)
+        options = ("-n", "1", "--skill", "garden", "--without")
+        run_trials(tmp_path, *options, exit_code=1, cwd=repo)
+
+        again = run_trials(tmp_path, *options, cwd=repo)
+
+        results = read_results(tmp_path / "trials")
+        skill_texts = [r["skill_text"] for r in results]
+        assert skill_texts == ["new", "none", "new", "none"]
+        assert "saved" not in again.stdout
+
+    @pytest.mark.parametrize(
+        "answers,summary",
+        [
+            pytest.param(
+                ("I water at dawn.",),
+                "water-time new 1/1 none 1/1"
+                " - every run passed, so no difference",
+                id="all-pass",
+            ),
+            pytest.param(
+                ("I water at dawn.", "I water at noon."),
+                "water-time new 1/1 none 0/1 - none: missed pass /dawn/",
+                id="none-fails",
+            ),
+        ],
+    )
+    def test_summary_marks_case_passing_every_skill_text(
+        self, tmp_path: Path, answers: tuple[str, ...], summary: str
+    ) -> None:
+        """Mark a case only when every run of every skill text passed.
+
+        A case that passes with no skill shows nothing the skill
+        changes, so the author should rewrite or drop it. Marking a
+        case that one skill text failed would hide the very difference the
+        case exists to show.
+        """
+        repo = make_skill_checkout(tmp_path)
+
+        result = run_trials(
+            tmp_path,
+            "-n",
+            "1",
+            "--skill",
+            "garden",
+            "--without",
+            answers=answers,
+            cwd=repo,
+        )
+
+        assert result.stdout.splitlines()[0] == summary

@@ -1,0 +1,13 @@
+{
+  "id": "new-skill-says-when-not",
+  "source": "the user's review of this skill, proposal 1",
+  "rule": "Write for a person",
+  "prompt": "You work on a repository of agent skills. Reply with only the message you would send to the user. Show each file change as a diff.\n\nThe repository keeps agent skills in ai/skills/. One skill matters\nhere.\n\nai/skills/commit-notes/SKILL.md:\n---\nname: commit-notes\ndescription: Writes commit messages and checks the code before a\n  commit. Use before any commit.\n---\n\nThe user writes: \"Add a skill, release-notes, that drafts the notes\nfor a release from the commit messages since the last tag. Show its\nSKILL.md as a diff.\"\n",
+  "pass": [
+    "commit-notes",
+    "(do not|don't|not) (use|load)|not for"
+  ],
+  "fail": [
+    "(?m)^\\+(?!\\+\\+|description:).{73,}"
+  ]
+}

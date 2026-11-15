@@ -1,13 +1,18 @@
 """Run stored trials of a model against current rules and grade them.
 
-Each case in ``<trials>/cases/*.json`` is the situation before a mistake
-the user corrected, with that correction as its answer key. The script
-sends the case's rules files and prompt to ``opencode run`` N times and
-grades each answer with the case's patterns. Read ``main`` first.
+Each case is the situation before a mistake, with the corrected
+behavior as its answer key. A case in ``<trials>/cases/*.json`` lists
+its rules files. A skill's case, in ``ai/skills/<skill>/evals/*.json``
+of the current Git repository, gets that skill's SKILL.md instead.
+The script sends the rules and prompt to ``opencode run`` N times and
+grades each answer with the case's patterns. ``--at`` and
+``--without`` add runs on the skill's old text and on no rules, to
+compare. Read ``main`` first.
 
 Example:
     python3 ~/.agents/skills/session-review/scripts/trials.py -n 5
     python3 trials.py --case stale-approval --variant high
+    python3 trials.py --skill skill-development --at main --without
 """
 
 import argparse
@@ -25,7 +30,9 @@ import time
 from pathlib import Path
 
 TRIALS = Path.home() / ".local/state/pde/session-reviews/trials"
-REQUIRED = {"id", "source", "rules", "prompt", "pass"}
+# A case in the trials folder also needs "rules", the files it lists.
+# A skill case needs "rule" instead, the SKILL.md heading it tests.
+REQUIRED = {"id", "source", "prompt", "pass"}
 OPTIONAL = {"fail"}
 # Denying every permission takes all tools away from the model, so a
 # case cannot act out the hub actions its prompt describes.
@@ -44,7 +51,7 @@ class CaseError(Exception):
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run every chosen case N times and print one line per case.
+    """Run every chosen case N times per skill text; print a line per case.
 
     Args:
         argv: Command-line options, or None for ``sys.argv``.
@@ -54,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     """
     args = parse_args(argv)
     try:
-        cases = load_cases(args.trials, args.case)
+        cases = load_cases(args)
     except CaseError as error:
         print(f"trials: {error}", file=sys.stderr)
         return 1
@@ -64,23 +71,31 @@ def main(argv: list[str] | None = None) -> int:
     answers = Path(
         tempfile.mkdtemp(prefix=f"{stamp}-", dir=args.trials / "answers")
     )
-    total = 0
-    with open(args.trials / "results.jsonl", "a", encoding="utf-8") as results:
+    log = args.trials / "results.jsonl"
+    saved = read_saved_runs(log) if args.without else []
+    version = read_opencode_version()
+    total = count = 0
+    with open(log, "a", encoding="utf-8") as results:
         for case in cases:
-            failures = []
-            for number in range(1, args.n + 1):
-                result = run_trial(case, number, args, answers)
-                results.write(json.dumps(result) + "\n")
-                results.flush()
-                failures += result["reasons"][:1]
-                total += result["passed"]
-            line = f"{case['id']} {args.n - len(failures)}/{args.n}"
-            line += f" rules {case['rules_hash']}"
-            print(f"{line} - {failures[0]}" if failures else line)
+            graded = []
+            for skill_text in case["skill_texts"]:
+                runs = find_saved_runs(saved, case, skill_text, args)
+                reused = bool(runs)
+                if not reused:
+                    for number in range(1, args.n + 1):
+                        result = run_trial(
+                            case, skill_text, number, args, answers
+                        )
+                        result["opencode"] = version
+                        results.write(json.dumps(result) + "\n")
+                        results.flush()
+                        runs.append(result)
+                graded.append((skill_text, runs, reused))
+                total += sum(run["passed"] for run in runs)
+                count += len(runs)
+            print(summarize_case(case, graded))
     model = args.model + (f"#{args.variant}" if args.variant else "")
-    print(
-        f"total {total}/{len(cases) * args.n} on {model}, answers in {answers}"
-    )
+    print(f"total {total}/{count} on {model}, answers in {answers}")
     return 0
 
 
@@ -97,55 +112,91 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--timeout", type=int, default=600, help="seconds per run"
     )
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--skill",
+        action="append",
+        default=[],
+        help="run this skill's cases in this Git repository, repeatable",
+    )
+    parser.add_argument(
+        "--at", help="also run each skill case on its SKILL.md at this commit"
+    )
+    parser.add_argument(
+        "--without",
+        action="store_true",
+        help="also run each case with no rules, reusing saved runs",
+    )
+    args = parser.parse_args(argv)
+    if args.at and not args.skill:
+        parser.error("--at needs --skill")
+    return args
 
 
-def load_cases(trials: Path, wanted: list[str]) -> list[dict]:
-    """Read and check every case, so a bad one stops the script early.
+def load_cases(args: argparse.Namespace) -> list[dict]:
+    """Read and check every chosen case, so a bad one stops the script early.
 
     Args:
-        trials: The trials folder, holding ``cases/``.
-        wanted: Case IDs to keep, or an empty list for all.
+        args: The command-line options. With ``--skill``, the cases
+            come from each skill's ``evals/`` in the checkout instead
+            of the trials folder's ``cases/``.
 
     Returns:
-        The chosen cases, each with its rules text and both hashes added.
+        The chosen cases, each with its case hash and skill texts added.
 
     Raises:
-        CaseError: A case is broken, a rules file is missing, or a
+        CaseError: A case is broken, its rules are missing, or a
             wanted ID names no case.
     """
-    cases = [read_case(path) for path in sorted(trials.glob("cases/*.json"))]
+    if args.skill:
+        top = Path(run_git(Path.cwd(), "rev-parse", "--show-toplevel").strip())
+        folders = [
+            (top / "ai/skills" / name / "evals", name) for name in args.skill
+        ]
+    else:
+        top = None
+        folders = [(args.trials / "cases", None)]
+    cases = [
+        read_case(path, skill)
+        for folder, skill in folders
+        for path in sorted(folder.glob("*.json"))
+    ]
     ids = [case["id"] for case in cases]
     repeated = sorted({id for id in ids if ids.count(id) > 1})
-    unknown = [id for id in wanted if id not in ids]
+    unknown = [id for id in args.case if id not in ids]
     if repeated or unknown:
         raise CaseError(f"repeated IDs {repeated}, unknown IDs {unknown}")
-    cases = [case for case in cases if not wanted or case["id"] in wanted]
+    cases = [
+        case for case in cases if not args.case or case["id"] in args.case
+    ]
     if not cases:
-        raise CaseError(f"no cases in {trials / 'cases'}")
+        names = ", ".join(str(folder) for folder, _ in folders)
+        raise CaseError(f"no cases in {names}")
+    for case in cases:
+        case["skill_texts"] = list_skill_texts(case, args, top)
     return cases
 
 
-def read_case(path: Path) -> dict:
-    """Read one case file and the rules files it lists.
+def read_case(path: Path, skill: str | None) -> dict:
+    """Read and check one case file.
 
     Args:
-        path: A file in ``cases/``.
+        path: A file in ``cases/``, or in a skill's ``evals/``.
+        skill: The skill whose ``evals/`` holds the file, or None.
 
     Returns:
-        The case's fields plus ``rules_text``, ``rules_hash`` and
-        ``case_hash``.
+        The case's fields plus ``skill`` and ``case_hash``.
 
     Raises:
-        CaseError: The file is not a case, or a rules file is missing.
+        CaseError: The file is not a case.
     """
+    required = REQUIRED | {"rule" if skill else "rules"}
     try:
         case = json.loads(path.read_text(encoding="utf-8"))
     except ValueError as error:
         raise CaseError(f"{path}: {error}") from error
-    if not isinstance(case, dict) or not REQUIRED <= set(case):
-        raise CaseError(f"{path}: needs fields {sorted(REQUIRED)}")
-    unknown = sorted(set(case) - REQUIRED - OPTIONAL)
+    if not isinstance(case, dict) or not required <= set(case):
+        raise CaseError(f"{path}: needs fields {sorted(required)}")
+    unknown = sorted(set(case) - required - OPTIONAL)
     if unknown:
         raise CaseError(f"{path}: unknown fields {unknown}")
     # The ID names answer files, so ``../`` would write outside the folder.
@@ -164,43 +215,200 @@ def read_case(path: Path) -> dict:
             re.compile(pattern)
     except re.error as error:
         raise CaseError(f"{path}: bad pattern {pattern!r}: {error}") from error
-    missing = [
-        name for name in case["rules"] if not Path(name).expanduser().is_file()
-    ]
-    if missing:
-        raise CaseError(f"{path}: missing rules files {missing}")
-    case["rules_text"], case["rules_hash"] = read_rules(case["rules"])
+    case["skill"] = skill
     case["case_hash"] = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
     return case
 
 
-def read_rules(names: list[str]) -> tuple[str, str]:
-    """Join the rules files into one text and hash them as listed.
+def list_skill_texts(
+    case: dict, args: argparse.Namespace, top: Path | None
+) -> list[dict]:
+    """Return each skill text of the case, a set of runs on one rules text.
 
-    The hash covers each name as written, so it stays the same on
+    The first skill text, "new", gets the current rules: the case's rules
+    files, or its skill's SKILL.md in the checkout. ``--at`` adds
+    "old", that SKILL.md at the given commit, and ``--without`` adds
+    "none", with no rules.
+
+    Args:
+        case: A case from ``read_case``.
+        args: The command-line options.
+        top: The checkout's top folder for a skill case, or None for
+            a case in the trials folder.
+
+    Returns:
+        Each skill text from ``make_skill_text``.
+
+    Raises:
+        CaseError: A rules file is missing, or git cannot read the old
+            text.
+    """
+    if top is None:
+        paths = [Path(name).expanduser() for name in case["rules"]]
+        missing = [str(path) for path in paths if not path.is_file()]
+        if missing:
+            raise CaseError(f"{case['id']}: missing rules files {missing}")
+        files = [(n, p.read_bytes()) for n, p in zip(case["rules"], paths)]
+        skill_texts = [make_skill_text("new", files, None)]
+    else:
+        name = f"ai/skills/{case['skill']}/SKILL.md"
+        # An uncommitted SKILL.md comes from no commit, so log none.
+        changed = run_git(top, "status", "--porcelain", "--", name).strip()
+        head = None if changed else run_git(top, "rev-parse", "HEAD").strip()
+        text = [(name, (top / name).read_bytes())]
+        skill_texts = [make_skill_text("new", text, head)]
+        if args.at:
+            ref = f"{args.at}^{{commit}}"
+            commit = run_git(top, "rev-parse", "--verify", ref).strip()
+            old = run_git(top, "show", f"{commit}:{name}")
+            old_text = [(name, old.encode())]
+            skill_texts.append(make_skill_text("old", old_text, commit))
+    if args.without:
+        skill_texts.append(make_skill_text("none", [], None))
+    return skill_texts
+
+
+def make_skill_text(
+    name: str, files: list[tuple[str, bytes]], commit: str | None
+) -> dict:
+    """Join one skill text's rules files into one text and hash them as listed.
+
+    The hash covers each file name as written, so it stays the same on
     another computer with the same rules. It also covers the no-tools
     note every prompt gets.
 
+    Args:
+        name: The skill text's name, "new", "old" or "none".
+        files: Each rules file's name and contents, in order.
+        commit: The commit the rules came from, or None.
+
     Returns:
-        The joined text and the first 12 hex digits of its sha256.
+        The skill text's name, rules text, commit and the first 12 hex digits
+        of the rules' sha256.
     """
     digest = hashlib.sha256(f"{NO_TOOLS_NOTE}\n".encode())
     parts = []
-    for name in names:
-        data = Path(name).expanduser().read_bytes()
-        digest.update(f"{name}\n{len(data)}\n".encode())
+    for file, data in files:
+        digest.update(f"{file}\n{len(data)}\n".encode())
         digest.update(data)
-        parts.append(f"===== {name} =====\n{data.decode()}\n")
-    return "\n".join(parts), digest.hexdigest()[:12]
+        parts.append(f"===== {file} =====\n{data.decode()}\n")
+    return {
+        "name": name,
+        "text": "\n".join(parts),
+        "hash": digest.hexdigest()[:12],
+        "commit": commit,
+    }
+
+
+def run_git(top: Path, *args: str) -> str:
+    """Run git in a folder and return its output.
+
+    Raises:
+        CaseError: Git fails, such as for a commit that does not exist.
+    """
+    done = subprocess.run(
+        ["git", *args], cwd=top, capture_output=True, text=True
+    )
+    if done.returncode != 0:
+        raise CaseError(f"git {' '.join(args)}: {done.stderr.strip()}")
+    return done.stdout
+
+
+def read_saved_runs(log: Path) -> list[dict]:
+    """Return every line of ``results.jsonl``, oldest first."""
+    if not log.exists():
+        return []
+    lines = log.read_text(encoding="utf-8").splitlines()
+    return [json.loads(line) for line in lines]
+
+
+def find_saved_runs(
+    saved: list[dict], case: dict, skill_text: dict, args: argparse.Namespace
+) -> list[dict]:
+    """Return N saved runs of the "none" skill text to use instead of new ones.
+
+    A run with no rules depends only on the case and the model, so runs
+    of the same case file, model and effort give the same evidence. A
+    run whose ``opencode`` call failed, such as by a timeout, holds no
+    answer, so it is never reused.
+
+    Returns:
+        The last N matching runs, or an empty list when fewer are
+        saved or the skill text has rules.
+    """
+    if skill_text["name"] != "none":
+        return []
+    found = [
+        run
+        for run in saved
+        if run["case_hash"] == case["case_hash"]
+        and run["rules_hash"] == skill_text["hash"]
+        and (run["model"], run["variant"]) == (args.model, args.variant)
+        and not any(r.startswith("opencode ") for r in run["reasons"])
+    ]
+    return found[-args.n :] if len(found) >= args.n else []
+
+
+def read_opencode_version() -> str | None:
+    """Return what ``opencode --version`` prints, or None when it fails."""
+    done = subprocess.run(
+        ["opencode", "--version"], capture_output=True, text=True
+    )
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+def summarize_case(
+    case: dict, graded: list[tuple[dict, list[dict], bool]]
+) -> str:
+    """Return the case's summary line, ending with the first failure.
+
+    One skill text gives its passed runs and rules hash. Several give
+    each skill text's passed runs, marking reused ones "saved". A case
+    that passed every run of every skill text is marked, since it cannot
+    show what the rules change.
+
+    Args:
+        case: A case from ``load_cases``.
+        graded: Each skill_text, its runs and whether they were reused.
+
+    Returns:
+        One line, such as ``plan-owner new 3/3 none 1/3 - none:
+        missed pass /owner/``.
+    """
+    failures = [
+        (skill_text["name"], reason)
+        for skill_text, runs, _ in graded
+        for run in runs
+        for reason in run["reasons"][:1]
+    ]
+    if len(graded) == 1:
+        [(skill_text, runs, _)] = graded
+        line = f"{case['id']} {len(runs) - len(failures)}/{len(runs)}"
+        line += f" rules {skill_text['hash']}"
+        return f"{line} - {failures[0][1]}" if failures else line
+    parts = [case["id"]]
+    for skill_text, runs, reused in graded:
+        passed = sum(run["passed"] for run in runs)
+        parts.append(f"{skill_text['name']} {passed}/{len(runs)}")
+        parts += ["saved"] if reused else []
+    line = " ".join(parts)
+    if not failures:
+        return f"{line} - every run passed, so no difference"
+    return f"{line} - {failures[0][0]}: {failures[0][1]}"
 
 
 def run_trial(
-    case: dict, number: int, args: argparse.Namespace, answers: Path
+    case: dict,
+    skill_text: dict,
+    number: int,
+    args: argparse.Namespace,
+    answers: Path,
 ) -> dict:
     """Run one trial in a new empty folder, grade it and save its answer.
 
     Args:
         case: A case from ``load_cases``.
+        skill_text: One of the case's skill_texts, whose rules the run gets.
         number: The run's number, from 1.
         args: The command-line options.
         answers: Folder for this call's answer files.
@@ -210,19 +418,21 @@ def run_trial(
     """
     started = time.monotonic()
     with tempfile.TemporaryDirectory(prefix="trial-") as folder:
-        answer, reasons = ask_model(case, Path(folder), args)
+        answer, reasons = ask_model(case, skill_text, Path(folder), args)
     if not reasons:
         reasons = grade(case, answer)
-    path = answers / f"{case['id']}-{number}.txt"
+    path = answers / f"{case['id']}-{skill_text['name']}-{number}.txt"
     path.write_text(answer, encoding="utf-8")
     return {
         "time": datetime.datetime.now().isoformat(timespec="seconds"),
         "case": case["id"],
         "run": number,
+        "skill_text": skill_text["name"],
         "model": args.model,
         "variant": args.variant,
-        "rules_hash": case["rules_hash"],
+        "rules_hash": skill_text["hash"],
         "case_hash": case["case_hash"],
+        "commit": skill_text["commit"],
         "passed": not reasons,
         "reasons": reasons,
         "seconds": round(time.monotonic() - started, 1),
@@ -231,9 +441,9 @@ def run_trial(
 
 
 def ask_model(
-    case: dict, scratch: Path, args: argparse.Namespace
+    case: dict, skill_text: dict, scratch: Path, args: argparse.Namespace
 ) -> tuple[str, list[str]]:
-    """Send the rules and prompt to ``opencode run`` and read its answer.
+    """Send the skill text's rules and the prompt to ``opencode run``.
 
     Returns:
         The answer text, and one reason when the run failed.
@@ -241,7 +451,7 @@ def ask_model(
     model = args.model + (f"#{args.variant}" if args.variant else "")
     command = ["opencode", "run", "--standalone", "-m", model]
     command += ["--format", "json"]
-    command.append(f"{case['rules_text']}\n{NO_TOOLS_NOTE}\n{case['prompt']}")
+    command.append(f"{skill_text['text']}\n{NO_TOOLS_NOTE}\n{case['prompt']}")
     # A config file in a folder above the scratch folder, or one these
     # variables name, could change the model or give tools back.
     env = {

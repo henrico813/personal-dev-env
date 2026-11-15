@@ -1,0 +1,14 @@
+{
+  "id": "rule-owned-by-another-skill",
+  "source": "pull request #522, evaluation Case 1",
+  "rule": "Where a rule goes",
+  "prompt": "You work on a repository of agent skills. Reply with only the message you would send to the user. Show each file change as a diff.\n\nThe repository keeps agent skills in ai/skills/. Two skills and one\nrouting line matter here.\n\nai/AGENTS.md, loaded by every session:\n- Before any commit, load and follow the `commit-notes` skill.\n\nai/skills/commit-notes/SKILL.md:\n---\nname: commit-notes\ndescription: Writes commit messages and checks the code before a\n  commit. Use before any commit.\n---\n# Commit Notes\n1. Run `make lint` and fix what it reports.\n2. Write the title in the imperative, at most 50 characters.\n\nai/skills/release-train/SKILL.md:\n---\nname: release-train\ndescription: Cuts a release branch and tags it. Use when the user asks\n  for a release.\n---\n# Release Train\n1. Create the branch release/<version> from main.\n2. Commit the version bump.\n3. Tag the commit v<version> and push the tag.\n\nThe user writes: \"Releases keep failing lint. Add to release-train\nthat lint must pass before the version bump is committed.\"\n",
+  "pass": [
+    "(?m)^\\+.*commit-notes"
+  ],
+  "fail": [
+    "(?m)^\\+.*make lint",
+    "(?m)^\\+.*keeps? failing",
+    "(?m)^\\+(?!\\+\\+|description:).{73,}"
+  ]
+}

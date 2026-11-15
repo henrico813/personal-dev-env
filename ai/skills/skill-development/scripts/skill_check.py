@@ -11,6 +11,7 @@ Example:
 """
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -106,26 +107,29 @@ def check_skills(skills_dir: Path, base: str | None) -> list[Problem]:
        error.
     7. A ``metadata.scope`` that is missing or names the other
        repository is an error.
+    8. A case in a skill's ``evals/``, a test prompt that trials.py
+       runs, whose ``rule`` is not a heading of that skill's SKILL.md
+       is an error, since no one can then tell which rule it tests.
 
     With base, more checks report only on files and lines changed
     since base, so a problem already on main fails no unrelated
     change.
 
-    8. An added line over 72 columns that could wrap is an error.
-    9. An added line that points at a step number, such as "step 6
-       of", is an error.
-    10. A SKILL.md body that the change made longer than 500 lines is
+    9. An added line over 72 columns that could wrap is an error.
+    10. An added line that points at a step number, such as "step 6
+        of", is an error.
+    11. A SKILL.md body that the change made longer than 500 lines is
         an error.
-    11. A changed reference file over 100 lines with no Contents
+    12. A changed reference file over 100 lines with no Contents
         heading is an error.
-    12. A quote of a heading that the change removed or renamed is an
+    13. A quote of a heading that the change removed or renamed is an
         error, unless some file still has that heading.
-    13. Eight words in a row that another skill or ``AGENTS.md`` also
+    14. Eight words in a row that another skill or ``AGENTS.md`` also
         has are a repeat, for the author to judge.
-    14. A SKILL.md whose body has more lines than in base is reported
+    15. A SKILL.md whose body has more lines than in base is reported
         as grown, for the pull request to give a reason.
 
-    Checks 1, 2, 8, 9, 12 and 13 also read the ``AGENTS.md`` next to
+    Checks 1, 2, 9, 10, 13 and 14 also read the ``AGENTS.md`` next to
     skills_dir.
 
     Args:
@@ -150,6 +154,7 @@ def check_skills(skills_dir: Path, base: str | None) -> list[Problem]:
         + check_lessons_sections(skills)
         + check_corrections_names(skills)
         + check_scopes(skills)
+        + check_case_rules(skills)
     )
     if base is None:
         return problems
@@ -590,6 +595,38 @@ def check_corrections_names(skills: Skills) -> list[Problem]:
                 "Remembering corrections must say "
                 f'"with the skill name `{skill.name}`"'
             )
+            problems.append(Problem(path, 1, "error", message))
+    return problems
+
+
+def check_case_rules(skills: Skills) -> list[Problem]:
+    """Report each eval case whose ``rule`` is not a heading of its skill.
+
+    A case in ``evals/`` names the SKILL.md heading it tests. Once that
+    heading is renamed or removed, no one can tell which rule the case
+    covers, or whether the rule is still there.
+
+    Args:
+        skills: The skills from ``read_skills``.
+
+    Returns:
+        One error per case file whose ``rule`` names no heading.
+    """
+    problems = []
+    for path in skills.files:
+        skill = path.parent.parent
+        if path.suffix != ".json" or path.parent.name != "evals":
+            continue
+        if skill not in skills.folders:
+            continue
+        try:
+            case = json.loads(path.read_text(encoding="utf-8"))
+        except ValueError:
+            case = None
+        rule = case.get("rule") if isinstance(case, dict) else None
+        titles = list_heading_titles(skills.prose[skill / "SKILL.md"])
+        if not isinstance(rule, str) or rule not in titles:
+            message = f"rule {rule!r} is not a heading of {skill.name}"
             problems.append(Problem(path, 1, "error", message))
     return problems
 

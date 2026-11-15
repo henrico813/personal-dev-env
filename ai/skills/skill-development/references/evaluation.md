@@ -2,13 +2,15 @@
 
 The five cases below check whether the skill changes how a new
 skill says when not to use it, where an agent puts a
-rule and what a reviewer of a skill change finds. Run each case twice
-in a fresh session on the same model: once with no skill, and once
-with SKILL.md pasted after the system prompt. Score each reply
-against the case's checks, one point each.
+rule and what a reviewer of a skill change finds. Cases 1, 2 and 4
+are data files in this skill's `evals/` folder. Their `pass` and
+`fail` patterns, regular expressions, grade each answer. This file
+keeps the other checks of those cases, which no pattern can judge.
+Each check scores one point.
 
 ## Contents
 
+- Run the cases in evals
 - How to run
 - Case 1: a rule another skill owns
 - Case 2: a review that finds a conflict
@@ -16,7 +18,24 @@ against the case's checks, one point each.
 - Case 4: a new skill near another skill's task
 - Case 5: a review of a rule with no reason
 
+## Run the cases in evals
+
+From the top folder of the Git repository that holds the skills, run
+the cases in `evals/` with the skill and with no skill:
+
+```bash
+python3 ~/.agents/skills/session-review/scripts/trials.py \
+  --skill skill-development --without
+```
+
+It prints how many runs of each case passed with the skill and with
+none. Then score the checks below on the answers it saved, in the
+folder named on the last line it prints.
+
 ## How to run
+
+Run cases 3 and 5 by hand, twice each on one model, each time in a
+new session: first with no skill, then with SKILL.md.
 
 Run in a folder from `mktemp -d`. `--safe-mode` leaves out the user's
 CLAUDE.md and installed skills, so the baseline sees no rules.
@@ -26,7 +45,7 @@ sys='You are a coding agent working on a repository of agent skills.
 Reply with only the message you would send to the user. Show each
 file change as a diff.'
 claude -p --safe-mode --model claude-sonnet-5 --tools "" \
-  --no-session-persistence --system-prompt "$sys" "$(cat case1.txt)"
+  --no-session-persistence --system-prompt "$sys" "$(cat case3.txt)"
 ```
 
 For the run with the skill, add `$(cat SKILL.md)` to the end of
@@ -34,83 +53,32 @@ For the run with the skill, add `$(cat SKILL.md)` to the end of
 
 ## Case 1: a rule another skill owns
 
-```text
-The repository keeps agent skills in ai/skills/. Two skills and one
-routing line matter here.
-
-ai/AGENTS.md, loaded by every session:
-- Before any commit, load and follow the `commit-notes` skill.
-
-ai/skills/commit-notes/SKILL.md:
----
-name: commit-notes
-description: Writes commit messages and checks the code before a
-  commit. Use before any commit.
----
-# Commit Notes
-1. Run `make lint` and fix what it reports.
-2. Write the title in the imperative, at most 50 characters.
-
-ai/skills/release-train/SKILL.md:
----
-name: release-train
-description: Cuts a release branch and tags it. Use when the user asks
-  for a release.
----
-# Release Train
-1. Create the branch release/<version> from main.
-2. Commit the version bump.
-3. Tag the commit v<version> and push the tag.
-
-The user writes: "Releases keep failing lint. Add to release-train
-that lint must pass before the version bump is committed."
-```
+The prompt is in `evals/rule-owned-by-another-skill.json`. Its
+patterns check that release-train points to commit-notes, adds no
+lint command and no words from the task, and keeps each added line
+within 72 columns.
 
 Checks:
 
 1. The reply notices that commit-notes already owns the lint rule.
-2. The change adds no lint command of its own to release-train.
-3. Step 2 of release-train points to commit-notes for the commit
-   instead.
-4. The reply says in one or two sentences why it points instead of
+2. The reply says in one or two sentences why it points instead of
    copying.
-5. Each added line is at most 72 columns.
-6. The skill text leaves out the task, such as "releases keep failing".
 
 ## Case 2: a review that finds a conflict
 
-```text
-Review this pull request to a repository of agent skills.
-
---- a/ai/skills/hub-runner/SKILL.md
-+++ b/ai/skills/hub-runner/SKILL.md
-@@ -20,1 +20,3 @@ ## Questions
- Pass each worker's question to the user.
-+Tell the user about each open question once. Do not repeat it in
-+later updates; the user reads the first one.
-
-Other text in the repository:
-
-ai/skills/update-writer/SKILL.md, line 31:
-Repeat every open question in each update until the user answers,
-since the user reads updates out of order.
-
-ai/AGENTS.md:
-- When writing a status update to the user, load and follow the
-  `update-writer` skill.
-```
+The prompt is in `evals/review-finds-conflict.json`. Its patterns
+check that the review finds a conflict and names update-writer and
+its line 31.
 
 Checks:
 
-1. The review finds the conflict between the added lines and
-   update-writer line 31.
-2. It quotes both sides with their file and line.
-3. It names update-writer as the owner, since `ai/AGENTS.md` routes
+1. It quotes both sides with their file and line.
+2. It names update-writer as the owner, since `ai/AGENTS.md` routes
    status updates to it.
-4. As a required correction, it asks for the added lines to go, or to
+3. As a required correction, it asks for the added lines to go, or to
    become a pointer to update-writer.
-5. It says that a change to the rule belongs in update-writer.
-6. No filler words, hedges or closing offer.
+4. It says that a change to the rule belongs in update-writer.
+5. No filler words, hedges or closing offer.
 
 ## Case 3: saved lessons for two skills
 
@@ -149,30 +117,16 @@ Checks:
 
 ## Case 4: a new skill near another skill's task
 
-```text
-The repository keeps agent skills in ai/skills/. One skill matters
-here.
-
-ai/skills/commit-notes/SKILL.md:
----
-name: commit-notes
-description: Writes commit messages and checks the code before a
-  commit. Use before any commit.
----
-
-The user writes: "Add a skill, release-notes, that drafts the notes
-for a release from the commit messages since the last tag. Show its
-SKILL.md."
-```
+The prompt is in `evals/new-skill-says-when-not.json`. Its patterns
+check that the reply says when not to use the new skill, names
+commit-notes, and keeps each added line within 72 columns.
 
 Checks:
 
 1. The description, or a line near the top, says when not to use
-   release-notes.
-2. That line names commit-notes as the skill that writes commit
-   messages.
-3. release-notes adds no rule on how to write a commit message.
-4. Each added line is at most 72 columns.
+   release-notes, and names commit-notes as the skill that writes
+   commit messages.
+2. release-notes adds no rule on how to write a commit message.
 
 ## Case 5: a review of a rule with no reason
 

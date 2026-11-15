@@ -7,6 +7,16 @@ mistake the user corrected, and the correction is its answer key. The
 script runs each case several times on the current rules and grades
 every answer the same way, so two reviews' pass rates can be compared.
 
+A skill can keep cases too, to check a change to its text. "Run a
+skill's cases" says how.
+
+## Contents
+
+- Run the trials
+- Write a case
+- Run a skill's cases
+- Write a skill case
+
 ## Run the trials
 
     python3 ~/.agents/skills/session-review/scripts/trials.py
@@ -35,13 +45,14 @@ model for the job.
 
 Each answer is saved in `answers/<time>-<random suffix>/`, and each run
 adds a line to `results.jsonl`, both in the trials folder. A line names
-the model, the effort, the rules hash and the case file's hash. Compare
+the model, the effort, the rules hash, the case file's hash and the
+OpenCode version. Compare
 pass rates only between lines with the same rules hash, or say the rules
 changed.
 
 ## Write a case
 
-Cases quote the user's notes, so they live in the trials folder's
+These cases quote the user's notes, so they live in the trials folder's
 `cases/`, never in a repository. Find a correction in a hub run
 folder's `rules.md`, `notes.md` or `decisions.md`, and save it as
 `cases/<id>.json`:
@@ -86,3 +97,45 @@ A bad file or a missing rules file stops the script before any model
 runs. Try a new case first on the cheap model, as `model-routing`
 picks. If that model fails it, check the prompt and the patterns
 before you try other models.
+
+## Run a skill's cases
+
+A skill's cases live in its `evals/` folder, such as
+`ai/skills/skill-development/evals/`. Run from the folder that holds
+`ai/skills/`. This runs them on the skill's SKILL.md, on its SKILL.md
+at `main`, and with no skill:
+
+    python3 ~/.agents/skills/session-review/scripts/trials.py \
+        --skill skill-development --at main --without
+
+- `--skill NAME` runs that skill's cases instead of the trials
+  folder's. Repeat it for more skills.
+- `--at REF` also runs each case on the skill's SKILL.md at that
+  Git commit or branch, the old text.
+- `--without` also runs each case with no skill. Such a run depends
+  only on the case and the model, so a later call reuses the saved
+  runs of the same case file, model and effort.
+
+A run gets only SKILL.md, since the model has no tools to open the
+skill's other files. The line for each case gives the passed runs on
+each skill text, `new`, `old` and `none`:
+
+    plan-owner new 3/3 old 1/3 none 0/3 saved - old: missed pass /owner/
+
+`saved` after a skill text marks its runs as reused. A case that
+passed every run of every skill text ends with "every run passed, so no
+difference". It cannot show what the skill changes, so make it harder
+or drop it. Each line in `results.jsonl` also names its skill text and
+the commit its SKILL.md came from, or none for an uncommitted edit.
+
+## Write a skill case
+
+A skill case has the same fields as a case above, with two changes:
+
+- `rule` replaces `rules`. It names the SKILL.md heading the case
+  tests, such as "Bed names". The `skill-development` skill's check
+  script fails a case whose heading is gone.
+- It describes a made-up situation, since anyone who can read the
+  skill can read its cases.
+
+Save it as `ai/skills/<skill>/evals/<id>.json`.

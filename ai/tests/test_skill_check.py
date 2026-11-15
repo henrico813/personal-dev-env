@@ -1,5 +1,6 @@
 """Behavior tests for the skill-development skill's check script."""
 
+import json
 import os
 import subprocess
 import sys
@@ -323,6 +324,31 @@ class TestSkillText:
         result = run_check(repo)
 
         assert result.returncode == 0, result.stdout
+
+    @pytest.mark.parametrize(
+        "rule,code",
+        [
+            pytest.param("Garden", 0, id="heading"),
+            pytest.param("Watering", 1, id="no-such-heading"),
+        ],
+    )
+    def test_case_rule_must_be_skill_heading(
+        self, repo: Path, rule: str, code: int
+    ) -> None:
+        """A case in ``evals/`` fails when its rule is not a heading.
+
+        A case names the SKILL.md heading it tests. After that heading
+        is renamed or removed, the case points at no rule, and an
+        author deciding whether a rule is safe to drop by its cases
+        finds none.
+        """
+        case = repo / "ai/skills/garden/evals/dawn.json"
+        case.parent.mkdir()
+        case.write_text(json.dumps({"id": "dawn", "rule": rule}))
+
+        result = run_check(repo)
+
+        assert result.returncode == code, result.stdout
 
     def test_git_ignored_file_is_not_checked(self, repo: Path) -> None:
         """A file Git ignores in a skill folder is not read.
