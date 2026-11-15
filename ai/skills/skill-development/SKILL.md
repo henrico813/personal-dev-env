@@ -4,8 +4,8 @@ description: Writes, changes and reviews agent skills so that each
   rule has one owner, no skill repeats or contradicts another, and a
   person can read, follow and debug the result. Use when creating,
   changing or reviewing a skill, its references or its routing line,
-  or when turning saved lessons into skill text. Do not use it for
-  the wording of one sentence; plain-direct-english owns that.
+  or when writing a user's correction into skill text. Do not use
+  it for the wording of one sentence; plain-direct-english owns that.
 metadata:
   scope: personal
 ---
@@ -21,8 +21,8 @@ broken links, and two fresh reviewers check the rest.
 
 ## Inputs
 
-- The skill to create, change or review, or the saved lessons to turn
-  into skill text.
+- The skill to create, change or review, or the user's correction to
+  write into skill text.
 - A checkout of the repository that holds the skills, in `ai/skills/`
   or `skills/`.
 - For a review, the diff and the commit it starts from.
@@ -59,7 +59,10 @@ names the owner instead of copying it, such as "open it with the
 - A step a program can do or check: a script in `scripts/`, tested in
   `ai/tests/`. Make the script handle its errors and say what went
   wrong.
-- A saved lesson: the Lessons section, filled only by `skill-lessons`.
+- A correction from the user: a fix to the owner's text, as "Write a
+  fix into skill text" says. A lesson saved before `skill-fix`
+  existed stays in the Lessons section, which only `skill-lessons`
+  fills.
 - A rule that is easy to miss: also a line in Final checks.
 
 To find a rule's owner, search every skill and `ai/AGENTS.md` for the
@@ -106,8 +109,8 @@ other copy with a pointer.
   check script reads names and links in the text as real ones.
 - Give a new skill the sections it needs from this list, in this
   order: Inputs, the steps, Output format, Guardrails, When a tool is
-  missing, Final checks, References, Remembering corrections and an
-  empty Lessons section.
+  missing, Final checks, References, and Remembering corrections,
+  which links `skill-fix`.
 
 ## Change a skill
 
@@ -165,44 +168,91 @@ A new skill needs these on top of the steps in "Change a skill":
 4. Open the pull request with the `pull-request` skill only after both
    reviews ran.
 
-## Turn saved lessons into skill text
+## Write a fix into skill text
 
-Do this only when the user asks, as `skill-lessons` says.
+The `skill-fix` skill sends each correction from the user here
+before it writes a fix. Most corrections need a new rule, but some
+need none, so sort each one first by what the skill's text says now
+and by whether the session had loaded the skill:
 
-1. In a worktree of the skills repository, list the lessons:
+| The text | Kind | The fix |
+| --- | --- | --- |
+| Says nothing on it | New | Add one rule next to the rules on the same topic |
+| Says it too narrowly or wrongly | Widen | Rewrite that sentence so it covers the case |
+| Says it, but the session had not loaded the skill | Route | Make the skill the session had loaded say when to load the owner |
+| Says it, and the session had loaded the skill | Repeat | No new rule. Add a Final checks line when the rule is easy to miss |
 
-   ```bash
-   skill-lessons promote-start <skill> --checkout <worktree>
-   ```
-
-2. Place each lesson's rule as "Where a rule goes" says. A lesson on a
-   topic another skill owns goes to that owner. Write each rule in
-   your own words.
-3. Before you commit, check the skill the lessons came from. When the
-   skill now has more lines than before, add
-   `--growth-reason "<why>"`:
-
-   ```bash
-   skill-lessons promote-check <skill> --checkout <worktree>
-   ```
-
-   It fails when lines added to that skill copy five words in a row
-   from one of its lessons. It reads no other file, so check by hand
-   that a rule you put in another file copies no five words in a row
-   from its lesson.
-4. Check and review the change, and open the pull request, as "Check
-   and review a change" says.
-5. After the pull request merges, retire the lessons:
+1. Find the rule's owner as "Where a rule goes" says. A correction on
+   a topic another skill owns is a fix to that skill.
+2. Check that the rule holds on every PC and in every repository. A
+   rule for one repository goes in its own `AGENTS.md` by a normal
+   pull request. A rule for one PC is not a fix, as `skill-fix` says.
+3. Look for an earlier fix of the same mistake in the owner's
+   history. First get the owner's fix worktree with
+   `skill-fix start <skill>`, as `skill-fix` says. Then search the
+   worktree:
 
    ```bash
-   skill-lessons retire <skill> <id>... --after-push \
-     --checkout <worktree>
+   git -C <worktree> log --format='%h %s%n%b' --grep='^Missed:' \
+     HEAD --remotes='*/main' -- <skill folder>
    ```
 
-   `--after-push` refuses until the default branch has your branch's
-   copy of the lessons' own skill file. When that file did not change,
-   it passes before the merge too, so check first that the pull
-   request merged.
+   `HEAD` holds this PC's fixes that have not merged yet, and
+   `--remotes='*/main'` holds the merged ones. In a merged fix pull
+   request, each fix's title comes before its `Missed:` and
+   `Intent:` lines. The search finds only fixes that were committed.
+   For a Route, search the folder of the skill the session had
+   loaded too.
+4. Act on an earlier fix with the same `Intent:` line. Compare the
+   lines it added with the installed copy in `~/.agents/skills/`.
+   Print them with `git -C <worktree> show <hash> -- <skill folder>`.
+   - The installed copy lacks them: the fix has not merged, or this
+     PC has not updated since. Write no new fix. Tell the user that
+     fix covers the correction once it merges and this PC runs
+     `pde-installer update`.
+   - The installed copy has them: the rule was written once and did
+     not hold. Sort the correction as a Repeat, or as a Route when
+     the session had not loaded the skill. Name that fix's title in
+     your `Missed:` line.
+5. Write the fix in your own words, by "Write for a person". Someone
+   who missed the task must be able to follow it.
+6. When a program could check the rule, say so to the user. The
+   script and its test go in their own pull request, by "Change a
+   skill".
+7. Write and commit the fix as the `skill-fix` skill says.
+
+A Route fix goes in the skill the session had loaded when that skill
+leads to the owner's task, as `implement-plan` says to load
+`git-messages` before a commit message. When no loaded skill leads
+there, the owner's routing line in `ai/AGENTS.md` gets the fix
+instead. That goes by a normal pull
+request, as "Change a skill" says, since `skill-fix` commits inside
+one skill's folder only.
+
+A `repeats` report from `skill-fix commit` is not a Repeat. It finds
+eight words in a row that another skill also has. Replace that copy
+with a pointer to its owner when the other skill owns the rule.
+
+A lesson saved before `skill-fix`, and a rule the user gave a
+session that runs the `herdr-hub` skill, are corrections too. That
+session keeps such rules in `rules.md` in its run folder, the folder
+that holds its notes for one run. Sort each one the same way, with
+two more outcomes:
+
+- A rule about that one run only, such as which pull request merges
+  first, is not a fix. It stays in `rules.md`, or its lesson is
+  dropped.
+- A lesson whose rule the skill's text gained after it was saved
+  needs no fix. Retire it.
+
+In your report, give each lesson or rule you drop or retire with no
+fix, and why. List a skill's lessons with
+`skill-lessons list <skill>`. Retire a lesson once its fix merges and
+this PC updates, or at once when it needs no fix:
+
+```bash
+skill-lessons retire <skill> <id>...
+```
 
 ## Review a skill change
 
@@ -270,8 +320,8 @@ that output reports the missing output as a finding.
   against Final checks instead of the two reviews. Then say in your
   report that the fresh reviews did not run, so whoever gave you the
   task arranges them.
-- If `skill-lessons` is not installed, turn no lessons into skill
-  text, and say so.
+- If `skill-fix` is not installed, write no fix. Say the correction
+  holds only in this session.
 
 ## Final checks
 
@@ -282,6 +332,7 @@ that output reports the missing output as a finding.
 - Each reference file is linked from SKILL.md with when to read it.
 - A new skill is listed everywhere the repository's `AGENTS.md` says
   a new skill goes.
+- A fix adds no rule the skill already states.
 - Both reviews ran, or your report says they did not.
 - The skill names no plan, card or pull request, and no repository a
   step does not run in.
@@ -309,9 +360,9 @@ is unclear. When a guide and this skill differ, follow this skill.
 Follow every lesson in the Lessons section below. Each is a correction
 the user made, so a lesson wins when it disagrees with the text above.
 When the user corrects how you write, place or review skill text,
-follow [skill-lessons](../skill-lessons/SKILL.md) with the skill name
-`skill-development`, and offer once to save the correction as a
-lesson. A correction to the wording of one sentence belongs to
+follow [skill-fix](../skill-fix/SKILL.md) with the skill name
+`skill-development`, and offer once to fix the skill's text. A
+correction to the wording of one sentence belongs to
 `plain-direct-english` instead.
 
 ## Lessons

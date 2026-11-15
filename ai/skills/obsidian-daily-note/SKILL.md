@@ -252,10 +252,9 @@ the user made, so a lesson wins when it disagrees with the text above,
 except that you still never read, list, search or open anything under
 the daily-note folder, and never edit a file there directly. When the
 user corrects how you pick the heading, write the section, run the
-checks or report the result, follow
-[skill-lessons](../skill-lessons/SKILL.md) with the skill name
-`obsidian-daily-note`, and offer once to save the correction as a
-lesson.
+checks or report the result, follow [skill-fix](../skill-fix/SKILL.md)
+with the skill name `obsidian-daily-note`, and offer once to fix the
+skill's text.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

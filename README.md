@@ -115,7 +115,8 @@ Vibe binaries plus repo-managed AI config.
 | Code documentation | `ai/skills/code-documentation/` | `~/.agents/skills/code-documentation/` | Proportional source and test explanations |
 | Plain direct English | `ai/skills/plain-direct-english/` | `~/.agents/skills/plain-direct-english/` | Clear sentences in comments, docs and other prose, and breakdowns of hard ones |
 | Status updates | `ai/skills/status-updates/` | `~/.agents/skills/status-updates/` | Status updates, recaps and questions a new reader understands on a phone |
-| Skill lessons skill | `ai/skills/skill-lessons/` | `~/.agents/skills/skill-lessons/` | How to follow and save the lessons in a skill's Lessons section |
+| Skill fix skill | `ai/skills/skill-fix/` | `~/.agents/skills/skill-fix/` | Writes your corrections into a skill's text as commits you review in one fix pull request per PC |
+| Skill lessons skill | `ai/skills/skill-lessons/` | `~/.agents/skills/skill-lessons/` | How to follow the lessons saved in a skill's Lessons section before skill fixes |
 | Skill development | `ai/skills/skill-development/` | `~/.agents/skills/skill-development/` | Writing and reviewing skills so each rule has one owner and reads plainly |
 | Comment review skill | `ai/skills/comment-review/` | `~/.agents/skills/comment-review/` | Saves code comments as a review you answer one per screen |
 | Go development | `ai/skills/go-development/` | `~/.agents/skills/go-development/` | Shared Go development guidance |
@@ -136,6 +137,7 @@ Vibe binaries plus repo-managed AI config.
 | PR write approval | `pdev/`, `chezmoi/` | `~/.local/bin/{pde-gh-write,pde-pr-approve,gh}`, `~/.local/share/pde/herdr-plugins/pde-approval/` (full only) | Agents write to pull requests only after you approve; see the [approval docs](pdev/docs/README.md) |
 | Comment review | `glimmer/`, `chezmoi/` | `~/.local/bin/glimmer`, `~/.local/share/pde/herdr-plugins/glimmer/` (full only) | Decide on an AI's Go, Python and Rust comments one per phone screen with Ctrl+b e, and keep agents from changing the ones you approved; run `glimmer help` for its commands |
 | Skill lessons | `skill-lessons/` | `~/.local/bin/skill-lessons` (client and full) | Saves your corrections as lessons in the installed copy of a skill; see the [skill-lessons README](skill-lessons/README.md) |
+| Skill fix | `skill-fix/` | `~/.local/bin/skill-fix` (client and full) | Commits a fix to a skill's text in a separate worktree, then pushes it to one fix pull request per PC |
 | Hub | `hub-rs/` | `~/.local/bin/hub` (full only) | Shows, messages, parks and tidies the Herdr sessions a hub session runs; see the [hub README](hub-rs/README.md) |
 | prs | `prs/` | `~/.local/bin/prs` (full only) | Reads your open pull requests on a phone; see [GitHub Pull Request Reviews](chezmoi/README.md#github-pull-request-reviews) |
 | Automatic updates | `chezmoi/` | `~/.config/systemd/user/pde-update.{service,timer}` (full only) | Runs `pde-installer update` every hour; set `update_interval` in `~/.config/pde/config.json` to change it. See the [update reference](pde-installer/docs/reference/commands.md#pde-installer-update) |
@@ -190,8 +192,8 @@ loads `~/.agents/skills/`.
 | `herdr-handoff` | Hand work to a new session in a new Herdr workspace, with a handoff file it reads first | "Hand the docs work to a new session" |
 | `herdr-hub` | Coordinate other Herdr sessions: pass messages, answer their questions, run merges | "You are the hub of this run" |
 | `auto-run` | Brief the user on ready cards and roadmaps, then have a separate hub plan, build, review and file the approved list as PRs | "Set up an auto run", "Build the rest of the roadmap overnight" |
-| `session-review` | Review a session for token use, lessons to save and jobs a local model could run, then wait for your pick | "Review this session for token usage, skill lessons and local model handoff" |
-| `conclude-session` | Close out a session: review it, wait for your pick, then save lessons, open one skill PR and hand off or report | "conclude-session" |
+| `session-review` | Review a session for token use, skill fixes to write and jobs a local model could run, then wait for your pick | "Review this session for token usage, skill lessons and local model handoff" |
+| `conclude-session` | Close out a session: review it, wait for your pick, then commit skill fixes, open one skill PR and hand off or report | "conclude-session" |
 | `model-routing` | Pick the model for each agent job, and check and step up failed local jobs | "Which model should run these test jobs?" |
 | `review-plan` | Review a plan, PR, commit, or diff for architecture, bugs, completeness | "Use review-plan on docs/design-auth.md with focus on security" |
 
@@ -200,7 +202,7 @@ shared `AGENTS.md` into `~/.codex/` and `~/.claude/` so the workflow defaults
 stay aligned with the rest of the tree. `install client` installs only
 `obsidian-zettel`, `obsidian-daily-note`, `plain-direct-english`,
 `behavior-focused-testing`, `delegate`, `model-routing`,
-`skill-lessons` and `status-updates`; every other skill is full-only.
+`skill-fix` and `status-updates`; every other skill is full-only.
 
 ## Privacy Checks
 

@@ -23,8 +23,10 @@ MERGE_CHECK = SCRIPTS / "merge-check.sh"
 MSG = SCRIPTS.parents[1] / "git-messages/scripts/msg"
 PR_FIELDS = (
     "title,body,state,isDraft,mergeable,baseRefName,headRefOid,"
-    "statusCheckRollup"
+    "statusCheckRollup,commits"
 )
+# A skill-fix commit's body has one line starting with each word.
+FIX_WORDS = ("Missed:", "Intent:")
 TESTS_SHOWN = 5
 FILES_SHOWN = 5
 CHECKS_SHOWN = 3
@@ -215,7 +217,9 @@ def summarize_squash(pr: dict, out: Path, problems: list[str]) -> str:
 
     Writes the PR's title and description to ``pr.txt``, the squash
     message to ``squash.txt``, and the message without its title to
-    ``body.txt``, the file the merge command takes.
+    ``body.txt``, the file the merge command takes. The message adds
+    each skill fix commit's lines after the Overview, as
+    ``list_fix_notes`` says.
 
     Args:
         pr: Fields from ``gh pr view``.
@@ -240,8 +244,10 @@ def summarize_squash(pr: dict, out: Path, problems: list[str]) -> str:
     if squash.returncode != 0:
         problems.append("squash message")
         return f"squash: {squash.stderr.strip()}"
-    (out / "squash.txt").write_text(squash.stdout)
-    _, _, rest = squash.stdout.partition("\n\n")
+    notes = list_fix_notes(pr["commits"])
+    text = "\n\n".join([squash.stdout.rstrip("\n"), *notes]) + "\n"
+    (out / "squash.txt").write_text(text)
+    _, _, rest = text.partition("\n\n")
     (out / "body.txt").write_text(rest)
     lint = subprocess.run(
         [sys.executable, str(MSG), "lint", str(out / "squash.txt")],
@@ -254,6 +260,39 @@ def summarize_squash(pr: dict, out: Path, problems: list[str]) -> str:
         errors = lint.stdout.strip().splitlines() or ["no output"]
         return f"squash lint: {len(errors)} errors; first: {errors[0]}"
     return "squash lint: ok"
+
+
+def list_fix_notes(commits: list[dict]) -> list[str]:
+    """Return each skill fix commit's title and its Missed and Intent lines.
+
+    A squash keeps only the PR's Overview, and a fix PR's Overview never
+    changes. These notes keep each fix on the base branch, where
+    skill-development looks for an earlier fix of the same mistake.
+
+    Args:
+        commits: The PR's commits, as ``gh pr view`` lists them.
+
+    Returns:
+        One note per commit whose body has both lines. A note is the
+        title, then each body paragraph that holds one of the lines.
+    """
+    notes = []
+    for commit in commits:
+        body = commit["messageBody"].replace("\r\n", "\n")
+        kept = [
+            paragraph.strip("\n")
+            for paragraph in body.split("\n\n")
+            if any(
+                line.startswith(FIX_WORDS) for line in paragraph.splitlines()
+            )
+        ]
+        lines = "\n".join(kept).splitlines()
+        has_both = all(
+            any(line.startswith(word) for line in lines) for word in FIX_WORDS
+        )
+        if has_both:
+            notes.append("\n".join([commit["messageHeadline"], *kept]))
+    return notes
 
 
 def run(*command: str) -> str:

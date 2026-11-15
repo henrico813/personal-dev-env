@@ -58,9 +58,9 @@ Follow every lesson in the Lessons section below. Each is a correction
 the user made, so a lesson wins when it disagrees with the text above,
 except that you still stop for the user before anything public or hard
 to undo. When the user corrects how you brief, check or review a
-subagent's work, follow [skill-lessons](../skill-lessons/SKILL.md) with
-the skill name `delegate`, and offer once, in your next summary, to
-save the correction as a lesson.
+subagent's work, follow [skill-fix](../skill-fix/SKILL.md) with the
+skill name `delegate`, and offer once, in your next summary, to fix the
+skill's text.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

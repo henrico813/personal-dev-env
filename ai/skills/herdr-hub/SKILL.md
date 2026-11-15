@@ -447,8 +447,8 @@ shows `you`. It waits on the same entry, not a new one. Close its tab
 yourself once the session that took over is running.
 
 Add `Depends on:` when the question rests on an earlier decision, and
-name who made it. When the user answers, delete the entry, and record
-the answer in `rules.md` when it stands for later. Run
+name who made it. When the user answers, delete the entry. Record an
+answer that sets a rule for later work in `rules.md`. Run
 `card note <key> "<the answer>" --answered` only when no other entry
 title starts with that key. Bring the user everything that waits on
 them with:
@@ -632,10 +632,11 @@ switch its effort in that session, and never run `hub handoff` again.
   short message per turn, by `status-updates`. Keep the detail in
   `<run folder>/notes.md`. The user reads your pane while news keeps
   arriving and cannot keep up with a fast stream.
-- When the user's word differs from your handoff or this skill,
-  follow the user and record the new rule in `rules.md`. You still
-  never answer an approval or question shown in another session's
-  pane.
+- Follow the user when their word differs from your handoff or this
+  skill, except the first rule above, and keep it in `rules.md` until
+  its fix merges. For a rule that holds in later runs, unlike which
+  pull request merges first, offer once to fix the skill's text. A
+  worker writes it, as [skill-fix](../skill-fix/SKILL.md) step 3 says.
 - During an auto run, answer "status update" with the output of
   `hub auto now --run "<auto run folder>"`, word for word, then your
   own news. The `auto-run` skill covers the rest of the run.
@@ -653,9 +654,8 @@ Follow every lesson in the Lessons section below. Each is a correction
 the user made, so a lesson wins when it disagrees with the text above,
 except that you still never answer an approval or question shown in
 another session's pane. When the user corrects how you run the hub,
-pass messages or merge, follow
-[skill-lessons](../skill-lessons/SKILL.md) with the skill name
-`herdr-hub`, and offer once to save the correction as a lesson.
+pass messages or merge, follow [skill-fix](../skill-fix/SKILL.md)
+with the skill name `herdr-hub`, as Rules says on the user's word.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

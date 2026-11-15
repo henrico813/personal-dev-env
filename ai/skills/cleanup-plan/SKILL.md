@@ -294,8 +294,8 @@ owner's comment approvals" says. A lesson never counts as the user's
 approval to remove a worktree that cleanup blocked. When the user
 corrects how you clean up a finished plan's worktree, branch, main
 checkout or plan status, follow
-[skill-lessons](../skill-lessons/SKILL.md) with the skill name
-`cleanup-plan`, and offer once to save the correction as a lesson.
+[skill-fix](../skill-fix/SKILL.md) with the skill name `cleanup-plan`,
+and offer once to fix the skill's text.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

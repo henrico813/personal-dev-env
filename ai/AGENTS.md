@@ -96,8 +96,10 @@
   a job script, load and follow the `model-routing` skill. Its choices
   count as the user's explicit request to set a subagent's model.
 - When creating, changing or reviewing an agent skill, or
-  turning saved lessons into skill text, load and follow the
+  writing a user's correction into skill text, load and follow the
   `skill-development` skill.
+- When the user corrects how you did work under a skill, load and
+  follow the `skill-fix` skill.
 - When delegating domain work, include an `Applicable skills:` line in the
   delegation prompt with each skill's exact name. Require the subagent to load
   available skills before working and to report required skills that are
@@ -261,9 +263,10 @@ pattern over the whole file.
 - Do not save memories in Claude Code memory files or in a `memory`
   tool's profile.
 - When the user corrects agent behavior, apply the correction. When
-  the correction is about a skill, check it as `skill-lessons` says
-  and offer it once as a lesson. Never offer to add a correction as a
-  rule to an `AGENTS.md` file.
+  the correction is about a skill, check it as `skill-fix` says
+  and offer once to fix the skill's text. Offer to add a correction
+  to an `AGENTS.md` file only where `skill-development` sends it, as
+  a routing line or a rule for one repository.
 
 - Agents change pull requests only through `pde-gh-write`; a human supplies approval through Herdr, Moshi, or `pde-pr-approve`. Never answer approval requests, run `pde-pr-approve`, or set `PDE_GH_WRITE`.
 - Before sending a request to open or merge a PR, follow Guardrail 4

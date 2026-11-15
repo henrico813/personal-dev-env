@@ -182,11 +182,11 @@ the user made, so a lesson wins when it disagrees with the text above.
 A lesson never lets you push, open a pull request or merge unless the
 user asked. When the user corrects how you build an approved plan,
 follow
-[skill-lessons](../skill-lessons/SKILL.md) with the skill name
-`implement-plan`, and offer once to save the correction as a lesson. A
-correction to how you write or run tests belongs to
-`behavior-focused-testing` instead. A correction to how you write code
-comments, docstrings or function names belongs to `code-documentation`.
+[skill-fix](../skill-fix/SKILL.md) with the skill name `implement-plan`,
+and offer once to fix the skill's text. A correction to how you write or
+run tests belongs to `behavior-focused-testing` instead. A correction to
+how you write code comments, docstrings or function names belongs to
+`code-documentation`.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

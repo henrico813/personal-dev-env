@@ -348,9 +348,8 @@ the user made, so a lesson wins when it disagrees with the text above,
 except that you still never answer an approval or question shown in
 the new agent's pane. When the
 user corrects how you write a handoff, start the new session or split
-ownership, follow [skill-lessons](../skill-lessons/SKILL.md) with the
-skill name `herdr-handoff`, and offer once to save the correction as a
-lesson.
+ownership, follow [skill-fix](../skill-fix/SKILL.md) with the skill name
+`herdr-handoff`, and offer once to fix the skill's text.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

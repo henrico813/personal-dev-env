@@ -14,7 +14,7 @@ Each check scores one point.
 - How to run
 - Case 1: a rule another skill owns
 - Case 2: a review that finds a conflict
-- Case 3: saved lessons for two skills
+- Case 3: four corrections to sort
 - Case 4: a new skill near another skill's task
 - Case 5: a review of a rule with no reason
 
@@ -80,40 +80,61 @@ Checks:
 4. It says that a change to the rule belongs in update-writer.
 5. No filler words, hedges or closing offer.
 
-## Case 3: saved lessons for two skills
+## Case 3: four corrections to sort
 
 ```text
-The checkout ~/src/skills keeps agent skills in ai/skills/. The user
-writes: "Turn the saved lessons of plot-planner into rules."
+The checkout ~/src/skills keeps agent skills in ai/skills/. While you
+planned the Hill Farm beds under the plot-planner skill, the user
+corrected you four times:
 
-Running `skill-lessons promote-start plot-planner --checkout
-~/src/skills` printed:
+1. "Name each bed by its row and number, such as row 2 bed 3."
+2. "You called the test test_empty. Start each test name with the
+   function under test."
+3. "You skipped the soil check again."
+4. "You left out the drip lines. Plan drip lines for every bed."
 
-L1: Name each bed by its row and number, such as "row 2 bed 3", in
-    every plan.
-L2: Start each test name with the function under test, then the
-    result, as in test_planner_rejects_empty_rows.
+plot-planner's section "Bed names" says: "Name each bed so the user
+can find it." Its step 2 says: "Check the soil before you plan a
+bed." Another skill, test-style, owns how tests are named. Its text
+says: "Name each test for the behavior it checks." A third skill,
+water-plan, says: "Plan drip lines for every bed." You did not load
+water-plan in this session, and plot-planner never names it.
 
-plot-planner writes plans for garden beds; its text has a section
-"Bed names". Another skill, test-style, owns how tests are named. Its
-text says: "Name each test for the behavior it checks."
+In the fix worktree that `skill-fix start plot-planner` made, this
+command printed one earlier fix, merged in a fix pull request:
 
-Say what you change, in which files, and each command you run, in
-order.
+$ git -C ~/.local/share/skill-fix/personal log --format='%h %s%n%b' --grep='^Missed:' HEAD --remotes='*/main' -- ai/skills/plot-planner
+4f2a9c1 fix(skills): corrections from desk (#12)
+This PR holds one commit per correction to a skill, all made on one
+PC. Read the commits one at a time; each message says what the agent
+missed and what the fix changes.
+
+fix(plot-planner): check the soil first
+Missed: the agent planned beds without a soil check.
+Intent: agents check the soil before they plan any bed.
+
+`git show 4f2a9c1 -- ai/skills/plot-planner` adds the step 2 line
+above, and the installed copy in ~/.agents/skills/plot-planner has it.
+
+Say how you sort each correction, which skill each fix goes to, and
+what each fix changes.
 ```
 
 Checks:
 
-1. L1 goes in plot-planner's "Bed names" section.
-2. L2 goes in test-style, the owner, and not in plot-planner.
-3. Each rule is reworded, not copied from the lesson.
-4. `promote-check plot-planner` runs before the commit, the reply
-   checks the test-style text by hand for words copied from L2, and
-   the check script runs with `--base`.
-5. Two fresh reviews run before the pull request opens.
-6. L1 and L2 are retired only after the pull request merges, with
-   `--after-push`.
-7. Nothing is written into a Lessons section by hand.
+1. Correction 1 widens the "Bed names" sentence in plot-planner.
+2. Correction 2 adds a new rule to test-style, the owner, and nothing
+   to plot-planner.
+3. Correction 3 is a Repeat: it adds no rule, since step 2 already
+   says it, and may add a Final checks line.
+4. The `Missed:` line of correction 3's fix names the earlier fix,
+   "fix(plot-planner): check the soil first".
+5. Correction 4 is a Route: plot-planner gains a line that says when
+   to load water-plan, and water-plan's rule is not copied.
+6. Each rule is reworded, and none names Hill Farm or test_empty.
+7. Each fix is committed through the `skill-fix` skill, after the
+   user sees its diff.
+8. Nothing is written into a Lessons section, and no lesson is saved.
 
 ## Case 4: a new skill near another skill's task
 

@@ -393,8 +393,8 @@ answer an approval or question shown in another session's pane. Here
 "the user" is the human who asked for the run, not a parent agent.
 When the user corrects how you brief, start, plan, build, review,
 ship or report an auto run, follow
-[skill-lessons](../skill-lessons/SKILL.md) with the skill name
-`auto-run`, and offer once to save the correction as a lesson.
+[skill-fix](../skill-fix/SKILL.md) with the skill name `auto-run`, and
+offer once to fix the skill's text.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

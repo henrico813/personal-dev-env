@@ -345,8 +345,8 @@ Follow every lesson in the Lessons section below. Each is a correction
 the user made, so a lesson wins when it disagrees with the text above.
 When the user corrects how you research, structure or write a design
 doc, or how you ask them questions about it, follow
-[skill-lessons](../skill-lessons/SKILL.md) with the skill name
-`design-doc`, and offer once to save the correction as a lesson.
+[skill-fix](../skill-fix/SKILL.md) with the skill name `design-doc`, and
+offer once to fix the skill's text.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

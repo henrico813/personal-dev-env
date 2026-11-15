@@ -2,10 +2,11 @@
 name: conclude-session
 description: Closes out the current session after one reply from the
   user. Runs session-review, adds a handoff, a status update and a
-  cleanup to its pick list, then saves the picked lessons, opens a
-  pull request with the picked skill and rules-file edits, and runs
+  cleanup to its pick list, then commits the picked skill fixes, opens
+  a pull request with the picked skill and rules-file edits, and runs
   the picked closing steps. Use when the user types conclude-session
-  or asks to close out or wrap up this session.
+  or asks to close out or wrap up this session. Do not use it for a
+  session review alone; session-review owns that.
 metadata:
   pde-workflow: "true"
   scope: personal
@@ -14,9 +15,9 @@ metadata:
 # Conclude Session
 
 The user ends a session with a run of prompts: a session review,
-picks from it, lessons to save, a pull request, then a status update
-or a handoff. This skill runs those steps and stops once, for the
-user's pick.
+picks from it, fixes to commit, a pull request, then a status update
+or a handoff. This skill runs those steps and stops for the user's
+pick, and again for the user's yes to the picked fixes.
 
 ## Inputs
 
@@ -64,10 +65,10 @@ of your own. Never print whole messages.
 
 Send session-review's step 6 message with three changes:
 
-- Number every item in one run, proposals first, then lessons, so
+- Number every item in one run, proposals first, then fixes, so
   each number names one item.
 - Before its last line, add a Closing steps list, numbered after the
-  lessons, with each step that applies:
+  fixes, with each step that applies:
   - Handoff: hand the work that is left to a new session. Offer it
     when work is left, including work planned but not started.
   - Status update: a recap a new reader follows.
@@ -85,9 +86,11 @@ reply of "none" ends the skill with nothing changed.
 Do the picked items in this order, so the last message can name
 everything that changed:
 
-1. Lessons. Save each picked lesson with the command in step 4 of
-   [skill-lessons](../skill-lessons/SKILL.md). The pick counts as the
-   user saying "remember".
+1. Fixes. Write each picked fix as the
+   [skill-fix](../skill-fix/SKILL.md) skill says, and show the user
+   every diff in one message, as its step 3 says for several fixes.
+   The pick alone commits nothing. Commit each fix the user says yes
+   to.
 2. Skill and rules-file edits. The source of a shared skill is in
    the personal-dev-env checkout, under `ai/skills/<name>/`, not the
    installed copy. Ask the user for the checkout's path when you
@@ -103,8 +106,8 @@ everything that changed:
    instead, as session-review says.
 3. Cleanup, with the [cleanup-plan](../cleanup-plan/SKILL.md) skill.
 4. Handoff, with the [herdr-handoff](../herdr-handoff/SKILL.md)
-   skill. Name the pull request and the saved lessons in the handoff
-   file.
+   skill. Name the pull request and the committed fixes in the
+   handoff file.
 
 When a pull request still waits for the user's approval, name its
 branch and say that the request is waiting. Never write a pull
@@ -112,16 +115,26 @@ request number or link you have not seen.
 
 ### 4. Report
 
+Before the message, run `skill-fix sync`, then `skill-fix status`.
+The sync pushes fixes whose earlier push failed, such as with no
+network, to the fix pull request that `skill-fix` keeps open for
+this PC.
+
 End with one message by the
 [status-updates](../status-updates/SKILL.md) skill. When the user
-picked a status update, this message is it. Otherwise keep it to the
-lessons saved, with the line each save printed, each pull request,
-the handoff's pane or file, and each pick you could not do, with
-why.
+picked a status update, this message is it. Otherwise keep it to:
+
+- each fix committed, with its commit's hash
+- each fix pull request, with its state and its number of held
+  fixes, the fixes `skill-fix` keeps on this PC, from
+  `skill-fix status`
+- the skill or rules-file pull request from step 3 item 2
+- the handoff's pane or file
+- each pick you could not do, with why
 
 ## Output format
 
-Step 2's message, for a session with one proposal and one lesson:
+Step 2's message, for a session with one proposal and one fix:
 
     Session review of Tally P5 build, saved to
     ~/.local/state/pde/session-reviews/20261105-tally-p5.md.
@@ -133,7 +146,7 @@ Step 2's message, for a session with one proposal and one lesson:
        skill PR. Saves about 1.4M tokens (estimate: 4,000 tokens
        read again by 90 steps, 4 times).
 
-    Lessons to save, pick by number
+    Fixes to write, pick by number
     2. Print test failures, never whole test logs -> auto-run
 
     Local models: a script could run the 5 test runs.
@@ -151,19 +164,21 @@ Step 2's message, for a session with one proposal and one lesson:
   request. The user approves it.
 - Change only what the user picked.
 - Offer each item once per session. When the user turns down a whole
-  kind of proposal, offer once to save a lesson that starts "Do not
-  propose" under the skill name `session-review`, not
-  `conclude-session`, as session-review says.
-- Edit skill and rules files only on the branches from step 3, never
-  on the default branch, in the installed copy under
-  `~/.agents/skills`, or on the session's feature branch.
+  kind of proposal, offer once to add it to session-review's Do not
+  propose list as a fix to `session-review`, not `conclude-session`,
+  as session-review says.
+- Edit skill and rules files only on the branches from step 3 item
+  2, or for a fix, in the worktree `skill-fix start` gives. Never
+  edit them on the default branch, in the
+  installed copy under `~/.agents/skills`, or on the session's
+  feature branch.
 - Read no other session, and no whole message from the database.
 - Never turn saved lessons into skill text. That is a separate job
   the user starts, and it follows the `skill-development` skill.
 
 ## When a tool is missing
 
-- The script fails, or `skill-lessons` is not installed: do what
+- The script fails, or `skill-fix` is not installed: do what
   session-review's When a tool is missing section says.
 - The compaction query fails: say in the review that it leaves out
   corrections from before the compaction.
@@ -173,11 +188,13 @@ Step 2's message, for a session with one proposal and one lesson:
 ## Final checks
 
 - One message asked for picks, and nothing changed before the reply.
+- No fix was committed before the user said yes to its diff.
 - Every change matches a picked number.
 - Skill and rules-file edits sit only on close-out branches, one
   pull request per repository, none merged by you.
-- The last message names the saved lessons, each pull request or
-  waiting request, and each pick not done.
+- The last message names the committed fixes, each fix pull
+  request's state, each pull request or waiting request, and each
+  pick not done.
 
 ## References
 
@@ -189,8 +206,8 @@ Step 2's message, for a session with one proposal and one lesson:
 Follow every lesson in the Lessons section below. Each is a correction
 the user made, so a lesson wins when it disagrees with the text above.
 When the user corrects how you close out a session, follow
-[skill-lessons](../skill-lessons/SKILL.md) with the skill name
-`conclude-session`, and offer once to save the correction as a lesson.
+[skill-fix](../skill-fix/SKILL.md) with the skill name
+`conclude-session`, and offer once to fix the skill's text.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

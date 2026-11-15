@@ -1,12 +1,13 @@
 ---
 name: session-review
 description: Reviews an OpenCode session for token use, corrections
-  worth saving as skill lessons, and work a local model could take.
+  worth writing into skill text, and work a local model could take.
   A script reads the session's numbers from the OpenCode database, so
   the review spends tokens only on judgment. Proposes at most three
   changes and changes nothing until the user picks. Use when the user
   asks to review this session for token usage, efficiency, skill
-  lessons or local model handoff.
+  lessons or local model handoff. Do not use it to close out a
+  session; conclude-session owns that.
 metadata:
   pde-workflow: "true"
   scope: personal
@@ -15,16 +16,17 @@ metadata:
 # Session Review
 
 The user often ends a long session by asking what made it costly,
-which corrections should become lessons, and what a local model could
-have done. A script prints the session's numbers in about 20 lines.
-You judge from those lines and the conversation, and propose a few
-changes the user can keep for good.
+which corrections should become skill fixes, and what a local model
+could have done. A script prints the session's numbers in about 20
+lines. You judge from those lines and the conversation, and propose a
+few changes the user can keep for good.
 
 ## Inputs
 
 - The session: the current one, or an ID the user names.
 - This conversation, for the user's corrections and decisions.
-- Other sessions, only when the user asks for lessons across them.
+- Other sessions, only when the user asks for corrections across
+  them.
 
 ## Steps
 
@@ -62,7 +64,7 @@ say so at the top of the review and the message.
 Write at most three proposals, ranked by saving. Each one says:
 
 - What changes, and where it would live: a skill pull request, a
-  skill lesson, or a rules file such as `AGENTS.md`.
+  skill fix, or a rules file such as `AGENTS.md`.
 - The saving, measured from the script's lines or marked
   "estimate" with its arithmetic. For example, 30,000 tokens of
   output read again by 80 later steps is about 2.4M tokens.
@@ -71,14 +73,16 @@ Write at most three proposals, ranked by saving. Each one says:
 
 Drop any proposal on the Do not propose list below.
 
-### 3. Lessons
+### 3. Fixes
 
 List the corrections the user made in this session as a numbered
-pick list. Keep only those that pass step 3 of
-[skill-lessons](../skill-lessons/SKILL.md), and name the skill each
-would go to. Mine other sessions only when the user asks, and only
-the sessions they name; mining a day of sessions has cost over 13M
-tokens.
+pick list. Keep only those that pass "Check the correction" in
+[skill-fix](../skill-fix/SKILL.md), and name the skill each would go
+to. In the review file, give each a `Passes:` line on why it passes,
+as [references/example.md](references/example.md) shows. Write each
+fix the user picks by `skill-fix`. Mine other
+sessions only when the user asks, and only the sessions they name;
+mining a day of sessions has cost over 13M tokens.
 
 ### 4. Local models
 
@@ -114,9 +118,10 @@ When the user corrected a mistake in a hub run folder's `rules.md`,
 `notes.md` or `decisions.md`, add a trial case for it: the situation
 before the mistake, with the correction as its answer key. A case is
 review data, like the review file, so add it without waiting for the
-user's pick, and run it with the others.
+user's pick, and run it with the others. When no skill's text holds
+that correction yet, also list it in step 3's pick list.
 
-At least one of step 2's proposals, or one lesson, helps a local
+At least one of step 2's proposals, or one fix, helps a local
 model take over a workflow. It may use cloud and local models
 together, or a script that a local agent can run and that saves a
 cloud agent tokens. Proposals from the two maps count toward step
@@ -166,7 +171,7 @@ points to the `model-routing` skill.
     1. <change> in <where it lives>. Saves <n> tokens (measured).
     2. ...
 
-    Lessons to save, pick by number
+    Fixes to write, pick by number
     1. <rule> -> <skill>
 
     Fallback: <the role least ready for a local model, and its fix>.
@@ -180,7 +185,7 @@ points to the `model-routing` skill.
 
 ## Guardrails
 
-- Change nothing, including skills, lessons and rules files, until
+- Change nothing, including skills, fixes and rules files, until
   the user picks. The review file and new trial cases
   are review data, so write them before the pick.
 - Edit a shared rules file only when this session owns it or the
@@ -197,27 +202,27 @@ points to the `model-routing` skill.
   fine; leaving it out is not.
 
 When the user rejects a proposal as a kind they never want, offer
-once, by [skill-lessons](../skill-lessons/SKILL.md), to save it as a
-lesson that starts "Do not propose". The lesson then holds in every
-review, and the user can move it into this list by a pull request.
+once, by [skill-fix](../skill-fix/SKILL.md), to add it to this list
+as a fix. It holds in every review once the fix merges.
 
 ## When a tool is missing
 
 - The script fails or the database is missing: review from the
   conversation alone and say so.
 - No subagent tool: check the review yourself and say so.
-- `skill-lessons` is not installed: list the lessons and offer
-  nothing to save.
+- `skill-fix` is not installed: list the fixes, and say they hold
+  only in this session.
 
 ## Final checks
 
 - The review's Numbers section matches the script's output.
 - At most three proposals, each with a saving marked measured or
   estimate, and where it would live.
-- No proposal is on the Do not propose list or a lesson.
+- No proposal is on the Do not propose list or in a lesson that
+  starts "Do not propose".
 - The review has a Fallback map, an Efficiency map and a Trials
   section, covering every role the session used.
-- A proposal or a lesson helps a local model take over a workflow,
+- A proposal or a fix helps a local model take over a workflow,
   as step 4 asks.
 - No dollars.
 - The fresh check ran, or the message says it did not.
@@ -237,9 +242,8 @@ review, and the user can move it into this list by a pull request.
 Follow every lesson in the Lessons section below. Each is a correction
 the user made, so a lesson wins when it disagrees with the text above.
 When the user corrects how you review a session or rejects a kind of
-proposal, follow [skill-lessons](../skill-lessons/SKILL.md) with the
-skill name `session-review`, and offer once to save the correction as
-a lesson.
+proposal, follow [skill-fix](../skill-fix/SKILL.md) with the skill name
+`session-review`, and offer once to fix the skill's text.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

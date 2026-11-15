@@ -325,6 +325,27 @@ class TestSkillText:
 
         assert result.returncode == 0, result.stdout
 
+    def test_skill_fix_line_needs_no_lessons(self, repo: Path) -> None:
+        """A skill that sends corrections to skill-fix needs no Lessons.
+
+        skill-fix writes each correction into the skill's own text, so
+        a new skill gets a Remembering corrections line that names
+        skill-fix and no Lessons section. Requiring the section would
+        make every new skill carry one that nothing fills.
+        """
+        garden = repo / GARDEN
+        replace_text(garden, "save the correction", "follow `skill-fix`")
+        replace_text(
+            garden,
+            "## Lessons\n<!-- skill-lessons: filled from the local "
+            "store; do not edit -->\n",
+            "",
+        )
+
+        result = run_check(repo)
+
+        assert result.returncode == 0, result.stdout
+
     @pytest.mark.parametrize(
         "rule,code",
         [

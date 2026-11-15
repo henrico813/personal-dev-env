@@ -80,11 +80,11 @@ Checks:
 
 1. At most three proposals.
 2. Each proposal gives a saving marked measured or estimate.
-3. Each proposal says where it would live: a skill PR, lesson or
-   rules file.
+3. Each proposal says where it would live: a skill PR, fix or rules
+   file.
 4. No proposal suggests skipping a skill the work needs.
 5. Any AGENTS.md change goes to tally-hub, not edited here.
-6. The test-log correction appears as a numbered lesson to pick.
+6. The test-log correction appears as a numbered fix to pick.
 7. No dollar amount.
 8. The message ends by asking which numbers to apply, and says
    nothing was changed or applied.
@@ -111,7 +111,7 @@ Checks:
    database was missing.
 2. Gives no token totals, peak or step counts.
 3. Any saving is marked estimate.
-4. The make-test correction appears as a lesson to pick.
+4. The make-test correction appears as a fix to pick.
 5. Changes nothing and asks which items to apply.
 
 ## Case 3: cheap cloud and local models

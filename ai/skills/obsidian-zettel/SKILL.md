@@ -64,8 +64,8 @@ the user made, so a lesson wins when it disagrees with the text above,
 except that you still never change a vault note with a `nobs` command.
 When the user corrects how you pick the title or a topic, write the
 note or report the result, follow
-[skill-lessons](../skill-lessons/SKILL.md) with the skill name
-`obsidian-zettel`, and offer once to save the correction as a lesson.
+[skill-fix](../skill-fix/SKILL.md) with the skill name
+`obsidian-zettel`, and offer once to fix the skill's text.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

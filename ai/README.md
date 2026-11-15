@@ -15,9 +15,10 @@ Shared skills include `git-messages` for commit and PR text, `pull-request` for 
 `comment-review` for putting code comments in front of the user,
 `plain-direct-english` for clear sentences in comments and docs,
 `status-updates` for status updates, recaps and questions a new reader follows,
-`skill-lessons` for saving the user's corrections as lessons in a skill,
+`skill-fix` for writing the user's corrections into a skill's text,
+`skill-lessons` for following lessons saved before skill fixes,
 `skill-development` for writing and reviewing skills,
-`session-review` for reviewing a session's token use, lessons and
+`session-review` for reviewing a session's token use, skill fixes and
 local model jobs,
 `model-routing` for which model runs each agent job,
 `go-development`
@@ -54,10 +55,10 @@ empty one from `skills/`, so the installer then runs `skill-lessons render` to
 restore saved lessons. A failed render prints a warning and leaves the install
 in place. `install client` installs only the `obsidian-zettel`,
 `obsidian-daily-note`, `plain-direct-english`, `behavior-focused-testing`,
-`delegate`, `model-routing`, `skill-lessons` and `status-updates`
+`delegate`, `model-routing`, `skill-fix` and `status-updates`
 skills, the
 `skill-lessons` tool and its render
-step, and the OpenCode config
+step, the `skill-fix` tool, and the OpenCode config
 without the plan and design commands or the plan reviewer agents. It removes
 those files and full's other skills if a full install left them. The installer
 also syncs `opencode/` and `pi/agent/` into their managed config homes. Pi

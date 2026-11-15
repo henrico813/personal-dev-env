@@ -12,6 +12,11 @@ MERGE_PREP = ROOT / "ai/skills/pull-request/scripts/merge_prep.py"
 PR_NUMBER = 7
 GOOD_TITLE = "feat: add the report page"
 OVERVIEW = "Users can now see their report in one page."
+FIX_TITLE = "fix(plot-planner): check the soil first"
+FIX_LINES = (
+    "Missed: the agent planned beds without a soil check.\n"
+    "Intent: agents check the soil before they plan any bed."
+)
 FAKE_GH = """#!/bin/sh
 case "$2" in
   view) cat "$FAKE_GH_DIR/view.json" ;;
@@ -108,6 +113,7 @@ def write_pr(
     title: str = GOOD_TITLE,
     checks: list[dict] | None = None,
     files: int = 2,
+    commits: list[dict] | None = None,
 ) -> None:
     """Make the fake gh describe PR 7 with these values.
 
@@ -117,6 +123,7 @@ def write_pr(
         checks: ``statusCheckRollup`` entries; one passing check run
             by default.
         files: How many changed files ``gh pr diff`` lists.
+        commits: ``commits`` entries; none by default.
     """
     head = run_git(clone, "rev-parse", "origin/pr").strip()
     pr = {
@@ -129,6 +136,7 @@ def write_pr(
         "headRefOid": head,
         "statusCheckRollup": checks
         or [make_check_run("test", "COMPLETED", "SUCCESS")],
+        "commits": commits or [],
     }
     gh = clone.parent / "gh"
     (gh / "view.json").write_text(json.dumps(pr))
@@ -262,3 +270,26 @@ class TestMergePrep:
         last = result.stdout.splitlines()[-1]
         assert last.startswith("result: not ready: ")
         assert last.removeprefix("result: not ready: ").split("; ") == reasons
+
+    def test_squash_message_lists_only_fix_commits(self, clone: Path) -> None:
+        """A fix commit's title, Missed and Intent lines follow the Overview.
+
+        Fix PRs merge by squash, and their Overview never changes, so
+        without these lines no merged fix shows in the fix history that
+        skill-development searches for a repeated correction. The merge
+        sends ``body.txt``, so it must hold them too. A plain commit adds
+        nothing, so other PRs keep their message.
+        """
+        commits = [
+            {"messageHeadline": "add pr.txt", "messageBody": ""},
+            {"messageHeadline": FIX_TITLE, "messageBody": FIX_LINES},
+        ]
+        write_pr(clone, commits=commits)
+
+        result = run_merge_prep(clone, "true")
+
+        out = clone.parent / "out"
+        body = f"{OVERVIEW}\n\n{FIX_TITLE}\n{FIX_LINES}\n"
+        assert result.returncode == 0, result.stdout
+        assert (out / "squash.txt").read_text() == f"{GOOD_TITLE}\n\n{body}"
+        assert (out / "body.txt").read_text() == body

@@ -460,8 +460,8 @@ the user made, so a lesson wins when it disagrees with the text above,
 except that you still never edit a comment the owner approved or
 the approvals file. When the user corrects how you write or review
 code comments, docstrings or function names, follow
-[skill-lessons](../skill-lessons/SKILL.md) with the skill name
-`code-documentation`, and offer once to save the correction as a lesson.
+[skill-fix](../skill-fix/SKILL.md) with the skill name
+`code-documentation`, and offer once to fix the skill's text.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

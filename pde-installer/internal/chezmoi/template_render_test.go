@@ -283,6 +283,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".agents/skills/screen-check",
 		".agents/skills/session-review",
 		".agents/skills/skill-development",
+		".agents/skills/skill-lessons",
 		".agents/skills/typescript-development",
 		".config/opencode/commands/cleanup_plan.md",
 		".config/opencode/commands/create_plan.md",
@@ -445,7 +446,7 @@ func TestClientGetsOnlyAllowedSkills(t *testing.T) {
 		"obsidian-daily-note",
 		"obsidian-zettel",
 		"plain-direct-english",
-		"skill-lessons",
+		"skill-fix",
 		"status-updates",
 	}
 	if !slices.Equal(skills, want) {

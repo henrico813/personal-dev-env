@@ -36,6 +36,7 @@
 .agents/skills/screen-check
 .agents/skills/session-review
 .agents/skills/skill-development
+.agents/skills/skill-lessons
 .agents/skills/typescript-development
 .config/opencode/commands/cleanup_plan.md
 .config/opencode/commands/create_plan.md

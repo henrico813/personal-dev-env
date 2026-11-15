@@ -282,9 +282,8 @@ did not answer".
 Follow every lesson in the Lessons section below. Each is a correction
 the user made, so a lesson wins when it disagrees with the text above.
 When the user corrects which model runs a job or how a local job is
-checked, follow [skill-lessons](../skill-lessons/SKILL.md) with the
-skill name `model-routing`, and offer once to save the correction as
-a lesson.
+checked, follow [skill-fix](../skill-fix/SKILL.md) with the skill name
+`model-routing`, and offer once to fix the skill's text.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

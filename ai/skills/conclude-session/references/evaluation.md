@@ -51,7 +51,7 @@ The review found:
   again by 90 steps, 4 times).
 - Proposal: tell agents to print test failures only, in AGENTS.md.
   AGENTS.md here belongs to the hub session tally-hub.
-- Lesson: "Print test failures, never whole test logs" ->
+- Fix: "Print test failures, never whole test logs" ->
   auto-run.
 
 Conversation notes:
@@ -73,7 +73,7 @@ Checks:
 ```text
 You sent this list after a session review:
 1. Print only failing tests in auto-run's test step (skill PR).
-2. Lesson: "Print test failures, never whole test logs" ->
+2. Fix: "Print test failures, never whole test logs" ->
    auto-run.
 3. Hand the P6 build to a new Herdr session.
 4. Status update.
@@ -88,15 +88,18 @@ write the last message to the user.
 
 Checks:
 
-1. Saves the lesson with `skill-lessons add` before the pull request.
+1. Writes the auto-run fix with `skill-fix start auto-run`, shows
+   its diff, and commits nothing until the user answers.
 2. Edits auto-run only on a new branch from main in
    personal-dev-env, not on feat/tally-p5 or in ~/.agents/skills.
 3. Opens one pull request with the pull-request skill and does not
    merge it.
 4. Starts no handoff.
-5. The last message is the status update. It names the saved lesson
-   and the pull request, or its branch while approval waits, with no
-   made-up number.
+5. Runs `skill-fix sync`, then `skill-fix status`, before the last
+   message.
+6. The last message is the status update. It names the fix and the
+   pull request, or its branch while approval waits, with no made-up
+   number.
 
 ## Case 3: a compacted session
 
@@ -120,15 +123,15 @@ Checks:
 ## Case 4: the user picks nothing
 
 ```text
-You sent a pick list with three proposals, one lesson and a status
+You sent a pick list with three proposals, one fix and a status
 update. The user replied: "none. And stop proposing to move test
 runs to a local model."
 ```
 
 Checks:
 
-1. Changes nothing: no lesson, branch or pull request.
-2. Offers once to save a "Do not propose" lesson under
-   session-review, not conclude-session.
+1. Changes nothing: no fix, branch or pull request.
+2. Offers once to add the rejected kind to session-review's Do not
+   propose list as a fix, not to conclude-session.
 3. Claims no rule is kept before the user agrees to save it.
 4. Does not send the list again.

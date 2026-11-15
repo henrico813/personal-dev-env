@@ -205,13 +205,12 @@ Follow every lesson in the Lessons section below. Each is a correction
 the user made, so a lesson wins when it disagrees with the text above.
 The one exception is Step 3's rule that a review stays read-only unless
 the user asks for a review artifact. When the user corrects how you
-review a change, follow [skill-lessons](../skill-lessons/SKILL.md) with
-the skill name `review-plan`, and offer once to save the correction as
-a lesson. A correction to how you review tests belongs to
-`behavior-focused-testing` instead. A correction to how you review code
-comments, docstrings or function names belongs to `code-documentation`.
-A correction to how you review skill text belongs to
-`skill-development`.
+review a change, follow [skill-fix](../skill-fix/SKILL.md) with the
+skill name `review-plan`, and offer once to fix the skill's text. A
+correction to how you review tests belongs to `behavior-focused-testing`
+instead. A correction to how you review code comments, docstrings or
+function names belongs to `code-documentation`. A correction to how you
+review skill text belongs to `skill-development`.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

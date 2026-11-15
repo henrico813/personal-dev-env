@@ -59,14 +59,14 @@ largest carried outputs
    pytest runs printed about 3,500 tokens, and about 80 later steps
    read each one again.
 2. Read the plan with narrow `rg` instead of whole. It lives in a
-   create-plan lesson. Saves about 0.9M tokens (estimate): the plan
+   create-plan fix. Saves about 0.9M tokens (estimate): the plan
    is about 12,000 tokens, it was read in full early on, and about 75
    later steps read it again.
 3. Run `planner check` once after the last patch instead of after
    each. It lives in a rules file. Saves about 0.3M tokens
    (estimate).
 
-## Lessons
+## Fixes
 
 1. "Keep the key out of the PR title." -> pull-request. Passes: it
    applies in any repository.
@@ -125,12 +125,12 @@ Session review of Lantern P3 plan and review, saved to
 Proposals
 1. Tests on qwen3.8-flash, failing names only (auto-run PR). Saves
    about 1.1M tokens (estimate).
-2. Read plans with narrow rg (create-plan lesson). Saves about 0.9M
+2. Read plans with narrow rg (create-plan fix). Saves about 0.9M
    tokens (estimate).
 3. One planner check after the last patch (rules file). Saves about
    0.3M tokens (estimate).
 
-Lessons to save, pick by number
+Fixes to write, pick by number
 1. Keep the key out of the PR title -> pull-request
 
 Fallback: the planner is least ready; a brief per plan step would

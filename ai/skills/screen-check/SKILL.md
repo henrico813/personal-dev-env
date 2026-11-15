@@ -153,8 +153,8 @@ Report each screen you checked with these parts:
 Follow every lesson in the Lessons section below. Each is a correction
 the user made, so a lesson wins when it disagrees with the text above.
 When the user corrects how you check a screen, follow
-[skill-lessons](../skill-lessons/SKILL.md) with the skill name
-`screen-check`, and offer once to save the correction as a lesson.
+[skill-fix](../skill-fix/SKILL.md) with the skill name `screen-check`,
+and offer once to fix the skill's text.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

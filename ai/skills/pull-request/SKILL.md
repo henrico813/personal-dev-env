@@ -155,9 +155,8 @@ model, as `model-routing` picks.
 Follow every lesson in the Lessons section below. Each is a correction
 the user made, so a lesson wins when it disagrees with the text above.
 When the user corrects how you write, open, update or merge pull
-requests, follow [skill-lessons](../skill-lessons/SKILL.md) with the
-skill name `pull-request`, and offer once to save the correction as a
-lesson.
+requests, follow [skill-fix](../skill-fix/SKILL.md) with the skill name
+`pull-request`, and offer once to fix the skill's text.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

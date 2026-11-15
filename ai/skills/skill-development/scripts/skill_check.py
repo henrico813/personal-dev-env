@@ -101,7 +101,7 @@ def check_skills(skills_dir: Path, base: str | None) -> list[Problem]:
        is an error.
     5. A Lessons section that skill-lessons cannot fill, or that is
        missing from a skill whose Remembering corrections line names
-       a skill, is an error.
+       a skill but not skill-fix, is an error.
     6. A Remembering corrections line that names another skill, or
        that is missing from a skill with a Lessons section, is an
        error.
@@ -520,7 +520,7 @@ def check_lessons_sections(skills: Skills) -> list[Problem]:
     skill-lessons refuses a skill without the marker line under its
     Lessons heading, and the installer would overwrite text written
     under it. A missing section is reported only for a skill whose
-    Remembering corrections line names a skill.
+    Remembering corrections line names a skill but not skill-fix.
 
     Args:
         skills: The skills from ``read_skills``.
@@ -540,7 +540,9 @@ def check_lessons_section(path: Path, text: str) -> list[Problem]:
     """Report why one SKILL.md's Lessons section cannot be filled.
 
     A skill whose Remembering corrections line names a skill needs a
-    Lessons section. A skill with neither is fine.
+    Lessons section, unless the line sends corrections to skill-fix,
+    which writes them into the skill's text. A skill with neither is
+    fine.
 
     Args:
         path: The SKILL.md.
@@ -551,7 +553,7 @@ def check_lessons_section(path: Path, text: str) -> list[Problem]:
     """
     lines = text.splitlines()
     if "## Lessons" not in lines:
-        if LESSONS_NAME.search(text):
+        if LESSONS_NAME.search(text) and not names_skill_fix(text):
             return [Problem(path, 1, "error", "no ## Lessons section")]
         return []
     problems = []
@@ -569,10 +571,25 @@ def check_lessons_section(path: Path, text: str) -> list[Problem]:
     return problems
 
 
+def names_skill_fix(text: str) -> bool:
+    """Return whether the Remembering corrections section names skill-fix.
+
+    Args:
+        text: Contents of a SKILL.md.
+
+    Returns:
+        True when that section mentions ``skill-fix``, such as in a
+        link to ``../skill-fix/SKILL.md``.
+    """
+    _, found, rest = text.partition("\n## Remembering corrections\n")
+    section = rest.split("\n## ", 1)[0]
+    return bool(found) and "skill-fix" in section
+
+
 def check_corrections_names(skills: Skills) -> list[Problem]:
     """Report each Remembering corrections line that is wrong or missing.
 
-    skill-lessons saves the user's corrections to the skill this line
+    skill-fix commits the user's corrections to the skill this line
     names, so a line copied from another skill sends them there. A
     skill with a Lessons section needs this line. A skill with neither
     is fine.
