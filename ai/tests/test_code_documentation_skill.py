@@ -11,7 +11,7 @@ SKILL = "ai/skills/code-documentation/SKILL.md"
 # The skill on main before checker support was added, with its function
 # naming rules. Later changes add text next to the rule they support and
 # keep every one of these lines.
-BASE = "73689661f223e6e7ea5fb627a53fb208f7956ce6"
+BASE = "97a4335049862c9a2eb550f2fc9cc610f9c8e2f9"
 
 
 class TestSkillText:
