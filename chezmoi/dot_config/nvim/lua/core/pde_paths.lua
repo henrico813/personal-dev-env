@@ -26,7 +26,6 @@ function M.read(keys)
   local raw = {
     PDE_INSTALL_PATH = data.install_path,
     PDE_MAIN_VAULT = data.main_vault,
-    PDE_extra = data.extra,
     OPENCODE_BASE_URL = data.opencode_base_url,
     OPENCODE_INLINE_SHIM_PORT = data.opencode_inline_shim_port,
     OPENCODE_INLINE_MODEL = data.opencode_inline_model,

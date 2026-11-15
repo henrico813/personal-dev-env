@@ -210,16 +210,23 @@ This repository is public. `ci/scan` runs gitleaks with the
 rules in `.gitleaks.toml`, which find secrets, personal email addresses, LAN
 and tailnet addresses, real home folders, and network-drive paths. It also
 blocks the owner's private names, which stay encrypted outside the
-repository and are never committed or printed.
+repository and are never committed or printed. It also matches topic
+regexes kept in the same sops file under `private_patterns`, which catch
+phrases that hint at a private topic without naming it. An older sops file
+needs that key added before local scans check topics.
 
 - The `privacy` CI check scans the files, each pull request's commits and
-  authors, and its title and description. Make it required on `main`.
+  authors, and its title and description. Make it required on `main`. It
+  fails when the `PRIVATE_TERMS` or `PRIVATE_PATTERNS` secret is missing.
+- `pde-gh-write` runs `ci/scan text` on the title and description of each
+  pull request it creates or edits, and refuses the request on a finding.
 - Run `uvx pre-commit install` once in each clone to scan every commit; the hook
   needs gitleaks from the aqua profile, and checks private names only where the
   sops list exists. If `core.hooksPath` is set to `.git/hooks`, which pre-commit
   refuses, first run `git config --unset core.hooksPath`.
-- Edit the private names with `ci/terms edit`, then copy them
-  to CI's `PRIVATE_TERMS` secret with `ci/terms push`.
+- Edit the private names and topic regexes with `ci/terms edit`, then copy
+  them to CI's `PRIVATE_TERMS` and `PRIVATE_PATTERNS` secrets with
+  `ci/terms push`.
 
 ## Requirements
 

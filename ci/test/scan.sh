@@ -24,6 +24,7 @@ new_repo() {
 }
 
 export PRIVATE_TERMS=$'zorblax\nquill pen'
+export PRIVATE_PATTERNS='moon[_ -]?(base|camp)s?'
 export PDE_PRIVATE_TERMS_FILE=$tmp/missing
 # The scan reads settings from the home folder, so the tests use their own.
 export HOME=$tmp/home
@@ -97,6 +98,16 @@ fi
 grep -qxF 'private-term text:3' "$tmp/out" || fail "missed the name in pull request text"
 ! grep -qiE 'zorblax|quill' "$tmp/out" || fail "the output repeats a private name"
 
+# A phrase can hint at a private topic without any private name, in any
+# spelling the topic pattern allows.
+printf 'Title\n\nAdd the Moon_Base setting\nfor moon camps\n' >"$tmp/pr.md"
+if (cd "$repo" && bash ci/scan text "$tmp/pr.md") >"$tmp/out" 2>&1; then
+    fail "a topic phrase in pull request text must fail"
+fi
+grep -qxF 'private-term text:3' "$tmp/out" || fail "missed the topic in snake case"
+grep -qxF 'private-term text:4' "$tmp/out" || fail "missed the topic with a space"
+! grep -qi 'moon' "$tmp/out" || fail "the output repeats a topic phrase"
+
 # A bad commit range fails as a scan error, not as a clean scan.
 status=0
 (cd "$repo" && bash ci/scan commits no-such-commit HEAD) >"$tmp/out" 2>&1 || status=$?
@@ -106,22 +117,25 @@ status=0
 status=0
 (cd "$repo" && CI=true PRIVATE_TERMS='' bash ci/scan tree) >"$tmp/out" 2>&1 || status=$?
 [[ $status == 2 ]] || fail "CI without PRIVATE_TERMS must exit 2, got $status"
+status=0
+(cd "$repo" && CI=true PRIVATE_PATTERNS='' bash ci/scan tree) >"$tmp/out" 2>&1 || status=$?
+[[ $status == 2 ]] || fail "CI without PRIVATE_PATTERNS must exit 2, got $status"
 
 # A PC can name a second list of terms in its settings. The scan finds
 # those terms like the others and never prints them.
-printf '# made-up product names\nfennick\n' >"$tmp/extra.txt"
-printf '{"work_terms_file": "%s"}\n' "$tmp/extra.txt" >"$HOME/.config/pde/config.json"
+printf '# made-up product names\nfennick\n' >"$tmp/extra-terms.txt"
+printf '{"extra_terms_file": "%s"}\n' "$tmp/extra-terms.txt" >"$HOME/.config/pde/config.json"
 printf 'Title\n\nClose FENNICK-12 first\n' >"$tmp/pr.md"
 if (cd "$repo" && bash ci/scan text "$tmp/pr.md") >"$tmp/out" 2>&1; then
-    fail "a extra in pull request text must fail"
+    fail "an extra term in pull request text must fail"
 fi
-grep -qxF 'private-term text:3' "$tmp/out" || fail "missed the extra"
-! grep -qi 'fennick' "$tmp/out" || fail "the output repeats a extra"
+grep -qxF 'private-term text:3' "$tmp/out" || fail "missed the extra term"
+! grep -qi 'fennick' "$tmp/out" || fail "the output repeats an extra term"
 rm "$HOME/.config/pde/config.json"
 
-# A wrong path to the list must stop the scan, not skip the extra.
+# A wrong path to the list must stop the scan, not skip the extra terms.
 status=0
-(cd "$repo" && PDE_WORK_TERMS_FILE=$tmp/no-such-list bash ci/scan text "$tmp/pr.md") >"$tmp/out" 2>&1 || status=$?
-[[ $status == 2 ]] || fail "a missing extra list must exit 2, got $status"
+(cd "$repo" && PDE_EXTRA_TERMS_FILE=$tmp/no-such-list bash ci/scan text "$tmp/pr.md") >"$tmp/out" 2>&1 || status=$?
+[[ $status == 2 ]] || fail "a missing extra-term list must exit 2, got $status"
 
 echo "scan: ok"

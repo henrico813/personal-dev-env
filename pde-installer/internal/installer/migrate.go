@@ -16,7 +16,30 @@ import (
 var legacyConfigKeys = map[string]string{
 	"PDE_DEFAULT_VAULT": "default_vault",
 	"PDE_MAIN_VAULT":    "main_vault",
-	"PDE_extra":    "extra",
+}
+
+// A saved key that ends in suffix is removed, and its value moves to key
+// unless key is already set. Matching the ending keeps old names out of the code.
+var renamedConfigKeys = []struct {
+	suffix string
+	key    string
+}{
+	{suffix: "_terms_file", key: "extra_terms_file"},
+	{suffix: "_skills_repo", key: "extra_skills_repo"},
+}
+
+func renameOldConfigKeys(values map[string]any) {
+	for _, rename := range renamedConfigKeys {
+		for key, value := range values {
+			if key == rename.key || !strings.HasSuffix(key, rename.suffix) {
+				continue
+			}
+			if _, set := values[rename.key]; !set {
+				values[rename.key] = value
+			}
+			delete(values, key)
+		}
+	}
 }
 
 func prepareLegacyConfig(config config, runner run.Runner) (*fsutil.Journal, error) {
@@ -46,6 +69,7 @@ func migrateLegacyConfig(config config) (*fsutil.Journal, error) {
 	} else if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("read PDE config: %w", err)
 	}
+	renameOldConfigKeys(values)
 	values["install_path"] = config.RepoRoot
 	values["profile"] = string(config.Profile)
 	values["color_profile"] = string(config.ColorProfile)

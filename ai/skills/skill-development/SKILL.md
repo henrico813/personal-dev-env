@@ -139,7 +139,7 @@ A new skill needs these on top of the steps in "Change a skill":
   agents that each do one task, so it leaves those skills out.
 - Give every skill `scope: personal` under `metadata:`. In a
   repository that keeps its skills in a top-level `skills` folder, it
-  gets `extra` instead. The check script refuses a missing or
+  gets `scope: extra` instead. The check script refuses a missing or
   wrong tag.
 - Add its files to Git, and its routing line to `ai/AGENTS.md`.
 - List it everywhere the repository's own `AGENTS.md` says a new

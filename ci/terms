@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Keeps the owner's list of private names that ci/scan blocks.
-# The list stays encrypted with sops, and this command never prints it.
+# Keeps the owner's lists that ci/scan blocks: private names under
+# private_terms, and topic regexes under private_patterns.
+# The lists stay encrypted with sops, and this command never prints them.
 #
-#   ci/terms edit   # edit the list, one name per item
-#   ci/terms push   # copy it to the PRIVATE_TERMS secret for CI
+#   ci/terms edit   # edit the lists, one name or regex per item
+#   ci/terms push   # copy them to the PRIVATE_TERMS and PRIVATE_PATTERNS secrets
+#
+# A regex must work in both Go (RE2) and jq, so it has no lookaround.
 set -euo pipefail
 
 terms_file=${PDE_PRIVATE_TERMS_FILE:-$HOME/.config/pde/private-terms.sops.yaml}
@@ -17,7 +20,7 @@ edit)
         # mktemp's file is private, and a failed encrypt leaves no empty list.
         new=$(mktemp "$terms_file.XXXXXX")
         trap 'rm -f "$new"' EXIT
-        printf 'private_terms: []\n' |
+        printf 'private_terms: []\nprivate_patterns: []\n' |
             sops --encrypt --age "$recipient" --input-type yaml \
                 --output-type yaml /dev/stdin >"$new"
         mv "$new" "$terms_file"
@@ -28,6 +31,8 @@ edit)
 push)
     sops --decrypt --extract '["private_terms"]' --output-type json "$terms_file" |
         jq -r '.[]' | gh secret set PRIVATE_TERMS
+    sops --decrypt --extract '["private_patterns"]' --output-type json "$terms_file" |
+        jq -r '.[]' | gh secret set PRIVATE_PATTERNS
     ;;
 *)
     printf 'usage: terms edit | push\n' >&2

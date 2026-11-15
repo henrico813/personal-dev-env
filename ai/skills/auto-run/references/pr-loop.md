@@ -176,7 +176,7 @@ script-checked jobs to the local model says.
    pull-request Guardrail 4 says, but never
    install into the real home during a run: other workers install
    too, and the last install wins. Run it from the worktree, or
-   install it into a scratch home from `mktemp -d`; a change that
+   use the scratch home that Guardrail 4 describes. A change that
    adds a dependency or a build step gets the scratch home install,
    cleanup included, since CI does not build tools the installer's
    way. In a brief for an agent that tries it, name the folder in

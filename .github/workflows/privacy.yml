@@ -29,12 +29,14 @@ jobs:
       - name: scan files
         env:
           PRIVATE_TERMS: ${{ secrets.PRIVATE_TERMS }}
+          PRIVATE_PATTERNS: ${{ secrets.PRIVATE_PATTERNS }}
         run: bash ci/scan tree
       # The text goes through env, so a title cannot run as shell code.
       - name: scan commits and pull request text
         if: github.event_name == 'pull_request'
         env:
           PRIVATE_TERMS: ${{ secrets.PRIVATE_TERMS }}
+          PRIVATE_PATTERNS: ${{ secrets.PRIVATE_PATTERNS }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
           TITLE: ${{ github.event.pull_request.title }}

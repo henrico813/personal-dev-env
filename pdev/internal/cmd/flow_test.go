@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -399,6 +400,35 @@ func TestRerunSurvivesFailedRepoLookup(t *testing.T) {
 
 	if code != 0 || countCalls(t, env.calls) != 1 || !strings.Contains(env.output.String(), "already ran "+id) {
 		t.Fatalf("rerun returned %d after %d gh calls: %q", code, countCalls(t, env.calls), env.output)
+	}
+}
+
+// Pull request text is public once gh posts it, and the approver cannot see
+// private terms they never listed. A body the checkout's ci/scan refuses
+// must be refused before anyone is asked, with only the scan's place shown.
+func TestRequestRefusesTextFailingCheckoutScan(t *testing.T) {
+	env := setupFlow(t, "")
+	repo := t.TempDir()
+	if out, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	// This stand-in for ci/scan refuses any text with "hint" in it.
+	scan := "if grep -q hint; then echo 'private-term text:3'; exit 1; fi\n"
+	if err := os.MkdirAll(filepath.Join(repo, "ci"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "ci", "scan"), []byte(scan), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	chdir(t, repo)
+
+	code := requestWrite([]string{"pr", "create", "--title", "Add a setting", "--body", "a hint of it"})
+
+	if code != exitRejected || len(approval.Queued()) != 0 || countCalls(t, env.calls) != 0 {
+		t.Fatalf("returned %d with %d waiting after %d gh calls, want refusal and none", code, len(approval.Queued()), countCalls(t, env.calls))
+	}
+	if out := env.output.String(); !strings.Contains(out, "private-term text:3") || strings.Contains(out, "hint") {
+		t.Errorf("output = %q, want the scan's place and not the text", out)
 	}
 }
 

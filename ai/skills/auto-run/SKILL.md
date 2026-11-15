@@ -81,13 +81,13 @@ The user's rules for every run:
    design and its roadmap page. Read both. When either is not
    approved, the card goes under `## Left out` with that reason.
 3. Sort every ready card into one of three groups yourself, even
-   when there is only one card: extra (the work runs on the extra
+   when there is only one card: other-pc (the work runs on the other PC
    or uses its data), hands (it needs the user at a device, a login,
    a purchase or a choice before work can start) or alone (the rest).
    Read each card before you sort it.
 4. Write `<run folder>/run.md`. Put under `## Run` the `alone` cards
    you pick, and every other ready card under `## Needs your hands`,
-   `## extra` or `## Left out`, with a reason. Each line is the key,
+   `## Other PC` or `## Left out`, with a reason. Each line is the key,
    the project and the problem it solves, in plain words. Under the
    title, before the first `## ` heading, write the run tier you
    propose as a `Run tier:` line. Propose T1 when every card under

@@ -269,9 +269,9 @@ class TestSkillText:
             pytest.param(
                 GARDEN,
                 "scope: personal",
-                "extra",
+                "scope: extra",
                 "metadata.scope must be personal",
-                id="work-scope-in-personal-repo",
+                id="extra-scope-in-personal-repo",
             ),
             pytest.param(
                 GARDEN,
@@ -291,8 +291,8 @@ class TestSkillText:
         start. An agent that follows a link or skill name that leads
         nowhere misses the rule behind it. A Remembering corrections
         line copied from another skill saves the user's corrections to
-        that skill, with no visible failure. A extra copied into
-        this public repository would publish work text, and a skill
+        that skill, with no visible failure. An extra skill copied into
+        this public repository would publish private text, and a skill
         with no scope tag cannot tell a fix which repository to go to.
         """
         replace_text(repo / file, old, new)
@@ -723,10 +723,10 @@ def route_repo(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def extra(tmp_path: Path) -> Path:
-    """A committed extra with a top-level skills folder and no table.
+def extra_repo(tmp_path: Path) -> Path:
+    """A committed extra checkout with a top-level skills folder and no table.
 
-    Its one skill, garden, has ``extra``. The fake home has no
+    Its one skill, garden, has ``scope: extra``. The fake home has no
     installed table either.
 
     Args:
@@ -735,11 +735,11 @@ def extra(tmp_path: Path) -> Path:
     Returns:
         The checkout.
     """
-    repo = tmp_path / "work"
+    repo = tmp_path / "extra"
     garden = repo / "skills/garden/SKILL.md"
     garden.parent.mkdir(parents=True)
     text = SKILL.format(name="garden", body=COMPOST_BODY)
-    garden.write_text(text.replace("scope: personal", "extra"))
+    garden.write_text(text.replace("scope: personal", "scope: extra"))
     commit_new_repo(repo)
     return repo
 
@@ -916,19 +916,19 @@ class TestRouteChecks:
         ],
     )
     def test_checkout_without_table_skips_route_checks(
-        self, extra: Path, line: str, warns: bool
+        self, extra_repo: Path, line: str, warns: bool
     ) -> None:
-        """A extra with no routing table passes the route checks.
+        """An extra checkout with no routing table passes the route checks.
 
-        extra sit in a top-level ``skills`` folder with no
+        Extra skills sit in a top-level ``skills`` folder with no
         model-routing skill, and CI has no installed table. Failing
-        there would block every pull request of a extra. A
+        there would block every pull request of an extra repository. A
         call whose kind cannot be checked is still named on stderr.
         """
-        garden = extra / "skills/garden/SKILL.md"
+        garden = extra_repo / "skills/garden/SKILL.md"
         replace_text(garden, "# Garden\n", f"# Garden\n\n{line}\n")
 
-        result = run_check(extra, "--base", "HEAD")
+        result = run_check(extra_repo, "--base", "HEAD")
 
         assert result.returncode == 0, result.stdout + result.stderr
         assert ("could not check kinds" in result.stderr) == warns
@@ -946,17 +946,17 @@ class TestRouteChecks:
         ],
     )
     def test_installed_table_checks_work_kinds_only(
-        self, extra: Path, kind: str, reason: str | None
+        self, extra_repo: Path, kind: str, reason: str | None
     ) -> None:
-        """A extra gets only the kind check from the installed table.
+        """An extra checkout gets only the kind check from the installed table.
 
         Every personal machine has the installed table, and its
-        ``skills`` lists name personal skills that a extra
+        ``skills`` lists name personal skills that an extra checkout
         lacks. Running the other route checks there would fail every
-        work pull request; dropping the table would let a mistyped
+        extra pull request; dropping the table would let a mistyped
         kind through.
         """
-        table = extra.parent / "home/.agents/skills/model-routing"
+        table = extra_repo.parent / "home/.agents/skills/model-routing"
         table.mkdir(parents=True)
         (table / "routing.json").write_text(
             json.dumps(
@@ -969,14 +969,14 @@ class TestRouteChecks:
                 }
             )
         )
-        garden = extra / "skills/garden/SKILL.md"
+        garden = extra_repo / "skills/garden/SKILL.md"
         line = (
             "Ask the review model, or claude-code/claude-sonnet-5.\n\n"
             f"```text\npython3 scripts/pde_route.py {kind}\n```"
         )
         replace_text(garden, "# Garden\n", f"# Garden\n\n{line}\n")
 
-        result = run_check(extra, "--base", "HEAD")
+        result = run_check(extra_repo, "--base", "HEAD")
 
         output = result.stdout + result.stderr
         if reason is None:

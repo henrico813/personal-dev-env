@@ -16,8 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-RepoName = Literal["personal", "work"]
-SKILLS_DIRS: dict[RepoName, str] = {"personal": "ai/skills", "work": "skills"}
+RepoName = Literal["personal", "extra"]
+SKILLS_DIRS: dict[RepoName, str] = {"personal": "ai/skills", "extra": "skills"}
 BATCH_PREFIX = "fix/skill-fixes-"
 HELD_PREFIX = "fix/skill-fixes-held-"
 # No remote has this name, so a plain git push of a held branch fails.
@@ -36,7 +36,7 @@ class RefusalError(Exception):
 
         Args:
             rule: The rule's name, such as ``route``.
-            detail: What broke it, never a matched extra.
+            detail: What broke it, never a matched extra term.
         """
         super().__init__(f"{rule}: {detail}")
         self.rule = rule
@@ -55,14 +55,14 @@ class Settings:
         install_path: The personal-dev-env checkout install ran from.
         label: ``skill_fix_label``, the word for this PC in branch
             names and PR titles, or None until it is set.
-        work_skills_repo: The extra's checkout, or None.
-        work_terms_file: The extra list, or None.
+        extra_skills_repo: The extra repo's checkout, or None.
+        extra_terms_file: The extra-term list, or None.
     """
 
     install_path: Path | None
     label: str | None
-    work_skills_repo: Path | None
-    work_terms_file: Path | None
+    extra_skills_repo: Path | None
+    extra_terms_file: Path | None
 
 
 @dataclass(frozen=True)
@@ -70,12 +70,12 @@ class Repo:
     """One skills repo on this PC and where its fix worktree lives.
 
     Attributes:
-        name: ``personal`` or ``work``.
+        name: ``personal`` or ``extra``.
         checkout: The user's checkout, which only lends its ``.git``.
         skills_dir: The skills folder inside the repo.
         worktree: The fix worktree.
         remote: The remote that ``main`` tracks, else ``origin``.
-        term_check: Whether fixes are checked against the extra.
+        term_check: Whether fixes are checked against the extra terms.
     """
 
     name: RepoName
@@ -119,8 +119,8 @@ def load_settings() -> Settings:
     return Settings(
         install_path=to_path(data.get("install_path")),
         label=label,
-        work_skills_repo=to_path(data.get("work_skills_repo")),
-        work_terms_file=to_path(data.get("work_terms_file")),
+        extra_skills_repo=to_path(data.get("extra_skills_repo")),
+        extra_terms_file=to_path(data.get("extra_terms_file")),
     )
 
 
@@ -170,7 +170,7 @@ def read_scope(text: str) -> RepoName | None:
         text: The whole SKILL.md.
 
     Returns:
-        ``personal`` or ``work``, or None when the tag is missing or
+        ``personal`` or ``extra``, or None when the tag is missing or
         holds another value.
     """
     lines = text.splitlines()
@@ -188,8 +188,8 @@ def read_scope(text: str) -> RepoName | None:
             value = value.strip().strip("\"'")
             if value == "personal":
                 return "personal"
-            if value == "work":
-                return "work"
+            if value == "extra":
+                return "extra"
             return None
     return None
 
@@ -205,8 +205,8 @@ def pick_repo(scope: RepoName, settings: Settings) -> Repo:
         The repo, with its fix worktree path.
 
     Raises:
-        RefusalError: ``route`` when the tag is ``work`` and this PC has no
-            ``work_skills_repo``.
+        RefusalError: ``route`` when the tag is ``extra`` and this PC has no
+            ``extra_skills_repo``.
         ToolError: The tag is ``personal`` and config.json has no
             ``install_path``.
     """
@@ -217,10 +217,10 @@ def pick_repo(scope: RepoName, settings: Settings) -> Repo:
                 "install_path is not set; run pde-installer install"
             )
     else:
-        checkout = settings.work_skills_repo
+        checkout = settings.extra_skills_repo
         if checkout is None:
             raise RefusalError(
-                "route", "tag is work, and work_skills_repo is unset"
+                "route", "tag is extra, and extra_skills_repo is unset"
             )
     return Repo(
         name=scope,
@@ -229,15 +229,15 @@ def pick_repo(scope: RepoName, settings: Settings) -> Repo:
         worktree=find_state_dir() / scope,
         remote=find_remote(checkout),
         term_check=scope == "personal"
-        and settings.work_terms_file is not None,
+        and settings.extra_terms_file is not None,
     )
 
 
 def list_repos(settings: Settings) -> list[Repo]:
     """Return the repos this PC has, personal first."""
     names: list[RepoName] = ["personal"]
-    if settings.work_skills_repo is not None:
-        names.append("work")
+    if settings.extra_skills_repo is not None:
+        names.append("extra")
     return [pick_repo(name, settings) for name in names]
 
 

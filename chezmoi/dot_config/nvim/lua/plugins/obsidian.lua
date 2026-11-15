@@ -54,8 +54,8 @@ local vaults = read_vaults()
 -- ~/.config/pde/config.json are not used. Nothing is saved, so the warning
 -- stops once the file exists.
 if vim.fn.filereadable(settings_path) == 0 then
-  local old = pde_paths.read({ "PDE_MAIN_VAULT", "PDE_extra" })
-  if (old.PDE_MAIN_VAULT or "") ~= "" or (old.PDE_extra or "") ~= "" then
+  local old = pde_paths.read({ "PDE_MAIN_VAULT" })
+  if (old.PDE_MAIN_VAULT or "") ~= "" then
     vim.notify_once(
       "Neovim no longer reads vaults from ~/.config/pde/config.json. Run nobs vault set NAME PATH for each one, then restart Neovim.",
       vim.log.levels.WARN
@@ -114,18 +114,23 @@ map("<leader>oo", function()
   end
 end, "open note")
 
-local function vault_files(name)
+-- Opens the first vault that passes match, or warns with label.
+local function vault_files(match, label)
   for _, vault in ipairs(workspaces) do
-    if vault.name == name then
+    if match(vault.name) then
       fzf.files({ cwd = vault.path, cmd = notes_cmd, no_ignore = true })
       return
     end
   end
-  vim.notify("No vault named " .. name, vim.log.levels.WARN)
+  vim.notify("No " .. label, vim.log.levels.WARN)
 end
 
-map("<leader>om", function() vault_files("main") end, "main vault")
-map("<leader>ow", function() vault_files("work") end, "extra")
+map("<leader>om", function()
+  vault_files(function(name) return name == "main" end, "vault named main")
+end, "main vault")
+map("<leader>o2", function()
+  vault_files(function(name) return name ~= "main" end, "second vault")
+end, "second vault")
 
 -- Neovim stops nobs after 2 minutes. It cannot stop a docker
 -- compose that nobs started, so the result shows when that ends. The broker's

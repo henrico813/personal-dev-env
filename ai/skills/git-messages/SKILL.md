@@ -41,7 +41,7 @@ Follow the repository's documented style first. Otherwise use these defaults.
    the squash removes.
 6. Leave out branch-only commit hashes, meaningless test counts, private
    tracker references, unexplained project terms, and AI attribution.
-   Never name a private machine, the user's extra or work, private
+   Never name a private machine, private projects, private
    vaults, personal information or secrets, here or in a branch name;
    describe the change in general terms.
 7. Follow [plain-direct-english](../plain-direct-english/SKILL.md) and

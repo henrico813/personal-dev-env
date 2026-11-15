@@ -59,6 +59,49 @@ func TestLegacyConfigMigratesSafely(t *testing.T) {
 	}
 }
 
+// Renamed settings keep their values, so the scan still reads the extra
+// terms and skill-fix still finds the extra skills checkout after install.
+func TestLegacyConfigRenamesOldSettingKeys(t *testing.T) {
+	home := t.TempDir()
+	directory := filepath.Join(home, ".config", "pde")
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := `{"old_terms_file": "/lists/terms.txt", "old_skills_repo": "/src/skills", "main_vault": "/vault/a"}`
+	if err := os.WriteFile(filepath.Join(directory, "config.json"), []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo", Profile: "full", ColorProfile: colorprofile.TokyoNight})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(directory, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{
+		"extra_terms_file":  "/lists/terms.txt",
+		"extra_skills_repo": "/src/skills",
+		"main_vault":        "/vault/a",
+		"old_terms_file":    nil,
+		"old_skills_repo":   nil,
+	}
+	for key, value := range want {
+		if got[key] != value {
+			t.Errorf("config[%q] = %#v, want %#v", key, got[key], value)
+		}
+	}
+}
+
 // A desktop that is not saved disappears at the next bare install.
 func TestMigrationSavesSelectedDesktop(t *testing.T) {
 	home := profileHome(t, `{"profile":"full"}`+"\n")

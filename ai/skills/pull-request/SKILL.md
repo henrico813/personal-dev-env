@@ -27,9 +27,13 @@ steps' defaults.
    nothing else broke. A deploy that never runs the changed files,
    such as an install on a machine that does not use them, does not
    count. For a skill or prompt, deploy it by installing it, and have
-   a fresh agent follow it on one real task. Record each review, test
-   and try as one line of the checks list in Testing, as `git-messages`
-   item 5 says. Give the rest, such as screenshots, in your message to
+   a fresh agent follow it on one real task. Install into your own
+   home only when no other session may install at the same time.
+   Otherwise install into a scratch home that `mktemp -d` makes. Start
+   the trying agent with `HOME` set to that folder, so the agent loads
+   the new install. Record each review, test and try as one line of
+   the checks list in Testing, as `git-messages` item 5 says. Give the
+   rest, such as screenshots, in your message to
    the user. If the change only runs after its own merge, such as a
    job that runs only on the default branch, or never runs, such as
    docs, say which in Testing and how you checked it. If the change

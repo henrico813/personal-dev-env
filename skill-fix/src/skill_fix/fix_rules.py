@@ -33,7 +33,7 @@ Rule = Literal[
     "repeats",
     "message",
     "scan",
-    "extra",
+    "extra-term",
 ]
 SKILL_CHECK = "ai/skills/skill-development/scripts/skill_check.py"
 MSG = "ai/skills/git-messages/scripts/msg"
@@ -76,7 +76,7 @@ class Refused:
 
 @dataclass(frozen=True)
 class Hold:
-    """The fix holds a extra, so it goes to a held branch."""
+    """The fix holds an extra term, so it goes to a held branch."""
 
     findings: tuple[Finding, ...]
 
@@ -90,7 +90,7 @@ def check_fix(
     """Check the fix worktree's uncommitted edits to one skill.
 
     Every rule but ``repeats`` refuses the fix, ``scan`` included. A
-    extra holds it instead, once every other rule passes. The
+    extra term holds it instead, once every other rule passes. The
     skill's edits are staged, which the commit or the hold then uses.
 
     Args:
@@ -98,7 +98,7 @@ def check_fix(
         skill: The skill the fix is for.
         message_file: The commit message.
         settings: This PC's settings, for the checker scripts in the
-            personal checkout and the extra list.
+            personal checkout and the extra-term list.
 
     Returns:
         Pass, Refused or Hold.
@@ -131,7 +131,7 @@ def check_fix(
         if found:
             return Refused(tuple(found))
     if repo.term_check:
-        terms = find_extra(repo, skill, message_file, settings)
+        terms = find_extra_terms(repo, skill, message_file, settings)
         if terms:
             return Hold(tuple(terms))
     return Pass(tuple(found for found in findings if found.rule == "repeats"))
@@ -226,7 +226,7 @@ def find_scan_findings(
 ) -> list[Finding]:
     """Return where the added text, file names or message fail ``ci/scan``.
 
-    This is sync's scan before each push, without the extra. A
+    This is sync's scan before each push, without the extra terms. A
     fix that committed with such text would stop every later sync at
     ``scan``, so it is refused here instead.
 
@@ -237,28 +237,28 @@ def find_scan_findings(
     return [Finding("scan", path, number) for _, path, number in found]
 
 
-def find_extra(
+def find_extra_terms(
     repo: Repo, skill: str, message_file: Path, settings: Settings
 ) -> list[Finding]:
-    """Return where the added lines or the message hold a extra.
+    """Return where the added lines or the message hold an extra term.
 
-    ``ci/scan text`` reads only the extra list here, so a
-    ``private-term`` finding means a extra.
+    ``ci/scan text`` reads only the extra-term list here, so a
+    ``private-term`` finding means an extra term.
 
     Raises:
         ToolError: ``ci/scan`` could not run, such as when the list
             is missing.
     """
-    found = scan_fix_text(repo, skill, message_file, settings.work_terms_file)
+    found = scan_fix_text(repo, skill, message_file, settings.extra_terms_file)
     return [
-        Finding("extra", path, number)
+        Finding("extra-term", path, number)
         for rule, path, number in found
         if rule == "private-term"
     ]
 
 
 def scan_fix_text(
-    repo: Repo, skill: str, message_file: Path, extra: Path | None
+    repo: Repo, skill: str, message_file: Path, extra_terms: Path | None
 ) -> list[tuple[str, str, int | None]]:
     """Run the worktree's ``ci/scan text`` on the added lines and message.
 
@@ -271,8 +271,8 @@ def scan_fix_text(
         repo: The repo whose fix worktree holds the staged fix.
         skill: The skill the fix is for.
         message_file: The commit message.
-        extra: The extra list to scan with alone, or None to
-            scan with the private list and no extra.
+        extra_terms: The extra-term list to scan with alone, or None to
+            scan with the private list and no extra terms.
 
     Returns:
         Each finding's scan rule, such as ``private-term``, with its
@@ -294,15 +294,16 @@ def scan_fix_text(
         text.write_text("\n".join(lines) + "\n", encoding="utf-8")
         none = Path(folder) / "none"
         env = dict(os.environ)
-        if extra is None:
-            # An empty extra list leaves the private list on.
+        if extra_terms is None:
+            # An empty extra-term list leaves the private list on.
             none.write_text("", encoding="utf-8")
-            env["PDE_WORK_TERMS_FILE"] = str(none)
+            env["PDE_EXTRA_TERMS_FILE"] = str(none)
         else:
-            # A private list that does not exist leaves only the extra.
+            # A private list that does not exist leaves only the extra terms.
             env.pop("PRIVATE_TERMS", None)
+            env.pop("PRIVATE_PATTERNS", None)
             env["PDE_PRIVATE_TERMS_FILE"] = str(none)
-            env["PDE_WORK_TERMS_FILE"] = str(extra)
+            env["PDE_EXTRA_TERMS_FILE"] = str(extra_terms)
         result = subprocess.run(
             [str(repo.worktree / "ci/scan"), "text", str(text)],
             cwd=repo.worktree,

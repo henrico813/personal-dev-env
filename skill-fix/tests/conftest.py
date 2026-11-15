@@ -54,7 +54,7 @@ Missed: the agent moved on before it checked step {n}.
 Intent: agents check step {n} before they start the next one.
 """
 # Stands in for ci/scan, which needs gitleaks, matching PRIVATE_TERMS and
-# the extra list in text and refusing commits while $HOME/scan-refuses
+# the extra-term list in text and refusing commits while $HOME/scan-refuses
 # exists. $HOME/stub/text-mode makes text fail as "broken" (exit 2, a term
 # on stderr) or "unplaced" (exit 1, no line).
 SCAN_STUB = """\
@@ -70,11 +70,11 @@ text)
         echo "private-term (path withheld)"
         exit 1 ;;
     esac
-    if [ -n "$PDE_WORK_TERMS_FILE" ]; then
-        [ -r "$PDE_WORK_TERMS_FILE" ] || exit 2
+    if [ -n "$PDE_EXTRA_TERMS_FILE" ]; then
+        [ -r "$PDE_EXTRA_TERMS_FILE" ] || exit 2
     fi
     printf '%s\\n' "$PRIVATE_TERMS" |
-        cat - ${PDE_WORK_TERMS_FILE:+"$PDE_WORK_TERMS_FILE"} |
+        cat - ${PDE_EXTRA_TERMS_FILE:+"$PDE_EXTRA_TERMS_FILE"} |
         grep -v -e '^#' -e '^$' >"$HOME/stub/terms"
     grep -n -i -F -f "$HOME/stub/terms" "$2" |
         sed 's/:.*//; s/^/private-term text:/' | grep . && exit 1
@@ -158,7 +158,8 @@ def repos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Repos:
     """A PC labelled desk with the demo skill installed and in its checkout.
 
     The user's git config is ignored, so hooks or signing cannot change
-    what a test sees, and so is any ``PRIVATE_TERMS`` in the shell.
+    what a test sees, and so are any ``PRIVATE_TERMS`` and
+    ``PRIVATE_PATTERNS`` in the shell.
     """
     home = tmp_path / "home"
     stub = home / "stub"
@@ -171,6 +172,7 @@ def repos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Repos:
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(gitconfig))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     monkeypatch.delenv("PRIVATE_TERMS", raising=False)
+    monkeypatch.delenv("PRIVATE_PATTERNS", raising=False)
     monkeypatch.setenv("PATH", f"{stub}{os.pathsep}{os.environ['PATH']}")
     remote = tmp_path / "personal.git"
     upstream = tmp_path / "upstream"
