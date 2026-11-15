@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"pde-installer/internal/run"
 	"pde-installer/internal/testfile"
@@ -129,15 +130,15 @@ func TestStaleProcessGetsRestartWarning(t *testing.T) {
 	}
 }
 
-// Starts a copy of sleep at path, standing in for a tool installed in HOME,
-// and returns its PID. The process ends with the test.
+// Starts a copy of the test binary at path, standing in for a tool
+// installed in HOME, and returns its PID. The process ends with the test.
 func startTestProcess(t *testing.T, path string) int {
 	t.Helper()
-	sleep, err := exec.LookPath("sleep")
+	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(sleep)
+	data, err := os.ReadFile(self)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,9 +147,15 @@ func startTestProcess(t *testing.T, path string) int {
 		path,
 		string(data),
 	)
+	// Run a copy of this test binary, not sleep, since a multicall sleep,
+	// such as uutils on Ubuntu 26.04, did not stay alive as the copy in CI.
 	process := exec.Command(
 		path,
-		"60",
+		"-test.run=^TestHelperProcessBlocks$",
+	)
+	process.Env = append(
+		os.Environ(),
+		"PDE_TEST_HELPER_PROCESS=1",
 	)
 	if err := process.Start(); err != nil {
 		t.Fatal(err)
@@ -158,6 +165,15 @@ func startTestProcess(t *testing.T, path string) int {
 		_ = process.Wait()
 	})
 	return process.Process.Pid
+}
+
+// Not a test. startTestProcess runs it in a copied test binary as a
+// long-lived process with a known executable.
+func TestHelperProcessBlocks(t *testing.T) {
+	if os.Getenv("PDE_TEST_HELPER_PROCESS") != "1" {
+		t.Skip("helper process for startTestProcess")
+	}
+	time.Sleep(time.Minute)
 }
 
 // Deletes path, as an install does to the binary it replaces.
