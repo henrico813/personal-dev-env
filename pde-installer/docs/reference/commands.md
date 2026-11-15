@@ -8,7 +8,9 @@ root in this order:
 
 1. `--repo-root PATH`
 2. `PDE_REPO_ROOT`
-3. the current directory and its parents
+3. for `doctor` and `list` only, `install_path` in `~/.config/pde/config.json`,
+   so they check the installed checkout from any folder
+4. the current directory and its parents
 
 A valid root contains `chezmoi/`, `planner/go.mod`, and
 `pde-installer/go.mod`.
