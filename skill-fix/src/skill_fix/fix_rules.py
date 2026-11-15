@@ -8,6 +8,7 @@ never the text that broke the rule.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -29,6 +30,7 @@ from skill_fix.repos import (
 Rule = Literal[
     "other-files",
     "route",
+    "case",
     "width",
     "repeats",
     "message",
@@ -120,6 +122,7 @@ def check_fix(
     run_git(repo.worktree, "add", "--all", "--", folder)
     findings = (
         check_route(repo, skill)
+        + check_case(repo, skill)
         + run_skill_check(repo, settings)
         + check_message(repo, message_file, settings)
     )
@@ -147,6 +150,26 @@ def check_route(repo: Repo, skill: str) -> list[Finding]:
     ):
         return []
     return [Finding("route", path, None)]
+
+
+def check_case(repo: Repo, skill: str) -> list[Finding]:
+    """Refuse a fix that adds no correction case to the skill's ``evals/``.
+
+    The case is a new JSON file there with ``"correction": true``. The
+    merge checks run it on each later change to the skill, so a fix
+    that stops working blocks the merge.
+    """
+    evals = Path(repo.find_skill_dir(skill), "evals")
+    for path in list_new_paths(repo, skill):
+        if Path(path).parent != evals or not path.endswith(".json"):
+            continue
+        try:
+            case = json.loads((repo.worktree / path).read_text("utf-8"))
+        except json.JSONDecodeError:
+            continue
+        if isinstance(case, dict) and case.get("correction") is True:
+            return []
+    return [Finding("case", str(evals), None)]
 
 
 def run_skill_check(repo: Repo, settings: Settings) -> list[Finding]:
