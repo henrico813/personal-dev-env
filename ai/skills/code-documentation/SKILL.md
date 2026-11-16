@@ -233,13 +233,16 @@ the project's docs.
 
 - Before you pick a name, say the tool's job in one plain English
   sentence, such as "it checks that each quote is in its file". Take
-  the name from that sentence's verb and object: `check-quotes`.
+  the name from that sentence's verb and object: `check-quotes`. When
+  the job has more than one verb, use the one a user runs the tool
+  for.
 - Use whole words a new user would say aloud. Avoid short forms only
   the team knows, such as `kb` for kanban board.
 - Leave out the project's own name or prefix, such as `acme-` in
   `acme-sync`. It tells a new user nothing about the job, and it ties
   a tool to one project when the tool could serve others. Keep a
-  prefix the platform requires, such as `git-` for a Git subcommand.
+  prefix the platform requires, such as `git-` for a Git subcommand,
+  since Git finds the subcommand by that prefix.
 
 ## Tests
 

@@ -136,6 +136,9 @@ pattern over the whole file.
 
 - When planning changes to, writing, changing, or reviewing source code or
   automated tests, load and follow the `code-documentation` skill.
+- Before naming or renaming a command, script, program or package, load
+  and follow the `code-documentation` skill. Its "Tool names" section
+  says how.
 - During implementation, make supported source-documentation fixes within the
   current task. During review-only work, report findings without editing files.
 - When delegating source or test work, include `code-documentation` in the
