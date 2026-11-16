@@ -1,0 +1,18 @@
+{
+  "id": "newer-way-replaces-older-skill",
+  "source": "the user's correction that a new way to do a task left the older way in place",
+  "rule": "Change a skill",
+  "correction": true,
+  "prompt": "You work on a repository of agent skills. Reply with only the message you would send to the user. Show each file change as a diff.\n\nThe repository holds these files.\n\nai/skills/release-notes/SKILL.md (new in this change):\n---\nname: release-notes\ndescription: Writes the release notes for a new version.\n---\n# Release Notes\n1. Write one line per merged pull request under the version heading.\n\nai/skills/changelog-entry/SKILL.md:\n---\nname: changelog-entry\ndescription: Adds a line to CHANGELOG.md for each change.\n---\n# Changelog Entry\n1. Run `changelog add` with a one-line summary.\n\nai/skills/ship-release/SKILL.md:\n---\nname: ship-release\ndescription: Tags and publishes a new version.\n---\n# Ship Release\n1. Add the version's changes with the changelog-entry skill.\n2. Tag the version.\n\nThe user writes: \"Add release-notes as the way we write up our\nreleases from now on.\"\n",
+  "pass": [
+    "(?s)changelog-entry.{0,600}(remov|delet|replac|point)"
+  ],
+  "fail": [
+    "(?m)^\\+(?!\\+\\+|description:).{73,}"
+  ],
+  "judge": [
+    "Does the answer remove the changelog-entry skill, or replace it and the line in ship-release with a pointer to release-notes, without asking whether to keep changelog-entry?"
+  ],
+  "good": "release-notes replaces changelog-entry, so this change also removes the older way.\n\n```diff\n--- a/ai/skills/ship-release/SKILL.md\n+++ b/ai/skills/ship-release/SKILL.md\n-1. Add the version's changes with the changelog-entry skill.\n+1. Write the version's notes with the release-notes skill.\n```\n\nI also remove ai/skills/changelog-entry/, since release-notes replaced it.",
+  "bad": "I pointed ship-release at release-notes. Should I also remove the changelog-entry skill, or keep it for other uses? Removing a skill is harder to undo, so I'd rather ask."
+}

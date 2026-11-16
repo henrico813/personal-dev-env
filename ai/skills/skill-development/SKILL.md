@@ -135,8 +135,12 @@ other copy with a pointer.
    ```
 
    Remove each one, or replace it with a pointer to the newer way, in
-   the same pull request. Two ways to do one task leave the user and
-   agents unsure which one to follow.
+   the same pull request. This includes the older skill or command
+   itself, even when nothing calls it any more. Two ways to do one
+   task leave the user and agents unsure which one to follow. When the
+   user names the newer way as the way to do the task, do not ask
+   whether to keep the older one: the user reviews the removal in the
+   pull request, and can undo it there.
 4. Search every skill and `ai/AGENTS.md` for rules on the topic of
    the change, not only the skills that name it, as "Where a rule
    goes" shows. A rule conflicts when it tells agents to do the task
