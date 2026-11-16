@@ -1,0 +1,16 @@
+{
+  "id": "tool-name-plain-words",
+  "source": "the user's correction to tool names that a new audience could not read",
+  "rule": "Tool names",
+  "correction": true,
+  "prompt": "You work in the acme-dev-env repository. Its command-line tools are acme-installer, acme-ctx and acme-gh-write. You are adding a new command-line tool. It moves a card on the team's kanban board from one stage to another, and refuses a move the board does not allow, such as straight from active to accepted. It will ship in its own folder, and other teams may use it with their own boards.\n\nGive the tool's name and the names of its two subcommands, one per line, each with a few words on what it does. Then stop.",
+  "fail": [
+    "(?im)^\\W*`?acme-",
+    "(?i)\\bkb-|-kb\\b|\\bmv\\b"
+  ],
+  "judge": [
+    "Is the tool's name free of the project prefix acme, made only of whole words that a new user would understand, and does it say what the tool does?"
+  ],
+  "good": "`card-move`: moves a card on a kanban board and refuses moves the board does not allow.\n`card-move to`: moves one card to the stage you name.\n`card-move check`: says whether a move is allowed, without making it.",
+  "bad": "`cmover`: moves cards between kanban stages.\n`cmover go`: makes the move.\n`cmover ok`: checks the move first."
+}

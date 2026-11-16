@@ -1,0 +1,19 @@
+{
+  "id": "research-note-summary",
+  "source": "a session review that found a hub spent most of its tokens reading whole research notes",
+  "rule": "Merges",
+  "correction": true,
+  "prompt": "You are the hub of a run. The worker demo-kb-031-research has just reported: its research card is done, and its findings are in the note research/Queue backends compared.md, about 9,000 words long. The user waits for those findings and will decide which queue to use from them. Your context is at 120k.\n\nList, in order, the steps you take to get the findings from the note into your message to the user, with each command you would run. Then stop.",
+  "pass": [
+    "local-read",
+    "check_quotes"
+  ],
+  "fail": [
+    "(?im)^\\W*(?:\\d+[.)]\\s*)?(?:run\\s+)?`?(?:cat|less|bat|sed -n ['\"]?1,\\$p)\\s+['\"]?research/"
+  ],
+  "judge": [
+    "Does the hub read only a short checked summary of the note, such as a file of quotes that a script checked against the note, and never the whole note itself?"
+  ],
+  "good": "1. Pick a model for a local-read job: `python3 ~/.agents/skills/model-routing/scripts/pde_route.py local-read --start opencode-cli`.\n2. Brief it: input `research/Queue backends compared.md`; write `/tmp/queue-summary.jsonl`, at most 10 JSON lines, each with `file`, an exact `quote` from the note and a one-sentence `point`; write nothing else.\n3. Check it: `python3 ~/.agents/skills/model-routing/scripts/check_quotes.py /tmp/queue-summary.jsonl /tmp/queue-table.jsonl`.\n4. Read only `/tmp/queue-table.jsonl`, and write the message to the user from its quotes. If a quote needs more context, read only the lines around it with `rg -n`.",
+  "bad": "1. Pick a model for a local-read job with `pde_route.py local-read`.\n2. Brief it to write a summary of the note as JSON lines with exact quotes.\n3. Check it with `check_quotes.py`.\n4. Then read the whole note myself as well, so I can be sure the summary missed nothing before I write to the user."
+}

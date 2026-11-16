@@ -85,9 +85,8 @@ new session it hands off to gets the work. `hub next` asks each
 worker past 150k to hand off by itself, so send no second ask.
 
 Before you tell the user that a worker or subagent died, run
-`hub alive <session ID>` with its OpenCode session ID. Its line ends
-in `working`, `finished` or `stopped`. Report it dead only on
-`stopped`.
+`hub alive <session ID>` with its OpenCode session ID. Its line ends in
+`working`, `finished` or `stopped`. Report it dead only on `stopped`.
 
 When you hand work to a new session with `herdr-handoff`, its
 Coordination section names you as the one session it reports to,
@@ -107,10 +106,9 @@ into your pane. It prods a worker that sat idle 10 minutes owing a
 report and marks a blocked worker "needs you". When a report waits
 10 minutes with no `hub next` line, your next `hub next` prints it as
 `missed report <name>`. Only when you are gone does the watch alert
-the user's phone. A
-worker that waits on a long job registers it with `hub wait` and
-ends its turn. The watch prods it when the job ends and never counts
-it as stalled meanwhile, so you do nothing for it. When
+the user's phone. A worker that waits on a long job registers it with
+`hub wait` and ends its turn. The watch prods it when the job ends and
+never counts it as stalled meanwhile, so you do nothing for it. When
 `hub watch start` exits 3, tell the user its reason once, and go on
 with `hub next`. An auto hub, which never messages the user, lists the
 reason in its end brief instead.
@@ -217,8 +215,7 @@ handed off goes to the newest live session on its card, and prints
 
 `hub send` exits 1 with `not sent` when Herdr turned the message
 down or the session is gone, and with `unsure` when it may have
-arrived. For `unsure`, read
-the pane with
+arrived. For `unsure`, read the pane with
 `herdr agent read <name> --source recent-unwrapped --lines 40`, then
 delete the `.sending` file it names and send again only if the
 message did not arrive.
@@ -230,12 +227,11 @@ it with `hub at`:
     hub at --run "<run folder>" 20:00 --all --file <path>
 
 `--all` means every live worker found at that time. A live worker is a
-session on a card or one that has reported, and never a hub. `hub at`
-prints
-`at 20:00 to <names>: <stored file>`, and exits 2 for a time already
-past today. Delete the stored file to cancel the message. At that time,
-`hub next` holds the message for each session and sends it as it sends
-other held messages.
+session on a card or one that has reported, and never a hub.
+`hub at` prints `at 20:00 to <names>: <stored file>`, and exits 2 for
+a time already past today. Delete the stored file to cancel the
+message. At that time, `hub next` holds the message for each session
+and sends it as it sends other held messages.
 
 ## Waiting on the user
 
@@ -449,12 +445,16 @@ note says each of these:
 - For a new skill or tool, why no existing one can hold it.
 - Your recommendation.
 
+Never read a research note in full. Have a `local-read` job quote it,
+check the quotes with `check_quotes.py`, and read only the lines that
+pass, as [references/research-notes.md](references/research-notes.md)
+says.
+
 When a pull request has a script for the user to try it, its worker
 writes it as `~/test-pr-<n>.sh`, where `<n>` is the pull request's
 number. The script prints a `You should see: ...` line before `ok`.
 It shows the before and after where it can. It never suggests a
-command that competes with the hub's own commands, such as
-`hub next`.
+command that competes with the hub's own commands, such as `hub next`.
 
 Hand any merge the card's own worker cannot run, such as one whose
 worker is parked, to a merge worker, a new Herdr session. Read
