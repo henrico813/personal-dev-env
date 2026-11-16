@@ -43,12 +43,12 @@ pub(crate) enum ReviewStart {
 
 /// Starts the next hub on the model `rules.md` names, with `HUB_RUN`
 /// set, records the handoff, and reads back its first reply's effort.
-/// Checks every input before it starts anything. It appends the old
-/// hub's steps to the caller's handoff file and writes a review
-/// handoff in the state folder before the next hub gets its prompt,
-/// so the prompt reads the whole handoff. A rerun appends the steps
-/// twice. It then puts the hubs at the top of the sidebar, and a
-/// failure there adds a warning line, not an error.
+/// Checks every input before it starts anything. Right after the start
+/// it puts the hubs at the top of the sidebar, and a failure there
+/// adds a warning line, not an error. It appends the old hub's steps
+/// to the caller's handoff file and writes a review handoff in the
+/// state folder before the next hub gets its prompt, so the prompt
+/// reads the whole handoff. A rerun appends the steps twice.
 ///
 /// # Errors
 ///
@@ -106,6 +106,10 @@ pub fn run_handoff(
         workspace_id: old.workspace_id.clone(),
     };
     start_session(tools.herdr, &place, name.as_str(), &model, run, cwd)?;
+    // Before any step that can fail, since a hub without its tag is
+    // missing from the "go to" list. Herdr reports a slow first prompt
+    // as a failure.
+    let gather_warning = sidebar::gather_after_hub_start(tools);
     let started_but =
         |error: HubError| HubError::NotDone(format!("started {}, but {error}", name.as_str()));
     let handoff_event = Event {
@@ -123,7 +127,6 @@ pub fn run_handoff(
         .herdr
         .prompt(name.as_str(), &make_handoff_prompt(&handoff))
         .map_err(|error| started_but(error.into()))?;
-    let gather_warning = sidebar::gather_after_hub_start(tools);
     let effort = wait_for_reply_effort(tools, name, poll).map_err(started_but)?;
 
     let expected = model
