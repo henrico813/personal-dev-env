@@ -20,11 +20,27 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
 
+use jiff::SignedDuration;
+
 use crate::external::cards::{CardCli, CardError, Cards};
 use crate::external::herdr::{Herdr, HerdrCli, HerdrError};
 use crate::external::opencode::{OpenCodeDb, OpenCodeError};
 use crate::external::requests::RequestFolder;
 use parking::ParkedFolder;
+
+/// Returns a span such as `45m`, `1h29m` or `2d3h`, and `0m` for a
+/// negative one.
+pub(crate) fn format_span(span: SignedDuration) -> String {
+    let minutes = span.as_mins().max(0);
+    let (hours, days) = (minutes / 60, minutes / (60 * 24));
+    if days > 0 {
+        format!("{days}d{}h", hours % 24)
+    } else if hours > 0 {
+        format!("{hours}h{:02}m", minutes % 60)
+    } else {
+        format!("{minutes}m")
+    }
+}
 
 /// A command that stopped, with the exit code `main` gives it. Tests
 /// match the variant, never the message.

@@ -412,10 +412,15 @@ fn has_newer_live_session(
 /// Tells whether one of the requests came from the agent's pane or
 /// session.
 pub(crate) fn match_open_request(agent: &Agent, requests: &[PrRequest]) -> bool {
-    requests.iter().any(|request| {
-        request.pane_id.as_deref() == Some(agent.pane_id.as_str())
-            || (request.session_id.is_some() && request.session_id == agent.session_id)
-    })
+    requests
+        .iter()
+        .any(|request| is_request_from(agent, request))
+}
+
+/// Tells whether the request came from the agent's pane or session.
+pub(crate) fn is_request_from(agent: &Agent, request: &PrRequest) -> bool {
+    request.pane_id.as_deref() == Some(agent.pane_id.as_str())
+        || (request.session_id.is_some() && request.session_id == agent.session_id)
 }
 
 /// Adds one `cards:` problem line, once however many card calls fail.

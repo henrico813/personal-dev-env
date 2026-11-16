@@ -342,8 +342,8 @@ pub(crate) fn describe_why(
 
 /// Pads each cell to its column's widest, two spaces apart, and trims
 /// the end of each line.
-fn format_columns(table: &[[String; 4]]) -> Vec<String> {
-    let mut widths = [0; 4];
+pub(crate) fn format_columns<const N: usize>(table: &[[String; N]]) -> Vec<String> {
+    let mut widths = [0; N];
     for row in table {
         for (width, cell) in widths.iter_mut().zip(row) {
             *width = (*width).max(cell.chars().count());

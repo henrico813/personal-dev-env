@@ -258,6 +258,16 @@ When a session is `blocked`, read what it asks with
 the user which session waits, what it asks and your recommendation.
 The user answers in that session's pane; never answer it yourself.
 
+The `status-updates` skill says to look up an approval's state now
+before you list it as waiting. For pde-gh-write requests, look it up
+with `hub requests`, even to repeat a line from a handoff or your
+notes. Only state `pending` waits on the user. A `hub status` WHY of
+`request in the last hour` means a request already finished. Its
+`approval waits` also covers approved and running requests and an
+unreadable request file, so it alone does not mean the user owes an
+answer. This check goes once the hub's question queue lists live
+approvals itself.
+
 ## Cards
 
 Each machine runs its own hub and board, on that machine's default
@@ -403,18 +413,8 @@ them with:
 
     hub brief --run "<run folder>"
 
-Its first line is `board active A of 8, review R of 6; K decisions`.
-When cards wait on others, a `waiting-on-others W, oldest D days`
-line follows. Then it prints `reviews.md` and every entry, and last
-the "Waiting on others (no action needed)" list, with each card's
-days in the stage, title and reason. That list is news for the user,
-such as for a standup, never a question, so do not repeat it in
-other messages unless the user asks. It exits 3, naming the entry,
-when one lacks its question, two choices, `Recommended:` or
-`If no reply:`. Fix the entry and run it again. Show `reviews.md` as
-printed, and each entry in the short form of `status-updates`: its
-title's words, question, then key; `(rec)` on the `Recommended:`
-choice; its reason and other lines after the reply line.
+Read [references/hub-brief.md](references/hub-brief.md) for what it
+prints and how to show each part to the user.
 
 ## Merges
 

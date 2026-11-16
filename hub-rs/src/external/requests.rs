@@ -4,9 +4,8 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
 
-use jiff::Timestamp;
+use jiff::{SignedDuration, Timestamp};
 use serde_json::Value;
 
 /// The folder of request files, `pde/pr-write/` in the state folder
@@ -21,7 +20,12 @@ const OPEN_STATES: [&str; 3] = ["pending", "approved", "running"];
 
 /// How long a request keeps its session after its last change, in any
 /// state. A worker often files its next request soon after one runs.
-const RECENT_REQUEST_AGE: Duration = Duration::from_secs(60 * 60);
+const RECENT_REQUEST_AGE: SignedDuration = SignedDuration::from_secs(60 * 60);
+
+/// pde-gh-write's `approval.Expiry`. Its runner gives up on a pending
+/// or approved request this long after the last change, so `gh` never
+/// runs for it.
+const REQUEST_EXPIRY: SignedDuration = SignedDuration::from_secs(4 * 60 * 60);
 
 /// One request, a pull request change that waits on the user or on
 /// `gh`, or that ran lately. Each field is `None` when the request
@@ -43,6 +47,48 @@ pub struct OpenRequests {
     pub bad_files: usize,
 }
 
+/// One request file as pde-gh-write saved it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SavedRequest {
+    pub id: String,
+    /// The saved `state`, or `expired` for a pending or approved
+    /// request past `REQUEST_EXPIRY`.
+    pub state: String,
+    /// pde-gh-write may still act on it. Its state is pending, approved or running,
+    /// and changed within `REQUEST_EXPIRY`. A run that died stays
+    /// `running` in its file, and pde-gh-write never retries it.
+    pub is_open: bool,
+    /// The last change, from `updated`, else `created`, else the file
+    /// time. `None` when none can be read.
+    pub changed: Option<Timestamp>,
+    /// The repository and `gh pr` action, such as
+    /// `personal-dev-env #15 merge`.
+    pub pull_request: String,
+    pub source: PrRequest,
+}
+
+impl SavedRequest {
+    /// Returns the short reference the design gives an approval, `A`
+    /// and the ID's first six characters, such as `A0016cd`.
+    pub fn reference(&self) -> String {
+        format!("A{}", self.id.chars().take(6).collect::<String>())
+    }
+
+    /// Returns how long a pending request has before pde-gh-write lets
+    /// it expire, or `None` when it is not pending or has no time.
+    pub fn time_left(&self, now: Timestamp) -> Option<SignedDuration> {
+        let changed = self.changed.filter(|_| self.state == "pending")?;
+        Some(REQUEST_EXPIRY - now.duration_since(changed))
+    }
+}
+
+/// Every request file, and how many did not parse.
+#[derive(Debug, Default)]
+pub struct SavedRequests {
+    pub requests: Vec<SavedRequest>,
+    pub bad_files: usize,
+}
+
 impl RequestFolder {
     pub fn new(folder: PathBuf) -> RequestFolder {
         RequestFolder { folder }
@@ -57,67 +103,114 @@ impl RequestFolder {
     /// others changed in the last hour by the system clock. A missing
     /// folder is no requests.
     pub fn list_open_requests(&self) -> io::Result<OpenRequests> {
+        let now = Timestamp::now();
+        let saved = self.list_saved_requests(now)?;
+        let mut open = OpenRequests {
+            bad_files: saved.bad_files,
+            ..OpenRequests::default()
+        };
+        for request in saved.requests {
+            if request.is_open {
+                open.requests.push(request.source);
+            } else if is_changed_recently(request.changed, now) {
+                open.recent.push(request.source);
+            }
+        }
+        Ok(open)
+    }
+
+    /// Reads every request file, judging expiry at `now`. A missing
+    /// folder is no requests.
+    pub fn list_saved_requests(&self, now: Timestamp) -> io::Result<SavedRequests> {
         let entries = match fs::read_dir(&self.folder) {
             Ok(entries) => entries,
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                return Ok(OpenRequests::default());
+                return Ok(SavedRequests::default());
             }
             Err(error) => return Err(error),
         };
-        let now = SystemTime::now();
-        let mut open = OpenRequests::default();
+        let mut saved = SavedRequests::default();
         for entry in entries {
             let path = entry?.path();
             if path.extension().is_none_or(|extension| extension != "json") {
                 continue;
             }
-            let raw: Option<Value> = fs::read(&path)
+            let request = fs::read(&path)
                 .ok()
-                .and_then(|bytes| serde_json::from_slice(&bytes).ok());
-            let is_recent = || {
-                raw.as_ref()
-                    .is_some_and(|raw| is_changed_recently(raw, &path, now))
-            };
-            match raw.as_ref().and_then(parse_request) {
-                Some((state, request)) if OPEN_STATES.contains(&state.as_str()) => {
-                    open.requests.push(request);
-                }
-                Some((_, request)) if is_recent() => {
-                    open.recent.push(request);
-                }
-                Some(_) => {}
-                None => open.bad_files += 1,
+                .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+                .and_then(|raw| parse_request(&raw, &path, now));
+            match request {
+                Some(request) => saved.requests.push(request),
+                None => saved.bad_files += 1,
             }
         }
-        Ok(open)
+        Ok(saved)
     }
 }
 
-/// Returns one request file's state and request, or `None` when it has
-/// no `state`.
-fn parse_request(raw: &Value) -> Option<(String, PrRequest)> {
-    let state = raw["state"].as_str()?.to_owned();
+/// Returns one request file's request, or `None` when it has no
+/// `state`.
+fn parse_request(raw: &Value, path: &Path, now: Timestamp) -> Option<SavedRequest> {
+    let saved_state = raw["state"].as_str()?;
     let read_text = |field: &str| raw[field].as_str().map(str::to_owned);
-    let request = PrRequest {
-        pane_id: read_text("pane_id"),
-        session_id: read_text("session_id"),
-    };
-    Some((state, request))
+    let changed = read_changed_time(raw, path);
+    let is_old = changed.is_some_and(|changed| now.duration_since(changed) > REQUEST_EXPIRY);
+    let is_expired = is_old && matches!(saved_state, "pending" | "approved");
+    let id = read_text("id").unwrap_or_else(|| {
+        let stem = path.file_stem().unwrap_or_default();
+        stem.to_string_lossy().into_owned()
+    });
+    Some(SavedRequest {
+        id,
+        state: if is_expired { "expired" } else { saved_state }.to_owned(),
+        is_open: OPEN_STATES.contains(&saved_state) && !is_old,
+        changed,
+        pull_request: describe_pull_request(raw),
+        source: PrRequest {
+            pane_id: read_text("pane_id"),
+            session_id: read_text("session_id"),
+        },
+    })
 }
 
-/// Tells whether a request changed in the last hour, by its `updated`
-/// time, else its `created` time, else its file time. pde-gh-write
-/// sets `updated` on each save, so a request the user approved long
-/// after it was filed still counts once it runs. A request with no
-/// readable time, or one changed after `now`, counts as recent, so it
-/// keeps its session.
-fn is_changed_recently(raw: &Value, path: &Path, now: SystemTime) -> bool {
+/// Returns the request's last change. pde-gh-write sets `updated` on
+/// each save, so a request the user approved long after it was filed
+/// counts from when it ran.
+fn read_changed_time(raw: &Value, path: &Path) -> Option<Timestamp> {
     let saved = raw["updated"]
         .as_str()
         .or_else(|| raw["created"].as_str())
-        .and_then(|text| text.parse::<Timestamp>().ok())
-        .map(SystemTime::from);
-    let changed = saved.or_else(|| fs::metadata(path).and_then(|data| data.modified()).ok());
-    changed
-        .is_none_or(|changed| now.duration_since(changed).unwrap_or_default() < RECENT_REQUEST_AGE)
+        .and_then(|text| text.parse::<Timestamp>().ok());
+    saved.or_else(|| {
+        let modified = fs::metadata(path).and_then(|data| data.modified()).ok()?;
+        Timestamp::try_from(modified).ok()
+    })
+}
+
+/// Returns the repository's short name, the pull request number when
+/// the action takes one, and the action, from `repo` and `args` such as
+/// `["pr", "merge", "15", ...]`.
+fn describe_pull_request(raw: &Value) -> String {
+    let repo = raw["repo"]
+        .as_str()
+        .and_then(|repo| repo.rsplit('/').next())
+        .unwrap_or("-");
+    let args: Vec<&str> = raw["args"]
+        .as_array()
+        .map(|args| args.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    let action = args.get(1).copied().unwrap_or("-");
+    match args.get(2) {
+        Some(number) if !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit()) => {
+            format!("{repo} #{number} {action}")
+        }
+        _ => format!("{repo} {action}"),
+    }
+}
+
+/// Tells whether a request changed in the last hour. A request with no
+/// readable time, or one changed after `now`, counts as recent, so it
+/// keeps its session.
+fn is_changed_recently(changed: Option<Timestamp>, now: Timestamp) -> bool {
+    changed.is_none_or(|changed| now.duration_since(changed) < RECENT_REQUEST_AGE)
 }
