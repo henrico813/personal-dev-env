@@ -38,5 +38,6 @@ it to the skill's text, never here.
 
 - Never edit a Lessons section by hand. `skill-lessons` fills it from
   the local store.
-- A saved lesson moves into skill text as "Write a fix into skill
-  text" in the `skill-development` skill says.
+- A saved lesson moves into skill text only through the `skill-fix`
+  skill, which the user starts, since each lesson then becomes a fix
+  the user reviews on its own.
