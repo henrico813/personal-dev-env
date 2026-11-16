@@ -446,9 +446,9 @@ note says each of these:
 - Your recommendation.
 
 Never read a research note in full. Have a `local-read` job quote it,
-check the quotes with `check_quotes.py`, and read only the lines that
-pass, as [references/research-notes.md](references/research-notes.md)
-says.
+check the quotes with `check_quotes.py`, and read only the quotes and
+the sections `check_sections.py` lists as having none, as
+[references/research-notes.md](references/research-notes.md) says.
 
 When a pull request has a script for the user to try it, its worker
 writes it as `~/test-pr-<n>.sh`, where `<n>` is the pull request's

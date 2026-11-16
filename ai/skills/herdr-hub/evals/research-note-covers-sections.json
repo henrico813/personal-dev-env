@@ -1,0 +1,18 @@
+{
+  "id": "research-note-covers-sections",
+  "source": "the user's review: a checked summary proves each quote is real, but not that it left no section out",
+  "rule": "Merges",
+  "correction": true,
+  "prompt": "You are the hub of a run. A local-read job summarized the research note research/Queue backends compared.md, about 9,000 words long, into 8 JSON lines of quotes. check_quotes.py found all 8 quotes and wrote them to /tmp/queue-table.jsonl. The user will pick a queue backend from your message, so it must carry every finding and the note's recommendation.\n\nList, in order, the steps you take before you write that message, with each command you would run. Then stop.",
+  "pass": [
+    "check_sections"
+  ],
+  "fail": [
+    "(?im)^\\W*(?:\\d+[.)]\\s*)?(?:run\\s+)?`?(?:cat|less|bat|sed -n ['\"]?1,\\$p)\\s+['\"]?research/"
+  ],
+  "judge": [
+    "Does the hub check that the quotes cover each section of the note that holds findings, and fill any gap from only the sections no quote comes from, by reading those lines or running the job again on them, never reading the whole note?"
+  ],
+  "good": "1. Check that the quotes cover the note: `python3 ~/.agents/skills/herdr-hub/scripts/check_sections.py \"research/Queue backends compared.md\" /tmp/queue-table.jsonl`.\n2. It prints `no quote: lines 210-248 ## Costs`. Costs holds findings, so read only those lines: `sed -n '210,248p' \"research/Queue backends compared.md\"`.\n3. Read /tmp/queue-table.jsonl.\n4. Write the message from the quotes and the Costs lines.",
+  "bad": "1. Read /tmp/queue-table.jsonl.\n2. All 8 quotes were found, so the summary is complete.\n3. Write the message to the user from the 8 quotes."
+}
