@@ -1,17 +1,19 @@
 # Where the Code Lives
 
-The code is in five packages under `internal/`; each package's `doc.go`
-says what it holds. Two programs are built from `pdev/`:
+The code is in six packages under `internal/`; each package's `doc.go`
+says what it holds. Three programs are built from `pdev/`:
 
 - `pde-gh`, from `cmd/pde-gh/`, only calls `ghtool.Main`. The installer
   links `gh`, `pde-gh-guard` and `pde-gh-write` to it.
 - `pde-pr-approve`, from `main.go`, only calls `cmd.Main`.
+- `pde-x-watch`, from `cmd/pde-x-watch/`, only calls `xwatch.WatchDisplay`.
 
 `approval` imports no other pdev package, and `terminal` imports only
 `approval`. `ghtool` imports only `approval`, and only `cmd/pde-gh`
 imports `ghtool`; `TestToolFamiliesImportOnlySharedPackages` in
 `imports_test.go` fails otherwise. `cmd` imports `approval` and `terminal`.
-The two programs reach each other by starting one another from their own
+`xwatch` imports no other pdev package, and only `cmd/pde-x-watch` imports it.
+`pde-gh` and `pde-pr-approve` reach each other by starting one another from their own
 folder, never by import. The popup, the terminal prompt, and the phone all
 return the same answers, `approval.ChoiceYes` and the others, and `cmd`
 saves them.
@@ -54,6 +56,8 @@ and herdr.
 | How the inbox checks other Herdr machines | `internal/cmd/machines.go` |
 | The popup that shows other machines | `internal/terminal/others.go` |
 | How `gh` is found and run | `internal/ghtool/gh.go` |
+| The X watch's limits, how often it checks, or its notice text | `internal/xwatch/watch.go` |
+| How the X watch counts each client's windows | `internal/xwatch/xres.go` |
 | How a merge or a new PR keeps a stack in order, and the merge of a PR in a GitHub stack | `internal/ghtool/stack.go` |
 | The wait, rerun results, and exit codes | `internal/ghtool/writecmd.go` and `internal/ghtool/ghtool.go` |
 | An option that a new `gh` adds to a `gh pr` command | `targetFlags` in `internal/approval/request.go`, with whether it takes a value; title, body, body file, and repository options are in `valueFlags` |

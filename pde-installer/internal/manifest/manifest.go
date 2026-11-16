@@ -136,6 +136,7 @@ func Items() []Item {
 			Tier:  profile.Workstation,
 		},
 		{Name: "prs", Owner: Local, Tier: profile.Development},
+		{Name: "pde-x-watch", Owner: Local, Tier: profile.Development},
 		{Name: "xwinwrap", Owner: Local, Tier: profile.Terminal, Desktop: "i3"},
 		{Name: "mpvpaper", Owner: Local, Tier: profile.Terminal, Desktop: "sway"},
 		{

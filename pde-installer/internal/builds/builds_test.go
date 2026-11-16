@@ -776,6 +776,7 @@ func assertBuildOutputs(t *testing.T, home string) {
 		"skill-lessons":        "python",
 		"skill-fix":            "python",
 		"prs":                  "go",
+		"pde-x-watch":          "go",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "#!/bin/sh\nexit 0\n# built by "+tool+"\n")
 	}

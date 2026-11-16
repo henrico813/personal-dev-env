@@ -88,10 +88,17 @@ enable_skill_evals_timer.sh
 .config/polybar/**
 .config/cava
 .config/cava/**
+.config/picom
+.config/picom/**
+.xinputrc
 {{- end }}
 {{- if ne .pde.desktop "sway" }}
 .config/sway
 .config/sway/**
 .config/waybar
 .config/waybar/**
+{{- end }}
+{{- if or (ne .pde.desktop "i3") (not (has "development" .pde.tiers)) }}
+# Only full installs build pdev, and only i3 runs the Xorg the X watch reads.
+.config/autostart/pde-x-watch.desktop
 {{- end }}

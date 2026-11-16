@@ -97,12 +97,18 @@ func TestIgnoreListMatchesEachProfile(t *testing.T) {
 		".config/polybar/**",
 		".config/cava",
 		".config/cava/**",
+		".config/picom",
+		".config/picom/**",
+		".xinputrc",
 	}
 	swayIgnores := []string{
 		".config/sway",
 		".config/sway/**",
 		".config/waybar",
 		".config/waybar/**",
+	}
+	xWatchIgnores := []string{
+		".config/autostart/pde-x-watch.desktop",
 	}
 	join := func(lists ...[]string) []string {
 		var joined []string
@@ -117,20 +123,20 @@ func TestIgnoreListMatchesEachProfile(t *testing.T) {
 	}{
 		{
 			profile: "terminal",
-			want:    join(clientIgnores, terminalIgnores, sharedDesktopIgnores, i3Ignores, swayIgnores),
+			want:    join(clientIgnores, terminalIgnores, sharedDesktopIgnores, i3Ignores, swayIgnores, xWatchIgnores),
 		},
 		{
 			profile: "client",
-			want:    join(clientIgnores, sharedDesktopIgnores, i3Ignores, swayIgnores),
+			want:    join(clientIgnores, sharedDesktopIgnores, i3Ignores, swayIgnores, xWatchIgnores),
 		},
 		{
 			profile: "full",
-			want:    join(fullIgnores, sharedDesktopIgnores, i3Ignores, swayIgnores),
+			want:    join(fullIgnores, sharedDesktopIgnores, i3Ignores, swayIgnores, xWatchIgnores),
 		},
 		{
 			profile: "client",
 			desktop: "sway",
-			want:    join(clientIgnores, i3Ignores),
+			want:    join(clientIgnores, i3Ignores, xWatchIgnores),
 		},
 		{
 			profile: "full",
@@ -164,6 +170,8 @@ func TestIgnoreListCoversEveryDesktopFile(t *testing.T) {
 		".config/i3":                              "i3",
 		".config/polybar":                         "i3",
 		".config/cava":                            "i3",
+		".config/picom":                           "i3",
+		".xinputrc":                               "i3",
 	}
 	files := map[string]string{}
 	found := map[string]bool{}
@@ -262,6 +270,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".local/bin/pde-gh-write",
 		".local/bin/pde-pr-approve",
 		".local/bin/prs",
+		".local/bin/pde-x-watch",
 	}
 	retiredAgentFiles := []string{
 		".config/opencode/plugins/pde-approval-session.js",

@@ -1,0 +1,7 @@
+# Warns when Xorg gets busy or an X client leaks windows; see the pdev docs.
+[Desktop Entry]
+Type=Application
+Name=PDE X watch
+TryExec=pde-x-watch
+Exec=pde-x-watch
+NoDisplay=true

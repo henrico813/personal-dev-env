@@ -13,6 +13,8 @@ Pick the page for what you need to do:
   [Approve or decline a request](how-to/approve-a-request.md).
 - A request seems stuck, or nothing happened after you approved:
   [Debug a stuck or unanswered request](how-to/debug-a-stuck-request.md).
+- A `pde-x-watch` notice says a program holds too many X windows, or Xorg
+  is busy: [Answer an X watch warning](how-to/answer-an-x-watch-warning.md).
 - Look up an exact detail, such as an exit code, a popup key, or where
   requests are saved:
   [States, exit codes, and files](reference/requests.md).

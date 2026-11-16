@@ -127,6 +127,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"build and atomically activate skill-lessons",
 				"build and atomically activate skill-fix",
 				"build and atomically activate prs",
+				"build and atomically activate pde-x-watch",
 				"migrate legacy PDE configuration",
 				"install and atomically activate opencode-inline.nvim",
 				"preview chezmoi changes",

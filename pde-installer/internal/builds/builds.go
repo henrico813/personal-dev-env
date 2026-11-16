@@ -765,6 +765,27 @@ func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []bu
 			// prs _keys prints the key help without calling GitHub.
 			verifyArg: "_keys",
 		},
+		{
+			name:   "pde-x-watch",
+			source: filepath.Join(m.RepoRoot, "pdev"),
+			output: filepath.Join(stageRoot, "pde-x-watch"),
+			command: run.Command{
+				Name: goBinary,
+				Args: []string{
+					"build",
+					"-mod=readonly",
+					"-o",
+					filepath.Join(stageRoot, "pde-x-watch"),
+					"./cmd/pde-x-watch",
+				},
+				Dir: filepath.Join(m.RepoRoot, "pdev"),
+				Env: environment,
+			},
+			// After an install, the installer runs each new tool once with
+			// verifyArg, such as --help, to check that it starts. pde-x-watch
+			// gets no such check, since it has no quick mode and would run
+			// until logout.
+		},
 	}
 	wanted := map[string]bool{}
 	for _, item := range manifest.ByOwnerFor(selected, manifest.Local) {
