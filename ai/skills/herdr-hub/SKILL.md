@@ -34,6 +34,9 @@ Record the user's standing decisions in its `rules.md`, the pull
 requests that wait for the user's review in `reviews.md`, each
 question that waits on the user in `decisions.md`, as Questions for
 the user says, and detail the user need not read in `notes.md`.
+Add a rule to `rules.md` only when the user gave it. When you think
+of a rule yourself, such as a pattern in the user's answers, ask the
+user before you add it, since the hub follows every line there.
 
 Keep no list of sessions of your own. Herdr's session names and the
 kanban cards are the record: a card's worker is named after the card,
