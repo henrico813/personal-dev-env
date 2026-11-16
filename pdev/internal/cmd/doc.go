@@ -1,4 +1,4 @@
-// Package cmd runs pde-gh-write and pde-pr-approve. Main picks the mode from
-// the program name and first argument. Every call to gh, herdr, and
-// moshi-hook is made from this package.
+// Package cmd runs pde-pr-approve, with the terminal approval, the Herdr
+// popup and inbox, and the phone question and Herdr notification that pde-gh
+// starts. Every call to herdr and moshi-hook is made from this package.
 package cmd

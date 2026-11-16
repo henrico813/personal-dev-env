@@ -56,7 +56,8 @@ less has no way to run a command on a key and keep going. It can quit with a
 chosen exit status, through a lesskey file. In it, each screen key is
 `X quit X`, so less exits with the letter's character code as its status.
 When less ends, `prs` reads the status and opens the next screen. `h` and
-`q` quit, so `prs` goes back.
+`q` quit, so `prs` goes back. In the diff view, `h` shows the previous file
+instead.
 
 That is why the less screens are loops in `prs`. The PR summary screen runs
 less, and when you press `c`, `prs` runs the comments screen and then less
@@ -75,7 +76,7 @@ file picker is fzf, which lists files and shows the selected file's diff in
 its side pane.
 
 `showDiff` in `internal/app/diff.go` holds the split diff and the current
-file number while it swaps the two. The diff view's keys `L`, `H`, `o`, `r`
+file number while it swaps the two. The diff view's keys `l`, `h`, `o`, `r`
 and `?` quit less with their letter. The file picker's keys print their name
 with fzf's `print` action before fzf ends, so `prs` reads the key and then
 the chosen row. `l` sets the current file, and `o` or `h` keep it. Because

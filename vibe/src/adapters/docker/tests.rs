@@ -1,7 +1,8 @@
 use super::auth::{auth_env_args, prepare_provider_auth, AUTH_VARS};
 use super::skills::{
     prepare_repository_skills, prepare_user_skills, prepare_user_skills_with,
-    reject_user_skills_writable_overlap, revalidate_skill_root, validate_repository_skills_mount,
+    reject_user_skills_writable_overlap, revalidate_skill_root, select_user_skills,
+    validate_repository_skills_mount,
 };
 use super::{docker_run_args, DockerRunArgs, HostUser};
 use crate::observe::ArtifactPaths;
@@ -124,6 +125,38 @@ fn shared_skills_find_directory() {
         prepared.path,
         fs::canonicalize(skills_dir).expect("resolve skills")
     );
+}
+
+/// A skill try must mount the given folder, never the shared install.
+#[test]
+fn select_user_skills_prefers_given_folder() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let home = temp.path().join("home");
+    fs::create_dir_all(home.join(".agents/skills")).expect("mkdir home skills");
+    let checkout_skills = temp.path().join("checkout/ai/skills");
+    fs::create_dir_all(&checkout_skills).expect("mkdir checkout skills");
+
+    let prepared = select_user_skills(Some(&checkout_skills), Some(home.as_os_str()))
+        .expect("read skills folder")
+        .expect("skills folder");
+
+    assert_eq!(
+        prepared.path,
+        fs::canonicalize(checkout_skills).expect("resolve skills")
+    );
+}
+
+/// A mistyped folder must stop the run instead of running with no skills.
+#[test]
+fn select_user_skills_rejects_missing_folder() {
+    let home = tempfile::tempdir().expect("tempdir");
+    fs::create_dir_all(home.path().join(".agents/skills")).expect("mkdir home skills");
+    let missing = home.path().join("missing");
+
+    let error = select_user_skills(Some(&missing), Some(home.path().as_os_str()))
+        .expect_err("missing skills folder should fail");
+
+    assert!(error.contains("skills folder not found"));
 }
 
 #[test]

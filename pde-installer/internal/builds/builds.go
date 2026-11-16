@@ -32,14 +32,14 @@ type Manager struct {
 type buildSpec struct {
 	name, source, output string
 	command              run.Command
-	alias                string // Second name in ~/.local/bin, linked to name.
-	verifyArg            string // Argument that checks the built tool after activation, or empty for no check.
-	pythonPackage        string // Package that hashPythonSources reads for a packed Python tool, or empty.
+	aliases              []string // Other names in ~/.local/bin, linked to name.
+	verifyArg            string   // Argument that checks the built tool after activation, or empty for no check.
+	pythonPackage        string   // Package that hashPythonSources reads for a packed Python tool, or empty.
 }
 
-// pdev2 runs approve mode only when started under the name pde-pr-approve. A
-// link keeps one binary, so the two names cannot drift apart.
-const approveAlias = "pde-pr-approve"
+// pde-gh runs the gh guard under gh or pde-gh-guard and asks for approval
+// under pde-gh-write. Links keep one binary, so the names cannot drift apart.
+var ghAliases = []string{"gh", "pde-gh-guard", "pde-gh-write"}
 
 // Reconcile deletes these names from ~/.local/bin when the profile does not
 // build them. hub-next was the Rust hub's old name, and client laptops no
@@ -202,13 +202,13 @@ func (m Manager) Reconcile(selected profile.Profile) (*fsutil.Journal, error) {
 		if err := journal.Activate(staged, filepath.Join(m.Home, ".local", "bin", spec.name)); err != nil {
 			return nil, journal.Revert(fmt.Errorf("activate %s: %w", spec.name, err))
 		}
-		if spec.alias != "" {
-			aliasStage := filepath.Join(stageRoot, "activate-"+spec.alias)
+		for _, alias := range spec.aliases {
+			aliasStage := filepath.Join(stageRoot, "activate-"+alias)
 			if err := os.Symlink(filepath.Join(m.Home, ".local", "bin", spec.name), aliasStage); err != nil {
-				return nil, journal.Revert(fmt.Errorf("stage %s alias: %w", spec.alias, err))
+				return nil, journal.Revert(fmt.Errorf("stage %s alias: %w", alias, err))
 			}
-			if err := journal.Activate(aliasStage, filepath.Join(m.Home, ".local", "bin", spec.alias)); err != nil {
-				return nil, journal.Revert(fmt.Errorf("activate %s alias: %w", spec.alias, err))
+			if err := journal.Activate(aliasStage, filepath.Join(m.Home, ".local", "bin", alias)); err != nil {
+				return nil, journal.Revert(fmt.Errorf("activate %s alias: %w", alias, err))
 			}
 		}
 		if !tracked {
@@ -664,18 +664,31 @@ func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []bu
 			verifyArg: "--help",
 		},
 		{
-			name:   "pde-gh-write",
+			name:   "pde-gh",
 			source: filepath.Join(m.RepoRoot, "pdev"),
-			output: filepath.Join(stageRoot, "pde-gh-write"),
+			output: filepath.Join(stageRoot, "pde-gh"),
 			command: run.Command{
 				Name: goBinary,
 				Args: []string{
-					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "pde-gh-write"), ".",
+					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "pde-gh"), "./cmd/pde-gh",
 				},
 				Dir: filepath.Join(m.RepoRoot, "pdev"), Env: environment,
 			},
-			alias: approveAlias,
-			// pde-gh-write has no side-effect-free help mode, so it has no verifyArg.
+			aliases: ghAliases,
+			// pde-gh has no side-effect-free help mode, so it has no verifyArg.
+		},
+		{
+			name:   "pde-pr-approve",
+			source: filepath.Join(m.RepoRoot, "pdev"),
+			output: filepath.Join(stageRoot, "pde-pr-approve"),
+			command: run.Command{
+				Name: goBinary,
+				Args: []string{
+					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "pde-pr-approve"), ".",
+				},
+				Dir: filepath.Join(m.RepoRoot, "pdev"), Env: environment,
+			},
+			// pde-pr-approve has no side-effect-free help mode either.
 		},
 		{
 			name:   "glimmer",
@@ -846,13 +859,12 @@ func (m Manager) current(specs []buildSpec, inputs map[string]string) bool {
 		}
 	}
 	for _, spec := range specs {
-		if spec.alias == "" {
-			continue
-		}
-		// A missing alias must trigger a rebuild even when sources are unchanged.
-		target, err := os.Readlink(filepath.Join(m.Home, ".local", "bin", spec.alias))
-		if err != nil || target != filepath.Join(m.Home, ".local", "bin", spec.name) {
-			return false
+		for _, alias := range spec.aliases {
+			// A missing alias must trigger a rebuild even when sources are unchanged.
+			target, err := os.Readlink(filepath.Join(m.Home, ".local", "bin", alias))
+			if err != nil || target != filepath.Join(m.Home, ".local", "bin", spec.name) {
+				return false
+			}
 		}
 	}
 	return true

@@ -142,42 +142,14 @@ are off by default. Most lines end with your own context, such as
   `hub next` ran for 10 minutes before it, so keep one running.
 - `blocked <name>`: the session waits at an approval or question in
   its pane. Handle it as Waiting on the user says.
-- `not sent <name>: <reason>`: Herdr turned a held message down, or
-  the session is gone. The message stays in a `.notsent` file in
-  `<run folder>/sends/`. Check the session, and send it again. Once
-  you have sent it again, or decided not to, delete that `.notsent`
-  file, since the session waits on you while it stays.
-- `unsure <name>: <reason>`: a held message may have arrived. Handle
-  it as an `unsure` send, as Send to a session says.
-- `timed message to <N> sessions: <path>`: a message stored with
-  `hub at` has reached its time and is held for N sessions. `<path>` is
-  the `--file` given to `hub at`. A session that is gone or turns it
-  down gets its own `not sent` or `unsure` line.
+- Any other line, such as `not sent`, `unsure` or
+  `no hub handoff`: handle it as
+  [references/hub-next-lines.md](references/hub-next-lines.md) says.
 - `hand off now: hub at <N>k`: your context passed 150k. Hand off
   the hub now, as Hand off the hub says.
-- `board over its limit: active N of 8, review N of 6`: the cards
-  now in active or in review passed that stage's limit. Tell the
-  user at once, with the board line, and propose cards to pause as
-  Cards says. Start no ready card until both counts are back within
-  their limits or the user says to go on.
 - `to-close <names>: <why>; run hub clean`, or the same with
   `to-park`: those sessions finished. Run `hub clean` as Cleanup
   says.
-- `old send file: <path>`: handle it as the `hub status` line of the
-  same name, above.
-- `no hub handoff for <old> -> hub adopt <old>`: an older hub of this
-  run is still open, and no `hub handoff` started you from it. Run
-  `hub adopt --run "<run folder>" <old>`. It writes the old hub's
-  review handoff. Once the old hub is idle, `hub next` lists it as
-  `to-close`, and `hub clean` closes its tab. In an auto run,
-  the front hub also adopts the run's auto hub once the run is over,
-  as the `auto-run` skill says.
-- `review started <name>`: with `--start-reviews`, the old hub's
-  session review now runs. Bring its pick list to the user when it
-  reports.
-- `review not started for <old>: <reason>; start it from <file> with
-  herdr-handoff`: `hub next` tries no more. Start that review with
-  `herdr-handoff` from that file.
 - `timeout`: the `--timeout` you gave ran out with no news. Start it
   again.
 - `replaced by a newer hub next`: start nothing, since a newer
@@ -190,19 +162,9 @@ Never write a `- HHMM` line by hand.
 It prints each blocked state once, so a session that stays blocked
 does not wake you again.
 
-A session started with `herdr --machine <label>` runs on that
-machine's Herdr server, and you cannot read its files, so `hub next`
-does not see it. Write in its handoff that it ends each turn with its
-report. Learn of the turn's end with one background command, and read
-the report with the second:
-
-    herdr --machine <label> agent wait <name> --until idle \
-      --until done --until blocked
-    herdr --machine <label> agent read <name> \
-      --source recent-unwrapped --lines 80
-
-`hub --machine <label> status --run "<run folder>"` lists that
-machine's sessions.
+A session on another machine, started with `herdr --machine`, is
+not seen by `hub next`. Follow
+[references/hub-next-lines.md](references/hub-next-lines.md) for it.
 
 ## Reports from sessions
 
@@ -319,29 +281,10 @@ vault. A hub never reports to a hub on another machine.
   When you move a card to `review`, add the user's one next step with
   `card note KEY "next: <step>"`, such as `next: review PR #498`.
   `hub board` shows it on the card's details page.
-- Move a card to `waiting-on-others` when its work waits only on
-  people outside the user's team, such as another team's reviewers or
-  a change another team must make first. It is a staff move, without
-  `--user`. Name who it waits on with `--why`, such as
-  `--why "platform team's review"`; `card` refuses the move without
-  it. Work blocked on another team's change moves there from
-  `active`. A pull request moves there from `review` only after the
-  user reviewed it. Then take it off `reviews.md`, and send its worker
-  no merge step, since the merge waits on the outside reviewers.
-  `hub status` then shows the worker as `to-park`, and `hub clean`
-  parks it. These cards count against neither limit. `hub brief`
-  lists them, with the days since each moved there, under "Waiting on
-  others (no action needed)", and `hub board` folds them into a
-  "Waiting on others" group.
-- Move a `waiting-on-others` card back once the user tells you, or
-  the pull request shows, that the outside reviewers answered. These
-  are staff moves too. When they approved, move it to `review`; the
-  user's earlier review stands, so hand on the merge as Merges says.
-  When they asked something only the user can answer, move it to
-  `review` and add the question to `decisions.md`. When they asked
-  for changes, move it to `active`. When that stage is full, leave
-  the card where it is, tell the user, and move it once a place is
-  free.
+- Move a card to or from `waiting-on-others`, the stage for work
+  that waits only on people outside the user's team, as
+  [references/waiting-on-others.md](references/waiting-on-others.md)
+  says. These cards count against neither limit.
 - When one wake needs several card commands, such as `card note`,
   `card move` and `card add`, put them in one shell script and run it
   in one tool call.
@@ -488,7 +431,8 @@ step. A worker sends one only after you tell it the user reviewed
 that pull request, so tell it once the user has, and take the pull
 request off the list. The worker then merges and reports once it has
 merged. When the worker is parked, do not message it, since a message
-reopens it; hand its merge to a merge worker, as below.
+reopens it; hand its merge to a merge worker, as
+[references/merge-worker.md](references/merge-worker.md) says.
 
 The first message that shows the user a pull request or a research
 note says each of these:
@@ -509,84 +453,10 @@ It shows the before and after where it can. It never suggests a
 command that competes with the hub's own commands, such as
 `hub next`.
 
-Hand any other merge first to a merge worker. A merge worker is a new
-Herdr session on the local model, as `model-routing` picks, never a
-subagent of the hub. A subagent ends when the hub's turn is
-interrupted, and the user cannot see it. Start it with
-`herdr-handoff`. Pass `--auto`, and set `--model` to that model.
-Make a folder with `mktemp -d`. Brief the worker as `model-routing`
-says for a local job. In that brief, put the command below in place
-of `bash <script>`, and name `<folder>/summary.txt` as the summary
-file. In a repository with
-several remotes, add `--remote <remote>` after the test command.
-For a personal-dev-env pull request, add `--update` at the end, as in
-`'<test command>' --remote <remote> --update`. `--update` makes the
-same worker run `pde-installer update` once the pull request has
-merged. That command updates the checkout at `install_path` in
-`~/.config/pde/config.json` to the newest main and installs it, so
-the hub starts no separate session to install the merge.
-
-Start a merge worker only for a pull request whose Testing records that
-the change was deployed and tried, as `pull-request` Guardrail 4 asks.
-Otherwise hand the merge on as that skill's Merge says. When `rules.md`
-names an environment setting that `git push` needs, such as an SSH
-agent socket, put it just before `bash` in the brief's command.
-
-    cd <repository> &&
-      bash ~/.agents/skills/herdr-hub/scripts/merge-worker.sh \
-        <number> <folder> '<test command>'
-
-The script merges the base into a branch that is behind it and pushes
-the merge as a new commit. It then runs `pull-request`'s merge checks
-and, when they pass, sends the merge request. The user approves it in
-the popup or on the phone, which shows the squash message. The script
-keeps running when the shell tool stops it.
-
-Read `<folder>/summary.txt` yourself. When the summary fails the check
-in `model-routing`, retry the merge worker as that skill says, with
-the same folder. The script starts no second run in the same folder.
-A new folder would start a second run, which could send a second
-merge request. The line before `exit:` says what happened:
-
-- `merged: <commit>`: handle it as a merged pull request, as Reports
-  from sessions says.
-- `update installed: main is at <commit>` or
-  `update current: main is at <commit>`: the merged line comes just
-  before it. Handle it as a merged pull request; the update needs no
-  further check. The three `update` lines appear only with
-  `--update`.
-- `update: failed with exit <code>: <reason>; see update.log`: the
-  pull request merged, but this machine does not run the newest main.
-  Accept the merged work as above, and tell the user, with that line
-  and the last lines of `<folder>/update.log`.
-- `result: conflict with <base>: <files>`: resolving a conflict
-  writes code, so it is a local job. Hand it to a worker as
-  `herdr-handoff`'s "Hand a local job to a worker" says, with an edit
-  brief as `model-routing` says. The brief has the model merge the
-  base into the branch in the branch's worktree and resolve the
-  conflict, and then stop. The brief lists `<files>` as the only
-  files to edit. The model commits nothing and writes no pull request
-  text.
-
-  After the model stops, run the edit job's check script yourself, as
-  `model-routing` says. The script runs `git diff --check` to catch
-  leftover conflict markers, then the merge worker's test command.
-  The script commits with your message and pushes only when both
-  pass. Write the message as `git-messages` says. The script writes a
-  summary that ends in `done`. A broken resolution then never reaches
-  the pull request's branch.
-
-  When the summary ends in `done`, start a new merge worker with a
-  new folder, since no merge request went out. When the check fails,
-  or the new merge worker reports a conflict again, count it as a
-  failed check. Retry and step up as `model-routing` says. A retry
-  starts with `git merge --abort` in the branch's worktree.
-- `result: not ready: ...`: bring the problems it names to the user
-  with the pull request's review entry.
-- Any other line, such as a declined request or an `error:` line:
-  tell the user.
-
-Close the merge worker's tab once you have read its summary.
+Hand any merge the card's own worker cannot run, such as one whose
+worker is parked, to a merge worker, a new Herdr session. Read
+[references/merge-worker.md](references/merge-worker.md) before you
+start one.
 
 ## Hand off the hub
 

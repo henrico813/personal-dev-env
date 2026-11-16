@@ -68,9 +68,10 @@
 - When cleaning up the worktree and branch of a completed plan, load and
   follow the `cleanup-plan` skill.
 - When asked to have an agent do a task and review it until it is ready,
-  load and follow the `delegate` skill. The subagent loads the skill for
-  the task itself, such as `create-plan` or `implement-plan`; review its
-  work with `review-plan` when it applies.
+  or to plan something, build it on the local model and test it for
+  real, load and follow the `delegate` skill. The subagent loads the
+  skill for the task itself, such as `create-plan` or
+  `implement-plan`; review its work with `review-plan` when it applies.
 - When the user says "put this in my notes", or asks to add something
   to the daily note, without naming another note, load and follow the
   `obsidian-daily-note` skill. Do not ask which notes they mean, even

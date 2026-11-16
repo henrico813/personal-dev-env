@@ -22,19 +22,34 @@ steps' defaults.
 3. Before opening a PR, pushing a review round, or merging, run repository tests
    covering the change. If any fail, stop and report them; never call a failure
    expected or correct in PR text.
-4. Before opening a PR, and before Merge step 5, deploy the change
-   where it runs and try the changed behavior itself, not only that
-   nothing else broke. A deploy that never runs the changed files,
-   such as an install on a machine that does not use them, does not
-   count. For a skill or prompt, deploy it by installing it, and have
-   a fresh agent follow it on one real task. Record each review, test
-   and try as one line of the checks list in Testing, as `git-messages`
-   item 5 says. Give the rest, such as screenshots, in your message to
-   the user. If the change only runs after its own merge, such as a
-   job that runs only on the default branch, or never runs, such as
-   docs, say which in Testing and how you checked it. If the change
-   runs somewhere you cannot reach yet, including a stacked PR that
-   needs its parent merged, tell the user and do not send the
+4. Before opening a PR, and before Merge step 5, deploy the change where
+   it runs and try the changed behavior itself, not only that nothing
+   else broke. A deploy that never runs the changed files, such as an
+   install on a machine that does not use them, does not count. To try
+   a skill, run this from its worktree, where PROMPT_FILE is a file
+   that holds one real task. Get MODEL from `model-routing` as a
+   `step-code` job with `--start opencode-cli`. Vibe runs `goog`
+   models with no login; when Vibe cannot run the pick, pass it to
+   `--failed` as that skill says:
+
+   ```bash
+   vibe run --skills ai/skills --key <key> --base HEAD \
+     --prompt-file PROMPT_FILE --model MODEL
+   ```
+
+   A fresh agent in the Vibe sandbox runner then follows the
+   worktree's skills, and the real install, which other sessions
+   share, is never used or changed. Vibe leaves out workflow skills,
+   those marked `pde-workflow: "true"`. To try one of those, or a
+   prompt, run `pde-installer install` from the worktree, then have a
+   fresh agent follow the changed skill on one real task. Record each
+   review, test and try as one line of the checks list in Testing, as
+   `git-messages` item 5 says. Give the rest, such as screenshots, in
+   your message to the user. If the change only runs after its own
+   merge, such as a job that runs only on the default branch, or never
+   runs, such as docs, say which in Testing and how you checked it. If
+   the change runs somewhere you cannot reach yet, including a stacked
+   PR that needs its parent merged, tell the user and do not send the
    request. To undo a test install, install again from the default
    branch.
 

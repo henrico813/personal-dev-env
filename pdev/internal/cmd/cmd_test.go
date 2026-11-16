@@ -10,11 +10,9 @@ import (
 	"pdev/internal/approvaltest"
 )
 
-// One binary does every job: the installer links pde-pr-approve to
-// pde-gh-write, and the program starts its runner and phone question as
-// copies of itself. If the program name or first argument picked the wrong
-// mode, pde-pr-approve would print the pde-gh-write usage, or a late
-// approval would never run.
+// Herdr runs pde-pr-approve for the popup and the inbox, and pde-gh starts
+// it for the phone question. If the first argument picked the wrong mode,
+// the popup would not open or the phone would never be asked.
 func TestMainPicksEntryMode(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -23,13 +21,9 @@ func TestMainPicksEntryMode(t *testing.T) {
 		stderr string
 		call   string // A call the mode makes to the fake herdr or moshi-hook.
 	}{
-		{name: "write", args: []string{"pde-gh-write"}, code: 2,
-			stderr: "pde-gh-write: usage: pde-gh-write [--retry] pr {create|edit|comment|review|merge|ready|close|reopen} [gh arguments...]\n"},
-		{name: "approve by link name", args: []string{"/home/me/.local/bin/pde-pr-approve"}, code: 2,
+		{name: "approve", args: []string{"/home/me/.local/bin/pde-pr-approve"}, code: 2,
 			stderr: "usage: pde-pr-approve REQUEST_ID\n"},
-		{name: "runner", args: []string{"pde-gh-write", "--pde-runner", "ran"}, code: 5,
-			stderr: "pde-gh-write: already ran ran, exit 5\npde-gh-write: to ask for approval again, rerun this exact command with --retry before pr\n"},
-		{name: "phone question", args: []string{"pde-gh-write", "--moshi-ask", "waiting"}, code: 0,
+		{name: "phone question", args: []string{"pde-pr-approve", "--moshi-ask", "waiting"}, code: 0,
 			call: "ask --require-remote"},
 		{name: "popup without request ID", args: []string{"pde-pr-approve", "--herdr-popup"}, code: 1},
 		{name: "inbox", args: []string{"pde-pr-approve", "--herdr-inbox"}, code: 1, call: "status server",
@@ -37,12 +31,10 @@ func TestMainPicksEntryMode(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			// The runner reports the finished request; the phone question and
-			// the inbox find the waiting one.
+			// The phone question and the inbox find the waiting request.
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
 			t.Setenv("PDE_REQUEST_ID", "")
 			for _, rec := range []approval.Record{
-				{ID: "ran", State: approval.StateRan, Exit: 5},
 				{ID: "waiting", State: approval.StatePending},
 			} {
 				if err := approval.Save(rec); err != nil {

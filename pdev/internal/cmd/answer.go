@@ -25,7 +25,7 @@ func saveAnswer(id, choice string) int {
 		fmt.Fprintf(stderr, "pde-pr-approve: %v\n", err)
 		return exitFailed
 	}
-	stopMoshi(ask)
+	approval.StopGroup(ask)
 	return 0
 }
 

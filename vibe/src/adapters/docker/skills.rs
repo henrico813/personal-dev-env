@@ -281,6 +281,23 @@ pub(crate) fn prepare_user_skills(
     prepare_user_skills_with(home, |path| fs::read_dir(path).map(|_| ()))
 }
 
+/// Inspects the `--skills` folder when given, else `$HOME/.agents/skills`.
+/// Unlike the home folder, a missing `--skills` folder is an error.
+pub(crate) fn select_user_skills(
+    skills: Option<&Path>,
+    home: Option<&OsStr>,
+) -> Result<Option<PreparedSkillRoot>, String> {
+    let Some(skills) = skills else {
+        return prepare_user_skills(home);
+    };
+    match inspect_skill_root_with(skills, SkillRootSource::User, |path| {
+        fs::read_dir(path).map(|_| ())
+    })? {
+        Some(prepared) => Ok(Some(prepared)),
+        None => Err(format!("skills folder not found: {}", skills.display())),
+    }
+}
+
 pub(crate) fn prepare_repository_skills(
     worktree: &Path,
 ) -> Result<Option<PreparedSkillRoot>, String> {

@@ -166,7 +166,7 @@ fn prepare_active_run(target: &RunTarget, args: RunArgs) -> Result<ActiveRun, St
     let prepared_auth =
         docker::prepare_provider_auth(std::env::var("HOME").ok().as_deref(), &args.model)?;
     let home = std::env::var_os("HOME");
-    let user_skills = docker::prepare_user_skills(home.as_deref())?;
+    let user_skills = docker::select_user_skills(args.skills.as_deref(), home.as_deref())?;
     let asset_root = sandbox::prepare_agent_image()?;
     let session = worktree::prepare(target, args.base.as_deref())?;
     let repository_skills = docker::prepare_repository_skills(&session.worktree)?;

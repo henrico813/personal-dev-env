@@ -49,6 +49,13 @@ This per-machine setting is independent of the component selection. Missing
 state defaults to `tokyo-night`; the next successful install saves it as
 `color_profile`. A valid explicit flag can replace an invalid saved color value.
 
+Set `extra_skills_repo` in `config.json` to the path of a checkout whose
+`skills/` folder holds more skills, such as skills kept out of this
+repository. Client and full installs then also copy each file Git tracks under
+that folder into `~/.agents/skills/`. A leading `~/` is expanded. A skill there
+with the same name as one in `ai/skills/` stops the install with both folders
+named. Without the setting, no such skill is installed.
+
 Every selection renders tmux, Powerlevel10k, fzf, and bat colors. Client and
 full installs also render Alacritty, WezTerm, Neovim, and OpenCode; terminal
 installs leave any retained files unchanged until the next client or full
@@ -229,7 +236,12 @@ It skips the update, and changes nothing, when the checkout is not on `main`,
 has uncommitted changes to tracked files, or has commits that `main` does not
 have. Untracked files do not block it. It never stashes, resets, or forces.
 
-When `install.json` already names the fetched commit on `main`, it stops there.
+When `extra_skills_repo` is set, it then fast-forwards that checkout the same
+way, fetching `main` from the checkout's own remote with its own credentials,
+so the key or token must work with no SSH agent. A failure there only warns.
+
+When `install.json` already names the fetched commit on `main`, and the extra
+skills checkout did not move, it stops there.
 Otherwise it builds `pde-installer` from the checkout into
 `~/.local/state/pde/update-stage`, runs `install` with that build, and only
 then moves the build to `~/.local/bin/pde-installer`. A failed build or install
