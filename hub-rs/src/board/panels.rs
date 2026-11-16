@@ -1,51 +1,57 @@
-//! Draws the kanban panel, which lists the board's cards by stage, and
-//! the machine panel, with the gauges and the report feed. Read
-//! `kanban_lines` and `machine_lines` first. Below 100 columns the
-//! board shows one panel at a time; from 100 on `split_wide` places
-//! all four.
+//! Names the board's views, writes their help pages, and draws the
+//! text of the away, next and machine views. Read `Panel` and
+//! `machine_lines` first.
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line as TextLine;
 use ratatui::widgets::Paragraph;
 
+use super::away::AwayEvent;
 use super::draw;
 use super::elements::{Element, HiddenBy};
-use super::machine::{FeedLine, Gauges, Usage};
-use super::queue::CardLine;
+use super::groups::{self, Group, Item};
+use super::machine::{FEED_LENGTH, FeedLine, Gauges, Usage};
 use super::sessions::fit;
-use crate::external::cards::Stage;
 
-/// The stages the kanban panel shows, the user's next action first.
-const KANBAN_STAGES: [Stage; 5] = [
-    Stage::Review,
-    Stage::Active,
-    Stage::WaitingOnOthers,
-    Stage::Ready,
-    Stage::Draft,
-];
-
-/// The width from which the board shows all four panels at once.
+/// The width from which the glance page puts its blocks side by side.
 pub(super) const WIDE_COLUMNS: u16 = 100;
 
 /// The blocks in a gauge's bar.
 const GAUGE_BLOCKS: u64 = 10;
 
-/// The board's panels, in the order Tab and 1 to 4 pick them.
+/// The glance page's help, which `?` opens there.
+pub(super) const GLANCE_HELP: &[&str] = &[
+    "HUB BOARD",
+    "AWAY: what happened since you last used the board, newest first.",
+    "QUEUE: what waits on you and what runs now.",
+    "NEXT: your next step, then the hub's.",
+    "Tap a block, or press 1 to 3, to open it. Esc or q goes back. 4 opens the sessions and 5 the machine.",
+    "Each queue row starts with its status. you: it waits on you. run: a worker is at work on it. idle: it has a worker, and none is at work. rev: a pull request to read. none: no worker.",
+];
+
+/// The board's views, in the order Tab and 1 to 5 open them. The first
+/// three are also the glance page's blocks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Panel {
+    Away,
     Queue,
-    Kanban,
+    Next,
     Sessions,
     Machine,
 }
 
 impl Panel {
-    pub(super) const ALL: [Panel; 4] =
-        [Panel::Queue, Panel::Kanban, Panel::Sessions, Panel::Machine];
+    pub(super) const ALL: [Panel; 5] = [
+        Panel::Away,
+        Panel::Queue,
+        Panel::Next,
+        Panel::Sessions,
+        Panel::Machine,
+    ];
 
-    /// Returns the panel's key, 1 to 4.
+    /// Returns the view's key, 1 to 5.
     pub(super) fn number(self) -> usize {
         Panel::ALL
             .iter()
@@ -54,50 +60,71 @@ impl Panel {
             + 1
     }
 
-    /// Returns the panel Tab goes to, back to the queue after the last.
-    pub(super) fn next(self) -> Panel {
-        Panel::ALL[self.number() % Panel::ALL.len()]
+    /// Returns the view Tab goes to, or `None`, the glance page, after
+    /// the last.
+    pub(super) fn next(self) -> Option<Panel> {
+        Panel::ALL.get(self.number()).copied()
     }
 
-    /// Returns the panel's title row, such as `2 KANBAN`, with `>` in
-    /// front when keys act on it.
-    pub(super) fn title(self, is_current: bool) -> String {
-        let word = match self {
-            Panel::Queue => "QUEUE",
-            Panel::Kanban => "KANBAN",
-            Panel::Sessions => "SESSIONS",
-            Panel::Machine => "MACHINE",
-        };
-        let mark = if is_current { ">" } else { " " };
-        format!("{mark}{} {word}", self.number())
-    }
-
-    /// Returns the word in this panel's element ids, such as `kanban`.
+    /// Returns the view's name in its breadcrumb and element ids, such
+    /// as `queue`.
     pub(super) fn slug(self) -> &'static str {
         match self {
+            Panel::Away => "away",
             Panel::Queue => "queue",
-            Panel::Kanban => "kanban",
+            Panel::Next => "next",
             Panel::Sessions => "sessions",
             Panel::Machine => "machine",
         }
     }
-}
 
-/// Returns each panel's area on a wide screen, in `Panel::ALL` order.
-/// The queue takes the left 40%; sessions take the top of the right,
-/// with kanban and the machine side by side below.
-pub(super) fn split_wide(area: Rect) -> [Rect; 4] {
-    let [queue, right] =
-        Layout::horizontal([Constraint::Percentage(40), Constraint::Fill(1)]).areas(area);
-    let [sessions, bottom] =
-        Layout::vertical([Constraint::Percentage(50), Constraint::Fill(1)]).areas(right);
-    let [kanban, machine] =
-        Layout::horizontal([Constraint::Percentage(50), Constraint::Fill(1)]).areas(bottom);
-    [queue, kanban, sessions, machine]
+    /// Returns the lines of the view's help page, not yet wrapped.
+    pub(super) fn help(self) -> &'static [&'static str] {
+        match self {
+            Panel::Away => &[
+                "AWAY",
+                "Worker reports and the hub's notes.md lines, newest first.",
+            ],
+            Panel::Queue => &[
+                "QUEUE",
+                "Your cards and the hub's questions, by their next step. The step that needs you comes first.",
+                "Needs you: someone waits on you.",
+                "In progress: a worker builds it.",
+                "In review: a pull request to read.",
+                "Waiting on others: someone outside the hub has to act.",
+                "Ready: planned. Draft: an idea.",
+                "Each row starts with its status: you, run, idle, rev or none. ? on the glance page says what each means.",
+                "Tap a group to fold it, a row to read it, a count to jump to it.",
+            ],
+            Panel::Next => &[
+                "NEXT",
+                "you: each question or session that waits on you.",
+                "then: how many cards wait for your review.",
+                "hub: the Ready cards in card list order. The hub may start another one first.",
+            ],
+            Panel::Sessions => &[
+                "SESSIONS",
+                "Every agent tab of this hub, grouped by what hub clean would do with it.",
+                "NEEDS YOU: the tab waits for you.",
+                "WORKING: it works or waits on the hub. Leave it.",
+                "KEPT: done, kept for a reason.",
+                "SAFE TO CLOSE: c closes or parks it.",
+                "PARKED: closed, and it can come back.",
+                "A full bar, 150K tokens: hand off.",
+                "Tap a row to choose it, then tap the bar under the list to jump to it.",
+            ],
+            Panel::Machine => &[
+                "MACHINE",
+                "WATCH: file-watch slots in use. New sessions crash near the limit, so it says high from 90%.",
+                "DISK: free space on the home folder's disk.",
+                "REPORTS: the six newest worker reports, new or read.",
+            ],
+        }
+    }
 }
 
 /// Returns `lines` as elements drawn in `area` from line `scroll` on,
-/// with ids such as `kanban:0`. Lines scrolled off come too, hidden.
+/// with ids such as `machine:0`. Lines scrolled off come too, hidden.
 pub(super) fn text_elements(
     panel: Panel,
     lines: &[PanelText],
@@ -127,32 +154,45 @@ pub(super) struct PanelText {
     pub text: String,
 }
 
-/// Returns each stage that holds a card as a heading with its count,
-/// such as `REVIEW 1`, followed by one row per card, its key and
-/// title cut to `width`.
-pub(super) fn kanban_lines(cards: &[CardLine], width: usize) -> Vec<PanelText> {
-    let mut lines = Vec::new();
-    for stage in KANBAN_STAGES {
-        let members: Vec<&CardLine> = cards.iter().filter(|card| card.stage == stage).collect();
-        if members.is_empty() {
-            continue;
-        }
-        lines.push(PanelText {
-            is_heading: true,
-            is_high: false,
-            text: format!("{} {}", stage.as_str().to_uppercase(), members.len()),
-        });
-        lines.extend(members.into_iter().map(|card| PanelText {
+/// Returns one row per event, such as ` 10:40 api-build reported`, cut
+/// to `width`.
+pub(super) fn away_lines(events: &[AwayEvent], width: usize) -> Vec<PanelText> {
+    events
+        .iter()
+        .map(|event| PanelText {
             is_heading: false,
             is_high: false,
-            text: fit(&format!("{} {}", card.key.as_str(), card.title), width),
-        }));
-    }
-    lines
+            text: fit(&format!(" {} {}", event.time, event.text), width),
+        })
+        .collect()
+}
+
+/// Returns the NEXT lines, such as ` you: answer Deploy tonight?`, cut
+/// to `width`. The you and hub parts give at most `each` lines, so the
+/// glance page's block, with `each` 1, shows one line of each part.
+pub(super) fn next_lines(
+    groups: &[(Group, Vec<Item>)],
+    no_hub: bool,
+    each: usize,
+    width: usize,
+) -> Vec<PanelText> {
+    let next = groups::write_next_lines(groups, no_hub);
+    next.you
+        .iter()
+        .take(each)
+        .chain([&next.then])
+        .chain(next.hub.iter().take(each))
+        .map(|line| PanelText {
+            is_heading: false,
+            is_high: false,
+            text: fit(&format!(" {line}"), width),
+        })
+        .collect()
 }
 
 /// Returns the watch and disk gauges, then a `REPORTS` heading and
-/// one line per report, such as `10:40 new api-build`.
+/// one line for each of the `FEED_LENGTH` newest reports, such as
+/// `10:40 new api-build`.
 pub(super) fn machine_lines(gauges: &Gauges, feed: &[FeedLine], width: usize) -> Vec<PanelText> {
     let row = |is_heading, is_high, text: String| PanelText {
         is_heading,
@@ -178,12 +218,13 @@ pub(super) fn machine_lines(gauges: &Gauges, feed: &[FeedLine], width: usize) ->
             format!("{} {percent}% {free}G free", gauge_bar(usage))
         },
     );
+    let shown = &feed[..feed.len().min(FEED_LENGTH)];
     let mut lines = vec![
         row(false, watch_high, format!("WATCH {watch}")),
         row(false, false, format!("DISK  {disk}")),
-        row(true, false, format!("REPORTS {}", feed.len())),
+        row(true, false, format!("REPORTS {}", shown.len())),
     ];
-    lines.extend(feed.iter().map(|report| {
+    lines.extend(shown.iter().map(|report| {
         let word = if report.unread { "new" } else { "read" };
         row(
             false,
@@ -235,35 +276,6 @@ mod tests {
     use super::*;
 
     use crate::board::view::tests::sample_queue;
-
-    /// The kanban panel is where the user sees which cards are in
-    /// review and in work. A card under the wrong stage, or review
-    /// below draft, hides the next thing to act on.
-    #[test]
-    fn kanban_lines_list_cards_by_stage() {
-        let queue = sample_queue();
-
-        let lines: Vec<String> = kanban_lines(&queue.cards, 40)
-            .into_iter()
-            .map(|line| line.text)
-            .collect();
-
-        let expected = [
-            "REVIEW 1",
-            "DEMO-KB-010 Retry a failed upload twice~",
-            "ACTIVE 5",
-            "DEMO-KB-001 Faster search",
-            "DEMO-KB-002 Board for the phone",
-            "DEMO-KB-003 Trim the build cache",
-            "DEMO-KB-004 Lint every Dockerfile in th~",
-            "DEMO-KB-005 Rotate the backup keys",
-            "READY 1",
-            "DEMO-KB-020 Sort ready cards",
-            "DRAFT 1",
-            "OPS-KB-001 Watch the disks",
-        ];
-        assert_eq!(lines, expected);
-    }
 
     /// New OpenCode sessions crashed at 122 of 128 watch slots, so the
     /// gauge must warn from 90%, 116 of 128, and not at 115. A warning

@@ -141,6 +141,16 @@ pub(crate) struct LiveRun {
     pub hub: String,
 }
 
+/// The runs `find_hub_runs` found.
+pub(crate) struct HubRuns {
+    pub live: Vec<LiveRun>,
+    /// Runs whose hub Herdr no longer lists, such as a hub that ended or
+    /// handed off to a hub in a new run folder.
+    pub gone: Vec<RunFolder>,
+    /// A line for each run folder whose log cannot be read.
+    pub failures: Vec<String>,
+}
+
 /// A run whose log names its hub.
 struct WatchedRun {
     run: RunFolder,
@@ -603,30 +613,32 @@ fn pass_on_missed_reports(
     Ok(())
 }
 
-/// Returns each `herdr-hub.*` folder in `runs_folder` whose hub Herdr
-/// lists in `agents`, in folder order, with a line for each folder whose
-/// log cannot be read. `hub board` gathers what waits on the user from
-/// these runs.
+/// Returns each `herdr-hub.*` folder in `runs_folder` whose log names a
+/// hub, in folder order, split by whether Herdr lists that hub in
+/// `agents`. `hub board` gathers what waits on the user from the live
+/// runs, and its AWAY block reads the gone ones too.
 ///
 /// # Errors
 ///
 /// `HubError::File` when `runs_folder` cannot be read.
-pub(crate) fn find_live_runs(
-    runs_folder: &Path,
-    agents: &[Agent],
-) -> Result<(Vec<LiveRun>, Vec<String>), HubError> {
+pub(crate) fn find_hub_runs(runs_folder: &Path, agents: &[Agent]) -> Result<HubRuns, HubError> {
     let mut failures = Vec::new();
-    let runs = find_watched_runs(runs_folder, agents, &mut failures)?
-        .into_iter()
-        .filter_map(|watched| {
-            let hub = watched.hub?.name;
-            Some(LiveRun {
+    let mut live = Vec::new();
+    let mut gone = Vec::new();
+    for watched in find_watched_runs(runs_folder, agents, &mut failures)? {
+        match watched.hub {
+            Some(hub) => live.push(LiveRun {
                 run: watched.run,
-                hub,
-            })
-        })
-        .collect();
-    Ok((runs, failures))
+                hub: hub.name,
+            }),
+            None => gone.push(watched.run),
+        }
+    }
+    Ok(HubRuns {
+        live,
+        gone,
+        failures,
+    })
 }
 
 /// Returns the hub the run's log names, or `None` before

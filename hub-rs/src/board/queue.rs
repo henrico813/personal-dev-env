@@ -8,7 +8,9 @@ use std::time::{Duration, Instant};
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
+use super::away::{self, AwayEvent};
 use super::machine::{self, FeedLine, Gauges};
+use super::seen;
 use crate::commands::status::describe_why;
 use crate::external::cards::{CardKey, CardNote, Stage};
 use crate::shared::decisions::{self, DecisionEntry};
@@ -45,8 +47,11 @@ pub(crate) struct Queue {
     /// Every session, live or parked, by name, for the sessions panel.
     pub sessions: Vec<SessionRow>,
     pub gauges: Gauges,
-    /// The newest report files of the live runs, newest first.
+    /// The report files of the live runs, newest first.
     pub feed: Vec<FeedLine>,
+    /// The reports and `notes.md` lines of the live runs, and of gone
+    /// hubs' runs once a board saved a time, newest first.
+    pub events: Vec<AwayEvent>,
     /// True when no hub ran at the read, so Needs you says `NO_HUB`.
     pub no_hub: bool,
     /// The run whose facts the board shows, where y in the clean dialog
@@ -130,7 +135,8 @@ impl SessionRow {
 }
 
 /// Reads the cards, sessions and questions once. Times print in
-/// `time_zone`. With no hub running, the queue holds the cards alone.
+/// `time_zone`. With no hub running, the queue holds the cards and,
+/// once a board saved a time, the AWAY events of hubs that are gone.
 ///
 /// # Errors
 ///
@@ -148,22 +154,33 @@ pub(crate) fn read_queue(
     // The state folder sits in the home folder, so its disk is the one
     // that fills.
     let gauges = machine::read_gauges(tools.state_folder);
-    let runs = match hubs {
+    let (runs, gone) = match hubs {
         Hubs::Given(path) => {
             let run = RunFolder::open(path)?;
             let hub = watch::read_hub_name(&run)?.unwrap_or_else(|| "hub".to_owned());
-            vec![LiveRun { run, hub }]
+            (vec![LiveRun { run, hub }], Vec::new())
         }
         Hubs::Live(runs_folder) => {
-            let (runs, failures) = watch::find_live_runs(runs_folder, &tools.herdr.list_agents()?)?;
+            let found = watch::find_hub_runs(runs_folder, &tools.herdr.list_agents()?)?;
             problems.extend(
-                failures
+                found
+                    .failures
                     .into_iter()
                     .map(|failure| format!("hubs: {failure}")),
             );
-            runs
+            (found.live, found.gone)
         }
     };
+    // AWAY also reads the runs of gone hubs, so what a hub did before it
+    // ended while the user was away still shows. With no saved time AWAY
+    // shows the newest events, which would list hubs that ended long ago,
+    // so gone runs wait until a board saves a time.
+    let mut away_runs: Vec<&RunFolder> = runs.iter().map(|live| &live.run).collect();
+    if seen::has_saved_time(tools.state_folder) {
+        away_runs.extend(&gone);
+    }
+    let away_feed = machine::read_feed(&away_runs, time_zone);
+    let away_events = away::read_events(&away_runs, &away_feed, time_zone)?;
     let mut questions = Vec::new();
     for live in &runs {
         let entries = decisions::read_decisions(&live.run.read_optional_file("decisions.md")?);
@@ -197,6 +214,7 @@ pub(crate) fn read_queue(
             sessions: Vec::new(),
             gauges,
             feed: Vec::new(),
+            events: away_events,
             no_hub: true,
             run: None,
             notes: BTreeMap::new(),
@@ -275,6 +293,7 @@ pub(crate) fn read_queue(
         sessions,
         gauges,
         feed,
+        events: away_events,
         no_hub: false,
         run: Some(first_run.path().to_owned()),
         notes: collected.notes,

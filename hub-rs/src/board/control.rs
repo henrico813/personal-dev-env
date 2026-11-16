@@ -11,11 +11,13 @@ use std::path::PathBuf;
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
+use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
 use super::ScreenSize;
 use super::elements::ScreenDump;
 use super::queue::{Hubs, read_queue};
+use super::seen::Visits;
 use super::view::{Board, Step};
 use crate::commands::Outcome;
 use crate::shared::{HubError, Tools};
@@ -36,7 +38,7 @@ pub fn dump_board(
     time_zone: &TimeZone,
     size: ScreenSize,
 ) -> Result<Outcome, HubError> {
-    let mut board = Board::new(false);
+    let mut board = read_only_board(tools);
     board.show_reading(Ok(read_queue(tools, hubs, time_zone)?));
     let dump = board.dump(size.columns, size.rows, None);
     Ok(Outcome {
@@ -65,7 +67,7 @@ pub fn control_board(
     output: &mut dyn Write,
 ) -> Result<Outcome, HubError> {
     let done = Outcome { lines: Vec::new() };
-    let mut board = Board::new(false);
+    let mut board = read_only_board(tools);
     board.show_reading(Ok(read_queue(tools, hubs, time_zone)?));
     if !write_dump(output, &board.dump(size.columns, size.rows, None))? {
         return Ok(done);
@@ -112,6 +114,15 @@ pub fn control_board(
         }
     }
     Ok(done)
+}
+
+/// Returns a board with no colors whose AWAY starts at the time the
+/// live board saved, for screens that never save it.
+pub(super) fn read_only_board(tools: &Tools<'_>) -> Board {
+    let mut board = Board::new(false);
+    let visits = Visits::start(tools.state_folder, Timestamp::now());
+    board.show_visit(visits.since(), visits.away_for());
+    board
 }
 
 /// Follows an agent's step as the user's own tap or key, and returns

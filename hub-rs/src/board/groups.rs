@@ -1,33 +1,45 @@
 //! Sorts a `Queue` into the board's groups, such as In review, and
-//! writes each row's words and its details page. Nothing here draws.
-//! Read `build_groups` and `describe_item` first.
+//! writes each row's words, its details page and the NEXT lines.
+//! Nothing here draws. Read `build_groups` and `describe_item` first.
 
 use ratatui::style::Color;
 
-use super::queue::{CardLine, Queue};
+use super::queue::{CardLine, Queue, SessionRow};
 use crate::external::cards::{CardNote, Stage};
+use crate::shared::lifecycle::Lifecycle;
 
 /// The board's groups, in screen order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum Group {
     /// What the read could not get, such as a failed `card list`.
     Problems,
+    NeedsYou,
     InProgress,
     InReview,
     WaitingOnOthers,
-    NeedsYou,
     Ready,
     Draft,
 }
 
-impl Group {
-    /// The groups the top line counts, with the word each shows.
-    pub(super) const COUNTED: [(Group, &'static str); 3] = [
-        (Group::InProgress, "progress"),
-        (Group::InReview, "review"),
-        (Group::NeedsYou, "you"),
-    ];
+/// The word a row starts with, which says whether anyone works on it
+/// now. Each word takes at most `Status::WIDTH` columns.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Status {
+    /// It waits on the user.
+    You,
+    /// A worker session of its card is working.
+    Run,
+    /// Its card has a worker session, and none of them is working.
+    Idle,
+    /// Its card is in review, and no worker runs on it.
+    Rev,
+    /// Its card has no worker session.
+    None,
+    /// A source the read could not get.
+    Problem,
+}
 
+impl Group {
     pub(super) fn title(self) -> &'static str {
         match self {
             Group::Problems => "Could not read",
@@ -54,20 +66,6 @@ impl Group {
         }
     }
 
-    /// Returns the mark each row of the group starts with, so a row's
-    /// group shows without color. Each mark takes one column.
-    pub(super) fn mark(self) -> &'static str {
-        match self {
-            Group::Problems => "!",
-            Group::InProgress => "◐",
-            Group::InReview => "◕",
-            Group::WaitingOnOthers => "◷",
-            Group::NeedsYou => "?",
-            Group::Ready => "○",
-            Group::Draft => "·",
-        }
-    }
-
     /// Returns one of the 16 colors the terminal's own theme sets, or
     /// the terminal's default for Draft, so a phone app's theme keeps
     /// them readable.
@@ -84,6 +82,34 @@ impl Group {
     }
 }
 
+impl Status {
+    /// The columns the widest word takes.
+    pub(super) const WIDTH: usize = 4;
+
+    pub(super) fn word(self) -> &'static str {
+        match self {
+            Status::You => "you",
+            Status::Run => "run",
+            Status::Idle => "idle",
+            Status::Rev => "rev",
+            Status::None => "none",
+            Status::Problem => "!",
+        }
+    }
+
+    /// Returns the word's color, the same one its group has, or the
+    /// terminal's default for a row nobody works on.
+    pub(super) fn color(self) -> Color {
+        match self {
+            Status::You => Group::NeedsYou.color(),
+            Status::Run => Group::InProgress.color(),
+            Status::Rev => Group::InReview.color(),
+            Status::Problem => Group::Problems.color(),
+            Status::Idle | Status::None => Color::Reset,
+        }
+    }
+}
+
 /// One row of a group.
 #[derive(Debug)]
 pub(super) struct Item {
@@ -95,6 +121,7 @@ pub(super) struct Item {
     /// A short word for the row's right end, such as `DevEnv` for a
     /// card's project folder or `kanban-hub-3` for a hub's question.
     pub tag: String,
+    pub status: Status,
     pub target: Target,
 }
 
@@ -130,7 +157,7 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
             .iter()
             .enumerate()
             .filter(|(_, card)| card.stage == stage)
-            .map(|(index, card)| card_item(index, card))
+            .map(|(index, card)| card_item(index, card, &queue.sessions))
             .collect()
     };
     let mut needs_you: Vec<Item> = queue
@@ -141,6 +168,7 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
             id: question.title.clone(),
             text: question.title.clone(),
             tag: question.hub.clone(),
+            status: Status::You,
             target: Target::Question(index),
         })
         .collect();
@@ -153,6 +181,7 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
                 id: session.name.clone(),
                 text: format!("{}  {}", session.name, session.why),
                 tag: "worker".to_owned(),
+                status: Status::You,
                 target: Target::Session(index),
             }),
     );
@@ -164,6 +193,7 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
             id: problem.clone(),
             text: problem.clone(),
             tag: String::new(),
+            status: Status::Problem,
             target: Target::Problem(index),
         })
         .collect();
@@ -173,16 +203,110 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
         groups.push((Group::Problems, problems));
     }
     groups.extend([
+        (Group::NeedsYou, needs_you),
         (Group::InProgress, cards_at(Stage::Active)),
         (Group::InReview, cards_at(Stage::Review)),
         (Group::WaitingOnOthers, cards_at(Stage::WaitingOnOthers)),
-        (Group::NeedsYou, needs_you),
         (Group::Ready, cards_at(Stage::Ready)),
         (Group::Draft, cards_at(Stage::Draft)),
     ]);
     // Most boards have no waiting card, and a phone has few rows.
     groups.retain(|(group, items)| *group != Group::WaitingOnOthers || !items.is_empty());
     groups
+}
+
+/// The statuses the QUEUE heading counts, in its order.
+const COUNTED: [Status; 3] = [Status::Run, Status::You, Status::Idle];
+
+/// The lines of the NEXT block and view.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct NextLines {
+    /// One `you:` line per row of Needs you, or one that says none.
+    pub you: Vec<String>,
+    /// The `then:` line, which counts the cards in review.
+    pub then: String,
+    /// One `hub:` line per Ready card, in `card list` order, or one
+    /// that says none. The hub may start another card first.
+    pub hub: Vec<String>,
+}
+
+/// Returns the rows of the glance page's QUEUE block. They are what
+/// could not be read, what waits on the user, then cards that run, idle
+/// cards and cards in review. A card whose worker waits on the user is left
+/// out, since that worker is already a row of Needs you.
+pub(super) fn glance_items(groups: &[(Group, Vec<Item>)]) -> Vec<(Group, &Item)> {
+    let order = [
+        Status::Problem,
+        Status::You,
+        Status::Run,
+        Status::Idle,
+        Status::Rev,
+    ];
+    let mut shown = Vec::new();
+    for status in order {
+        for (group, items) in groups {
+            if status == Status::You && *group != Group::NeedsYou {
+                continue;
+            }
+            let matching = items.iter().filter(|item| item.status == status);
+            shown.extend(matching.map(|item| (*group, item)));
+        }
+    }
+    shown
+}
+
+/// Returns the QUEUE heading's counts, such as 2 for `Status::Run`,
+/// each with the group that holds its first row, where a tap on it
+/// jumps. A status with no row is left out.
+pub(super) fn count_statuses(groups: &[(Group, Vec<Item>)]) -> Vec<(Status, usize, Group)> {
+    let shown = glance_items(groups);
+    COUNTED
+        .into_iter()
+        .filter_map(|status| {
+            let mut rows = shown.iter().filter(|(_, item)| item.status == status);
+            let (group, _) = rows.next()?;
+            Some((status, rows.count() + 1, *group))
+        })
+        .collect()
+}
+
+/// Returns the NEXT lines from the groups. `no_hub` is true when no hub
+/// ran at the read, so nothing could wait on the user.
+pub(super) fn write_next_lines(groups: &[(Group, Vec<Item>)], no_hub: bool) -> NextLines {
+    let items = |wanted: Group| {
+        groups
+            .iter()
+            .find(|(group, _)| *group == wanted)
+            .map_or(&[][..], |(_, items)| items)
+    };
+    let mut you: Vec<String> = items(Group::NeedsYou)
+        .iter()
+        .map(|item| match item.target {
+            Target::Question(_) => format!("you: answer {}", item.text),
+            _ => format!("you: {}", item.text),
+        })
+        .collect();
+    if you.is_empty() {
+        let none = if no_hub {
+            "no hub running"
+        } else {
+            "nothing waits on you"
+        };
+        you.push(format!("you: {none}"));
+    }
+    let then = match items(Group::InReview).len() {
+        0 => "then: no reviews".to_owned(),
+        1 => "then: review 1 card".to_owned(),
+        count => format!("then: review {count} cards"),
+    };
+    let mut hub: Vec<String> = items(Group::Ready)
+        .iter()
+        .map(|item| format!("hub: ready {}", item.text))
+        .collect();
+    if hub.is_empty() {
+        hub.push("hub: no ready card".to_owned());
+    }
+    NextLines { you, then, hub }
 }
 
 /// Returns the lines of an item's details page, not yet wrapped. A
@@ -243,7 +367,8 @@ pub(super) fn describe_card(card: &CardLine, note: Option<&CardNote>) -> Vec<Str
 }
 
 /// Returns a card's row, its title with its project folder as the tag.
-fn card_item(index: usize, card: &CardLine) -> Item {
+/// `sessions` give the states of its workers.
+fn card_item(index: usize, card: &CardLine, sessions: &[SessionRow]) -> Item {
     let text = if card.title.is_empty() {
         card.key.as_str().to_owned()
     } else {
@@ -253,7 +378,31 @@ fn card_item(index: usize, card: &CardLine) -> Item {
         id: card.key.as_str().to_owned(),
         text,
         tag: card.project.clone(),
+        status: card_status(card, sessions),
         target: Target::Card(index),
+    }
+}
+
+/// Returns a card's status from its workers' states. A worker that
+/// waits on the user wins over one at work, and one at work wins over
+/// the card being in review.
+fn card_status(card: &CardLine, sessions: &[SessionRow]) -> Status {
+    let states: Vec<Lifecycle> = card
+        .workers
+        .iter()
+        .filter_map(|name| sessions.iter().find(|row| row.name == *name))
+        .map(|row| row.state)
+        .collect();
+    if states.contains(&Lifecycle::WaitsOnUser) {
+        Status::You
+    } else if states.contains(&Lifecycle::Working) {
+        Status::Run
+    } else if card.stage == Stage::Review {
+        Status::Rev
+    } else if states.is_empty() {
+        Status::None
+    } else {
+        Status::Idle
     }
 }
 
@@ -272,4 +421,29 @@ fn next_step(note: &CardNote) -> Option<String> {
         let plan_key = plan.split_whitespace().next().unwrap_or(plan);
         format!("read plan {plan_key}")
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::board::view::tests::sample_queue;
+
+    /// A worker that runs on a card in review, such as one fixing review
+    /// comments, means the card is in work now. Shown as `rev`, it would
+    /// look like it waits for the user's review.
+    #[test]
+    fn build_groups_marks_working_review_card_run() {
+        let mut queue = sample_queue();
+        let docs_fix = queue.sessions.iter_mut().find(|row| row.name == "docs-fix");
+        docs_fix.unwrap().state = Lifecycle::Working;
+
+        let groups = build_groups(&queue);
+
+        let (_, in_review) = groups
+            .iter()
+            .find(|(group, _)| *group == Group::InReview)
+            .unwrap();
+        assert_eq!(in_review[0].status, Status::Run);
+    }
 }

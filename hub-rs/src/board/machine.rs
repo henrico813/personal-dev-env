@@ -1,20 +1,18 @@
-//! Reads the numbers the board's gauges show and the newest report
-//! files for its feed. A read that fails gives `None` or nothing,
-//! since a gauge is only a hint. Read `read_gauges` and `read_feed`
-//! first.
+//! Reads the numbers the board's gauges show and the report files for
+//! its feed. A read that fails gives `None` or nothing, since a gauge
+//! is only a hint. Read `read_gauges` and `read_feed` first.
 
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use std::time::SystemTime;
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
 use crate::shared::run_folder::RunFolder;
 
-/// How many report files the feed lists.
-const FEED_LENGTH: usize = 6;
+/// How many report files the machine view lists.
+pub(super) const FEED_LENGTH: usize = 6;
 
 /// One gauge's use against its limit, such as 116 of 128 watch slots.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -39,6 +37,8 @@ pub(crate) struct Gauges {
 pub(crate) struct FeedLine {
     /// When the file last changed, such as `11:41`.
     pub at: String,
+    /// The same time in full, which AWAY compares with the last visit.
+    pub stamp: Timestamp,
     /// True for a `report-NAME.md` the hub has not read yet.
     pub unread: bool,
     pub name: String,
@@ -52,9 +52,9 @@ pub(crate) fn read_gauges(home: &Path) -> Gauges {
     }
 }
 
-/// Returns the `FEED_LENGTH` newest report files in `runs`, newest
-/// first, both unread `report-NAME.md` and read `report-NAME.HHMM.read`,
-/// with times in `time_zone`.
+/// Returns every report file in `runs`, newest first, both unread
+/// `report-NAME.md` and read `report-NAME.HHMM.read`, with times in
+/// `time_zone`.
 pub(crate) fn read_feed(runs: &[&RunFolder], time_zone: &TimeZone) -> Vec<FeedLine> {
     let mut found = Vec::new();
     for run in runs {
@@ -66,18 +66,25 @@ pub(crate) fn read_feed(runs: &[&RunFolder], time_zone: &TimeZone) -> Vec<FeedLi
             let Some((name, unread)) = parse_report_name(&file_name) else {
                 continue;
             };
-            let Ok(modified) = entry.metadata().and_then(|metadata| metadata.modified()) else {
+            let modified = entry.metadata().and_then(|metadata| metadata.modified());
+            let Some(stamp) = modified
+                .ok()
+                .and_then(|time| Timestamp::try_from(time).ok())
+            else {
                 continue;
             };
-            found.push((modified, name, unread));
+            found.push((stamp, name, unread));
         }
     }
-    found.sort_by_key(|(modified, _, _)| std::cmp::Reverse(*modified));
+    found.sort_by_key(|(stamp, _, _)| std::cmp::Reverse(*stamp));
     found
         .into_iter()
-        .take(FEED_LENGTH)
-        .map(|(modified, name, unread)| FeedLine {
-            at: format_time(modified, time_zone),
+        .map(|(stamp, name, unread)| FeedLine {
+            at: stamp
+                .to_zoned(time_zone.clone())
+                .strftime("%H:%M")
+                .to_string(),
+            stamp,
             unread,
             name,
         })
@@ -152,24 +159,12 @@ fn parse_report_name(file_name: &str) -> Option<(String, bool)> {
     }
 }
 
-/// Returns `modified` in `time_zone`, such as `11:41`.
-fn format_time(modified: SystemTime, time_zone: &TimeZone) -> String {
-    Timestamp::try_from(modified)
-        .map(|stamp| {
-            stamp
-                .to_zoned(time_zone.clone())
-                .strftime("%H:%M")
-                .to_string()
-        })
-        .unwrap_or_default()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     use std::fs::File;
-    use std::time::Duration;
+    use std::time::{Duration, SystemTime};
 
     /// The disk gauge reads columns of `df -Pk` by place. Reading the
     /// used column as free would show a full disk as empty.
@@ -190,9 +185,10 @@ Filesystem     1024-blocks      Used Available Capacity Mounted on
         );
     }
 
-    /// The feed shows what workers reported lately. Old files must
-    /// give way to new ones, and a file that is no report, such as
-    /// `notes.md`, must stay out, or the user reads stale news.
+    /// The feed shows what workers reported, and AWAY reads it for
+    /// what came since the last visit. It must come newest first, and a
+    /// file that is no report, such as `notes.md`, must stay out, or the
+    /// user reads stale news.
     #[test]
     fn read_feed_lists_newest_reports_first() {
         let path = std::env::temp_dir().join(format!("hub-read-feed-{}", std::process::id()));
@@ -231,6 +227,7 @@ Filesystem     1024-blocks      Used Available Capacity Mounted on
                 ("c", false),
                 ("b", true),
                 ("a", false),
+                ("old", false),
             ]
         );
         assert_eq!(feed[0].at, "08:07");
