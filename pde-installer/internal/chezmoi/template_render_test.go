@@ -256,6 +256,8 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".agents/skills/plain-direct-english/reference",
 	}
 	developmentTools := []string{
+		".local/bin/gh",
+		".local/bin/pde-gh-guard",
 		".local/bin/pde-gh-write",
 		".local/bin/pde-pr-approve",
 		".local/bin/prs",

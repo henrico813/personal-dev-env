@@ -19,8 +19,13 @@ const (
 )
 
 // Main runs the mode that args picks and returns the exit code. args includes
-// the program name, as os.Args does, because pde-pr-approve is picked by name.
+// the program name, as os.Args does, because gh, pde-gh-guard and
+// pde-pr-approve are picked by name.
 func Main(args []string) int {
+	switch filepath.Base(args[0]) {
+	case "gh", "pde-gh-guard":
+		return guardGH(args[1:])
+	}
 	// Hidden mode for the detached runner that runnerStart starts.
 	if len(args) > 1 && args[1] == "--pde-runner" {
 		if len(args) != 3 {

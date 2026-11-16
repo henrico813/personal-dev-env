@@ -6,7 +6,7 @@ has to be cleaned up by hand. Agents also rerun a command to find out what
 happened to it. This program makes each post wait for your approval and
 happen only once, however often the agent reruns the command.
 
-`gh` is GitHub's command-line tool. The guard, a short script installed as
+`gh` is GitHub's command-line tool. The guard, a mode of `pde-gh-write` linked as
 `~/.local/bin/gh`, stops agents from using it to write to a pull request,
 so they run `pde-gh-write` with the same arguments instead; see
 [the guard](../reference/requests.md#the-guard).
@@ -21,7 +21,7 @@ One request goes like this:
 
 1. An agent runs a pull-request write, such as `gh pr comment 12`. Your
    `.zshrc` puts `~/.local/bin` ahead of aqua's folder on `PATH`, so the
-   `gh` it finds is the guard, a short bash script.
+   `gh` it finds is the guard.
 2. The guard refuses the write, exits 2, and tells the agent to use
    `pde-gh-write`. Any other command passes through to the real `gh`.
 3. The agent runs the same command through `pde-gh-write`, the Go program
@@ -48,10 +48,10 @@ One request goes like this:
 
 `pde-installer install full` puts the pieces in place in two ways. It builds the
 Go program from `pdev/` as `~/.local/bin/pde-gh-write` and links
-`pde-pr-approve` to it; the program picks its mode from the name it was started
-under, so one build serves both. It also installs `moshi-hook`. chezmoi, which
+`pde-pr-approve`, `pde-gh-guard` and `gh` to it; the program picks its mode from
+the name it was started under, so one build serves all of them. It also installs `moshi-hook`. chezmoi, which
 the installer also runs, places the files that tie the program into your tools:
-the guard as `~/.local/bin/gh`, the Herdr plugin, and the `prefix+a` inbox key.
+the Herdr plugin, and the `prefix+a` inbox key.
 Herdr loads plugins only into a running server, so a separate script links the
 plugin after each install and, when Herdr is not running, prints how to link it
 later. The terminal and client profiles install none of this, and remove the

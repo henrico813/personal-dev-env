@@ -49,10 +49,10 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "build.log")
 	manager := newFixtureManager(t, home, repoRoot, logPath)
 
-	// Files from the previous install, including a plain-file pde-pr-approve.
+	// Files from the previous install, including plain-file pde-pr-approve and gh.
 	// hub-next is a dropped name, so the rollback also restores a deleted file.
 	for _, name := range []string{
-		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "glimmer", "hub-next",
+		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "gh", "glimmer", "hub-next",
 		"skill-lessons", "hub", "prs",
 	} {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
@@ -64,12 +64,14 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
 	assertBuildOutputs(t, home)
-	alias, err := os.Readlink(filepath.Join(home, ".local", "bin", "pde-pr-approve"))
-	if err != nil {
-		t.Fatalf("pde-pr-approve is not a symlink: %v", err)
-	}
-	if alias != filepath.Join(home, ".local", "bin", "pde-gh-write") {
-		t.Fatalf("pde-pr-approve -> %q, want pde-gh-write", alias)
+	for _, name := range []string{"pde-pr-approve", "pde-gh-guard", "gh"} {
+		alias, err := os.Readlink(filepath.Join(home, ".local", "bin", name))
+		if err != nil {
+			t.Fatalf("%s is not a symlink: %v", name, err)
+		}
+		if alias != filepath.Join(home, ".local", "bin", "pde-gh-write") {
+			t.Fatalf("%s -> %q, want pde-gh-write", name, alias)
+		}
 	}
 	assertBuildArtifactsRemoved(t, filepath.Join(home, ".local", "state", "pde", "build-stage"))
 	// Roll back as a failed later install step would.
@@ -77,7 +79,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 		t.Fatalf("Rollback() error = %v", err)
 	}
 	for _, name := range []string{
-		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "glimmer", "hub-next",
+		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "gh", "glimmer", "hub-next",
 		"skill-lessons", "hub", "prs",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n")

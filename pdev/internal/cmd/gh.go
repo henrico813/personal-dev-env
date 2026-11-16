@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -113,16 +114,12 @@ func ghLookup(gh, directory string, args ...string) string {
 	return strings.TrimSpace(string(output))
 }
 
-// The first gh on PATH is the guard ~/.local/bin/gh; it blocks PR writes unless
-// PDE_GH_WRITE=1 is set. The real gh is the next executable gh on PATH that
-// is neither the guard nor this program. It returns the PATH entry, not the
-// symlink target: aqua's gh links to aqua-proxy, which only runs gh when
-// started under that name. Empty and relative entries are skipped: they
-// name the working directory, the agent's checkout, which may hold a gh.
+// Returns the first executable gh on full-path PATH entries that is not this
+// program, which the gh guard links to. For aqua's shim, which runs the guard
+// again when it has no config, it returns the newest gh aqua installed.
 func findRealGH() string {
 	self, _ := os.Executable()
 	self, _ = filepath.EvalSymlinks(self)
-	guard := ""
 	for _, dir := range strings.Split(os.Getenv("PATH"), ":") {
 		if !filepath.IsAbs(dir) {
 			continue
@@ -132,13 +129,54 @@ func findRealGH() string {
 		if err != nil || target == self || !isExecutable(target) {
 			continue
 		}
-		if guard == "" {
-			guard = target
-		} else if target != guard {
-			return path
+		if filepath.Base(target) == "aqua-proxy" {
+			// The shim is <aqua root>/bin/gh.
+			if gh := findNewestAquaGH(filepath.Dir(dir)); gh != "" {
+				return gh
+			}
 		}
+		return path
 	}
 	return ""
+}
+
+// Returns the gh of the highest cli/cli version under aqua's root, or "".
+// aqua keeps old versions after an upgrade, and v2.94.0 sorts after v2.101.0 as text.
+func findNewestAquaGH(root string) string {
+	matches, _ := filepath.Glob(filepath.Join(root, "pkgs", "github_release", "github.com", "cli", "cli", "v*", "*", "*", "bin", "gh"))
+	newest, newestVersion := "", []int(nil)
+	for _, match := range matches {
+		relative, _ := filepath.Rel(filepath.Join(root, "pkgs", "github_release", "github.com", "cli", "cli"), match)
+		version := parseVersion(strings.Split(relative, string(filepath.Separator))[0])
+		if version != nil && isExecutable(match) && isNewerVersion(version, newestVersion) {
+			newest, newestVersion = match, version
+		}
+	}
+	return newest
+}
+
+// Turns "v2.101.0" into [2 101 0], or returns nil for a name that is not a
+// version.
+func parseVersion(name string) []int {
+	parts := strings.Split(strings.TrimPrefix(name, "v"), ".")
+	version := make([]int, len(parts))
+	for i, part := range parts {
+		number, err := strconv.Atoi(part)
+		if err != nil {
+			return nil
+		}
+		version[i] = number
+	}
+	return version
+}
+
+func isNewerVersion(version, than []int) bool {
+	for i := range version {
+		if i >= len(than) || version[i] != than[i] {
+			return i >= len(than) || version[i] > than[i]
+		}
+	}
+	return false
 }
 
 func isExecutable(path string) bool {
