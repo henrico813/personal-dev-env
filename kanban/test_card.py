@@ -288,14 +288,7 @@ class TestMove:
         ("stage", "target", "flags", "criteria"),
         [
             pytest.param(
-                "review",
-                "accepted",
-                [],
-                "- [ ] Done.",
-                id="user-move-without-user",
-            ),
-            pytest.param(
-                "draft", "active", ["--user"], "- [ ] Done.", id="skips-ready"
+                "draft", "active", ["--user"], "- Done.", id="chain-unchecked"
             ),
             pytest.param(
                 "draft",
@@ -330,13 +323,11 @@ class TestMove:
     ) -> None:
         """A refused move fails and does not touch the note.
 
-        Accepting work and releasing a card are the user's decisions.
-        An agent that could make them, or a card released with no
-        acceptance checkbox, would take those decisions away from the
-        user. A move missing from the table, such as skipping ready or
-        reopening an accepted card, would let work bypass those
-        decisions. A card waiting on others with no reason would leave
-        the user not knowing whom to chase.
+        A card released with no acceptance checkbox would take the
+        release decision away from the user, also when the release is
+        the first move of a chain. Reopening an accepted card would let
+        follow-up work skip the user's release. A card waiting on others
+        with no reason would leave the user not knowing whom to chase.
         """
         path = write_card(projects, KEY, stage, criteria)
         before = path.read_text()
@@ -376,6 +367,102 @@ class TestMove:
         assert text.endswith(
             f"- {TODAY} ready: by user for the user. Clear enough\n"
         )
+
+    @pytest.mark.parametrize(
+        ("source", "target", "steps"),
+        [
+            pytest.param(
+                "active", "accepted", ["review", "accepted"], id="accept"
+            ),
+            pytest.param("review", "ready", ["active", "ready"], id="reopen"),
+        ],
+    )
+    def test_move_logs_each_move_of_chain(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+        source: str,
+        target: str,
+        steps: list[str],
+    ) -> None:
+        """The user's move with no single step makes each step and logs it.
+
+        A hub told to accept active work, or to send reviewed work back
+        to ready, used to be refused and had to retry one stage at a
+        time. The Log must still show every stage the card passed, and
+        the reason belongs to the stage the user asked for.
+        """
+        path = write_card(projects, KEY, source, "- [ ] Done.")
+
+        code = run_card(
+            projects,
+            "move",
+            KEY,
+            target,
+            "--user",
+            "--why",
+            "Looks good",
+            "--by",
+            "hub",
+        )
+
+        assert code == 0
+        text = path.read_text()
+        assert f"stage: {target}\nstage_date: {TODAY}\n" in text
+        assert text.endswith(
+            f"- {TODAY} {steps[0]}: by hub for the user\n"
+            f"- {TODAY} {steps[1]}: by hub for the user. Looks good\n"
+        )
+        assert capsys.readouterr().out == f"{KEY} {steps[0]}\n{KEY} {target}\n"
+
+    @pytest.mark.parametrize(
+        ("source", "target", "hint"),
+        [
+            pytest.param(
+                "active",
+                "accepted",
+                "only the user moves review -> accepted."
+                f" You can move to review: card move {KEY} review",
+                id="accept-from-active",
+            ),
+            pytest.param(
+                "review",
+                "ready",
+                "only the user moves review -> active, on the way to ready."
+                " Pass --user only when the user said so.",
+                id="reopen-review",
+            ),
+            pytest.param(
+                "review",
+                "accepted",
+                "only the user moves review -> accepted."
+                " Pass --user only when the user said so.",
+                id="accept-from-review",
+            ),
+        ],
+    )
+    def test_move_refusal_names_the_next_move(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+        source: str,
+        target: str,
+        hint: str,
+    ) -> None:
+        """An agent's move that needs the user is refused with a hint.
+
+        Accepting and reopening are the user's decisions, so the card
+        must not change. The one-line hint names the move the agent can
+        make, so it does not guess and get refused again.
+        """
+        path = write_card(projects, KEY, source, "- [ ] Done.")
+        before = path.read_text()
+
+        code = run_card(projects, "move", KEY, target, "--by", "hub")
+
+        assert code == 1
+        assert path.read_text() == before
+        assert capsys.readouterr().err == f"card: {hint}\n"
 
     def test_move_pauses_active_card_without_criteria(
         self, projects: Path
@@ -421,6 +508,7 @@ class TestMove:
         [
             pytest.param("ready", "active", card.ACTIVE_LIMIT, id="start"),
             pytest.param("active", "review", card.REVIEW_LIMIT, id="review"),
+            pytest.param("ready", "review", card.REVIEW_LIMIT, id="chain"),
         ],
     )
     @pytest.mark.parametrize(
@@ -444,7 +532,8 @@ class TestMove:
         The limits keep the user's review queue short enough to clear.
         Without them the staff agent would keep starting workers and
         sending reviews. The user decides when a stage is full, so
-        their move must work.
+        their move must work. A chain of moves is held to the same
+        limits, or it would be a way around them.
         """
         for number in range(2, 2 + limit):
             write_card(projects, f"PDEV-KB-{number:03d}", target)

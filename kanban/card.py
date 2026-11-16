@@ -52,6 +52,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections import deque
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -75,7 +76,8 @@ KINDS = {
     "research": "ends in a document or a decision",
 }
 DEFAULT_KIND = "build"
-# A move missing here is refused, so accepted is final and follow-up
+# card move chains these moves when no single one reaches the stage, and
+# refuses a stage no chain reaches, so accepted is final and follow-up
 # work gets a new card. "user" moves need --user, and "staff" moves
 # take it when the user makes them.
 MOVES = {
@@ -101,6 +103,10 @@ MOVES = {
         if stage not in ("accepted", "dropped")
     },
 }
+# Stages a chain of moves may pass through. Waiting on others needs a
+# reason naming who, and dropping is a decision, so a chain only ends
+# in those stages.
+CHAIN_STAGES = ["draft", "ready", "active", "review"]
 # Only the user brings work already under way onto the board, straight
 # into one of these stages. These are not moves, so MOVES leaves them out.
 ADOPT_STAGES = ["active", "review", "waiting-on-others"]
@@ -451,6 +457,10 @@ def format_moves() -> str:
     ]
     for (source, target), who in MOVES.items():
         lines.append(f"  {source} -> {target}: {who}")
+    lines.append(
+        "a stage no single move reaches takes the shortest chain of these"
+        " moves, through draft, ready, active and review, one Log line each"
+    )
     lines.append(
         f"the user moves a card past the limits of {ACTIVE_LIMIT} active"
         f" and {REVIEW_LIMIT} in review with --user"
@@ -886,7 +896,11 @@ def label_lines(text: str) -> Iterator[tuple[str, str]]:
 
 
 def run_move(args: argparse.Namespace, projects: Path) -> int:
-    """Move a card to another stage and add a Log line.
+    """Move a card to another stage and add a Log line per move.
+
+    When no single move reaches the stage, the card takes the shortest
+    chain of moves the caller may make, in one write, and each move
+    gets its own Log line and printed line.
 
     Args:
         args: The parsed arguments.
@@ -900,24 +914,29 @@ def run_move(args: argparse.Namespace, projects: Path) -> int:
     require_reason_for_waiting(args.stage, args.why)
     card = find_card(projects, args.key)
     today = date.today().isoformat()
-    entry = format_log_entry(
-        args.stage, f"by {find_author(args)}", args.user, args.why
-    )
+    author = f"by {find_author(args)}"
     session = None
     if args.session is not None:
         session = find_agent_session(args.session)
+    chain: list[str] = []
 
     def change(text: str) -> str:
-        """Check the move against the card as it is now, then make it."""
+        """Check the moves against the card as it is now, then make them."""
         current = str(read_fields(text).get("stage", ""))
-        check_move(text, current, args.stage, args.user, projects)
+        chain[:] = plan_moves(
+            text, card.key, current, args.stage, args.user, projects
+        )
+        for stage in chain:
+            why = args.why if stage == args.stage else None
+            entry = format_log_entry(stage, author, args.user, why)
+            text = add_to_section(text, "Log", f"- {today} {entry}")
         text = set_field(text, "stage", args.stage)
         text = set_field(text, "stage_date", today)
-        text = add_to_section(text, "Log", f"- {today} {entry}")
         return add_session(text, today, session) if session else text
 
     update_card(card, change)
-    print(f"{card.key} {args.stage}")
+    for stage in chain:
+        print(f"{card.key} {stage}")
     return 0
 
 
@@ -962,10 +981,115 @@ def format_log_entry(
     return entry
 
 
+def plan_moves(
+    text: str, key: str, current: str, target: str, user: bool, projects: Path
+) -> list[str]:
+    """Return the stages a move passes through, target last.
+
+    Each move in the chain is checked as if it were made alone, so a
+    chain passes no rule, limit or criteria check that a single move
+    would fail.
+
+    Args:
+        text: The card text.
+        key: The card's key, for the hint in a refusal.
+        current: The card's stage now.
+        target: The stage to move to.
+        user: True when the user made the move.
+        projects: The vault's Projects folder, for the stage limits.
+
+    Returns:
+        The stages in order, such as ``["review", "accepted"]``.
+
+    Raises:
+        CardError: No allowed chain reaches target, with a hint, or a
+            move in the chain is refused.
+    """
+    chain = find_move_chain(current, target, user)
+    if chain is None:
+        raise CardError(format_refused_move(key, current, target, user))
+    source = current
+    for stage in chain:
+        check_move(text, source, stage, user, projects)
+        source = stage
+    return chain
+
+
+def find_move_chain(current: str, target: str, user: bool) -> list[str] | None:
+    """Return the shortest chain of moves from current to target.
+
+    Args:
+        current: The card's stage now.
+        target: The stage to move to.
+        user: True to use every move, False for staff moves only.
+
+    Returns:
+        The stages after current, target last, or None when no chain of
+        moves through CHAIN_STAGES reaches target.
+    """
+    if current == target:
+        return None
+    moves = [move for move, who in MOVES.items() if user or who == "staff"]
+    came_from = {current: current}
+    queue = deque([current])
+    while queue and target not in came_from:
+        stage = queue.popleft()
+        if stage != current and stage not in CHAIN_STAGES:
+            continue
+        for source, to in moves:
+            if source == stage and to not in came_from:
+                came_from[to] = stage
+                queue.append(to)
+    if target not in came_from:
+        return None
+    chain = [target]
+    while came_from[chain[-1]] != current:
+        chain.append(came_from[chain[-1]])
+    return chain[::-1]
+
+
+def format_refused_move(
+    key: str, current: str, target: str, user: bool
+) -> str:
+    """Return the one-line reason no chain of moves reaches target.
+
+    For staff, it names the first user move on the way, and the stage
+    staff can reach before it with the command that gets there.
+
+    Args:
+        key: The card's key.
+        current: The card's stage now.
+        target: The stage to move to.
+        user: True when the user made the move.
+
+    Returns:
+        The reason, such as ``only the user moves review -> accepted.
+        You can move to review: card move KEY review``.
+    """
+    chain = None if user else find_move_chain(current, target, True)
+    if chain is None:
+        options = [to for (source, to) in MOVES if source == current]
+        allowed = ", ".join(options) or "none, the stage is unknown"
+        return f"no move {current} -> {target}. Allowed: {allowed}"
+    source = current
+    for stage in chain:
+        if MOVES[(source, stage)] == "user":
+            break
+        source = stage
+    reason = f"only the user moves {source} -> {stage}"
+    if source != current:
+        return f"{reason}. You can move to {source}: card move {key} {source}"
+    if stage != target:
+        reason += f", on the way to {target}"
+    return f"{reason}. Pass --user only when the user said so."
+
+
 def check_move(
     text: str, current: str, target: str, user: bool, projects: Path
 ) -> None:
-    """Refuse a move the rules do not allow.
+    """Refuse a single move for its criteria or a full stage.
+
+    find_move_chain already keeps to MOVES and to the caller's moves.
 
     Args:
         text: The card text.
@@ -977,16 +1101,6 @@ def check_move(
     Raises:
         CardError: The move is not allowed, with the reason.
     """
-    who = MOVES.get((current, target))
-    if who is None:
-        options = [to for (source, to) in MOVES if source == current]
-        allowed = ", ".join(options) or "none, the stage is unknown"
-        raise CardError(f"no move {current} -> {target}. Allowed: {allowed}")
-    if who == "user" and not user:
-        raise CardError(
-            f"only the user moves {current} -> {target}."
-            " Pass --user only when the user said so."
-        )
     # Only the user's release needs criteria. Paused work may be adopted
     # work that has none yet.
     if (current, target) == ("draft", "ready") and not CHECKBOX_RE.search(
