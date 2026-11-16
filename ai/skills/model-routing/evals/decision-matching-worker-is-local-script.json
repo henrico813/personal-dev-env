@@ -1,0 +1,13 @@
+{
+  "id": "decision-matching-worker-is-local-script",
+  "source": "session review of categorization sessions",
+  "rule": "Job kinds",
+  "correction": true,
+  "prompt": "A user replied in plain English, such as 'keep 1 through 5 and 7, drop 9', naming what to do with each numbered item in a waiting list: keep, drop, or move it to another category. A worker needs to turn that into one script's own compact arguments, run the script, and report back only its printed counts, with no private detail such as a name or an amount. Which model runs this job, and why? Reply in at most 4 lines.",
+  "pass": ["qwen3\\.8|local-script|local model"],
+  "fail": [
+    "(?<!not )(?<!never )(?<!no )(?<!instead of )(?<!than )(run|use|start)\\w* (it |the (job|worker) )?(on |with )?(claude-code/)?(claude-)?(opus|sonnet)"
+  ],
+  "good": "goog/qwen3.8-flash runs it, as a local-script job: the decision is already made, matching it to the script's arguments and running the script needs no cloud judgment, and the script's own counts check the result.",
+  "bad": "claude-code/claude-sonnet-5 runs it, since it is safer to have a capable model handle the decisions."
+}
