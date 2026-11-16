@@ -488,10 +488,14 @@ request off the list. The worker then merges and reports once it has
 merged. When the worker is parked, do not message it, since a message
 reopens it; hand its merge to a merge worker, as below.
 
-The first message that shows the user a pull request or a research
-note says each of these:
+The first message that shows the user a pull request, a research
+note or a review from another session, such as a session review,
+says each of these. It opens with the first one. Give the item's own
+output or numbers only after it, since a message that opens with raw
+output tells the user the item is not worth reading.
 
-- What changes for the user.
+- Why it matters to the user: what changes for them, or what the
+  review found that they can act on.
 - The result the user can look for after trying it.
 - Why that result proves the change. When the change has no result
   to look for, say "nothing visible", and quote the changed line and

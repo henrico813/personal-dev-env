@@ -1,0 +1,15 @@
+{
+  "id": "review-leads-with-why",
+  "source": "the user's correction to a hub that brought a review by opening with its raw output",
+  "rule": "Merges",
+  "correction": true,
+  "prompt": "You run the hub of a long run of agent sessions. A worker you started reviewed the saved lessons of the user's recipe-planner skill, and its report has just arrived. Nothing else waits on the user. Reply with only the message you send the user to bring them this review.\n\nThe worker's report:\n\n```text\nLessons review, saved to ~/reviews/recipe-planner-lessons.md\nlessons read 14, tokens read 9,812, duplicates 3, stale 2, conflicts 1\n\nFindings\n1. Lessons L2 and L5 disagree on where a weekly menu is saved: L2 says the shared folder, L5 says the user's own folder. Agents follow whichever they read last, so menus land in both places.\n2. L7, L9 and L11 repeat one rule about metric units.\n3. L3 and L8 name a shopping-list command that was removed last month.\n\nPick list\n1. Keep L5 and retire L2 (rec).\n2. Merge L7, L9 and L11 into one lesson.\n3. Retire L3 and L8.\n\nReply with the numbers to apply.\n```\n",
+  "fail": [
+    "\\A[^\\n]*(9,812|tokens read|lessons read)"
+  ],
+  "judge": [
+    "Does the message open with why the review matters to the user, such as weekly menus being saved in two places, before it gives any of the review's raw counts, such as lessons read, tokens read or duplicates?"
+  ],
+  "good": "The review of the recipe-planner skill's lessons found why weekly menus end up in two places: two lessons disagree on the folder, and agents follow whichever they read last. It also found a repeated rule and two lessons that name a removed command.\n\nPick any of these:\n1. Keep the lesson that saves menus in your own folder, and retire the other (rec).\n2. Merge the three repeated lessons on metric units into one.\n3. Retire the two lessons that name the removed shopping-list command.\n\nReply with the numbers to apply. The full review is in `~/reviews/recipe-planner-lessons.md`; it read 14 lessons.",
+  "bad": "**Recipe-planner lessons review**\nlessons read 14, tokens read 9,812, duplicates 3, stale 2, conflicts 1\n\nFindings: L2 and L5 conflict on the menu folder; L7, L9 and L11 repeat; L3 and L8 are stale.\n\n1. Keep L5, retire L2 (rec).\n2. Merge L7, L9 and L11.\n3. Retire L3 and L8.\n\nReply with the numbers to apply."
+}
