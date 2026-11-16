@@ -262,7 +262,11 @@ The `status-updates` skill says to look up an approval's state now
 before you list it as waiting. For pde-gh-write requests, look it up
 with `hub requests`, even to repeat a line from a handoff or your
 notes. Only state `pending` waits on the user. A `hub status` WHY of
-`request in the last hour` means a request already finished.
+`request in the last hour` means a request already finished. Its
+`approval waits` also covers approved and running requests and an
+unreadable request file, so it alone does not mean the user owes an
+answer. This check goes once the hub's question queue lists live
+approvals itself.
 
 ## Cards
 

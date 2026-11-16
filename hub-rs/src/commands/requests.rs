@@ -1,6 +1,8 @@
 //! Runs `hub requests`, which reads each pde-gh-write request file
 //! fresh, so the hub can tell an approval that waits from one that
-//! already ran or expired.
+//! already ran or expired. `hub status` still says `approval waits`
+//! for approved and running requests too. This command can go once
+//! the question queue lists live approvals with their state.
 
 use jiff::{SignedDuration, Timestamp};
 use serde_json::{Value, json};
