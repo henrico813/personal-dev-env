@@ -8,8 +8,8 @@ components; client installs everything except what needs Go, Rust, or a compiled
 local build, and only five of the shared skills. Switching between selections
 changes future reconciliation, but switching from full to terminal does not
 uninstall full-only artifacts. The exception is PR write approval: chezmoi
-removes `pde-gh-write`, `pde-pr-approve`, and the `gh` guard on terminal and
-client machines. On client it also removes the skills, plan and design commands
+removes `pde-gh`, `pde-gh-write`, `pde-pr-approve`, and the `gh` guard on
+terminal and client machines. On client it also removes the skills, plan and design commands
 and plan reviewer agents that only a full install leaves. Client refuses to
 install over release tools it would delete, such as Go left by a past full
 install. Every install reconciles tools and managed home configuration.

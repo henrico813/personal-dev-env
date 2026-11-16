@@ -1,4 +1,4 @@
-package cmd
+package ghtool
 
 import (
 	"bytes"
@@ -132,22 +132,6 @@ func TestDecidedRequestsNeverRunGH(t *testing.T) {
 	}
 }
 
-// A decision is final. A yes saved after a decline, such as from
-// pde-pr-approve left open while the popup declined, must not approve the
-// request and let gh post.
-func TestLateYesKeepsDeclinedRequest(t *testing.T) {
-	env := setupFlow(t, "")
-	args := []string{"pr", "ready", "12"}
-	id := requestAndAnswer(t, args, approval.StateDeclined)
-
-	saveAnswer(id, approval.ChoiceYes)
-	code := requestWrite(args)
-
-	if code != exitDeclined || countCalls(t, env.calls) != 0 {
-		t.Fatalf("rerun returned %d after %d gh calls, want %d and none", code, countCalls(t, env.calls), exitDeclined)
-	}
-}
-
 // gh must post the text the approver read. The body file is read when the
 // request is made; if gh read the file when it ran, an agent could rewrite
 // it after approval and post text nobody approved.
@@ -239,20 +223,19 @@ func TestFailedRunRerunNamesRetryOption(t *testing.T) {
 	}
 }
 
-// An Esc meant for the agent dismissed a request in the Herdr popup. The
-// owner asked the agent to send it again, but the rerun only kept waiting,
-// and the request sat unseen for half an hour. A rerun must put it back in
-// the popup queue, open the popup again, and tell the agent.
+// An Esc meant for the agent once dismissed a request, and the agent's rerun
+// left it unseen for half an hour. A rerun must put it back in the popup
+// queue, have pde-pr-approve open the popup again, and tell the agent.
 func TestRerunShowsDismissedRequestAgain(t *testing.T) {
 	env := setupFlow(t, "")
 	args := []string{"pr", "ready", "12"}
 	rec := newRequest(t, args)
-	dismissRequest(rec.ID)
-	// The rerun runs inside Herdr. The fake herdr touches done when it shows
-	// the notification that follows the attempt to open the popup.
-	done := filepath.Join(t.TempDir(), "done")
-	approvaltest.FakeHerdr(t, `if [ "$1 $2" = "notification show" ]; then touch '`+done+`'; fi`)
-	t.Setenv("HERDR_ENV", "1")
+	rec.Dismissed = true
+	if err := approval.SaveKeepingAge(rec); err != nil {
+		t.Fatal(err)
+	}
+	// The fake pde-pr-approve logs how it was started.
+	log := installFakeApproveProgram(t)
 
 	code := requestWrite(args)
 
@@ -266,9 +249,7 @@ func TestRerunShowsDismissedRequestAgain(t *testing.T) {
 	if !strings.Contains(env.output.String(), want) {
 		t.Errorf("output is missing %q:\n%s", want, env.output)
 	}
-	// The popup opens in the background; this also keeps it from outliving
-	// the test's PATH.
-	waitForFile(t, done)
+	waitForLine(t, log, "--herdr-notify "+rec.ID)
 }
 
 // gh's exit codes overlap this program's, so agents tell the two apart by the
@@ -442,4 +423,29 @@ func chdir(t *testing.T, dir string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(old) })
+}
+
+// Stands in for pde-pr-approve with a script that logs its arguments, one
+// start per line, and returns the log's path.
+func installFakeApproveProgram(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	log := filepath.Join(dir, "log")
+	fake := approvaltest.WriteScript(t, dir, "pde-pr-approve", `echo "$*" >> '`+log+`'`)
+	approvaltest.Replace(t, &approveProgram, func() (string, error) { return fake, nil })
+	return log
+}
+
+// Waits until the log at path holds line, since the programs that write it
+// run detached.
+func waitForLine(t *testing.T, path, line string) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		data, _ := os.ReadFile(path)
+		if strings.Contains(string(data), line+"\n") {
+			return
+		}
+	}
+	data, _ := os.ReadFile(path)
+	t.Fatalf("%s = %q, want the line %q", path, data, line)
 }

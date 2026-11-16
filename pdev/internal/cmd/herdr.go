@@ -69,12 +69,10 @@ func notifyRequest(rec approval.Record) {
 // Tests replace this to put a fake herdr beside the program.
 var thisProgram = os.Executable
 
-// herdrPath finds herdr on PATH, then in this program's folder. Herdr runs
-// the inbox and the popup with its server's PATH, which can lack
-// ~/.local/bin, where the installer puts both herdr and pde-gh-write. With
-// neither, it returns "herdr", so running it fails with "not found in $PATH".
-// Not HERDR_BIN_PATH: after a reinstall it can name the server's deleted
-// binary.
+// Finds herdr on PATH, then beside this program in ~/.local/bin, which the
+// PATH of Herdr's server can lack, or else returns "herdr" to fail with "not
+// found in $PATH". HERDR_BIN_PATH is not used, since after a reinstall it can
+// name the server's deleted binary.
 func herdrPath() string {
 	if path, err := exec.LookPath("herdr"); err == nil {
 		return path
@@ -104,8 +102,8 @@ func popupFailure(err error) (body, workspace string) {
 	if !errors.As(err, &refused) || refused.Code != "ui_busy" {
 		return "Cannot open the approval popup: " + err.Error(), ""
 	}
-	// A PID of 0 or less would make processAlive signal a process group.
-	if popup, err := approval.LoadPopup(); err == nil && popup.Workspace != "" && popup.PID > 0 && processAlive(popup.PID) {
+	// A PID of 0 or less would make ProcessAlive signal a process group.
+	if popup, err := approval.LoadPopup(); err == nil && popup.Workspace != "" && popup.PID > 0 && approval.ProcessAlive(popup.PID) {
 		where := workspaceLabel(popup.Workspace)
 		if popup.Name != "" {
 			return popup.Name + " is open in " + where + ". Close it, then press Ctrl+b a", popup.Workspace
@@ -345,4 +343,37 @@ func focusRequest(rec approval.Record) {
 	if pane != "" {
 		_ = exec.Command(herdrPath(), "agent", "focus", pane).Run()
 	}
+}
+
+// Runs as pde-pr-approve --herdr-notify ID, which pde-gh starts for a new,
+// rerun dismissed or expired request. It saves which agent asked a pending
+// request and opens the popup, or clears the pane marker of any other.
+func notifyHerdr(id string) int {
+	lockFile, err := approval.Lock(id)
+	if err != nil {
+		return exitFailed
+	}
+	rec, err := approval.Load(id)
+	if err != nil {
+		lockFile.Close()
+		return exitFailed
+	}
+	pending := rec.State == approval.StatePending && !approval.Expired(rec)
+	// Saved under the lock, because a save outside it could overwrite an
+	// answer. A rerun finds the context already saved.
+	if pending && rec.PaneID == "" {
+		rec.PaneID, rec.Workspace, rec.SessionTitle = agentContext(rec.SessionID)
+		if rec.PaneID != "" && approval.SaveKeepingAge(rec) != nil {
+			lockFile.Close()
+			return exitFailed
+		}
+	}
+	// Herdr can be slow, so the lock is not held while it is asked.
+	lockFile.Close()
+	if pending {
+		notifyRequest(rec)
+	} else {
+		clearRecordMarker(rec)
+	}
+	return 0
 }

@@ -59,56 +59,16 @@ func TestIgnoreTemplateKeepsRemoveTargets(t *testing.T) {
 	}
 }
 
-// chezmoi deletes a file whose template renders empty, which removes the gh
-// guard from terminal and client machines. Those machines have no
-// pde-gh-write, so a guard left there would block every PR write.
-func TestGuardRendersOnlyForFull(t *testing.T) {
-	tests := []struct {
-		profile   string
-		wantEmpty bool
-	}{
-		{
-			profile:   "terminal",
-			wantEmpty: true,
-		},
-		{
-			profile:   "client",
-			wantEmpty: true,
-		},
-		{
-			profile:   "full",
-			wantEmpty: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.profile, func(t *testing.T) {
-			text := renderProfileTemplate(
-				t,
-				"dot_local/bin/executable_gh.tmpl",
-				tt.profile,
-			)
-
-			if empty := strings.TrimSpace(text) == ""; empty != tt.wantEmpty {
-				t.Fatalf(
-					"guard empty = %v, want %v:\n%s",
-					empty,
-					tt.wantEmpty,
-					text,
-				)
-			}
-			if !tt.wantEmpty && !strings.HasPrefix(text, "#!/usr/bin/env bash\n") {
-				t.Errorf("guard does not start with its shebang:\n%s", text)
-			}
-		})
-	}
-}
-
-// A machine that moves from full to client keeps full's approval tools until
-// chezmoi removes them, and client has no pde-gh-write for them to run.
+// A machine that moves from full to client keeps full's approval tools and
+// gh guard links until chezmoi removes them, and client has no pde-gh
+// for them to run. A gh link left there would break every gh call.
 func TestClientRemovesFullApprovalTools(t *testing.T) {
 	text := renderProfileTemplate(t, removeFileTemplate, "client")
 
 	for _, target := range []string{
+		".local/bin/gh",
+		".local/bin/pde-gh",
+		".local/bin/pde-gh-guard",
 		".local/bin/pde-gh-write",
 		".local/bin/pde-pr-approve",
 	} {

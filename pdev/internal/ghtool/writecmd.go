@@ -1,4 +1,4 @@
-package cmd
+package ghtool
 
 import (
 	"bytes"
@@ -58,7 +58,7 @@ func requestWrite(args []string) int {
 
 // The lock stops two identical first requests from both creating a record;
 // the later save could overwrite an approval or a finished run. A new request
-// also starts the Herdr notification, the phone question, and the runner; a
+// also starts the Herdr popup, the phone question, and the runner; a
 // pending one restarts a phone question or runner that died, and opens the
 // popup again if it was dismissed.
 func loadOrCreate(req approval.Request, gh string, retry bool) (string, error) {
@@ -83,7 +83,7 @@ func loadOrCreate(req approval.Request, gh string, retry bool) (string, error) {
 					return "", err
 				}
 				fmt.Fprintf(stderr, "pde-gh-write: %s had been dismissed in the Herdr popup; it is back in the popup queue\n", rec.ID)
-				go notifyRequest(rec)
+				startHerdrNotify(rec.ID)
 			}
 			// Replace a phone question that ended without an answer, or the
 			// request would wait with nothing to answer on the phone. startMoshi
@@ -112,16 +112,14 @@ func loadOrCreate(req approval.Request, gh string, retry bool) (string, error) {
 		BodyFile: req.BodyFile, ApprovalText: text, State: approval.StatePending,
 		Created: time.Now(), Directory: req.Directory, Repo: req.Repo, GH: gh,
 		PRTitle: currentTitle(gh, req, fetchedTitle), SessionID: os.Getenv("OPENCODE_SESSION_ID")}
-	// Filled in before the first save, because a later save outside this lock
-	// could overwrite an answer.
-	rec.PaneID, rec.Workspace, rec.SessionTitle = agentContext(rec.SessionID)
 	if err := approval.Save(rec); err != nil {
 		return "", err
 	}
 	fmt.Fprintf(stderr, "pde-gh-write: waiting for approval in the Herdr popup or on the phone, or run pde-pr-approve %s in a terminal; it runs once approved, so rerun this exact command to read the result\n", req.ID)
-	// Opening the popup runs in the background so a slow Herdr cannot delay the
-	// wait for an answer. It may not finish if this program exits first.
-	go notifyRequest(rec)
+	// pde-pr-approve finds the agent's Herdr pane and opens the popup.
+	if os.Getenv("HERDR_ENV") == "1" {
+		startHerdrNotify(rec.ID)
+	}
 	// runnerStart saves rec, so it needs the ask PID that startMoshi saved.
 	rec = startMoshi(rec)
 	runnerStart(rec)

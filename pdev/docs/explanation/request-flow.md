@@ -6,7 +6,7 @@ has to be cleaned up by hand. Agents also rerun a command to find out what
 happened to it. This program makes each post wait for your approval and
 happen only once, however often the agent reruns the command.
 
-`gh` is GitHub's command-line tool. The guard, a short script installed as
+`gh` is GitHub's command-line tool. The guard, a mode of `pde-gh` linked as
 `~/.local/bin/gh`, stops agents from using it to write to a pull request,
 so they run `pde-gh-write` with the same arguments instead; see
 [the guard](../reference/requests.md#the-guard).
@@ -21,17 +21,17 @@ One request goes like this:
 
 1. An agent runs a pull-request write, such as `gh pr comment 12`. Your
    `.zshrc` puts `~/.local/bin` ahead of aqua's folder on `PATH`, so the
-   `gh` it finds is the guard, a short bash script.
+   `gh` it finds is the guard.
 2. The guard refuses the write, exits 2, and tells the agent to use
    `pde-gh-write`. Any other command passes through to the real `gh`.
-3. The agent runs the same command through `pde-gh-write`, the Go program
-   built from `pdev/`. It saves the request in a file and starts the
-   runner, a copy of itself that waits in the background.
-4. If the agent runs inside Herdr, `pde-gh-write` asks Herdr, through
-   Herdr's socket, to open the approval plugin's popup. The popup runs
-   `pde-pr-approve --herdr-popup`; `pde-pr-approve` is another name for
-   `pde-gh-write`.
-5. It also starts `pde-gh-write --moshi-ask`, which runs `moshi-hook ask`
+3. The agent runs the same command through `pde-gh-write`, another name
+   for `pde-gh`. It saves the request in a file and starts the runner, a
+   copy of itself that waits in the background.
+4. If the agent runs inside Herdr, `pde-gh-write` starts
+   `pde-pr-approve --herdr-notify`, which asks Herdr, through Herdr's
+   socket, to open the approval plugin's popup. The popup runs
+   `pde-pr-approve --herdr-popup`.
+5. It also starts `pde-pr-approve --moshi-ask`, which runs `moshi-hook ask`
    to put the question on your phone. Inside Herdr, it first waits until
    the request is 30 seconds old, and asks only if you have not answered.
 6. You answer in the popup, on the phone, or with `pde-pr-approve ID` in
@@ -46,16 +46,19 @@ One request goes like this:
 
 ## How It Gets Installed
 
-`pde-installer install full` puts the pieces in place in two ways. It builds the
-Go program from `pdev/` as `~/.local/bin/pde-gh-write` and links
-`pde-pr-approve` to it; the program picks its mode from the name it was started
-under, so one build serves both. It also installs `moshi-hook`. chezmoi, which
+`pde-installer install full` puts the pieces in place in two ways. It builds
+two Go programs from `pdev/` into `~/.local/bin`. `pde-gh` is the gh tool,
+linked as `gh`, `pde-gh-guard` and `pde-gh-write`; it picks its mode from
+the name it was started under. `pde-pr-approve` is where you answer, and it
+talks to Herdr and the phone. Each starts the other from its own folder.
+It also installs `moshi-hook`. chezmoi, which
 the installer also runs, places the files that tie the program into your tools:
-the guard as `~/.local/bin/gh`, the Herdr plugin, and the `prefix+a` inbox key.
+the Herdr plugin, and the `prefix+a` inbox key.
 Herdr loads plugins only into a running server, so a separate script links the
 plugin after each install and, when Herdr is not running, prints how to link it
 later. The terminal and client profiles install none of this, and remove the
-guard, `pde-gh-write`, and `pde-pr-approve` if a full install left them. Client
+guard, `pde-gh`, `pde-gh-write`, and `pde-pr-approve` if a full install
+left them. Client
 keeps the `prefix+a` key in its Herdr config, which runs the inbox of the
 machine Herdr shows. [Set up approval](../how-to/set-up-approval.md) lists the
 steps.
@@ -98,8 +101,8 @@ command.
 
 ## The Runner
 
-The runner is a second copy of `pde-gh-write`, started with the request as
-`pde-gh-write --pde-runner ID`. It is started apart from the agent's
+The runner is a second copy of `pde-gh`, started with the request as
+`pde-gh --pde-runner ID`. It is started apart from the agent's
 command, so it keeps running when the agent's tool stops that command. It
 checks the record until the request is answered or expires. When the
 request is approved, it runs `gh` the same way the waiting command would,
@@ -128,7 +131,7 @@ When the agent's command ends, the tool that ran it stops every program the
 command started. You may answer the phone hours later, so `pde-gh-write`
 starts the phone question as a separate program that the agent's tool does
 not stop, and does not wait for it. That program is
-`pde-gh-write --moshi-ask`. It runs `moshi-hook` for up to four hours, the
+`pde-pr-approve --moshi-ask`. It runs `moshi-hook` for up to four hours, the
 same as the request's lifetime.
 
 When you answer on the phone, it saves your answer if the request is still

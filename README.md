@@ -134,7 +134,7 @@ Vibe binaries plus repo-managed AI config.
 | Moshi Hook | `pde-installer/internal/direct/` | `~/.local/bin/moshi-hook`, `~/.local/bin/moshi` | Mobile coding-agent hook daemon |
 | Herdr | `pde-installer/internal/direct/` | `~/.local/bin/herdr` | Agent-aware terminal workspace |
 | nobs | `pde-installer/internal/direct/` | `~/.local/bin/nobs` | Finds, reads and syncs vault notes; run `nobs vault set` once per vault |
-| PR write approval | `pdev/`, `chezmoi/` | `~/.local/bin/{pde-gh-write,pde-pr-approve,gh}`, `~/.local/share/pde/herdr-plugins/pde-approval/` (full only) | Agents write to pull requests only after you approve; see the [approval docs](pdev/docs/README.md) |
+| PR write approval | `pdev/`, `chezmoi/` | `~/.local/bin/{pde-gh,pde-gh-write,pde-pr-approve,gh}`, `~/.local/share/pde/herdr-plugins/pde-approval/` (full only) | Agents write to pull requests only after you approve; see the [approval docs](pdev/docs/README.md) |
 | Comment review | `glimmer/`, `chezmoi/` | `~/.local/bin/glimmer`, `~/.local/share/pde/herdr-plugins/glimmer/` (full only) | Decide on an AI's Go, Python and Rust comments one per phone screen with Ctrl+b e, and keep agents from changing the ones you approved; run `glimmer help` for its commands |
 | Skill lessons | `skill-lessons/` | `~/.local/bin/skill-lessons` (client and full) | Shows the lessons saved before `skill-fix` in the installed copy of a skill; see the [skill-lessons README](skill-lessons/README.md) |
 | Skill fix | `skill-fix/` | `~/.local/bin/skill-fix` (client and full) | Commits a fix to a skill's text in a separate worktree, then pushes it to one fix pull request per PC |
