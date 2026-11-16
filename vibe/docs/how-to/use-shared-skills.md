@@ -34,6 +34,27 @@ directory: the user root first, the repository root second. Skills marked
 skipped, so a Vibe worker never loads workflow-orchestration skills. Either
 directory may be missing.
 
+## Try a checkout's skills
+
+To try changed skills without installing them, pass `--skills` with the
+folder that holds them, such as a checkout's `ai/skills`. Vibe mounts that
+folder in place of `~/.agents/skills`, so the real install is neither mounted
+nor changed:
+
+```bash
+vibe run \
+  --skills ai/skills \
+  --key skill-try \
+  --base HEAD \
+  --prompt-file /tmp/vibe-task.txt \
+  --model goog/qwen3.8
+```
+
+A relative path is resolved from the current directory. The folder gets the
+same checks as `~/.agents/skills`, but it must exist. Every file in it is
+mounted, untracked files included. Pi logins and the Git author still come
+from the real home.
+
 Find the run under
 `~/.local/state/vibe/<repo>-<16-hex-git-common-dir-hash>/<slug>/runs/`.
 State under the old `~/.local/state/vibe/<basename>/` layout is intentionally
