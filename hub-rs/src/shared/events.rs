@@ -111,9 +111,14 @@ pub(crate) enum EventKind {
     /// `hub next` printed that the review of the old hub `old` did not
     /// start.
     ReviewFailed { old: String, reason: String },
-    /// `hub next` printed that the older hub `old` runs with no
-    /// `handoff` event.
-    UnadoptedHubSeen { old: String },
+    /// `hub next`, run by the hub `hub`, printed that the older hub
+    /// `old` runs with no `handoff` event. Logs written before `hub`
+    /// was recorded have none.
+    UnadoptedHubSeen {
+        old: String,
+        #[serde(default)]
+        hub: String,
+    },
     /// NAME's tab `tab` closed after its parked record was saved.
     Parked {
         name: String,
@@ -186,13 +191,16 @@ pub(crate) struct Memory {
     pub last_read: BTreeMap<String, Timestamp>,
     /// When a message last reached each name.
     pub last_delivered: BTreeMap<String, Timestamp>,
-    /// The old hub named in the last `handoff` event.
-    pub predecessor: Option<String>,
+    /// Every old hub a `handoff` event named, so each one closes even
+    /// after a later handoff or adopt names another.
+    pub handed_off: BTreeSet<String>,
     /// The review handoff of each old hub whose review has neither
     /// started nor failed.
     pub reviews_due: BTreeMap<String, PathBuf>,
-    /// Older hubs `hub next` already named as left without a handoff.
-    pub unadopted_seen: BTreeSet<String>,
+    /// Each pair of a hub and an older hub that `hub next`, run by
+    /// that hub, already named as left without a handoff. Each new hub
+    /// hears once of every old hub still open.
+    pub unadopted_seen: BTreeSet<(String, String)>,
 }
 
 /// Adds one line to the log in a single write. Writes a newline first
@@ -302,13 +310,13 @@ fn fold_events(events: impl IntoIterator<Item = Event>) -> Memory {
                 if let Some(review) = review {
                     memory.reviews_due.insert(old.clone(), review);
                 }
-                memory.predecessor = Some(old);
+                memory.handed_off.insert(old);
             }
             EventKind::ReviewStarted { old, .. } | EventKind::ReviewFailed { old, .. } => {
                 memory.reviews_due.remove(&old);
             }
-            EventKind::UnadoptedHubSeen { old } => {
-                memory.unadopted_seen.insert(old);
+            EventKind::UnadoptedHubSeen { old, hub } => {
+                memory.unadopted_seen.insert((hub, old));
             }
             EventKind::Held { .. }
             | EventKind::Unsure { .. }

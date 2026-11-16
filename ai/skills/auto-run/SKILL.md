@@ -211,6 +211,15 @@ it as a list in `<auto run folder>/feedback.md`. Have a fresh agent
 check every other open pull request of the run against that list, and
 send what it finds to the auto hub with `hub send`.
 
+The auto hub never starts a newer hub, so nothing closes it unless
+you adopt it. Each time you send it news of a merge or close, check
+the run: when each of its pull requests has merged or closed and no
+parked question waits, run
+`hub adopt --run "<front hub's run folder>" auto-hub-<N>` in your
+own pane. Otherwise wait for the next such news. The `herdr-hub`
+skill says what adopting does. `hub adopt` exits 3 until the auto
+hub has sent its end brief; wait for that brief, then run it again.
+
 ## The auto hub
 
 1. Run `hub auto now --run "<run folder>"`. When it exits 3, the run

@@ -172,7 +172,8 @@ parks a session.
 - `to-close NAMES: WHY; run hub clean`, or the same with `to-park`:
   sessions that finished, listed once.
 - `no hub handoff for OLD -> hub adopt OLD (hub 131k)`: an older hub
-  of the run is open, and no `handoff` started this hub from it.
+  of the run is open, and no `handoff` named it. Each hub sees this
+  once for each such OLD.
 - `old send file: PATH (hub 131k)`: a message file the Python hub
   left, which `next` never sends.
 - `review started NAME (hub 131k)`, or
@@ -276,12 +277,17 @@ review handoff PATH
 ### adopt
 
 `hub adopt [--run DIR] OLD` takes over OLD, an older hub of the run
-that no `handoff` named. It writes OLD's review handoff and records a
+that no `handoff` named, or an auto run's hub, such as `auto-hub-2`,
+once its run is over. It writes OLD's review handoff and records a
 handoff, so `clean` closes OLD once it is idle. Run it in the hub's
 own pane. Prints `adopted OLD; hub clean closes its tab once it is
 idle, then hub next --start-reviews starts review-OLD`.
 
-- Exits 3 with `OLD is not an older hub left without hub handoff`.
+- Exits 3 with `OLD is not an auto hub or an older hub left without
+  hub handoff`.
+- Exits 3 with `OLD has sent no end brief to this run folder yet`
+  for an auto hub with no `report-OLD` file, read or unread, in the
+  run folder.
 
 `handoff` and `adopt` also move the hubs to the top of the sidebar,
 as `gather` does. When that fails, they add

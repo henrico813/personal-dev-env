@@ -5,6 +5,8 @@
 //! session only in the `to-close` or `to-park` state, so each rule
 //! that gives one of those decides what the hub may close.
 
+use std::collections::BTreeSet;
+
 use super::messages::MessageCounts;
 use super::parking::ParkedRecord;
 use crate::external::cards::{CardKey, Stage};
@@ -14,6 +16,8 @@ use crate::external::herdr::{Agent, AgentKind, AgentStatus};
 /// The review session that `hub handoff` creates for the old hub gets
 /// a name starting with this, so `review-kanban-hub-16` is not a hub.
 const REVIEW_PREFIX: &str = "review-";
+/// The word before `-hub-` in an auto run's hub, as in `auto-hub-13`.
+const AUTO_HUB_WORD: &str = "auto";
 
 /// One session's place in its life. Each `match` on it must name
 /// every state. Code that forgets to handle a new state then fails to
@@ -138,9 +142,8 @@ pub(crate) struct SessionFacts {
     /// last hour. A worker that just merged one pull request may still
     /// have more to do.
     pub filed_request_recently: bool,
-    /// The session is the hub named in this run's last `handoff`
-    /// event.
-    pub is_predecessor: bool,
+    /// A `handoff` event of this run named the session as the old hub.
+    pub handed_off: bool,
     pub context_tokens: Option<u64>,
 }
 
@@ -211,10 +214,11 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
     if facts.messages.any() {
         return make_verdict(Lifecycle::WaitsOnHub, "");
     }
-    // Rule 6. An old hub closes only once `hub handoff` named it, and
-    // not while the user types in it or its approval waits.
+    // Rule 6. An old hub closes only once `hub handoff` or `hub adopt`
+    // named it, and not while the user types in it or its approval
+    // waits.
     if is_hub_name(&facts.name) {
-        return if facts.is_predecessor {
+        return if facts.handed_off {
             make_close_unless_user_waits(facts, agent, "handed off")
         } else {
             make_kept(KeptReason::AnotherHub)
@@ -271,15 +275,29 @@ pub(crate) fn is_hub_name(name: &str) -> bool {
 /// Tells whether `name` is a hub older than `own` that no `handoff`
 /// event named, such as `kanban-hub-3` left open when the user started
 /// `kanban-hub-4` by hand. Only hubs of the same run count, which share
-/// the word before `-hub-`. `predecessor` is the old hub of the run's
-/// last `handoff` event.
-pub(crate) fn is_unadopted_hub(own: &str, name: &str, predecessor: Option<&str>) -> bool {
+/// the word before `-hub-`. `handed_off` holds the old hubs of the
+/// run's `handoff` events.
+pub(crate) fn is_unadopted_hub(own: &str, name: &str, handed_off: &BTreeSet<String>) -> bool {
     let (Some((own_word, own_number)), Some((word, number))) =
         (split_hub_name(own), split_hub_name(name))
     else {
         return false;
     };
-    word == own_word && number < own_number && predecessor != Some(name)
+    word == own_word && number < own_number && !handed_off.contains(name)
+}
+
+/// Tells whether `hub adopt`, run by `own`, may take over `name`, an
+/// unadopted hub, or an auto run's hub, such as `auto-hub-13`, that no
+/// `handoff` event named. An auto hub hands off to no one, so the front
+/// hub adopts it once its run is over, and Rule 6 can close it.
+pub(crate) fn can_adopt_hub(own: &str, name: &str, handed_off: &BTreeSet<String>) -> bool {
+    is_unadopted_hub(own, name, handed_off)
+        || (is_auto_hub(name) && name != own && !handed_off.contains(name))
+}
+
+/// Tells whether `name` is an auto run's hub, such as `auto-hub-13`.
+pub(crate) fn is_auto_hub(name: &str) -> bool {
+    split_hub_name(name).is_some_and(|(word, _)| word == AUTO_HUB_WORD)
 }
 
 /// Splits a hub name such as `kanban-hub-13` into `kanban` and 13.
@@ -410,11 +428,11 @@ mod tests {
             reports,
             ..with_stage(Stage::Active)
         };
-        let hub = |is_predecessor| SessionFacts {
+        let hub = |handed_off| SessionFacts {
             name: "kanban-hub-16".to_owned(),
             agent: Some(make_agent("kanban-hub-16", AgentStatus::Idle)),
             card: None,
-            is_predecessor,
+            handed_off,
             ..make_facts(worker)
         };
         let no_card = |name: &str, ever_reported| SessionFacts {
@@ -505,12 +523,12 @@ mod tests {
                 expected: Lifecycle::WaitsOnHub,
             },
             Row {
-                id: "predecessor-hub",
+                id: "handed-off-hub",
                 facts: hub(true),
                 expected: Lifecycle::ToClose,
             },
             Row {
-                id: "predecessor-focused",
+                id: "handed-off-focused",
                 facts: {
                     let mut facts = hub(true);
                     facts.agent.as_mut().unwrap().focused = true;
@@ -775,18 +793,40 @@ mod tests {
     /// another run's hub or a running review.
     #[test]
     fn is_unadopted_hub_matches_older_unnamed_hubs() {
+        let handed_off = BTreeSet::from(["kanban-hub-2".to_owned()]);
         let cases = [
-            ("older-same-run", "kanban-hub-3", None, true),
-            ("predecessor", "kanban-hub-3", Some("kanban-hub-3"), false),
-            ("other-run", "auto-hub-3", None, false),
-            ("newer", "kanban-hub-5", None, false),
-            ("review", "review-kanban-hub-3", None, false),
+            ("older-same-run", "kanban-hub-3", true),
+            ("handed-off", "kanban-hub-2", false),
+            ("other-run", "auto-hub-3", false),
+            ("newer", "kanban-hub-5", false),
+            ("review", "review-kanban-hub-3", false),
         ];
 
-        for (case_name, name, predecessor, expected) in cases {
-            let unadopted = is_unadopted_hub("kanban-hub-4", name, predecessor);
+        for (case_name, name, expected) in cases {
+            let unadopted = is_unadopted_hub("kanban-hub-4", name, &handed_off);
 
             assert_eq!(unadopted, expected, "{case_name}");
+        }
+    }
+
+    /// The front hub adopts an auto hub once its run is over, since an
+    /// auto hub hands off to no one and would stay open for good. A
+    /// wrong match would adopt the running hub itself or adopt one
+    /// hub twice, which starts a second review of it.
+    #[test]
+    fn can_adopt_hub_accepts_auto_hubs_once() {
+        let handed_off = BTreeSet::from(["auto-hub-2".to_owned()]);
+        let cases = [
+            ("auto-hub", "kanban-hub-4", "auto-hub-3", true),
+            ("auto-hub-adopted", "kanban-hub-4", "auto-hub-2", false),
+            ("own-auto-hub", "auto-hub-3", "auto-hub-3", false),
+            ("unadopted-hub", "kanban-hub-4", "kanban-hub-3", true),
+        ];
+
+        for (case_name, own, name, expected) in cases {
+            let adoptable = can_adopt_hub(own, name, &handed_off);
+
+            assert_eq!(adoptable, expected, "{case_name}");
         }
     }
 }

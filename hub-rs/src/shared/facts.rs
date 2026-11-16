@@ -221,7 +221,7 @@ pub(crate) fn collect_session_facts(
             approval_pending: has_bad_request
                 || match_open_request(&agent, &open_requests.requests),
             filed_request_recently: match_open_request(&agent, &open_requests.recent),
-            is_predecessor: memory.predecessor.as_deref() == Some(agent.name.as_str()),
+            handed_off: memory.handed_off.contains(&agent.name),
             messages: counts.get(&agent.name).copied().unwrap_or_default(),
             agent: Some(agent),
             parked: None,
@@ -252,7 +252,7 @@ pub(crate) fn collect_session_facts(
             unsaved: Unsaved::NotChecked,
             approval_pending: false,
             filed_request_recently: false,
-            is_predecessor: false,
+            handed_off: false,
             context_tokens: None,
             parked: Some(record),
         });

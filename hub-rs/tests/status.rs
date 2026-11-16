@@ -53,7 +53,7 @@ fn write_parked_record(test_tools: &TestTools, name: &str, card: &str) {
 /// hub itself, and a session left out is one nobody watches. Each
 /// source must reach its row. A pending approval from a worker's pane
 /// keeps it open. A message a killed process left half sent shows as
-/// unsure. The hub named in the last handoff closes. A parked record
+/// unsure. A hub a handoff named closes. A parked record
 /// shows with its time. A worker whose card is not on the board stays
 /// kept, since no rule can tell whether its work is done. A review
 /// card's open needs-you note shows its worker as `you`, or the tidy
@@ -305,6 +305,48 @@ fn run_status_names_hub_left_without_handoff() {
     assert_eq!(
         status["problems"],
         json!(["no hub handoff for kanban-hub-3 -> hub adopt kanban-hub-3"])
+    );
+}
+
+/// A hub that adopts an old hub after a handoff must still close the
+/// hub it took over first. Before, only the hub of the last `handoff`
+/// event closed, so the first old hub stayed open for good. The same
+/// holds for an adopted auto hub, which hands off to no one.
+#[test]
+fn run_status_closes_every_handed_off_hub() {
+    let mut test_tools = TestTools::new();
+    test_tools.herdr.agents = vec![
+        make_agent("kanban-hub-5", AgentStatus::Working),
+        make_agent("kanban-hub-4", AgentStatus::Idle),
+        make_agent("auto-hub-2", AgentStatus::Idle),
+    ];
+    test_tools.own_pane = Some("w1:kanban-hub-5".to_owned());
+    let events = [("kanban-hub-4", "22:08"), ("auto-hub-2", "22:10")]
+        .map(|(old, time)| {
+            json!({
+                "at": format!("2026-11-11T{time}:00Z"),
+                "event": "handoff",
+                "old": old,
+                "tab": format!("w1:t-{old}"),
+                "new": "kanban-hub-5",
+            })
+            .to_string()
+        })
+        .join("\n");
+    fs::write(test_tools.run_path().join("events.jsonl"), events + "\n").unwrap();
+
+    let status = read_status_json(&test_tools);
+
+    let to_close = |name: &str| {
+        (
+            name.to_owned(),
+            "to-close".to_owned(),
+            "handed off".to_owned(),
+        )
+    };
+    assert_eq!(
+        list_rows(&status),
+        [to_close("auto-hub-2"), to_close("kanban-hub-4")]
     );
 }
 
