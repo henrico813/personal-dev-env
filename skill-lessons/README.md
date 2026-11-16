@@ -1,13 +1,12 @@
 # skill-lessons
 
-A small command that keeps your corrections inside agent skills.
+A small command that shows the lessons saved in agent skills before
+the `skill-fix` tool existed. A new correction goes to `skill-fix`,
+which writes it into the skill's text.
 
-A skill that opts in (see below) tells the agent to save your
-correction with `skill-lessons add` when you say "remember". The tool
-writes the lesson into the installed copy of the skill, so any harness
-that loads the skill (OpenCode, Claude Code, Codex) sees it next time.
-The lesson store stays on each machine. A rule reaches a repository
-only through a promotion you approve.
+The tool writes each saved lesson into the installed copy of its skill,
+so any harness that loads the skill (OpenCode, Claude Code, Codex) sees
+it. The lesson store stays on each machine.
 
 ## Install
 
@@ -26,29 +25,13 @@ a machine needs only Python 3.10 or later.
 
 ```text
 skill-lessons --version             print the version
-skill-lessons add FILE              save a lesson, re-render its skill
 skill-lessons list SKILL            show lessons and repeat counts
-skill-lessons retire SKILL ID... [--after-push --checkout PATH]
-                                    remove lessons, re-render
+skill-lessons retire SKILL ID...    remove lessons, re-render
 skill-lessons render                re-fill every marked skill
-skill-lessons promote-start SKILL --checkout PATH
-skill-lessons promote-check SKILL --checkout PATH [--growth-reason TEXT]
 ```
 
-`FILE` holds a JSON object; `-` reads it from standard input. `skill` is
-required, and `text` is required unless `repeat_of` is set. `project`,
-`epic` and `repo` set an optional scope. Unknown keys are refused, and
-so is text that says "this epic" with no `epic` set.
-
-```json
-{"skill": "demo", "epic": "ABC-12", "text": "Children are Tasks; match the siblings' type."}
-```
-
-When you correct something already saved, the agent sets `repeat_of`
-to the lesson's ID. That lesson's repeat count goes up by one, and any
-`text` or scope given replaces the old value. `list` warns at 15
-lessons, so you can decide whether to fold stable ones into the skill's
-source.
+`list` warns at 15 lessons, so you can decide whether to move the
+stable ones into the skill's text with `skill-fix`.
 
 Exit codes: 0 on success, 1 when an operation is refused or fails, 2 on
 bad arguments.
@@ -73,33 +56,8 @@ between the marker and the next `## ` heading, or the end of the file:
 - Don't call a bug cosmetic unless only its look is wrong. [L2]
 ```
 
-`add` and `retire` refuse a skill without the marker, and `render`
+`retire` refuses a skill without the marker, and `render`
 leaves such skills untouched.
-
-## Promotion checks
-
-These commands find a skill's source at `ai/skills/<name>/SKILL.md` in
-the checkout, as in this repository, or else at
-`skills/<name>/SKILL.md`. Run `promote-start`, then
-`promote-check`, then `retire`.
-
-`promote-start` and `promote-check` help fold lessons into a skill's
-source. `promote-start` refuses a dirty checkout, a source without the
-marker, or a `user.email` that differs from the last commit's author (so
-a promotion is not committed under another identity, such as a work
-address), then lists the lessons. It marks a lesson
-`(likely stays a lesson)` when it has an `epic` scope or says "this
-epic" or "this ticket", since such a lesson rarely becomes skill text.
-`promote-check` fails when the added lines hold a ticket key or copy
-five words in a row from a lesson, when the source's Lessons section is
-not empty, or when the skill grew without `--growth-reason`; when it
-passes, it prints the diff and line counts.
-`retire --after-push --checkout PATH` fetches the default branch of the
-remote the checkout's branch tracks (`origin` when it tracks none). It
-refuses unless that branch has the skill's source as the checkout's
-HEAD has it. A direct push passes, and so does a merged pull request,
-squash merges included, so lessons stay while the rule is only on an
-unmerged branch.
 
 ## Development
 
