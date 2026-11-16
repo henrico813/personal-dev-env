@@ -57,7 +57,7 @@ pub(crate) fn make_facts(name: &str) -> SessionFacts {
         unsaved: Unsaved::Clean,
         approval_pending: false,
         filed_request_recently: false,
-        is_predecessor: false,
+        handed_off: false,
         context_tokens: None,
     }
 }

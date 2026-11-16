@@ -386,6 +386,38 @@ fn run_adopt_refuses_newer_hub() {
     assert!(read_events(&test_tools.run_path()).is_empty());
 }
 
+/// An auto hub hands off to no one, so before, nothing closed it once
+/// its run was over. The front hub adopts it, which records the
+/// `handoff` event that lets the tidy pass close it. Before its end
+/// brief, an idle auto hub may only be between turns, and adopting it
+/// would close a live run.
+#[test]
+fn run_adopt_needs_auto_hub_end_brief() {
+    let mut test_tools = TestTools::new();
+    test_tools.herdr.agents = vec![
+        make_agent("kanban-hub-4", AgentStatus::Working),
+        Agent {
+            session_id: Some("ses_auto".to_owned()),
+            ..make_agent("auto-hub-2", AgentStatus::Idle)
+        },
+    ];
+    test_tools.own_pane = Some("w1:kanban-hub-4".to_owned());
+
+    let early = adopt_hub(&test_tools, "auto-hub-2");
+    fs::write(
+        test_tools.run_path().join("report-auto-hub-2.1200.read"),
+        "done",
+    )
+    .unwrap();
+    adopt_hub(&test_tools, "auto-hub-2").unwrap();
+
+    assert!(matches!(early, Err(HubError::NotDone(_))), "{early:?}");
+    let events = read_events(&test_tools.run_path());
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["event"], "handoff");
+    assert_eq!(events[0]["old"], "auto-hub-2");
+}
+
 /// A hub `kanban-hub-4` in its own pane that can adopt `kanban-hub-3`,
 /// both in workspace `w1`, below a worker's workspace `w2`.
 fn make_adopt_tools() -> TestTools {

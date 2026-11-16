@@ -342,10 +342,11 @@ pub enum Command {
     },
     /// Take over an older open hub
     ///
-    /// Run it when hub next prints no hub handoff for OLD. OLD is an
-    /// older hub of this run that is still open, and no hub handoff
-    /// started this hub from it. It writes the handoff for OLD's
-    /// session review, so hub clean closes OLD once it is idle.
+    /// Run it when hub next prints no hub handoff for OLD, or when an
+    /// auto run is over. OLD is an older hub of this run that no hub
+    /// handoff named, or an auto hub such as auto-hub-2. It writes the
+    /// handoff for OLD's session review, so hub clean closes OLD once
+    /// it is idle.
     #[command(after_help = "Example: hub adopt kanban-hub-3")]
     Adopt {
         #[command(flatten)]

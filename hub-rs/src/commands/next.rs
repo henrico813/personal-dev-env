@@ -99,9 +99,11 @@ enum News {
     },
     /// What this check did about an old hub's session review.
     Review(ReviewStart),
-    /// An older hub of the run that no `handoff` event names.
+    /// An older hub of the run that no `handoff` event names, which
+    /// the running hub `hub` has not heard of yet.
     UnadoptedHub {
         old: String,
+        hub: String,
     },
     Replaced,
     Timeout,
@@ -480,16 +482,20 @@ fn choose_news(facts: &NewsFacts<'_>) -> Option<News> {
         return Some(News::OldSendFile { path: path.clone() });
     }
     let own = facts.hub.name.as_deref()?;
-    let predecessor = facts.memory.predecessor.as_deref();
+    let handed_off = &facts.memory.handed_off;
     facts
         .agents
         .iter()
         .find(|agent| {
-            lifecycle::is_unadopted_hub(own, &agent.name, predecessor)
-                && !facts.memory.unadopted_seen.contains(&agent.name)
+            lifecycle::is_unadopted_hub(own, &agent.name, handed_off)
+                && !facts
+                    .memory
+                    .unadopted_seen
+                    .contains(&(own.to_owned(), agent.name.clone()))
         })
         .map(|agent| News::UnadoptedHub {
             old: agent.name.clone(),
+            hub: own.to_owned(),
         })
 }
 
@@ -566,7 +572,10 @@ fn record_news(news: &News) -> Option<EventKind> {
             old: old.clone(),
             reason: events::cut_reason(reason),
         }),
-        News::UnadoptedHub { old } => Some(EventKind::UnadoptedHubSeen { old: old.clone() }),
+        News::UnadoptedHub { old, hub } => Some(EventKind::UnadoptedHubSeen {
+            old: old.clone(),
+            hub: hub.clone(),
+        }),
         News::NotSent { .. } | News::Unsure { .. } | News::Replaced | News::Timeout => None,
     }
 }
@@ -620,7 +629,9 @@ fn format_news_line(news: &News, hub_tokens: Option<u64>) -> String {
             "review not started for {old}: {reason}; start it from {} with herdr-handoff {hub}",
             review.display()
         ),
-        News::UnadoptedHub { old } => format!("no hub handoff for {old} -> hub adopt {old} {hub}"),
+        News::UnadoptedHub { old, .. } => {
+            format!("no hub handoff for {old} -> hub adopt {old} {hub}")
+        }
         News::Replaced => "replaced by a newer hub next".to_owned(),
         News::Timeout => format!("timeout {hub}"),
     }
@@ -656,7 +667,7 @@ fn format_news_json(news: &News, hub_tokens: Option<u64>) -> String {
             Some(old.clone()),
             Some(format!("{reason}; start it from {}", review.display())),
         ),
-        News::UnadoptedHub { old } => ("unadopted_hub", Some(old.clone()), None),
+        News::UnadoptedHub { old, .. } => ("unadopted_hub", Some(old.clone()), None),
         News::Replaced => ("replaced", None, None),
         News::Timeout => ("timeout", None, None),
     };

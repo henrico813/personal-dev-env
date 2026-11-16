@@ -39,9 +39,7 @@ pub fn run_status(
             .sessions
             .iter()
             .filter(|session| session.agent.is_some())
-            .find(|session| {
-                lifecycle::is_unadopted_hub(own, &session.name, memory.predecessor.as_deref())
-            })
+            .find(|session| lifecycle::is_unadopted_hub(own, &session.name, &memory.handed_off))
             .map(|session| session.name.clone())
     });
     let verdicts = collected

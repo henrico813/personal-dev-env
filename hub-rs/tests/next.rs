@@ -591,3 +591,26 @@ fn run_next_names_unadopted_hub_once() {
     );
     assert_eq!(second, "timeout (hub -)");
 }
+
+/// A hub that missed the reminder used to leave the older hub open for
+/// good, since the reminder was spent for the whole run. Each new hub
+/// must hear once of every older hub still open.
+#[test]
+fn run_next_reminds_each_new_hub_once() {
+    let mut test_tools = TestTools::new();
+    test_tools.herdr.agents = vec![
+        make_agent("kanban-hub-4", AgentStatus::Working),
+        make_agent("kanban-hub-3", AgentStatus::Working),
+    ];
+    test_tools.own_pane = Some("w1:kanban-hub-4".to_owned());
+    check_once(&test_tools);
+    test_tools.herdr.agents[0] = make_agent("kanban-hub-5", AgentStatus::Working);
+    test_tools.own_pane = Some("w1:kanban-hub-5".to_owned());
+
+    let line = check_once(&test_tools);
+
+    assert_eq!(
+        line,
+        "no hub handoff for kanban-hub-3 -> hub adopt kanban-hub-3 (hub -)"
+    );
+}

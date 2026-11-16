@@ -169,7 +169,9 @@ are off by default. Most lines end with your own context, such as
   run is still open, and no `hub handoff` started you from it. Run
   `hub adopt --run "<run folder>" <old>`. It writes the old hub's
   review handoff. Once the old hub is idle, `hub next` lists it as
-  `to-close`, and `hub clean` closes its tab.
+  `to-close`, and `hub clean` closes its tab. In an auto run,
+  the front hub also adopts the run's auto hub once the run is over,
+  as the `auto-run` skill says.
 - `review started <name>`: with `--start-reviews`, the old hub's
   session review now runs. Bring its pick list to the user when it
   reports.

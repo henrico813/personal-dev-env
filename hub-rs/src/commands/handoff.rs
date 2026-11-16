@@ -158,16 +158,17 @@ pub fn run_handoff(
 }
 
 /// Makes this hub take over `old`, an older hub of the run that no
-/// `hub handoff` named. Writes the handoff for `old`'s session review
-/// and records a `handoff` event, so `hub clean` closes `old` once it
+/// `hub handoff` named, or an auto hub whose run is over. Writes the
+/// handoff for `old`'s session review and records a `handoff` event, so `hub clean` closes `old` once it
 /// is idle and `hub next --start-reviews` then starts the review.
 /// Then puts the hubs at the top of the sidebar, and a failure there
 /// adds a warning line, not an error.
 ///
 /// # Errors
 ///
-/// `HubError::NotDone` outside the hub's own pane, when `old` is not
-/// an older hub left without a handoff, or when Herdr does not know
+/// `HubError::NotDone` outside the hub's own pane, when `hub adopt`
+/// may not take over `old`, when an auto hub has written no end brief
+/// to this run folder, or when Herdr does not know
 /// `old`'s OpenCode session.
 pub fn run_adopt(
     tools: &Tools<'_>,
@@ -183,9 +184,19 @@ pub fn run_adopt(
     let hub = tools.herdr.get_agent(own_pane)?;
     let memory = events::load_memory(run)?;
     let old_hub = tools.herdr.get_agent(old.as_str())?;
-    if !lifecycle::is_unadopted_hub(&hub.name, &old_hub.name, memory.predecessor.as_deref()) {
+    if !lifecycle::can_adopt_hub(&hub.name, &old_hub.name, &memory.handed_off) {
         return Err(HubError::NotDone(format!(
-            "{} is not an older hub left without hub handoff",
+            "{} is not an auto hub or an older hub left without hub handoff",
+            old_hub.name
+        )));
+    }
+    // An auto hub between turns looks idle, so only its end brief, the
+    // one report it writes here, shows that its run is over.
+    if lifecycle::is_auto_hub(&old_hub.name)
+        && !run.list_reported_names()?.any.contains(&old_hub.name)
+    {
+        return Err(HubError::NotDone(format!(
+            "{} has sent no end brief to this run folder yet",
             old_hub.name
         )));
     }
