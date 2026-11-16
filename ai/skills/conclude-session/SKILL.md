@@ -174,7 +174,8 @@ Step 2's message, for a session with one proposal and one fix:
   feature branch.
 - Read no other session, and no whole message from the database.
 - Never turn saved lessons into skill text. That is a separate job
-  the user starts, and it follows the `skill-development` skill.
+  the user starts with the `skill-fix` skill, since each lesson then
+  becomes a fix the user reviews on its own.
 
 ## When a tool is missing
 
