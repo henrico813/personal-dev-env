@@ -2,8 +2,7 @@
   "id": "narrow-read-before-dump",
   "source": "session review of categorization sessions",
   "rule": "Workflow",
-  "correction": true,
-  "prompt": "You are new to a project's backend and want to learn how its 900-line categorizer module works end to end before changing one function in it. You have not opened the file yet. What do you do first to learn this?",
+  "prompt": "You are new to a project's backend. In a team chat message, not a pull request review, a teammate asks how its 900-line categorizer module decides which category a transaction gets, so they can explain it to a customer. You have no plan to edit the file. You have not opened it yet. What do you do first to answer them?",
   "pass": ["rg\\s|ripgrep"],
   "fail": [
     "(?<!not )(?<!never )(?<!don't )(?<!won't )(read|open)\\w* (the )?(whole|entire|full) file\\b",
