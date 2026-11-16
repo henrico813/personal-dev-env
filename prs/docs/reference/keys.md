@@ -51,11 +51,11 @@ The exceptions:
 | Comments screen   | `l`, Enter, double tap | Show the selected row full screen in less           |
 | Comments screen   | `h`, `q`               | Go back                                             |
 | A comment in less | `h`, `q`               | Go back to the comments screen                      |
-| Diff view         | `L` / `H`              | Next and previous file                              |
+| Diff view         | `l` / `h`              | Next and previous file                              |
 | Diff view         | `o`                    | Open the file picker                                |
 | Diff view         | `r`                    | Draw the diff again at the screen's width           |
 | Diff view         | `d` / `u`              | Half a page down and up                             |
-| Diff view         | `h`, `q`               | Leave the diff screen                               |
+| Diff view         | `q`                    | Leave the diff screen                               |
 | File picker       | `j` / `k`              | Choose a file, and its diff follows                 |
 | File picker       | `l`, Enter, double tap | Open the file in the diff view and close the picker |
 | File picker       | `o`, `h`               | Close the picker on the file you were reading       |
