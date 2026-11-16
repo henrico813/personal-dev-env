@@ -406,61 +406,54 @@ QUEUE; from 100 columns they sit side by side.
   the user, one `then:` line counting the cards in review, and one
   `hub:` line per Ready card in `card list` order. The block shows
   the first of each; the next view shows them all.
-
-Keys 1 to 5 open full views, named away, queue, next, sessions and
-machine, each under a `< name` breadcrumb. Tab steps through the
-views and back to the glance page. A tap on a block or its
-`+ N more` opens its view; a tap on the breadcrumb, Esc or q goes
-back. Esc on the glance page does nothing. `?` opens the help page
-of the glance or of the open view, r reads again, and q quits from
-the glance page. Ctrl-C quits from anywhere. The board also reads
-again every 10 seconds. `NO_COLOR` turns colors off.
-
-The queue view lists the cards by group: Needs you, In progress,
-In review, Waiting on others, Ready and Draft. The cards come from
-`card list`. Needs you holds the questions in each `decisions.md`
-and the sessions that wait on the user, from every hub on this
-machine that Herdr lists: each `~/.local/state/herdr-hub.*` folder
-whose hub `hub watch start` named, auto runs included. Each
-question's tag is its hub's name, cut to 6 letters, and its
-details page names the hub in full. With no hub running, Needs you
-shows `no hub running`. It ignores `HUB_RUN`, and the hidden
-`--run DIR` shows one run only. A Could not read group shows on
-top when a read fails. Ready, Draft and Waiting on others start
-folded, and Waiting on others shows only when it holds a card.
-An open group shows four rows, then `+ N more`. The sessions
-view groups every session as `hub
-clean` decides: NEEDS YOU, WORKING, KEPT, SAFE TO CLOSE and
-PARKED. Each row shows the name, a context bar full at 150K
-tokens, the context in thousands and why the session is in its
-group, such as `unpushed review`. A why too long for the row goes
-on the line below it. The machine view shows the file-watch slots
-in use (`WATCH`, with `high` from 90%) and free disk (`DISK`),
-then the six newest reports.
-
-- In the queue view, a tap on a heading folds or opens it, a tap
-  on a count opens its group and scrolls to it, a tap on a row
-  opens its details, and a tap on `+ N more` shows the rest. j, k,
-  the arrow and page keys or the wheel move the choice, and Enter
-  or space acts on it. On a details, help or clean output page,
-  any tap, Enter, space, q or Esc goes back, and j, k, the page
-  keys or the wheel scroll. The away, next and machine views
-  scroll the same way.
-- In the sessions view, a tap on a row only chooses it. The bar
-  at the bottom then reads `-> jump to NAME`, and a tap on it
-  shows that session in Herdr. Enter also jumps, but only after
-  0.7 seconds with no input, so a stray Enter after a tap does not
-  jump. A failed jump shows `jump failed: REASON` on the bottom
-  line. j, k and the page keys move the choice.
+- Keys 1 to 5 open full views, named away, queue, next, sessions
+  and machine, each under a `< name` breadcrumb. Tab steps through
+  the views and back to the glance page. A tap on a block or its
+  `+ N more` opens its view; a tap on the breadcrumb, Esc or q
+  goes back. r reads again, and q quits from the glance page.
+  Ctrl-C quits from anywhere. The board also reads again every 10
+  seconds. `NO_COLOR` turns colors off. The away, next and
+  machine views and any details page scroll with j, k, the page
+  keys or the wheel, and on a details page any tap, Enter, space,
+  q or Esc goes back.
+- The queue view lists the cards by group: Needs you, In progress,
+  In review, Waiting on others, Ready and Draft. The cards come
+  from `card list`. Needs you holds the questions in each
+  `decisions.md` and the sessions that wait on the user, from
+  every hub on this machine that Herdr lists: each
+  `~/.local/state/herdr-hub.*` folder whose hub `hub watch start`
+  named, auto runs included. Each question's tag is its hub's
+  name, cut to 6 letters, and its details page names the hub in
+  full. With no hub running, Needs you shows `no hub running`. It
+  ignores `HUB_RUN`, and the hidden `--run DIR` shows one run
+  only. A Could not read group shows on top when a read fails.
+  Ready, Draft and Waiting on others start folded, and Waiting on
+  others shows only when it holds a card. An open group shows four
+  rows, then `+ N more`. A tap on a heading folds or opens it, a
+  tap on a count opens its group and scrolls to it, and a tap on
+  a row opens its details. j, k, the arrow and page keys or the
+  wheel move the choice, and Enter or space acts on it.
+- The sessions view groups every session as `hub clean` decides:
+  NEEDS YOU, WORKING, KEPT, SAFE TO CLOSE and PARKED. Each row
+  shows the name, a context bar full at 150K tokens, the context
+  in thousands and why the session is in its group, such as
+  `unpushed review`. A why too long for the row goes on the line
+  below it. A tap on a row only chooses it; the bar at the bottom
+  then reads `-> jump to NAME`, and a tap on it shows that session
+  in Herdr. Enter also jumps, but only after 0.7 seconds with no
+  input, so a stray Enter after a tap does not jump. A failed jump
+  shows `jump failed: REASON` on the bottom line.
+- The machine view shows the file-watch slots in use (`WATCH`,
+  with `high` from 90%) and free disk (`DISK`), then the six
+  newest reports.
 - c, from the glance page or any view, lists the SAFE TO CLOSE
   sessions, each marked `close` or `park`, and ends in `+ N more`
-  when they do not fit.
-  The list does not change while it is open. y, once the list has
-  been open 1 second and no key came for 0.7 seconds, closes and
-  parks the listed sessions as `hub clean` does and shows its
-  output, with a `kept` line for any it now keeps. Any other key or
-  a tap cancels. With nothing to close or no hub running, c says so
-  and changes nothing.
+  when they do not fit. The list does not change while it is
+  open. y, once the list has been open 1 second and no key came
+  for 0.7 seconds, closes and parks the listed sessions as
+  `hub clean` does and shows its output, with a `kept` line for
+  any it now keeps. Any other key or a tap cancels. With nothing
+  to close or no hub running, c says so and changes nothing.
 - A visit is one stretch of the user using the board, ended by
   10 quiet minutes with no key or tap. The board saves the time
   of the user's latest key or tap in
@@ -487,9 +480,8 @@ then the six newest reports.
   `q`. The hidden `--control`, which tests use, takes the same
   steps but never jumps or cleans.
 
-`hub board --help` describes the JSON fields. "Screens agents can see
-and tap" in the [README](../../README.md) gives the rules every such
-screen follows.
+"Screens agents can see and tap" in the [README](../../README.md)
+describes the element JSON and the rules every such screen follows.
 
 ### auto
 
