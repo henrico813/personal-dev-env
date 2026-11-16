@@ -175,8 +175,14 @@ script-checked jobs to the local model says.
    Try the pushed commit with build.md's Check a deploy, as
    pull-request Guardrail 4 says, but never
    install into the real home during a run: other workers install
-   too, and the last install wins. Run it from the worktree, or
-   install it into a scratch home from `mktemp -d`; a change that
+   too, and the last install wins. Try a skill change with
+   `vibe run --skills ai/skills`, as Guardrail 4 says, since it never
+   touches the shared install in the real home. A change to a workflow
+   skill, one marked `pde-workflow: "true"`, has no try during a run,
+   since Vibe leaves those out and only an install reaches them: write
+   its try line as `not run` with that reason, a check that cannot
+   apply, as `herdr-hub` allows. Try any other change from
+   the worktree, or in a scratch home from `mktemp -d`; a change that
    adds a dependency or a build step gets the scratch home install,
    cleanup included, since CI does not build tools the installer's
    way. In a brief for an agent that tries it, name the folder in

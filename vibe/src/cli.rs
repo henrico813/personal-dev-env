@@ -63,6 +63,10 @@ pub struct RunArgs {
     #[arg(long = "input")]
     pub inputs: Vec<PathBuf>,
 
+    /// Skills folder to mount read-only in place of ~/.agents/skills, such as a checkout's ai/skills.
+    #[arg(long)]
+    pub skills: Option<PathBuf>,
+
     /// Model selector passed unchanged to Pi.
     #[arg(long)]
     pub model: String,
@@ -116,6 +120,11 @@ where
             for input in &mut args.inputs {
                 if input.is_relative() {
                     *input = current_dir.join(&*input);
+                }
+            }
+            if let Some(skills) = &mut args.skills {
+                if skills.is_relative() {
+                    *skills = current_dir.join(&*skills);
                 }
             }
             Ok(ParsedCommand::Run(args))
@@ -329,6 +338,31 @@ mod tests {
         assert_eq!(
             args.prompt_file,
             std::env::current_dir().expect("cwd").join("prompt.txt")
+        );
+    }
+
+    /// A relative `--skills` path must not depend on the directory Docker runs in.
+    #[test]
+    fn try_parse_from_normalizes_relative_skills_folder() {
+        let ParsedCommand::Run(args) = try_parse_from([
+            "vibe",
+            "run",
+            "--key",
+            "demo",
+            "--prompt-file",
+            "/tmp/prompt.txt",
+            "--skills",
+            "ai/skills",
+            "--model",
+            "model",
+        ])
+        .expect("parse args") else {
+            panic!("expected run args");
+        };
+
+        assert_eq!(
+            args.skills,
+            Some(std::env::current_dir().expect("cwd").join("ai/skills"))
         );
     }
 

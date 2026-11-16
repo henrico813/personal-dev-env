@@ -8,7 +8,8 @@ A run uses these relevant mounts:
 - the shared Git directory, writable;
 - the run artifact directory at `/artifacts`, writable;
 - any explicitly supplied runtime input mounts, read-only;
-- host `~/.agents/skills` at `/vibe-home/.agents/skills`, read-only, when present;
+- host `~/.agents/skills` at `/vibe-home/.agents/skills`, read-only, when present,
+  or the `--skills` folder there instead when given;
 - managed-worktree `.agents/skills` at its worktree path, read-only, when present;
 - host `~/.pi/agent` at `/vibe-home/.pi/agent`, writable, only for file authentication;
 - a container `/vibe-home` tmpfs owned by the host UID/GID.
@@ -64,10 +65,11 @@ use an address reachable from inside Docker for the Goog endpoint.
 
 ## Skill-root setup and validation
 
-Vibe checks `~/.agents/skills` during early setup and checks the managed
-worktree's `.agents/skills` immediately after checkout. It checks both existing
-roots again at launch. Missing roots are allowed. Existing paths must be
-directories, readable, non-symlinked, safe for Docker mount syntax, and
+Vibe checks `~/.agents/skills`, or the `--skills` folder when given, during
+early setup and checks the managed worktree's `.agents/skills` immediately
+after checkout. It checks both existing roots again at launch. Missing roots
+are allowed, except a `--skills` folder, which must exist. Existing paths must
+be directories, readable, non-symlinked, safe for Docker mount syntax, and
 unchanged in device/inode. User skills must not overlap writable mounts.
 Repository skills must contain tracked `HEAD` content with no changes, untracked
 or ignored files, descendant symlinks, multiply-linked files, or index flags

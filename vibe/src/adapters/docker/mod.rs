@@ -13,7 +13,7 @@ use crate::{observe::ArtifactPaths, worktree::SandboxMounts};
 
 pub(crate) use auth::prepare_provider_auth;
 use auth::{auth_env_args, HOST_GIT_CONFIG_KEYS};
-pub(crate) use skills::{prepare_repository_skills, prepare_user_skills, PreparedSkills};
+pub(crate) use skills::{prepare_repository_skills, select_user_skills, PreparedSkills};
 use skills::{
     reject_user_skills_writable_overlap, revalidate_skill_root, validate_repository_skills_mount,
 };
