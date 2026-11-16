@@ -189,7 +189,7 @@ mod tests {
 
     use crate::board::control::answer_sent_step;
     use crate::board::view::Step;
-    use crate::board::view::tests::sample_board;
+    use crate::board::view::tests::queue_board;
 
     /// A state folder of its own under the system's temporary folder,
     /// removed on drop.
@@ -221,7 +221,7 @@ mod tests {
     fn send_step_reaches_board_and_returns_screen() {
         let temp = TempState::new("send-step");
         let (_listener, steps) = StepListener::start(&temp.path).unwrap();
-        let mut board = sample_board();
+        let mut board = queue_board();
 
         // The agent sends a tap from another thread, as `--send` does
         // from another terminal.
@@ -250,7 +250,7 @@ mod tests {
     fn send_step_hidden_tap_fails_naming_show() {
         let temp = TempState::new("send-hidden-card");
         let (_listener, steps) = StepListener::start(&temp.path).unwrap();
-        let mut board = sample_board();
+        let mut board = queue_board();
         let state_folder = temp.path.clone();
         let agent = thread::spawn(move || send_step(&state_folder, "tap card:DEMO-KB-020"));
 

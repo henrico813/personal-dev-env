@@ -1,8 +1,14 @@
 //! Runs `hub board`, a full-screen view of the user's cards,
-//! sessions and machine gauges, sized for a phone first. Read
-//! `run_board` and `print_board` first, `control.rs` for
-//! the JSON that agents read, and `listen.rs` for the socket an agent
-//! drives the live board through.
+//! sessions and machine gauges, sized for a phone first. It opens on a
+//! glance page of what happened while the user was away, the queue and
+//! what comes next. Read `run_board` and `print_board` first,
+//! `control.rs` for the JSON that agents read, and `listen.rs` for the
+//! socket an agent drives the live board through.
+//!
+//! Only the live board saves when the user last used it, in `seen.rs`.
+//! `--print`, `--dump` and `--control` read that time but never write
+//! it, so an agent's look at the board does not hide news from the
+//! user.
 //!
 //! A second thread reads the hubs' state every 10 seconds, or at once
 //! when the user presses r. A read calls Herdr, `card` and OpenCode
@@ -12,14 +18,17 @@
 //! thread also runs a jump to a session and the clean pass after c
 //! and y.
 
+mod away;
 mod control;
 mod draw;
 mod elements;
+mod glance;
 mod groups;
 mod listen;
 mod machine;
 mod panels;
 mod queue;
+mod seen;
 mod sessions;
 mod terminal;
 mod view;
@@ -45,6 +54,7 @@ use crate::shared::run_folder::RunFolder;
 use crate::shared::{HubError, OwnedTools, Tools};
 use listen::StepListener;
 use queue::{Queue, read_queue};
+use seen::Visits;
 use terminal::Screen;
 use view::{Board, Step};
 
@@ -148,6 +158,7 @@ pub fn run_board(
     let (jobs, job_receiver) = mpsc::channel();
     let (note_sender, notes) = mpsc::channel();
     let cards = tools.cards.clone();
+    let mut visits = Visits::start(&tools.state_folder, Timestamp::now());
     // The thread is never joined, so q quits at once even while a read
     // runs. The thread ends at its next send or wait after the
     // channels close, or with the process.
@@ -159,6 +170,7 @@ pub fn run_board(
     // https://no-color.org asks.
     let color = std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty());
     let mut board = Board::new(color);
+    board.show_visit(visits.since(), visits.away_for());
     let mut screen = Screen::start().map_err(terminal_error)?;
     screen.draw(&mut board).map_err(terminal_error)?;
     'board: while !stop.load(Ordering::Relaxed) {
@@ -191,6 +203,11 @@ pub fn run_board(
         }
         if event::poll(POLL).map_err(terminal_error)? {
             let input = event::read().map_err(terminal_error)?;
+            // Steps an agent sends through `--listen` do not count as
+            // the user's, and neither does a resize.
+            if matches!(input, event::Event::Key(_) | event::Event::Mouse(_)) {
+                note_user_input(&mut visits, &mut board);
+            }
             let step = board.handle_input(&input);
             if !follow_step(step, &mut board, &jobs, &cards, &note_sender) {
                 break;
@@ -218,7 +235,26 @@ pub fn run_board(
         }
     }
     drop(screen);
-    Ok(Outcome { lines: Vec::new() })
+    let lines = match visits.save_last_input(Timestamp::now()) {
+        Ok(()) => Vec::new(),
+        Err(error) => vec![format!(
+            "could not save when you last used the board: {error}"
+        )],
+    };
+    Ok(Outcome { lines })
+}
+
+/// Notes the user's key or tap in `visits`, shows a new visit's AWAY
+/// on `board`, and saves the time when it is due. A failed save shows
+/// on the board, which goes on.
+fn note_user_input(visits: &mut Visits, board: &mut Board) {
+    let now = Timestamp::now();
+    if visits.note_input(now) {
+        board.show_visit(visits.since(), visits.away_for());
+    }
+    if let Err(error) = visits.save_if_due(now) {
+        board.show_status(format!("last use not saved: {error}"));
+    }
 }
 
 /// Reads the hubs' state once and returns the board's first screen as
@@ -234,8 +270,7 @@ pub fn print_board(
     time_zone: &TimeZone,
     size: ScreenSize,
 ) -> Result<Outcome, HubError> {
-    // Text output carries no colors.
-    let mut board = Board::new(false);
+    let mut board = control::read_only_board(tools);
     board.show_reading(Ok(read_queue(tools, hubs, time_zone)?));
     Ok(Outcome {
         lines: board.render_lines(size.columns, size.rows),

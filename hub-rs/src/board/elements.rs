@@ -8,6 +8,7 @@
 use serde::Serialize;
 
 use super::groups::Group;
+use super::panels::Panel;
 
 /// One thing the page holds, on one row.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -72,7 +73,7 @@ pub(crate) enum HiddenBy {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Kind {
-    /// A count on the top line, such as `?2 you`.
+    /// A count on the top line, such as `2 you`.
     Count,
     Heading,
     Item,
@@ -96,7 +97,13 @@ pub(super) enum Action {
     Choose(usize),
     /// Jump to the chosen session.
     Go,
+    /// Go back, to the glance page from a view, or to the view from a
+    /// details page.
     Back,
+    /// Show this view over the glance page.
+    Open(Panel),
+    /// Open the help page of the page or view shown.
+    Help,
 }
 
 impl HiddenBy {
