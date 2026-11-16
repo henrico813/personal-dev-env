@@ -48,7 +48,7 @@ pub fn run_requests(tools: &Tools<'_>, as_json: bool, now: Timestamp) -> Result<
             (request.is_open || session.is_some() && is_new).then_some((session, request))
         })
         .collect();
-    rows.sort_by(|left, right| right.1.changed.cmp(&left.1.changed));
+    rows.sort_by_key(|row| std::cmp::Reverse(row.1.changed));
     let problem =
         (saved.bad_files > 0).then(|| format!("requests: {} files did not parse", saved.bad_files));
     let lines = if as_json {
