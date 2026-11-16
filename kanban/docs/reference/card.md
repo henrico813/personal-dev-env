@@ -108,8 +108,16 @@ agent's kind and session id from `herdr agent get AGENT`, such as
 
 "user" moves need `--user`. "staff" moves are the staff agent's,
 and `card` makes them without `--user`. The user can make a staff
-move too, with `--user`, so the Log says the user decided. Any move
-not in the table is refused. Only `draft` -> `ready` needs a
+move too, with `--user`, so the Log says the user decided. When no
+single move reaches the stage, `card move` makes the shortest chain of
+moves the caller may make, through `draft`, `ready`, `active` and
+`review`, with one Log line each. So `active` -> `accepted` with
+`--user` goes through `review`. Each move in the chain is checked on
+its own, and a refused one stops the chain before the card changes.
+When only the user can finish the chain, an agent's move is refused
+with the move it can make, such as `card move KEY review`. A stage no
+chain reaches, such as any stage after `accepted`, is refused. Only
+`draft` -> `ready` needs a
 checkbox, so paused work with no criteria can still go back to
 `ready`. The **limits** are 8 cards in `active` and 6 in `review`,
 each counted across every project. `waiting-on-others` cards count
