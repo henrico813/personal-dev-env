@@ -3,8 +3,8 @@ name: skill-lessons
 description: Explains how to follow and render the lessons saved in a
   skill's Lessons section with the skill-lessons tool, before
   corrections became fixes to the skill's text. Use when a skill's
-  Lessons section is empty after an install, or when moving saved
-  lessons into skill text.
+  Lessons section is empty after an install; to move saved lessons
+  into skill text, use skill-fix.
 metadata:
   scope: personal
 ---
@@ -38,5 +38,6 @@ it to the skill's text, never here.
 
 - Never edit a Lessons section by hand. `skill-lessons` fills it from
   the local store.
-- A saved lesson moves into skill text as "Write a fix into skill
-  text" in the `skill-development` skill says.
+- A saved lesson moves into skill text only when the user starts the
+  `skill-fix` skill. It turns each lesson into a separate fix, so the
+  user reviews every rule before it reaches skill text.

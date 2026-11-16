@@ -1,0 +1,18 @@
+{
+  "id": "lesson-moves-by-skill-fix",
+  "source": "the user's correction that skill-fix is the one way to improve skills",
+  "rule": "Guardrails",
+  "correction": true,
+  "prompt": "You follow the skill-lessons skill. Reply with only the message you would send to the user.\n\nThe installed review-plan skill has a Lessons section with two saved\nlessons. The user writes: \"Those two review-plan lessons are stable.\nHow do I get them into the skill's real text?\"\n",
+  "pass": [
+    "skill-fix"
+  ],
+  "fail": [
+    "promote-lessons",
+    "promote-start",
+    "promote-check",
+    "skill-lessons add"
+  ],
+  "good": "Start the skill-fix skill for review-plan. It writes each lesson into the skill's text as a fix you review, and the lesson is retired once the fix merges.",
+  "bad": "Run skill-lessons promote-start review-plan, edit the source, then promote-check and retire the lessons."
+}

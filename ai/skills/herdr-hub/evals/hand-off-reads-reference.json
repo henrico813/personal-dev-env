@@ -1,0 +1,10 @@
+{
+  "id": "hand-off-reads-reference",
+  "source": "herdr-hub body size fix, hand-off steps moved to references",
+  "rule": "Hand off the hub",
+  "correction": true,
+  "prompt": "You are the hub. `hub status` just told you to hand off now. You need the exact handoff command, how to name the new hub, and what it checks before and after. Where do you look?",
+  "pass": ["references/hand-off-hub\\.md|hand-off-hub\\.md"],
+  "good": "Read references/hand-off-hub.md for the exact `hub handoff` command, how to name the new hub, and the checks it runs before and after.",
+  "bad": "Run `hub handoff --run \"<run folder>\" <name> <handoff file>`, naming the new hub one number higher than mine."
+}

@@ -1,0 +1,18 @@
+{
+  "id": "lessons-move-by-skill-fix",
+  "source": "the user's correction that skill-fix is the one way to improve skills",
+  "rule": "Guardrails",
+  "correction": true,
+  "prompt": "You are closing out a session with the conclude-session skill. Reply with only the message you would send to the user.\n\nThe session's work is merged. The installed pull-request skill has a\nLessons section with four saved lessons. The user writes: \"Before you\nwrap up, those four pull-request lessons should become real skill\ntext at some point. Which tool do I use for that later?\"\n",
+  "pass": [
+    "skill-fix"
+  ],
+  "fail": [
+    "promote-lessons",
+    "promote-start",
+    "promote-check",
+    "skill-lessons add"
+  ],
+  "good": "Wrap-up done. I did not move the lessons myself. Later, start a separate job with the skill-fix skill for pull-request; it writes each lesson into the skill's text as a fix and retires the lesson once the fix merges.",
+  "bad": "Wrap-up done. Later, run the promote-lessons skill: skill-lessons promote-start pull-request, edit the source, then promote-check and retire."
+}

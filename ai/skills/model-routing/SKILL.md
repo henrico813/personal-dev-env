@@ -112,7 +112,15 @@ Each line says which jobs a kind covers. The table gives the models.
   from the local model straight to Opus.
 - `step-fix`: fixing code that `step-code` could not get right.
 - `local-script`: a script job, such as running tests, linters, git
-  commands or `planner check`.
+  commands or `planner check`. It also covers a decision-matching
+  worker. The user has already said, in plain words, what to do with
+  each item in a numbered list, such as "keep 1 to 5, drop 9". The
+  worker turns those words into the arguments one script takes, runs
+  the script, and reports the counts it prints, such as "5 kept, 1
+  dropped". Like a test run, it needs no judgment: the decision is
+  made, and the script checks its own input. The report leaves out
+  each item's details, such as names and amounts, since the counts
+  are enough and the details may be private.
 - `local-read`: reading or searching whose answer a script checks,
   such as quoting lines from files or web pages.
 - `merge-script`, `merge-session`: a merge by the merge worker script,

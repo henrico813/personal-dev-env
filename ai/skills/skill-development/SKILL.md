@@ -124,8 +124,30 @@ other copy with a pointer.
    Read the Lessons section of each one's installed copy in
    `~/.agents/skills/` too, since a lesson wins over the text.
 2. Place each rule you add or change as "Where a rule goes" says.
-3. For a new skill, also do what "Add a new skill" says.
-4. Check and review the change, and open the pull request, as "Check
+3. When the change adds a newer way to do a task, such as a new
+   skill or command for a task an older one did, search the whole
+   checkout for each skill, command, doc and routing line that still
+   offers the older way. Search for the older way's skill names,
+   command names and doc titles:
+
+   ```bash
+   rg -n -i "<names of the older way>" .
+   ```
+
+   Remove each one, or replace it with a pointer to the newer way, in
+   the same pull request. This includes the older skill or command
+   itself, even when nothing calls it any more. Two ways to do one
+   task leave the user and agents unsure which one to follow. When the
+   user names the newer way as the way to do the task, do not ask
+   whether to keep the older one: the user reviews the removal in the
+   pull request, and can undo it there.
+4. Search every skill and `ai/AGENTS.md` for rules on the topic of
+   the change, not only the skills that name it, as "Where a rule
+   goes" shows. A rule conflicts when it tells agents to do the task
+   another way. Change it to agree, or replace it with a pointer to
+   the owner.
+5. For a new skill, also do what "Add a new skill" says.
+6. Check and review the change, and open the pull request, as "Check
    and review a change" says.
 
 ## Add a new skill
@@ -267,10 +289,11 @@ instead. Then say in your report that the fresh reviews did not run,
 so whoever gave you the task arranges them.
 
 1. A consistency reviewer gets the diff, the check script's output and
-   `ai/AGENTS.md`. It reads every skill on the same topics as the
-   change, and the Lessons sections of their installed copies. It
-   reports each conflict, each repeat and each thing that two skills
-   name with different words. Each finding quotes both sides with
+   `ai/AGENTS.md`. It searches every skill, not only the changed
+   ones, and reads each skill on the same topics as the change, and
+   the Lessons sections of their installed copies. It reports each
+   conflict, each repeat and each thing that two skills name with
+   different words. Each finding quotes both sides with
    their file and line, and names the owner. No script finds these
    conflicts, because two skills can disagree in different words. One
    skill may say to ask an open question once while another says to
@@ -307,8 +330,9 @@ that output reports the missing output as a finding.
   `~/.agents/skills/`, since the installer replaces them.
 - A change to `ai/AGENTS.md` changes what every session loads. Say so
   in the pull request's Overview, so the user reads it before merging.
-- Report to the user a conflict between skills the change does not
-  touch. Fix it in its own pull request, not this one.
+- Report to the user a conflict between skills that has nothing to do
+  with the change. Fix it in its own pull request, not this one, so
+  each pull request stays about one change.
 
 ## When a tool is missing
 
@@ -333,6 +357,9 @@ that output reports the missing output as a finding.
 - A new skill is listed everywhere the repository's `AGENTS.md` says
   a new skill goes.
 - A fix adds no rule the skill already states.
+- No skill, command, doc or routing line still offers the older way
+  the change replaced.
+- No skill has a rule that conflicts with the change.
 - Both reviews ran, or your report says they did not.
 - The skill names no plan, card or pull request, and no repository a
   step does not run in.
