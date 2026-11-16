@@ -1,0 +1,18 @@
+{
+  "id": "newer-way-removes-older",
+  "source": "the user's correction that a new way to improve skills left the older ways in place",
+  "rule": "Change a skill",
+  "correction": true,
+  "prompt": "You work on a repository of agent skills. Reply with only the message you would send to the user. Show each file change as a diff.\n\nThe repository holds these files.\n\nai/skills/note-fix/SKILL.md (new in this change):\n---\nname: note-fix\ndescription: Writes the user's corrections into a skill's text.\n---\n# Note Fix\n1. Edit the skill's text and commit the fix.\n\nai/skills/note-save/SKILL.md:\n---\nname: note-save\ndescription: Saves the user's corrections as notes in a skill.\n---\n# Note Save\n1. Run `notes add` with the correction.\n\nai/skills/wrap-up/SKILL.md:\n---\nname: wrap-up\ndescription: Closes out a session.\n---\n# Wrap Up\n1. Save each correction the user gave with the note-save skill.\n\nThe user writes: \"Add note-fix as the way we write my corrections\ninto skills from now on.\"\n",
+  "pass": [
+    "(?s)note-save.{0,600}(remov|delet|replac|point)"
+  ],
+  "fail": [
+    "(?m)^\\+(?!\\+\\+|description:).{73,}"
+  ],
+  "judge": [
+    "Does the answer remove the note-save skill, or replace it and the line in wrap-up with a pointer to note-fix, rather than leave both ways in place?"
+  ],
+  "good": "note-fix replaces note-save, so this change also removes the older way.\n\n```diff\n--- a/ai/skills/wrap-up/SKILL.md\n+++ b/ai/skills/wrap-up/SKILL.md\n-1. Save each correction the user gave with the note-save skill.\n+1. Write each correction the user gave with the note-fix skill.\n```\n\nI also remove ai/skills/note-save/, since note-fix replaced it.",
+  "bad": "I added note-fix. The note-save skill and the line in wrap-up stay as they are; I can remove or replace them in a later change if you want."
+}
