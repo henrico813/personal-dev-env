@@ -216,6 +216,32 @@ func TestResolveInstallSelectionsReadsUpdateInterval(t *testing.T) {
 	}
 }
 
+// Install hands the extra skills checkout to the templates, so a ~/ value must
+// become a real folder under HOME before install saves it.
+func TestInstallSelectionsReadsExtraSkillsRepo(t *testing.T) {
+	home := profileHome(
+		t,
+		`{"profile":"full","extra_skills_repo":"~/extra"}`,
+	)
+
+	got, err := resolveInstallSelections(
+		config{Home: home},
+		nil,
+		"",
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(home, "extra"); got.ExtraSkillsRepo != want {
+		t.Fatalf(
+			"ExtraSkillsRepo = %q, want %q",
+			got.ExtraSkillsRepo,
+			want,
+		)
+	}
+}
+
 func profileHome(t *testing.T, config string) string {
 	t.Helper()
 	home := t.TempDir()

@@ -227,7 +227,8 @@ def fix(run: Run, repos: Repos, tmp_path: Path) -> Callable[..., Reply]:
     """Return a function that makes one fix to demo and commits it.
 
     Each call adds one line to demo's SKILL.md in the fix worktree and
-    commits it with a title naming that line.
+    a case in demo's ``evals/``, and commits them with a title naming
+    that line.
     """
     count = 0
 
@@ -236,6 +237,7 @@ def fix(run: Run, repos: Repos, tmp_path: Path) -> Callable[..., Reply]:
         message: str = MESSAGE,
         extra: str = "",
         extra_text: str = "Changed.\n",
+        correction: bool = True,
     ) -> Reply:
         """Start, append a line to demo, and commit with message.
 
@@ -244,6 +246,8 @@ def fix(run: Run, repos: Repos, tmp_path: Path) -> Callable[..., Reply]:
             message: The commit message, with {n} for that number.
             extra: A file in the worktree to change as well.
             extra_text: The text to write to that file.
+            correction: The ``correction`` value of the case, which
+                the ``case`` rule needs true.
         """
         nonlocal count
         count += 1
@@ -254,6 +258,9 @@ def fix(run: Run, repos: Repos, tmp_path: Path) -> Callable[..., Reply]:
         skill_md = Path(started.body["file"])
         added = line or f"Check step {count} first."
         skill_md.write_text(skill_md.read_text() + added + "\n")
+        case_id = f"step-{count}"
+        fields = {"id": case_id, "rule": "Demo", "correction": correction}
+        write(skill_md.parent / f"evals/{case_id}.json", json.dumps(fields))
         message_file = tmp_path / f"message-{count}"
         message_file.write_text(message.format(n=count))
         return run("commit", "demo", "--message-file", str(message_file))

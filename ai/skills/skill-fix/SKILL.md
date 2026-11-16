@@ -77,6 +77,9 @@ agent, unless the linking skill names someone else.
 2. Edit only the files in that skill's folder in the worktree, with
    your usual file tools. A fix may change, add or delete lines in
    SKILL.md or its reference files.
+   The fix also adds a correction case under the skill's `evals/`,
+   as the `case` row in step 4 says, so a later change that drops
+   the rule fails a test.
 3. Write the commit message to a new file under `/tmp`. The title is
    `fix(<skill>): <what agents now do>`, at most 50 characters. The
    body has a `Missed:` line on what you did wrong and an `Intent:`
@@ -164,6 +167,10 @@ the table below says:
 | `width` | Wrap each named line at 72 columns |
 | `message` | Make the title pass `msg lint` from the `git-messages` skill, and give the body a `Missed:` and an `Intent:` line |
 | `scan` | Remove the private or secret text from each named line; `ci/scan` would refuse to push it |
+| `case` | Add a correction case to the skill's `evals/`, as session-review's "Write a correction case" says |
+
+How to write the case is in session-review's
+[trials.md](../session-review/references/trials.md#write-a-correction-case).
 
 A `reported` list names findings that did not stop the commit, such
 as `repeats`, which names text copied from another skill. It is not

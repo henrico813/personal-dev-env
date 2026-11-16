@@ -348,6 +348,130 @@ func TestUpdateSurvivesFailedSkillFixSync(t *testing.T) {
 	}
 }
 
+// Extra skill fixes merge in the extra repository, not in main. When main is
+// already installed, update must still pull them and install, or that PC
+// never gets its merged extra skill fixes.
+func TestUpdateInstallsPulledExtraSkills(t *testing.T) {
+	fixture := setUpUpdateFixture(t)
+	if err := writeInstallRecord(
+		fixture.home,
+		installRecord{
+			Commit:      fixture.main,
+			Branch:      "main",
+			InstalledAt: "2026-11-13T08:00:00Z",
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+	extra, extraMain := cloneBehindMain(t)
+	writeCommandTestFile(
+		t,
+		filepath.Join(
+			fixture.home,
+			".config",
+			"pde",
+			"config.json",
+		),
+		`{"install_path": "`+fixture.checkout+`", "extra_skills_repo": "`+extra+`"}`,
+	)
+
+	err := runUpdateCommand()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if head := runTestGit(
+		t,
+		extra,
+		"rev-parse",
+		"HEAD",
+	); head != extraMain {
+		t.Errorf(
+			"extra HEAD = %s, want its main %s",
+			head,
+			extraMain,
+		)
+	}
+	wantCalls := "install --repo-root " + fixture.checkout + "\n"
+	if calls := readFileOrEmpty(
+		t,
+		filepath.Join(
+			fixture.home,
+			"install-calls",
+		),
+	); calls != wantCalls {
+		t.Errorf(
+			"install calls = %q, want %q",
+			calls,
+			wantCalls,
+		)
+	}
+}
+
+// The extra skills repository is private and can be missing or unreadable, and the
+// unattended timer must still install main, so a failed extra update only warns.
+func TestUpdateWarnsWhenExtraSkillsFail(t *testing.T) {
+	fixture := setUpUpdateFixture(t)
+	if err := writeInstallRecord(
+		fixture.home,
+		installRecord{
+			Commit:      fixture.main,
+			Branch:      "main",
+			InstalledAt: "2026-11-13T08:00:00Z",
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+	extra := filepath.Join(t.TempDir(), "extra-skills")
+	writeCommandTestFile(
+		t,
+		filepath.Join(extra, "skills", "harvest", "SKILL.md"),
+		"",
+	)
+	writeCommandTestFile(
+		t,
+		filepath.Join(
+			fixture.home,
+			".config",
+			"pde",
+			"config.json",
+		),
+		`{"install_path": "`+fixture.checkout+`", "extra_skills_repo": "`+extra+`"}`,
+	)
+	var stderr bytes.Buffer
+
+	err := runUpdate(
+		fixture.home,
+		"",
+		run.Runner{
+			Stdout: io.Discard,
+			Stderr: &stderr,
+		},
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record := readUpdateRecord(
+		t,
+		fixture.home,
+	); record.Result != "current" {
+		t.Errorf(
+			"update.json = %+v, want current",
+			record,
+		)
+	}
+	if !strings.Contains(
+		stderr.String(),
+		"warning: extra skills not updated",
+	) {
+		t.Errorf(
+			"stderr = %q, want the extra skills warning",
+			stderr.String(),
+		)
+	}
+}
+
 // Checkouts often clone over SSH, but a timer has no SSH agent. A missed
 // rewrite makes every timed fetch fail.
 func TestToHTTPSURLRewritesSSHRemotes(t *testing.T) {
@@ -535,6 +659,78 @@ func setUpUpdateFixture(t *testing.T) updateFixture {
 			"HEAD",
 		),
 	}
+}
+
+// Returns a clone one commit behind the main of its bare origin, and that
+// main. It needs the git user that setUpUpdateFixture sets.
+func cloneBehindMain(t *testing.T) (checkout, main string) {
+	t.Helper()
+	seed := t.TempDir()
+	runTestGit(
+		t,
+		seed,
+		"init",
+		"--quiet",
+		"--initial-branch",
+		"main",
+	)
+	runTestGit(
+		t,
+		seed,
+		"commit",
+		"--quiet",
+		"--allow-empty",
+		"-m",
+		"first",
+	)
+	remote := filepath.Join(
+		t.TempDir(),
+		"remote.git",
+	)
+	runTestGit(
+		t,
+		seed,
+		"clone",
+		"--quiet",
+		"--bare",
+		seed,
+		remote,
+	)
+	checkout = filepath.Join(
+		t.TempDir(),
+		"checkout",
+	)
+	runTestGit(
+		t,
+		seed,
+		"clone",
+		"--quiet",
+		remote,
+		checkout,
+	)
+	runTestGit(
+		t,
+		seed,
+		"commit",
+		"--quiet",
+		"--allow-empty",
+		"-m",
+		"second",
+	)
+	runTestGit(
+		t,
+		seed,
+		"push",
+		"--quiet",
+		remote,
+		"main",
+	)
+	return checkout, runTestGit(
+		t,
+		seed,
+		"rev-parse",
+		"HEAD",
+	)
 }
 
 // Runs pde-installer update as a timer does, with no --repo-root.

@@ -223,6 +223,23 @@ func TestApplyPassesProfileTiersToChezmoi(t *testing.T) {
 	}
 }
 
+// Templates choose extra skill files from this folder, so chezmoi must get
+// the configured checkout to install the right extra skills.
+func TestApplyPassesExtraSkillsToChezmoi(t *testing.T) {
+	fixture := newApplyFixture(t, "unchanged")
+	extra := filepath.Join(t.TempDir(), "extra-skills")
+	writeApplyFile(
+		t,
+		filepath.Join(fixture.manager.Source(), "test-extra-skills-repo"),
+		extra+"\n",
+	)
+	fixture.manager.ExtraSkillsRepo = extra
+
+	if _, err := fixture.manager.Apply(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestApplyRejectsMissingTemplates(t *testing.T) {
 	for _, name := range []string{".chezmoidata.json", ".chezmoiignore.tmpl", "dot_p10k.zsh.tmpl", "dot_zshrc.tmpl", "dot_tmux.conf.tmpl"} {
 		t.Run(name, func(t *testing.T) {
@@ -387,6 +404,7 @@ func newApplyFixtureForProfile(t *testing.T, mode string, selected profile.Profi
 	writeApplyFile(t, filepath.Join(source, "test-mode"), mode+"\n")
 	writeApplyFile(t, filepath.Join(source, "test-profile"), string(selected)+"\n")
 	writeApplyFile(t, filepath.Join(source, "test-color-profile"), string(colorprofile.TokyoNight)+"\n")
+	writeApplyFile(t, filepath.Join(source, "test-extra-skills-repo"), "")
 	testfile.WriteExecutable(t, binary, `#!/bin/sh
 set -eu
 source_dir=
@@ -409,7 +427,9 @@ done
 : "${AQUA_ROOT_DIR:?}"
 expected_profile=$(cat "$source_dir/test-profile")
 expected_color_profile=$(cat "$source_dir/test-color-profile")
+expected_extra_skills_repo=$(cat "$source_dir/test-extra-skills-repo")
 [ "$PDE_COLOR_PROFILE" = "$expected_color_profile" ]
+[ "$PDE_EXTRA_SKILLS_REPO" = "$expected_extra_skills_repo" ]
 case "$expected_profile" in
 	full)
 		aqua_name=aqua ; checksums_name=aqua-checksums

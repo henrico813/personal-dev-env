@@ -159,21 +159,27 @@ class TestCommit:
                 "ai/skills/demo/SKILL.md:12",
                 id="width",
             ),
+            pytest.param(
+                {"correction": False},
+                "case",
+                "ai/skills/demo/evals",
+                id="case",
+            ),
         ],
     )
     def test_commit_refuses_fix_breaking_a_rule(
         self,
         fix: Callable[..., Reply],
         repos: Repos,
-        change: dict[str, str],
+        change: dict[str, object],
         rule: str,
         detail: str,
     ) -> None:
         """A fix that breaks a rule is refused, and nothing is committed.
 
-        Each commit must be one skill's readable fix with a message an
-        agent can redo after a conflict. The edits stay, so the agent
-        can correct them and commit again.
+        Each commit must be one skill's readable fix, with a case that
+        tests it and a message an agent can redo after a conflict. The
+        edits stay, so the agent can correct them and commit again.
         """
         start = run_git(repos.checkout, "rev-parse", "github/main")
 

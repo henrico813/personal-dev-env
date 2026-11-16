@@ -18,6 +18,7 @@ type config struct {
 	Desktop                            profile.Desktop
 	ColorProfile                       colorprofile.Profile
 	UpdateInterval                     time.Duration
+	ExtraSkillsRepo                    string
 }
 
 func (c config) validate() error {

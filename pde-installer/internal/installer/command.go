@@ -91,8 +91,6 @@ func mutatingCommand(use, description string, repoRoot *string, action func(conf
 	return command
 }
 
-// Returns cfg with the profile, desktop and color profile that install's
-// argument and flag select. config.json supplies what they leave out.
 func resolveInstallSelections(cfg config, args []string, requestedColorProfile string) (config, error) {
 	var err error
 	if cfg.Profile, err = resolveInstallArgument(cfg.Home, args); err != nil {
@@ -107,6 +105,9 @@ func resolveInstallSelections(cfg config, args []string, requestedColorProfile s
 	if cfg.UpdateInterval, err = loadUpdateInterval(cfg.Home); err != nil {
 		return config{}, err
 	}
+	if cfg.ExtraSkillsRepo, err = loadExtraSkillsRepo(cfg.Home); err != nil {
+		return config{}, err
+	}
 	return cfg, nil
 }
 
@@ -117,11 +118,33 @@ func rejectUID(uid int, command string) error {
 	return nil
 }
 
+// Returns flagRoot, else the saved install_path, so doctor and list check the
+// installed checkout rather than whichever checkout holds the current folder.
+// Returns "" to keep the current-folder search when PDE_REPO_ROOT is set or
+// install_path is not a checkout.
+func findInstalledRoot(flagRoot string) string {
+	if flagRoot != "" || os.Getenv("PDE_REPO_ROOT") != "" {
+		return flagRoot
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	settings, err := readUpdateSettings(home)
+	if err != nil {
+		return ""
+	}
+	if root, ok := repository(settings.InstallPath); ok {
+		return root
+	}
+	return ""
+}
+
 func readCommand(name, description string, repoRoot *string, action func(config, run.Runner) error) *cobra.Command {
 	return &cobra.Command{
 		Use: name, Short: description, Args: cobra.NoArgs,
 		RunE: func(command *cobra.Command, _ []string) error {
-			config, err := detectConfig(*repoRoot)
+			config, err := detectConfig(findInstalledRoot(*repoRoot))
 			if err != nil {
 				return err
 			}
@@ -243,7 +266,7 @@ func reconcile(config config, runner run.Runner) error {
 		}
 		journals = append(journals, pluginJournal)
 	}
-	chezmoiJournal, err := chezmoibackend.New(
+	chezmoiManager := chezmoibackend.New(
 		config.Home,
 		config.RepoRoot,
 		config.AquaRoot,
@@ -252,7 +275,9 @@ func reconcile(config config, runner run.Runner) error {
 		config.ColorProfile,
 		config.UpdateInterval,
 		runner,
-	).Apply()
+	)
+	chezmoiManager.ExtraSkillsRepo = config.ExtraSkillsRepo
+	chezmoiJournal, err := chezmoiManager.Apply()
 	if err != nil {
 		return fail("chezmoi", err)
 	}

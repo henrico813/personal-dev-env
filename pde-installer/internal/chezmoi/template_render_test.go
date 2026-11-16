@@ -1237,6 +1237,250 @@ func TestExternalsInstallEverySkillFile(t *testing.T) {
 	}
 }
 
+// Extra skills may hold private text, so they must reach only the PC whose
+// config.json names their checkout. Without the setting, the personal skills
+// install alone.
+func TestExtraSkillsInstallOnlyWithSetting(t *testing.T) {
+	personal := makeTrackedCheckout(
+		t,
+		"ai/skills/garden/SKILL.md",
+	)
+	extra := makeTrackedCheckout(
+		t,
+		"skills/harvest/SKILL.md",
+	)
+	tests := []struct {
+		name    string
+		setting string
+		want    []string
+	}{
+		{
+			name:    "set",
+			setting: extra,
+			want: []string{
+				".agents/skills/garden/SKILL.md",
+				".agents/skills/harvest/SKILL.md",
+			},
+		},
+		{
+			name:    "unset",
+			setting: "",
+			want: []string{
+				".agents/skills/garden/SKILL.md",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(
+				"PDE_EXTRA_SKILLS_REPO",
+				tt.setting,
+			)
+
+			text, err := renderTemplateForCheckout(
+				t,
+				".chezmoiexternal.toml.tmpl",
+				"full",
+				"tokyo-night",
+				personal,
+			)
+
+			if err != nil {
+				t.Fatal(err)
+			}
+			var skillTargets []string
+			for _, target := range renderedExternalTargets(text) {
+				if strings.HasPrefix(
+					target,
+					".agents/skills/",
+				) {
+					skillTargets = append(
+						skillTargets,
+						target,
+					)
+				}
+			}
+			slices.Sort(skillTargets)
+			if !slices.Equal(
+				skillTargets,
+				tt.want,
+			) {
+				t.Fatalf(
+					"skill targets = %q, want %q",
+					skillTargets,
+					tt.want,
+				)
+			}
+			url := fmt.Sprintf(
+				"url = 'file://%s/skills/harvest/SKILL.md'",
+				extra,
+			)
+			if tt.setting != "" && !containsLine(
+				text,
+				url,
+			) {
+				t.Fatalf(
+					"rendered externals omit %s",
+					url,
+				)
+			}
+		})
+	}
+}
+
+// A terminal install has no agents, and its ignore list drops the whole
+// .agents folder, so even a PC that names a extra checkout gets no extra skill.
+func TestTerminalInstallsNoExtraSkill(t *testing.T) {
+	personal := makeTrackedCheckout(
+		t,
+		"ai/skills/garden/SKILL.md",
+	)
+	extra := makeTrackedCheckout(
+		t,
+		"skills/harvest/SKILL.md",
+	)
+	t.Setenv(
+		"PDE_EXTRA_SKILLS_REPO",
+		extra,
+	)
+
+	text, err := renderTemplateForCheckout(
+		t,
+		".chezmoiexternal.toml.tmpl",
+		"terminal",
+		"tokyo-night",
+		personal,
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	ignores := renderPathList(
+		t,
+		".chezmoiignore.tmpl",
+		"terminal",
+		"",
+	)
+	var installed []string
+	for _, target := range renderedExternalTargets(text) {
+		if !strings.HasPrefix(
+			target,
+			".agents/skills/",
+		) {
+			continue
+		}
+		if !isIgnored(
+			target,
+			ignores,
+		) {
+			installed = append(
+				installed,
+				target,
+			)
+		}
+	}
+	if len(installed) != 0 {
+		t.Fatalf("terminal installs skills %q, want none", installed)
+	}
+}
+
+// An extra skill named like a personal one would overwrite it, or be
+// overwritten, on every install. The install stops instead, and names both
+// folders so the owner knows which one to rename.
+func TestExternalsRefuseClashingExtraSkill(t *testing.T) {
+	personal := makeTrackedCheckout(
+		t,
+		"ai/skills/garden/SKILL.md",
+	)
+	extra := makeTrackedCheckout(
+		t,
+		"skills/garden/SKILL.md",
+	)
+	t.Setenv(
+		"PDE_EXTRA_SKILLS_REPO",
+		extra,
+	)
+
+	_, err := renderTemplateForCheckout(
+		t,
+		".chezmoiexternal.toml.tmpl",
+		"full",
+		"tokyo-night",
+		personal,
+	)
+
+	if err == nil {
+		t.Fatal("render error = nil, want the name clash")
+	}
+	for _, folder := range []string{
+		extra + "/skills/garden",
+		personal + "/ai/skills/garden",
+	} {
+		if !strings.Contains(
+			err.Error(),
+			folder,
+		) {
+			t.Errorf(
+				"render error = %q, want it to name %s",
+				err,
+				folder,
+			)
+		}
+	}
+}
+
+// Returns a new git checkout that tracks an empty file at each path.
+func makeTrackedCheckout(t *testing.T, paths ...string) string {
+	t.Helper()
+	checkout := t.TempDir()
+	for _, path := range paths {
+		full := filepath.Join(
+			checkout,
+			path,
+		)
+		if err := os.MkdirAll(
+			filepath.Dir(full),
+			0o755,
+		); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(
+			full,
+			nil,
+			0o644,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, args := range [][]string{
+		{"init", "-q"},
+		append(
+			[]string{"add"},
+			paths...,
+		),
+	} {
+		command := exec.Command(
+			"git",
+			append(
+				[]string{
+					"-C",
+					checkout,
+				},
+				args...,
+			)...,
+		)
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf(
+				"git %v failed: %v\n%s",
+				args,
+				err,
+				output,
+			)
+		}
+	}
+	return checkout
+}
+
 func renderProfileTemplate(t *testing.T, name, profile string) string {
 	t.Helper()
 	text, err := renderTemplate(t, name, profile)
@@ -1291,6 +1535,10 @@ func renderTemplateWithData(t *testing.T, name, pdeData, colorProfile, checkout 
 			if key == "PDE_COLOR_PROFILE" {
 				return colorProfile
 			}
+			// Tests set the extra skills checkout with t.Setenv, as install does.
+			if key == "PDE_EXTRA_SKILLS_REPO" {
+				return os.Getenv(key)
+			}
 			return ""
 		},
 		"fail": func(message string) (string, error) { return "", &templateError{message} },
@@ -1300,6 +1548,12 @@ func renderTemplateWithData(t *testing.T, name, pdeData, colorProfile, checkout 
 		},
 		"splitList": func(separator, text string) []string { return strings.Split(text, separator) },
 		"has":       func(needle any, list []any) bool { return slices.Contains(list, needle) },
+		"contains": func(substring, text string) bool {
+			return strings.Contains(
+				text,
+				substring,
+			)
+		},
 	}
 	tmpl, err := template.New(name).Option("missingkey=error").Funcs(functions).Parse(string(data))
 	if err != nil {
