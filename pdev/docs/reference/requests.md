@@ -9,8 +9,9 @@
 | `pde-pr-approve REQUEST_ID` | Show a pending request in `less` and ask for `yes` or `no` |
 | `pde-pr-approve --herdr-popup` | Run by Herdr to draw the popup, starting with the request in `PDE_REQUEST_ID` |
 | `pde-pr-approve --herdr-inbox` | Open the popup on the oldest pending request, dismissed or not; with none, on [other machines](#other-herdr-machines) when one is saved; or say why it cannot |
-| `pde-gh-write --moshi-ask ID` | Not for people: started by `pde-gh-write` to send the phone question and save the answer |
-| `pde-gh-write --pde-runner ID` | Not for people: started by `pde-gh-write` to run `gh` once the request is approved |
+| `pde-pr-approve --moshi-ask ID` | Not for people: started by `pde-gh-write` to send the phone question and save the answer |
+| `pde-pr-approve --herdr-notify ID` | Not for people: started by `pde-gh-write` to record the agent's Herdr pane and open the popup, or to clear the pane marker of an expired request |
+| `pde-gh --pde-runner ID` | Not for people: started by `pde-gh-write`, or by `pde-pr-approve` when an approval finds the runner dead, to run `gh` once the request is approved |
 
 `OPERATION` is one of `create`, `edit`, `comment`, `review`, `merge`, `ready`,
 `close`, or `reopen`. Other operations and `--web` or `-w` are refused.
@@ -98,8 +99,10 @@ Status lines on standard error:
 
 ## The Guard
 
-The guard is `~/.local/bin/gh`, installed by chezmoi from
-`chezmoi/dot_local/bin/executable_gh.tmpl` in the full profile only.
+The guard is the `gh` mode of `pde-gh`. The installer links
+`~/.local/bin/gh`, `~/.local/bin/pde-gh-guard` and
+`~/.local/bin/pde-gh-write` to `pde-gh` in the full profile only, and the
+program picks the guard by the name it was started under.
 With `PDE_GH_WRITE=1` it runs the real `gh` with any arguments.
 Otherwise it refuses:
 
@@ -113,13 +116,19 @@ Otherwise it refuses:
 `pde-gh-write` accepts each refused `gh pr` command except `new`; use
 `create` instead. It accepts no `gh api` command.
 
-The real `gh` is the first executable `gh` on `PATH` that is not the
-guard. `chezmoi/dot_zshrc.tmpl` puts `~/.local/bin` before aqua's folder
-so the guard is found first.
+The real `gh` is the first executable `gh` on `PATH` that is not this
+program. `chezmoi/dot_zshrc.tmpl` puts `~/.local/bin` before aqua's folder
+so the guard is found first. When that `gh` is aqua's shim, the guard runs
+the newest `gh` aqua installed instead. Without its config, such as in a
+systemd unit, the shim would run the first `gh` on `PATH`, the guard again.
+
+The guard runs the real `gh` as a child with `PDE_GH_GUARD_PID` set to its
+own pid. A guard started by that child stops with exit code `1`, so a loop
+through a shim fails at once instead of spinning.
 
 | Code | Meaning |
 |---|---|
-| `1` | No real `gh` on `PATH`; prints `gh guard cannot find the real gh executable` |
+| `1` | No real `gh` on `PATH`, which prints `gh guard cannot find the real gh executable`, or the guard was started by its own `gh` |
 | `2` | Refused; prints the message below for the command |
 | other | Passed through from the real `gh` |
 
@@ -195,8 +204,9 @@ next to the requested ones.
 
 ### Opening the Popup
 
-When `HERDR_ENV` is `1`, `pde-gh-write` does these steps for a new request
-in the background. Their errors do not stop the request; a popup that
+When `HERDR_ENV` is `1`, `pde-gh-write` starts
+`pde-pr-approve --herdr-notify ID` for a new request, which saves the
+agent's pane, workspace and title, then does these steps. Their errors do not stop the request; a popup that
 does not open changes the notification in step 3:
 
 1. It sets the `Approval waiting` marker on the agent's pane.
@@ -286,7 +296,7 @@ every client that opens it, a phone included.
 
 ## Phone Question
 
-`pde-gh-write --moshi-ask` runs:
+`pde-pr-approve --moshi-ask` runs:
 
 ```bash
 moshi-hook ask --require-remote --source pde-gh-write --timeout 4h QUESTION
@@ -383,7 +393,7 @@ approval popups.
 | Variable | Use |
 |---|---|
 | `XDG_STATE_HOME` | Root of the state directory; `~/.local/state` when unset |
-| `PATH` | Only full-path folders count, so an empty entry or `.` never picks a `gh` in the working directory. The first `gh` is [the guard](#the-guard), which blocks PR writes unless `PDE_GH_WRITE=1`; the next executable `gh` that is neither the guard nor this program is the one run. `herdr` is the first on `PATH`, otherwise the one in this program's folder: Herdr runs the inbox and popup with its server's `PATH`, which may lack `~/.local/bin`, where the installer puts both |
+| `PATH` | Only full-path folders count, so an empty entry or `.` never picks a `gh` in the working directory. The `gh` run is the first executable one that is not this program, so with [the guard](#the-guard) linked as `gh` it is the real `gh`, or the newest aqua `gh` in place of aqua's shim. `herdr` is the first on `PATH`, otherwise the one in this program's folder: Herdr runs the inbox and popup with its server's `PATH`, which may lack `~/.local/bin`, where the installer puts both |
 | `PDE_GH_WRITE` | Set to `1` for the approved `gh` only, so the guard lets it through |
 | `HERDR_ENV` | Herdr sets it to `1` in its terminals; then a new request opens the Herdr popup, shows a notification, sets the sidebar marker, looks up the Herdr agent, and makes the phone question wait until the request is 30 seconds old |
 | `PDE_REQUEST_ID` | Set by Herdr for `--herdr-popup`: the request to show first |

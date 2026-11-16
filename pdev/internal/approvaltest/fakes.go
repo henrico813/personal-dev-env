@@ -21,17 +21,9 @@ func WriteScript(t *testing.T, dir, name, body string) string {
 // FakeGH puts a fake gh on PATH that runs steps in order, and returns its
 // path and call log. Steps are sh lines, such as GHAnswers and GHLogsCall,
 // run with $log set to the log's path.
-//
-// pde-gh-write takes the first gh on PATH to be the guard ~/.local/bin/gh
-// and runs the next one, so a decoy guard goes first and the fake is found
-// as the real gh. The decoy exits 99, so running it by mistake shows.
 func FakeGH(t *testing.T, steps ...string) (gh, log string) {
 	t.Helper()
-	gh, log = fake(t, "gh", strings.Join(steps, "\n"))
-	decoy := t.TempDir()
-	WriteScript(t, decoy, "gh", "exit 99")
-	t.Setenv("PATH", decoy+":"+os.Getenv("PATH"))
-	return gh, log
+	return fake(t, "gh", strings.Join(steps, "\n"))
 }
 
 // RewriteFakeGH replaces the steps of the fake gh at gh, keeping its log,

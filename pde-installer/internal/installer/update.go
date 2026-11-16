@@ -210,8 +210,14 @@ func updateCheckout(home, flagRoot string, runner run.Runner) updateRecord {
 			err,
 		)
 	}
+	// Extra skills merge in their own repository, so new ones need an install
+	// even when main is already installed.
+	extraMoved := updateExtraSkills(
+		config.Home,
+		runner,
+	)
 	installed, err := readInstallRecord(config.Home)
-	if err == nil && installed.Commit == commit && installed.Branch == "main" {
+	if err == nil && installed.Commit == commit && installed.Branch == "main" && !extraMoved {
 		return updateRecord{
 			Result: updateCurrent,
 			Commit: commit,
@@ -376,20 +382,11 @@ func findSkipReason(root string, runner run.Runner) (string, error) {
 // Returns the HTTPS form of the URL of the remote that main tracks, or of
 // origin when main tracks none.
 func readMainRemoteURL(root string, runner run.Runner) (string, error) {
-	remote := "origin"
-	output, err := runner.Query(
-		"read the remote of main",
-		makeGitCommand(
-			root,
-			"config",
-			"--get",
-			"branch.main.remote",
-		),
+	remote := readMainRemote(
+		root,
+		runner,
 	)
-	if err == nil {
-		remote = strings.TrimSpace(string(output))
-	}
-	output, err = runner.Query(
+	output, err := runner.Query(
 		"read the URL of "+remote,
 		makeGitCommand(
 			root,
@@ -402,6 +399,24 @@ func readMainRemoteURL(root string, runner run.Runner) (string, error) {
 		return "", err
 	}
 	return toHTTPSURL(strings.TrimSpace(string(output))), nil
+}
+
+// Returns the name of the remote that main tracks, or origin when main
+// tracks none.
+func readMainRemote(root string, runner run.Runner) string {
+	output, err := runner.Query(
+		"read the remote of main",
+		makeGitCommand(
+			root,
+			"config",
+			"--get",
+			"branch.main.remote",
+		),
+	)
+	if err != nil {
+		return "origin"
+	}
+	return strings.TrimSpace(string(output))
 }
 
 // Returns the HTTPS form of a GitHub SSH address, and any other address as it

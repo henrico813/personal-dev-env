@@ -23,7 +23,8 @@ K back-scroll
 
 // Shows text in less with prompt as its help text row, and returns the
 // key that closed it, or 'q' for less's own ways out such as ZZ. keys holds
-// lesskey lines such as "c quit c", whose letter's code is the exit status.
+// lesskey lines such as "c quit c", which win over the shared lines because
+// less uses a key's first line.
 func (a *prsApp) openInLess(
 	prompt,
 	text,
@@ -36,7 +37,7 @@ func (a *prsApp) openInLess(
 		return 'q'
 	}
 	defer func() { _ = keysRead.Close() }()
-	_, _ = keysWrite.WriteString(lessKeys + keys)
+	_, _ = keysWrite.WriteString(keys + lessKeys)
 	_ = keysWrite.Close()
 	cmd := exec.Command(
 		"less",

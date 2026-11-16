@@ -17,16 +17,16 @@ import (
 	"prs/internal/view"
 )
 
-// The diff view's own keys, besides h and q. r quits so prs can draw the
-// diff again at a new width.
-const diffViewKeys = "L quit L\nH quit H\no quit o\nr quit r\n? quit ?\n"
+// The diff view's own keys, besides h and q from the shared keys. r quits so
+// prs can draw the diff again at a new width.
+const diffViewKeys = "l quit l\no quit o\nr quit r\n? quit ?\n"
 
 const diffViewHelp = `j k      scroll
 d u J K  half page down, up
-L H      next, previous file
+l h      next, previous file
 o        open the file picker
 r        redraw at this width
-h q      back
+q        back
 g G      top, bottom
 /        find; Esc cancels it
 `
@@ -59,7 +59,7 @@ func (a *prsApp) openDiff(args []string) int {
 	return 0
 }
 
-// Shows the diff screen until h or q in the diff view, or q in the file
+// Shows the diff screen until q in the diff view or the file
 // picker. This one process owns the split diff and the current file, and
 // swaps the diff view in less and the file picker in fzf so they look like
 // one screen.
@@ -94,12 +94,12 @@ func (a *prsApp) showDiff(pr github.PullRequest) {
 					files,
 					current,
 				) {
-				case 'L':
+				case 'l':
 					current = min(
 						current+1,
 						len(files)-1,
 					)
-				case 'H':
+				case 'h':
 					current = max(
 						current-1,
 						0,
@@ -170,8 +170,8 @@ func (a *prsApp) showFileDiff(
 		fitLessPrompt(
 			width,
 			strconv.Itoa(file.Number)+"/"+strconv.Itoa(len(files))+" "+path.Base(file.Path),
-			"o files  L next  d u page  h back  ? help",
-			"o files  L next  h back  ? help",
+			"o files  l h next prev  q back  ? help",
+			"o files  l next  q back  ? help",
 		),
 		a.renderFileDiff(
 			dir,

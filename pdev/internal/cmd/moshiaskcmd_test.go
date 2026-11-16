@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -75,15 +73,15 @@ func TestAnsweredRequestStopsPhoneAsk(t *testing.T) {
 	dir := t.TempDir()
 	ready, stopped := filepath.Join(dir, "ready"), filepath.Join(dir, "stopped")
 	approvaltest.FakeMoshiHook(t, `trap 'touch "`+stopped+`"; exit 0' TERM; touch "`+ready+`"; sleep 30 & wait`)
-	approvaltest.Replace(t, &moshiProgram, func() (string, error) { return approvaltest.WriteScript(t, dir, "ask", `moshi-hook ask "$@"`), nil })
-	// Start a real detached ask for a saved request.
-	rec := approval.Record{ID: "popup", State: approval.StatePending}
-	if err := approval.Save(rec); err != nil {
+	ask := approvaltest.WriteScript(t, dir, "ask", `moshi-hook ask "$@"`)
+	// Start a detached ask for a saved request, as pde-gh does.
+	pid, err := approval.StartDetached(ask)
+	if err != nil {
 		t.Fatal(err)
 	}
-	rec = startMoshi(rec)
-	if rec.MoshiPID == 0 {
-		t.Fatal("phone ask did not start")
+	rec := approval.Record{ID: "popup", State: approval.StatePending, MoshiPID: pid}
+	if err := approval.Save(rec); err != nil {
+		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = syscall.Kill(-rec.MoshiPID, syscall.SIGKILL) })
 	waitForFile(t, ready)
@@ -145,130 +143,6 @@ func TestPhoneWaitsForPopupInHerdr(t *testing.T) {
 	}
 }
 
-// The phone question runs detached with its output thrown away. When
-// moshi-hook could not reach Moshi, as when it is not paired, the question
-// ended silently, and the agent kept telling the user to answer on the
-// phone. The waiting command must say the question failed and how to check.
-func TestUnreachablePhoneWarnsWaitingAgent(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	// moshi-hook exits 4 when it cannot reach Moshi.
-	approvaltest.FakeMoshiHook(t, `echo 'moshi-hook: not paired; run moshi-hook pair' >&2; exit 4`)
-	// moshiAsk runs in this test process, so the saved question PID is the
-	// test's own.
-	rec := approval.Record{ID: "unpaired", State: approval.StatePending, MoshiPID: os.Getpid()}
-	if err := approval.Save(rec); err != nil {
-		t.Fatal(err)
-	}
-	var messages strings.Builder
-	approvaltest.Replace[io.Writer](t, &stderr, &messages)
-
-	moshiAsk([]string{rec.ID})
-	reportOrRun(rec.ID, "")
-
-	for _, want := range []string{"phone question failed", "not paired", "moshi-hook status"} {
-		if !strings.Contains(messages.String(), want) {
-			t.Errorf("output lacks %q:\n%s", want, messages.String())
-		}
-	}
-}
-
-// Agents rerun a waiting command to learn what happened. While the first
-// phone question is still waiting, a rerun must not send another, or the phone
-// would show several questions for one request.
-func TestMoshiRerunKeepsLiveAsk(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	fake := approvaltest.WriteScript(t, t.TempDir(), "ask", "sleep 30")
-	// The fake question program just sleeps, standing in for a phone question
-	// still waiting for an answer.
-	approvaltest.Replace(t, &moshiProgram, func() (string, error) { return fake, nil })
-	discardStderr(t)
-	// Create the request, which starts the first question.
-	req := approval.Request{ID: "live", Args: []string{"pr", "comment", "12"}}
-	if _, err := loadOrCreate(req, "", false); err != nil {
-		t.Fatal(err)
-	}
-	first, err := approval.Load(req.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The question runs in its own session, outside the test's process group,
-	// so stop its whole group at the end.
-	if first.MoshiPID != 0 {
-		t.Cleanup(func() { _ = syscall.Kill(-first.MoshiPID, syscall.SIGKILL) })
-	}
-
-	// Rerun the same request while the first question is still running.
-	state, err := loadOrCreate(req, "", false)
-
-	if err != nil || state != approval.StatePending {
-		t.Fatalf("rerun state %q, err %v", state, err)
-	}
-	second, err := approval.Load(req.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.MoshiPID == 0 || second.MoshiPID != first.MoshiPID || !processAlive(first.MoshiPID) {
-		t.Fatalf("PIDs %d and %d", first.MoshiPID, second.MoshiPID)
-	}
-}
-
-// In live testing a phone question ended before it reached the phone, leaving
-// the request waiting with nothing to answer there. A rerun must send a new
-// question when the saved one is no longer running. That must keep the
-// record's age; otherwise a request whose question keeps failing would stay
-// pending forever as the agent reruns it. It must also clear the old
-// failure, or the agent would be told that the new question failed.
-func TestMoshiRerunRestartsDeadAsk(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	// The fake question program just sleeps, standing in for a new question
-	// waiting for an answer.
-	fake := approvaltest.WriteScript(t, t.TempDir(), "ask", "sleep 30")
-	approvaltest.Replace(t, &moshiProgram, func() (string, error) { return fake, nil })
-	// The saved PID belongs to a process that has already exited, and the
-	// request was made three hours ago.
-	saved := time.Now().Add(-3 * time.Hour).Round(0)
-	// It failed, so the record holds its reason.
-	rec := approval.Record{ID: "dead", MoshiPID: deadPID(t), MoshiError: "exit status 4", State: approval.StatePending, Updated: saved}
-	if err := approval.Write(rec); err != nil {
-		t.Fatal(err)
-	}
-
-	state, err := loadOrCreate(approval.Request{ID: rec.ID, Args: []string{"pr", "comment", "12"}}, "", false)
-
-	if err != nil || state != approval.StatePending {
-		t.Fatalf("rerun state %q, err %v", state, err)
-	}
-	got, err := approval.Load(rec.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Stop the new question's process group at the end; it would otherwise
-	// sleep for 30 seconds.
-	if got.MoshiPID != 0 {
-		t.Cleanup(func() { _ = syscall.Kill(-got.MoshiPID, syscall.SIGKILL) })
-	}
-	if got.MoshiPID == rec.MoshiPID || !processAlive(got.MoshiPID) {
-		t.Fatalf("record %#v", got)
-	}
-	if !got.Updated.Equal(saved) {
-		t.Errorf("rerun moved the last change from %v to %v", saved, got.Updated)
-	}
-	if got.MoshiError != "" {
-		t.Errorf("old phone failure kept: %q", got.MoshiError)
-	}
-}
-
-// A fixed large PID can belong to a live process. A child that has exited and
-// been waited for has a free PID, unless the kernel has already reused it.
-func deadPID(t *testing.T) int {
-	t.Helper()
-	cmd := exec.Command("true")
-	if err := cmd.Run(); err != nil {
-		t.Fatal(err)
-	}
-	return cmd.Process.Pid
-}
-
 // The phone answers from its own process, not through the popup or a
 // terminal. Its answer must clear "Approval waiting" too, or the marker stays
 // on the agent's pane after the request is decided.
@@ -286,5 +160,80 @@ func TestPhoneAnswerClearsMarker(t *testing.T) {
 	calls, _ := os.ReadFile(log)
 	if !strings.Contains(string(calls), "pane report-metadata --source pde.approval w1:p2 --clear-title") {
 		t.Fatalf("herdr calls = %q", calls)
+	}
+}
+
+// The phone question runs detached, so when moshi-hook could not reach Moshi
+// the agent kept telling the user to answer on the phone. The reason must be
+// saved, so the waiting pde-gh-write can say it.
+func TestUnreachablePhoneSavesItsReason(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	// moshi-hook exits 4 when it cannot reach Moshi.
+	approvaltest.FakeMoshiHook(t, `echo 'moshi-hook: not paired; run moshi-hook pair' >&2; exit 4`)
+	// moshiAsk runs in this test process, so the saved question PID is the
+	// test's own.
+	rec := approval.Record{ID: "unpaired", State: approval.StatePending, MoshiPID: os.Getpid()}
+	if err := approval.Save(rec); err != nil {
+		t.Fatal(err)
+	}
+
+	moshiAsk([]string{rec.ID})
+
+	got, err := approval.Load(rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got.MoshiError, "not paired") {
+		t.Errorf("saved failure = %q, want moshi-hook's reason", got.MoshiError)
+	}
+}
+
+// A decision is final. A yes saved after a decline, such as from
+// pde-pr-approve left open while the popup declined, must not approve the
+// request and let gh post.
+func TestLateYesKeepsDeclinedRequest(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	if err := approval.Save(approval.Record{ID: "declined", State: approval.StateDeclined}); err != nil {
+		t.Fatal(err)
+	}
+	discardStderr(t)
+
+	saveAnswer("declined", approval.ChoiceYes)
+
+	if got, err := approval.Load("declined"); err != nil || got.State != approval.StateDeclined {
+		t.Fatalf("state %q, %v; want still declined", got.State, err)
+	}
+}
+
+// A runner killed or lost on reboot would leave a late approval unrun until
+// the agent happened to rerun the command, so an approval must start a new
+// one. The phone question used to save its answer with its own code, so the
+// phone path is checked as well as the terminal path.
+func TestApprovalRestartsDeadRunner(t *testing.T) {
+	// The fake moshi-hook approves at once for the phone case.
+	approvaltest.FakeMoshiHook(t, "exit 0")
+	for _, tc := range []struct {
+		name   string
+		answer func(id string)
+	}{
+		{name: "terminal", answer: func(id string) { saveAnswer(id, approval.ChoiceYes) }},
+		{name: "phone", answer: func(id string) { moshiAsk([]string{id}) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("XDG_STATE_HOME", t.TempDir())
+			// Record runner starts instead of starting the test binary.
+			var started []string
+			approvaltest.Replace(t, &runnerStart, func(rec approval.Record) approval.Record { started = append(started, rec.ID); return rec })
+			// The saved runner PID belongs to a process that has already exited.
+			if err := approval.Save(approval.Record{ID: "late", State: approval.StatePending, RunnerPID: deadPID(t)}); err != nil {
+				t.Fatal(err)
+			}
+
+			tc.answer("late")
+
+			if len(started) != 1 || started[0] != "late" {
+				t.Fatalf("runners started = %v", started)
+			}
+		})
 	}
 }

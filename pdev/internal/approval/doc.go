@@ -1,5 +1,4 @@
-// Package approval holds what every way of answering a request shares:
-// parsing a pde-gh-write request, the record saved for it, where the open
-// Herdr popup is, and the text the approver reads. It runs no outside
-// program except diff and opens no terminal.
+// Package approval holds what pde-gh and pde-pr-approve share, such as the
+// request record, the approval text and starting each other's detached
+// programs. It opens no terminal and calls no gh, herdr or moshi-hook.
 package approval

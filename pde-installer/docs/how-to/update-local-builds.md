@@ -1,8 +1,9 @@
 # Update Local Builds
 
 The local backend builds repository applications: `planner`,
-`opencode-inline-shim`, `vibe`, `pde-gh-write` (also linked as
-`pde-pr-approve`), `glimmer`, `hub`, `skill-lessons`, `skill-fix` and `prs`.
+`opencode-inline-shim`, `vibe`, `pde-gh` (also linked as `gh`,
+`pde-gh-guard` and `pde-gh-write`), `pde-pr-approve`, `glimmer`, `hub`,
+`skill-lessons`, `skill-fix` and `prs`.
 `skill-lessons` and `skill-fix` each have a `build.py` that packs the tool into
 one file run by `/usr/bin/python3`. Client builds only these two, and terminal
 builds no local applications. Full also builds `pde-x-watch` from

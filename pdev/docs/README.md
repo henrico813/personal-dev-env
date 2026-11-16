@@ -1,9 +1,9 @@
 # pdev Documentation
 
-pdev is the program that makes coding agents ask you before they change a
-pull request on GitHub. Agents run it as `pde-gh-write` instead of `gh` when
-they write to a pull request. You can run it as `pde-pr-approve` to answer a
-request in a terminal.
+pdev builds the two programs that make coding agents ask you before they
+change a pull request on GitHub. Agents run `pde-gh-write`, a name of
+`pde-gh`, instead of `gh` when they write to a pull request. You run
+`pde-pr-approve` to answer a request in a terminal.
 
 Pick the page for what you need to do:
 
