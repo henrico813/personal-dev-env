@@ -1,11 +1,14 @@
 # Where the Code Lives
 
-The code is in four packages under `internal/`; each package's `doc.go`
+The code is in five packages under `internal/`; each package's `doc.go`
 says what it holds. `main.go` only calls `cmd.Main`, and the installer
-builds the program from `pdev/` with `go build .`.
+builds the program from `pdev/` with `go build .`. The X watch is a second
+program, `pde-x-watch`. Its `cmd/pde-x-watch/main.go` only calls
+`xwatch.WatchDisplay`.
 
 `approval` imports no other pdev package, and `terminal` imports only
-`approval`. `cmd` imports both. The popup, the terminal prompt, and the
+`approval`. `cmd` imports both. `xwatch` imports no other pdev package, and
+only `cmd/pde-x-watch` imports it. The popup, the terminal prompt, and the
 phone all return the same answers, `approval.ChoiceYes` and the others, and
 `cmd` saves them.
 
@@ -41,6 +44,8 @@ calls to those programs.
 | How the inbox checks other Herdr machines | `internal/cmd/machines.go` |
 | The popup that shows other machines | `internal/terminal/others.go` |
 | How `gh` is found and run | `internal/cmd/gh.go` |
+| The X watch's limits, how often it checks, or its notice text | `internal/xwatch/watch.go` |
+| How the X watch counts each client's windows | `internal/xwatch/xres.go` |
 | How a merge or a new PR keeps a stack in order, and the merge of a PR in a GitHub stack | `internal/cmd/stack.go` |
 | The wait, rerun results, and exit codes | `internal/cmd/writecmd.go` and `internal/cmd/cmd.go` |
 | An option that a new `gh` adds to a `gh pr` command | `targetFlags` in `internal/approval/request.go`, with whether it takes a value; title, body, body file, and repository options are in `valueFlags` |

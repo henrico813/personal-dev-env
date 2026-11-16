@@ -129,6 +129,7 @@ func TestEachProfileAddsRecordedItems(t *testing.T) {
 				"glimmer",
 				"hub",
 				"prs",
+				"pde-x-watch",
 				"go",
 				"rust",
 				"keychain",

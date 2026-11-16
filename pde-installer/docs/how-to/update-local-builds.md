@@ -5,7 +5,8 @@ The local backend builds repository applications: `planner`,
 `pde-pr-approve`), `glimmer`, `hub`, `skill-lessons`, `skill-fix` and `prs`.
 `skill-lessons` and `skill-fix` each have a `build.py` that packs the tool into
 one file run by `/usr/bin/python3`. Client builds only these two, and terminal
-builds no local applications.
+builds no local applications. Full also builds `pde-x-watch` from
+`pdev/cmd/pde-x-watch`.
 
 The installer builds `glimmer` from the Rust source in `glimmer/`
 with Cargo and checks it with `help` after activation. It builds
