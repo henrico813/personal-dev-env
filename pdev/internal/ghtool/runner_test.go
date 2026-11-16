@@ -1,4 +1,4 @@
-package cmd
+package ghtool
 
 import (
 	"path/filepath"
@@ -36,8 +36,9 @@ func TestRunnerSavesApprovedOutputForRerun(t *testing.T) {
 	result := make(chan int, 1)
 	go func() { result <- runnerMain(rec.ID) }()
 
-	if code := saveAnswer(rec.ID, approval.ChoiceYes); code != 0 {
-		t.Fatalf("saveAnswer returned %d", code)
+	rec.State = approval.StateApproved
+	if err := approval.Save(rec); err != nil {
+		t.Fatal(err)
 	}
 
 	if code := approvaltest.Receive(t, result); code != 0 {
@@ -103,7 +104,7 @@ func TestRunnerRestartKeepsRequestAge(t *testing.T) {
 	if got.RunnerPID != 0 {
 		t.Cleanup(func() { _ = syscall.Kill(-got.RunnerPID, syscall.SIGKILL) })
 	}
-	if got.RunnerPID == rec.RunnerPID || !processAlive(got.RunnerPID) {
+	if got.RunnerPID == rec.RunnerPID || !approval.ProcessAlive(got.RunnerPID) {
 		t.Fatalf("record %#v", got)
 	}
 	if !got.Updated.Equal(saved) {
@@ -126,7 +127,7 @@ func TestRequestSavesRunnerAndPhonePIDs(t *testing.T) {
 	ask := approvaltest.WriteScript(t, dir, "ask", "sleep 30")
 	approvaltest.Replace(t, &runnerStart, startDetachedRunner)
 	approvaltest.Replace(t, &runnerProgram, func() (string, error) { return runner, nil })
-	approvaltest.Replace(t, &moshiProgram, func() (string, error) { return ask, nil })
+	approvaltest.Replace(t, &approveProgram, func() (string, error) { return ask, nil })
 	discardStderr(t)
 
 	_, err := loadOrCreate(approval.Request{ID: "new", Args: []string{"pr", "comment", "12"}}, "", false)
@@ -146,40 +147,7 @@ func TestRequestSavesRunnerAndPhonePIDs(t *testing.T) {
 			t.Cleanup(func() { _ = syscall.Kill(-pid, syscall.SIGKILL) })
 		}
 	}
-	if got.RunnerPID == 0 || !processAlive(got.RunnerPID) || got.MoshiPID == 0 || !processAlive(got.MoshiPID) {
+	if got.RunnerPID == 0 || !approval.ProcessAlive(got.RunnerPID) || got.MoshiPID == 0 || !approval.ProcessAlive(got.MoshiPID) {
 		t.Fatalf("runner PID %d, phone question PID %d; want both running", got.RunnerPID, got.MoshiPID)
-	}
-}
-
-// A runner killed or lost on reboot would leave a late approval unrun until
-// the agent happened to rerun the command, so an approval must start a new
-// one. The phone question used to save its answer with its own code, so the
-// phone path is checked as well as the terminal path.
-func TestApprovalRestartsDeadRunner(t *testing.T) {
-	// The fake moshi-hook approves at once for the phone case.
-	approvaltest.FakeMoshiHook(t, "exit 0")
-	for _, tc := range []struct {
-		name   string
-		answer func(id string)
-	}{
-		{name: "terminal", answer: func(id string) { saveAnswer(id, approval.ChoiceYes) }},
-		{name: "phone", answer: func(id string) { moshiAsk([]string{id}) }},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("XDG_STATE_HOME", t.TempDir())
-			// Record runner starts instead of starting the test binary.
-			var started []string
-			approvaltest.Replace(t, &runnerStart, func(rec approval.Record) approval.Record { started = append(started, rec.ID); return rec })
-			// The saved runner PID belongs to a process that has already exited.
-			if err := approval.Save(approval.Record{ID: "late", State: approval.StatePending, RunnerPID: deadPID(t)}); err != nil {
-				t.Fatal(err)
-			}
-
-			tc.answer("late")
-
-			if len(started) != 1 || started[0] != "late" {
-				t.Fatalf("runners started = %v", started)
-			}
-		})
 	}
 }

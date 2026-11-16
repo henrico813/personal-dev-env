@@ -37,9 +37,9 @@ type buildSpec struct {
 	pythonPackage        string   // Package that hashPythonSources reads for a packed Python tool, or empty.
 }
 
-// pdev picks approve mode under the name pde-pr-approve and the gh guard
-// under gh or pde-gh-guard. Links keep one binary, so the names cannot drift apart.
-var pdevAliases = []string{"pde-pr-approve", "pde-gh-guard", "gh"}
+// pde-gh runs the gh guard under gh or pde-gh-guard and asks for approval
+// under pde-gh-write. Links keep one binary, so the names cannot drift apart.
+var ghAliases = []string{"gh", "pde-gh-guard", "pde-gh-write"}
 
 // Reconcile deletes these names from ~/.local/bin when the profile does not
 // build them. hub-next was the Rust hub's old name, and client laptops no
@@ -664,18 +664,31 @@ func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []bu
 			verifyArg: "--help",
 		},
 		{
-			name:   "pde-gh-write",
+			name:   "pde-gh",
 			source: filepath.Join(m.RepoRoot, "pdev"),
-			output: filepath.Join(stageRoot, "pde-gh-write"),
+			output: filepath.Join(stageRoot, "pde-gh"),
 			command: run.Command{
 				Name: goBinary,
 				Args: []string{
-					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "pde-gh-write"), ".",
+					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "pde-gh"), "./cmd/pde-gh",
 				},
 				Dir: filepath.Join(m.RepoRoot, "pdev"), Env: environment,
 			},
-			aliases: pdevAliases,
-			// pde-gh-write has no side-effect-free help mode, so it has no verifyArg.
+			aliases: ghAliases,
+			// pde-gh has no side-effect-free help mode, so it has no verifyArg.
+		},
+		{
+			name:   "pde-pr-approve",
+			source: filepath.Join(m.RepoRoot, "pdev"),
+			output: filepath.Join(stageRoot, "pde-pr-approve"),
+			command: run.Command{
+				Name: goBinary,
+				Args: []string{
+					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "pde-pr-approve"), ".",
+				},
+				Dir: filepath.Join(m.RepoRoot, "pdev"), Env: environment,
+			},
+			// pde-pr-approve has no side-effect-free help mode either.
 		},
 		{
 			name:   "glimmer",

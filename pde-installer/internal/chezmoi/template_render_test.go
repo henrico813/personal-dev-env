@@ -257,6 +257,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 	}
 	developmentTools := []string{
 		".local/bin/gh",
+		".local/bin/pde-gh",
 		".local/bin/pde-gh-guard",
 		".local/bin/pde-gh-write",
 		".local/bin/pde-pr-approve",

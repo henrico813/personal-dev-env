@@ -6,15 +6,10 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 
 	"pdev/internal/approval"
 )
-
-// The phone question is sent by this same program, started again with
-// --moshi-ask. Tests replace moshiProgram so they never message a phone.
-var moshiProgram = os.Executable
 
 // moshi-hook cannot take back a question it has sent, so one sent for a
 // request later answered in the Herdr popup stays on the phone until it shows
@@ -25,63 +20,19 @@ const phoneDelay = 30 * time.Second
 
 var waitBeforePhone = time.Sleep
 
-// startMoshi sends the phone question unless the one saved in the record is
-// still running, so reruns of a waiting request never send a second question.
-// The returned record carries the saved PID, so later saves under the same
-// lock keep it.
-func startMoshi(rec approval.Record) approval.Record {
-	if rec.MoshiPID != 0 && processAlive(rec.MoshiPID) {
-		return rec
-	}
-	path, err := moshiProgram()
-	if err != nil {
-		return rec
-	}
-	cmd := exec.Command(path, "--moshi-ask", rec.ID)
-	// When the agent's command ends, the tool that ran it stops every program
-	// the command started (its process group). You may answer hours later, so
-	// the question is started apart from that group, where the stop does not
-	// reach it, and is not waited for.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err := cmd.Start(); err != nil {
-		return rec
-	}
-	rec.MoshiPID = cmd.Process.Pid
-	// The new question replaces a failed one, so its reason no longer applies.
-	rec.MoshiError = ""
-	// Reruns check this PID before sending a question. If it cannot be saved,
-	// stop the question, or a rerun would send a second one.
-	if err := approval.SaveKeepingAge(rec); err != nil {
-		_ = cmd.Process.Kill()
-		rec.MoshiPID = 0
-	}
-	return rec
-}
-
-// Ends a phone question that can no longer decide anything. One still in its
-// wait never reaches the phone; one moshi-hook already sent stays there. The
-// question runs in its own session, so its PID is also its process group ID.
-// moshiAsk must not call this for its own answer.
-func stopMoshi(pid int) {
-	if pid != 0 && processAlive(pid) {
-		_ = syscall.Kill(-pid, syscall.SIGTERM)
-	}
-}
-
-// moshiAsk runs as pde-gh-write --moshi-ask ID. For a request from Herdr it
-// first waits until the request is phoneDelay old. It then waits up to four
-// hours for the phone answer and saves it only if the request is still
-// pending; a later answer changes nothing. It never runs gh: the request's
-// runner, the waiting pde-gh-write, or a rerun does.
+// Runs as pde-pr-approve --moshi-ask ID, which pde-gh starts, and waits up
+// to four hours for the phone answer, after phoneDelay for a request from
+// Herdr. It saves the answer only while the request is pending and never
+// runs gh, which the runner, the waiting pde-gh-write or a rerun does.
 func moshiAsk(args []string) int {
 	if len(args) != 1 {
 		return 1
 	}
 	answer, failure := approval.ChoiceNone, ""
 	rec, err := approval.Load(args[0])
-	// Outside Herdr no popup shows, so the phone is asked at once. An answer
-	// during the wait ends this program through stopMoshi; the reload checks
-	// again before anything is sent. A rerun of an older request asks at once.
+	// Outside Herdr no popup shows, and a rerun of an older request needs no
+	// wait, so both ask at once. An answer during the wait stops this program,
+	// and the reload checks again before anything is sent.
 	if err == nil && rec.State == approval.StatePending && os.Getenv("HERDR_ENV") == "1" {
 		// The cap keeps a clock set back after the request from delaying the phone.
 		waitBeforePhone(min(time.Until(rec.Created.Add(phoneDelay)), phoneDelay))
@@ -121,11 +72,9 @@ func moshiAsk(args []string) int {
 		}
 		return 0
 	}
-	// Remove this program's PID whenever it ends while the request is live. The
-	// system reuses PIDs, so a stale one could name an unrelated program that
-	// looks like a running question, stop reruns from sending a new one, and
-	// be signaled by stopMoshi. The failure is saved with it, so the waiting
-	// pde-gh-write can report it.
+	// The system reuses PIDs, so a stale one could look like a running question
+	// and be signaled by approval.StopGroup. The PID is removed whenever this
+	// ends while the request is live, with the failure for pde-gh-write to report.
 	if rec.MoshiPID != os.Getpid() {
 		return 0
 	}

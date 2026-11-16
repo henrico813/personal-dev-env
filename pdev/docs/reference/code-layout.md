@@ -1,29 +1,41 @@
 # Where the Code Lives
 
-The code is in four packages under `internal/`; each package's `doc.go`
-says what it holds. `main.go` only calls `cmd.Main`, and the installer
-builds the program from `pdev/` with `go build .`.
+The code is in five packages under `internal/`; each package's `doc.go`
+says what it holds. Two programs are built from `pdev/`:
+
+- `pde-gh`, from `cmd/pde-gh/`, only calls `ghtool.Main`. The installer
+  links `gh`, `pde-gh-guard` and `pde-gh-write` to it.
+- `pde-pr-approve`, from `main.go`, only calls `cmd.Main`.
 
 `approval` imports no other pdev package, and `terminal` imports only
-`approval`. `cmd` imports both. The popup, the terminal prompt, and the
-phone all return the same answers, `approval.ChoiceYes` and the others, and
-`cmd` saves them.
+`approval`. `ghtool` imports only `approval`, and only `cmd/pde-gh`
+imports `ghtool`; `TestToolFamiliesImportOnlySharedPackages` in
+`imports_test.go` fails otherwise. `cmd` imports `approval` and `terminal`.
+The two programs reach each other by starting one another from their own
+folder, never by import. The popup, the terminal prompt, and the phone all
+return the same answers, `approval.ChoiceYes` and the others, and `cmd`
+saves them.
 
-## How the Program Starts
+## How the Programs Start
 
-`cmd.Main` picks the mode from the program name and the first argument:
+`ghtool.Main` picks the mode from the program name and the first argument,
+and `cmd.Main` from the first argument:
 
-| Command | File in `internal/cmd/` |
+| Command | File |
 |---|---|
-| `pde-gh-write pr ...` | `writecmd.go` |
-| `pde-pr-approve ID` | `approvecmd.go` |
-| `pde-pr-approve --herdr-popup` and `--herdr-inbox` | `popupcmd.go` |
-| `pde-gh-write --pde-runner ID`, the runner that runs a late approval | `runnercmd.go` |
-| `pde-gh-write --moshi-ask ID`, the phone question | `moshiaskcmd.go` |
+| `gh ...` and `pde-gh-guard ...` | `internal/ghtool/guard.go` |
+| `pde-gh-write pr ...` | `internal/ghtool/writecmd.go` |
+| `pde-gh --pde-runner ID`, the runner that runs a late approval | `internal/ghtool/runnercmd.go` |
+| `pde-pr-approve ID` | `internal/cmd/approvecmd.go` |
+| `pde-pr-approve --herdr-popup` and `--herdr-inbox` | `internal/cmd/popupcmd.go` |
+| `pde-pr-approve --herdr-notify ID`, the popup and marker for a request | `internal/cmd/herdr.go` |
+| `pde-pr-approve --moshi-ask ID`, the phone question | `internal/cmd/moshiaskcmd.go` |
 
-`cmd.go` holds `Main` and the exit codes. `answer.go` saves an answer from
-the terminal, the popup, or the phone. `gh.go` and `herdr.go` hold the
-calls to those programs.
+`ghtool.go` and `cmd.go` hold each `Main` and its exit codes, and what each
+program starts of the other. `answer.go` saves an answer from the terminal,
+the popup, or the phone. `approval/process.go` starts and stops the
+detached programs. `ghtool/gh.go` and `cmd/herdr.go` hold the calls to gh
+and herdr.
 
 ## Where a Change Usually Goes
 
@@ -38,11 +50,12 @@ calls to those programs.
 | The question of `pde-pr-approve ID` | `internal/terminal/prompt.go` |
 | What happens after an answer | `internal/cmd/answer.go` |
 | The Herdr popup request, notification, or sidebar marker | `internal/cmd/herdr.go` |
+| Which `gh` commands the guard refuses | `internal/ghtool/guard.go` |
 | How the inbox checks other Herdr machines | `internal/cmd/machines.go` |
 | The popup that shows other machines | `internal/terminal/others.go` |
-| How `gh` is found and run | `internal/cmd/gh.go` |
-| How a merge or a new PR keeps a stack in order, and the merge of a PR in a GitHub stack | `internal/cmd/stack.go` |
-| The wait, rerun results, and exit codes | `internal/cmd/writecmd.go` and `internal/cmd/cmd.go` |
+| How `gh` is found and run | `internal/ghtool/gh.go` |
+| How a merge or a new PR keeps a stack in order, and the merge of a PR in a GitHub stack | `internal/ghtool/stack.go` |
+| The wait, rerun results, and exit codes | `internal/ghtool/writecmd.go` and `internal/ghtool/ghtool.go` |
 | An option that a new `gh` adds to a `gh pr` command | `targetFlags` in `internal/approval/request.go`, with whether it takes a value; title, body, body file, and repository options are in `valueFlags` |
 
 ## Changes That Lose Waiting Requests
@@ -55,9 +68,10 @@ requests saved by the old one.
 
 ## Tests
 
-Tests sit in the package of the code they check. Tests in `cmd` replace
-package variables, such as `answerTimeout`, and set environment variables
-such as `PATH` and `XDG_STATE_HOME`, so they do not run in parallel.
+Tests sit in the package of the code they check. Tests in `cmd` and
+`ghtool` replace package variables, such as `answerTimeout`, and set
+environment variables such as `PATH` and `XDG_STATE_HOME`, so they do not
+run in parallel.
 
 ### What the Tests Protect
 
@@ -79,6 +93,7 @@ Each approval promise, and the tests that fail when it breaks:
 | Restarting the runner or phone question keeps the request's age | `TestRunnerRestartKeepsRequestAge`, `TestMoshiRerunRestartsDeadAsk` |
 | An approval given after the agent stops waiting still runs | `TestRunnerSavesApprovedOutputForRerun`, `TestApprovalRestartsDeadRunner` |
 | Only the real gh runs, never one in the checkout | `TestRealGHIgnoresEmptyPATHEntry` |
+| `gh` refuses pull request writes, and its names pick the right mode | `TestFindRefusalCoversWritesAndReads`, `TestMainPicksModeByName` |
 | Ctrl+b a opens the popup or logs why it cannot | `TestInboxFindsHerdrBesideItself`, `TestMainPicksEntryMode` |
 | One approval merges one PR of a stack, never the PRs below it | `TestMergeRefusesMidStackPR` |
 | A PR in a GitHub stack merges through GitHub's merge API for stacks | `TestStackedMergeUsesMergeAsyncAPI` |

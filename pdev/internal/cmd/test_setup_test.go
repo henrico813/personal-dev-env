@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -11,16 +11,11 @@ import (
 	"pdev/internal/approvaltest"
 )
 
-// Running go test inside Herdr must not open popups in your Herdr or send
-// questions to your phone while you work. Unsetting HERDR_ENV keeps
-// notifyRequest from contacting Herdr, and the failing moshiProgram keeps
-// startMoshi from starting a phone question; the no-op runnerStart keeps
-// requests from starting a copy of the test binary as their runner. A test
-// that needs one of these sets up a fake itself, as
-// TestHerdrPopupUsesSocketRequest does.
+// Unsetting HERDR_ENV keeps go test from opening popups in your Herdr, and
+// the no-op runnerStart keeps approvals from starting pde-gh. A test that
+// needs either sets up a fake, as TestHerdrPopupUsesSocketRequest does.
 func TestMain(m *testing.M) {
 	runnerStart = func(rec approval.Record) approval.Record { return rec }
-	moshiProgram = func() (string, error) { return "", errors.New("tests set moshiProgram") }
 	os.Unsetenv("HERDR_ENV")
 	os.Unsetenv("OPENCODE_SESSION_ID")
 	os.Exit(runOutsideCheckout(m))
@@ -44,4 +39,15 @@ func runOutsideCheckout(m *testing.M) int {
 func discardStderr(t *testing.T) {
 	t.Helper()
 	approvaltest.Replace[io.Writer](t, &stderr, &strings.Builder{})
+}
+
+// A fixed large PID can belong to a live process. A child that has exited and
+// been waited for has a free PID, unless the kernel has already reused it.
+func deadPID(t *testing.T) int {
+	t.Helper()
+	cmd := exec.Command("true")
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+	return cmd.Process.Pid
 }

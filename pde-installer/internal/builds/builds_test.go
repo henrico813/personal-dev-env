@@ -49,7 +49,8 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "build.log")
 	manager := newFixtureManager(t, home, repoRoot, logPath)
 
-	// Files from the previous install, including plain-file pde-pr-approve and gh.
+	// Files from the previous install, including plain-file pde-gh-write and gh,
+	// which become links to pde-gh.
 	// hub-next is a dropped name, so the rollback also restores a deleted file.
 	for _, name := range []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "gh", "glimmer", "hub-next",
@@ -64,13 +65,13 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
 	assertBuildOutputs(t, home)
-	for _, name := range []string{"pde-pr-approve", "pde-gh-guard", "gh"} {
+	for _, name := range []string{"gh", "pde-gh-guard", "pde-gh-write"} {
 		alias, err := os.Readlink(filepath.Join(home, ".local", "bin", name))
 		if err != nil {
 			t.Fatalf("%s is not a symlink: %v", name, err)
 		}
-		if alias != filepath.Join(home, ".local", "bin", "pde-gh-write") {
-			t.Fatalf("%s -> %q, want pde-gh-write", name, alias)
+		if alias != filepath.Join(home, ".local", "bin", "pde-gh") {
+			t.Fatalf("%s -> %q, want pde-gh", name, alias)
 		}
 	}
 	assertBuildArtifactsRemoved(t, filepath.Join(home, ".local", "state", "pde", "build-stage"))
@@ -124,11 +125,10 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	}
 }
 
-// Herdr's approval popup and its Ctrl+b a key run pde-pr-approve, a link to
-// pde-gh-write. When only the link is gone, the next install must bring it
-// back even though no source changed, or approvals in Herdr stop opening.
-// With the check that does this deleted, every other installer test passes.
-func TestReconcileRestoresMissingApproveLink(t *testing.T) {
+// Agents ask for approval through pde-gh-write, a link to pde-gh, so an
+// install must restore a lost link even when no source changed. Without
+// that check every other installer test still passes.
+func TestReconcileRestoresMissingWriteLink(t *testing.T) {
 	home := t.TempDir()
 	repoRoot := t.TempDir()
 	writeBuildSources(t, repoRoot)
@@ -142,7 +142,7 @@ func TestReconcileRestoresMissingApproveLink(t *testing.T) {
 	if err := journal.Commit(); err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
-	link := filepath.Join(home, ".local", "bin", "pde-pr-approve")
+	link := filepath.Join(home, ".local", "bin", "pde-gh-write")
 	if err := os.Remove(link); err != nil {
 		t.Fatal(err)
 	}
@@ -157,10 +157,10 @@ func TestReconcileRestoresMissingApproveLink(t *testing.T) {
 	}
 	target, err := os.Readlink(link)
 	if err != nil {
-		t.Fatalf("pde-pr-approve is missing: %v", err)
+		t.Fatalf("pde-gh-write is missing: %v", err)
 	}
-	if target != filepath.Join(home, ".local", "bin", "pde-gh-write") {
-		t.Fatalf("pde-pr-approve -> %q, want pde-gh-write", target)
+	if target != filepath.Join(home, ".local", "bin", "pde-gh") {
+		t.Fatalf("pde-gh-write -> %q, want pde-gh", target)
 	}
 }
 
@@ -769,7 +769,8 @@ func assertBuildOutputs(t *testing.T, home string) {
 		"planner":              "go",
 		"opencode-inline-shim": "go",
 		"vibe":                 "cargo",
-		"pde-gh-write":         "go",
+		"pde-gh":               "go",
+		"pde-pr-approve":       "go",
 		"glimmer":              "cargo",
 		"hub":                  "cargo",
 		"skill-lessons":        "python",

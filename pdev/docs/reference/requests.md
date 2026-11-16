@@ -9,8 +9,9 @@
 | `pde-pr-approve REQUEST_ID` | Show a pending request in `less` and ask for `yes` or `no` |
 | `pde-pr-approve --herdr-popup` | Run by Herdr to draw the popup, starting with the request in `PDE_REQUEST_ID` |
 | `pde-pr-approve --herdr-inbox` | Open the popup on the oldest pending request, dismissed or not; with none, on [other machines](#other-herdr-machines) when one is saved; or say why it cannot |
-| `pde-gh-write --moshi-ask ID` | Not for people: started by `pde-gh-write` to send the phone question and save the answer |
-| `pde-gh-write --pde-runner ID` | Not for people: started by `pde-gh-write` to run `gh` once the request is approved |
+| `pde-pr-approve --moshi-ask ID` | Not for people: started by `pde-gh-write` to send the phone question and save the answer |
+| `pde-pr-approve --herdr-notify ID` | Not for people: started by `pde-gh-write` to record the agent's Herdr pane and open the popup, or to clear the pane marker of an expired request |
+| `pde-gh --pde-runner ID` | Not for people: started by `pde-gh-write`, or by `pde-pr-approve` when an approval finds the runner dead, to run `gh` once the request is approved |
 
 `OPERATION` is one of `create`, `edit`, `comment`, `review`, `merge`, `ready`,
 `close`, or `reopen`. Other operations and `--web` or `-w` are refused.
@@ -98,10 +99,10 @@ Status lines on standard error:
 
 ## The Guard
 
-The guard is the `gh` mode of this program. The installer links
-`~/.local/bin/gh` and `~/.local/bin/pde-gh-guard` to `pde-gh-write` in the
-full profile only, and the program picks the guard by the name it was
-started under.
+The guard is the `gh` mode of `pde-gh`. The installer links
+`~/.local/bin/gh`, `~/.local/bin/pde-gh-guard` and
+`~/.local/bin/pde-gh-write` to `pde-gh` in the full profile only, and the
+program picks the guard by the name it was started under.
 With `PDE_GH_WRITE=1` it runs the real `gh` with any arguments.
 Otherwise it refuses:
 
@@ -203,8 +204,9 @@ next to the requested ones.
 
 ### Opening the Popup
 
-When `HERDR_ENV` is `1`, `pde-gh-write` does these steps for a new request
-in the background. Their errors do not stop the request; a popup that
+When `HERDR_ENV` is `1`, `pde-gh-write` starts
+`pde-pr-approve --herdr-notify ID` for a new request, which saves the
+agent's pane, workspace and title, then does these steps. Their errors do not stop the request; a popup that
 does not open changes the notification in step 3:
 
 1. It sets the `Approval waiting` marker on the agent's pane.
@@ -294,7 +296,7 @@ every client that opens it, a phone included.
 
 ## Phone Question
 
-`pde-gh-write --moshi-ask` runs:
+`pde-pr-approve --moshi-ask` runs:
 
 ```bash
 moshi-hook ask --require-remote --source pde-gh-write --timeout 4h QUESTION
