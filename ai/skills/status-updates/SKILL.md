@@ -29,6 +29,13 @@ question on its own also passes the checker in Review before sending.
 It names the project only when the user may not know which work it
 is about.
 
+Give each question its background the first time you show it, not
+only after the user asks what it is about. The background says what
+the work is, why the question came up and what each choice does. The
+user may have been away for days, so a question without it costs a
+round trip. A follow-up question, such as a list of smaller questions
+under one the user just answered, needs its own background too.
+
 ## Write for a new reader
 
 - Open with the project's name and what it does, in a few words.

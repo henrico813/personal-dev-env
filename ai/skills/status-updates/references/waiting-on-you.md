@@ -45,7 +45,9 @@ Reply like `1A 2-1`.
   `2-1` picks choice 1 of question 2.
 - Put detail on the reply line, after it, or in a file you link.
   Detail is what each choice leads to, why you recommend one, an
-  example, or what stays blocked until the user answers. With several
+  example, or what stays blocked until the user answers. The
+  background that SKILL.md asks for stays in the message, after the
+  reply line, never only in a linked file. With several
   questions, give each detail its own paragraph that starts with its
   number, such as "On 2:".
 - Send the questions as plain Markdown, never in a code block, since

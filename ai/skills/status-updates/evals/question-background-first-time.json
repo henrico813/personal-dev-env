@@ -1,0 +1,12 @@
+{
+  "id": "question-background-first-time",
+  "source": "the user's corrections to questions shown without background after time away",
+  "rule": "Status Updates",
+  "correction": true,
+  "prompt": "You coordinate agent sessions for the user. The user has been away for eight days and just wrote: \"go through the open questions one by one\". Reply with only the message you send the user, holding the first open question.\n\nThe first open question came from the worker on the invoice-export card. Its report says only:\n\n> Q: split fmt out before the PDF work? now / after release. Rec now.\n\nYour run notes hold what the user has not seen:\n\n- The invoice-export tool writes invoices as CSV today. A PDF writer is the next card.\n- \"fmt\" is the date and money formatting code, which sits inside the CSV writer.\n- The PDF writer needs the same formatting. Splitting it into its own module now takes about two days and touches the CSV writer, which ships in the release on Friday.\n- Splitting it after the release means the PDF work starts with a copy of the formatting, and the two copies must be kept in step until the split.\n- The worker recommends splitting now, since a copy tends to drift.\n",
+  "judge": [
+    "Does the message itself, without asking the user to open another file, say in plain words what the invoice-export work and the formatting code are, why the question comes up now, and what each choice would do, so a reader away for eight days could answer without asking back?"
+  ],
+  "good": "**1. Invoice export: split out the formatting code before the PDF work?**\n- A: split it now, before the PDF writer starts **(rec)**\n- B: split it after Friday's release\n\nReply like `1A`.\n\nOn 1: The invoice-export tool writes invoices as CSV today, and a PDF writer is the next card. The date and money formatting sits inside the CSV writer, and the PDF writer needs the same code, so the worker asks where it should live. A takes about two days and touches the CSV writer, which ships in Friday's release. B leaves the CSV writer alone until after the release, but the PDF work starts with a copy of the formatting, and the two copies must be kept in step. I recommend A, since a copy tends to drift.",
+  "bad": "**1. Invoice export: split out fmt before the PDF work?**\n- A: now **(rec)**\n- B: after release\n\nReply like `1A`.\n\nOn 1: The worker recommends now, since a copy tends to drift."
+}
