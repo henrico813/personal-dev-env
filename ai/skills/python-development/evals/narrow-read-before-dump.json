@@ -1,0 +1,14 @@
+{
+  "id": "narrow-read-before-dump",
+  "source": "session review of SpendScope categorization sessions",
+  "rule": "Workflow",
+  "correction": true,
+  "prompt": "You are new to a project's backend and want to learn how its 900-line categorizer module works end to end before changing one function in it. You have not opened the file yet. What do you do first to learn this?",
+  "pass": ["rg\\s|ripgrep"],
+  "fail": [
+    "(?<!not )(?<!never )(?<!don't )(?<!won't )(read|open)\\w* (the )?(whole|entire|full) file\\b",
+    "(?<!not )(?<!never )(?<!don't )(?<!won't )sed -n"
+  ],
+  "good": "Run `rg -n \"setting_name\" backend/app.py` to quote only the matching lines with their line numbers.",
+  "bad": "Read the whole file, for example `sed -n '1,900p' backend/app.py`, and scan it for the setting."
+}

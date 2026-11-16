@@ -43,6 +43,11 @@ files, supported Python versions, CI, and configured checks. Identify the
 behavior that must change and the behavior that must remain. Do not edit files
 for a review-only request.
 
+To find how an unfamiliar source file behaves, search it with narrow
+`rg` that quotes the matched lines and their line numbers, rather
+than dumping the whole file with `sed` or a full read. Read a file in
+full only when you are about to edit it.
+
 Repository-configured tools and local conventions win. PEP 8 is the primary
 style guide when the repository does not decide. Official Python and pytest
 documentation settle behavior. Do not raise the minimum Python version, change
