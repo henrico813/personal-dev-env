@@ -1,6 +1,6 @@
 {
   "id": "narrow-read-before-dump",
-  "source": "session review of SpendScope categorization sessions",
+  "source": "session review of categorization sessions",
   "rule": "Workflow",
   "correction": true,
   "prompt": "You are new to a project's backend and want to learn how its 900-line categorizer module works end to end before changing one function in it. You have not opened the file yet. What do you do first to learn this?",

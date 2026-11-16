@@ -43,10 +43,13 @@ files, supported Python versions, CI, and configured checks. Identify the
 behavior that must change and the behavior that must remain. Do not edit files
 for a review-only request.
 
-To find how an unfamiliar source file behaves, search it with narrow
-`rg` that quotes the matched lines and their line numbers, rather
-than dumping the whole file with `sed` or a full read. Read a file in
-full only when you are about to edit it.
+To learn how an unfamiliar source file you found during the work
+behaves, search it with `rg -n` for the names you need, such as
+`rg -n 'def categorize|^class ' app.py`, and read only those lines.
+Do not print the whole file with `sed -n` or a full read: every later
+turn re-reads it, so a large file costs far more tokens than the few
+lines that answer the question. Read a file in full when you are
+about to edit it, or when a review needs its whole flow.
 
 Repository-configured tools and local conventions win. PEP 8 is the primary
 style guide when the repository does not decide. Official Python and pytest
