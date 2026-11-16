@@ -68,6 +68,7 @@ one used last.
   flag     Mark a pane \"needs you\"
   unflag   Clear the \"needs you\" mark
   alive    Is an OpenCode session alive
+  requests Approval requests and state
   go       Show the next hub
   gather   Put hubs at the sidebar top
   desk     Make the user's desk
@@ -424,6 +425,19 @@ pub enum Command {
         /// The OpenCode session ID
         session: String,
     },
+    /// Approval requests and state
+    ///
+    /// Reads the pde-gh-write request files and prints each live
+    /// session's requests from the last day, and every open request,
+    /// with its state, one of pending, approved, running, declined, ran or
+    /// expired. Only pending waits on the user. Run it before you tell
+    /// the user an approval waits.
+    #[command(after_help = "Example: hub requests --json")]
+    Requests {
+        /// Print the same facts as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Show the next hub
     ///
     /// Shows the hub after the one you look at, in sidebar order,
@@ -700,6 +714,7 @@ impl Command {
             Command::Flag { .. } => "flag",
             Command::Unflag { .. } => "unflag",
             Command::Alive { .. } => "alive",
+            Command::Requests { .. } => "requests",
             Command::Go => "go",
             Command::Gather => "gather",
             Command::Desk => "desk",
@@ -911,6 +926,7 @@ pub fn takes_machine(command: &Command) -> bool {
         | Command::Park { .. }
         | Command::Auto { .. }
         | Command::Alive { .. }
+        | Command::Requests { .. }
         | Command::Go
         | Command::Gather
         | Command::Desk

@@ -15,6 +15,7 @@ pub mod handoff;
 pub mod launch;
 pub mod next;
 pub mod reports;
+pub mod requests;
 pub mod send;
 pub mod sidebar;
 pub mod status;

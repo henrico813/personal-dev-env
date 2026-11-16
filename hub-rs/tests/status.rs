@@ -592,3 +592,38 @@ fn run_status_keeps_sessions_git_cannot_clear() {
         )
     );
 }
+
+/// pde-gh-write never runs a pending request four hours after its last
+/// change. Counting such a file as open kept its session at "approval
+/// waits" for good, so the hub told the user an approval waited that
+/// could no longer be given.
+#[test]
+fn run_status_ignores_expired_pending_request() {
+    let mut test_tools = TestTools::new();
+    // A folder outside any repository, where git finds nothing to keep.
+    let plain_folder = test_tools.path().to_owned();
+    test_tools.herdr.agents = vec![Agent {
+        folders: vec![plain_folder],
+        ..make_agent("demo-kb-007-impl", AgentStatus::Idle)
+    }];
+    test_tools.cards.stages = [("DEMO-KB-007".to_owned(), Stage::Accepted)].into();
+    let requests = test_tools.state_folder().join("pr-write");
+    fs::create_dir(&requests).unwrap();
+    let request = json!({
+        "state": "pending",
+        "pane_id": "w1:demo-kb-007-impl",
+        "updated": (Timestamp::now() - SignedDuration::from_hours(5)).to_string(),
+    });
+    fs::write(requests.join("req1.json"), request.to_string()).unwrap();
+
+    let status = read_status_json(&test_tools);
+
+    assert_eq!(
+        list_rows(&status),
+        [(
+            "demo-kb-007-impl".to_owned(),
+            "to-close".to_owned(),
+            "card done".to_owned(),
+        )]
+    );
+}

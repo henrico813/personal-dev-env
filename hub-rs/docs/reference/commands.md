@@ -241,8 +241,11 @@ date heading on the day's first line. Prints `noted HHMM`.
 
 `hub brief [--run DIR]` prints what waits on the user. The first line
 is `board active 5 of 8, review 19 of 6; 4 decisions`, or
-`board: REASON`. Then come `reviews.md` and one `Decision: TITLE`
-section per entry in `decisions.md`, or `Nothing waits on the user.`
+`board: REASON`. Then come one line per pending pde-gh-write request,
+oldest first, such as `approval A0016cd 1h12m left app #515 merge`,
+then `reviews.md` and one `Decision: TITLE` section per entry in
+`decisions.md`, or `Nothing waits on the user.` A pending request past
+pde-gh-write's four-hour expiry does not show.
 When cards wait on others, the board line is followed by
 `waiting-on-others 2, oldest 8 days`, and the brief ends with a list
 the user need not act on:
@@ -256,6 +259,28 @@ Waiting on others (no action needed)
 
 - Exits 3 with `decisions.md entry 'TITLE' lacks ...` for an
   incomplete entry.
+
+### requests
+
+`hub requests [--json]` reads every pde-gh-write request file and
+prints one row per request, newest change first: each live session's
+requests changed in the last day, and every open request whatever
+its session. SESSION is `-` when no live session filed it, and AGE
+counts from the last change.
+
+```text
+REF      SESSION           STATE    AGE    PULL REQUEST
+Aaa0004  demo-kb-008-impl  pending  5m     app #20 merge
+Aaa0002  demo-kb-007-impl  expired  5h00m  app #20 merge
+```
+
+STATE is the file's `state`, or `expired` for a pending or approved
+request four hours after its last change, when pde-gh-write no
+longer runs it. Only `pending` waits on the user. A `running` request
+that old is a run that died; it shows only as a live session's
+request. With no rows it prints
+`No requests from live sessions in the last day.` A last line
+`requests: N files did not parse` names unreadable files.
 
 ### handoff
 

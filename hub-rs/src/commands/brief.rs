@@ -2,13 +2,16 @@
 //! An entry in `decisions.md` holds a `## <title>`, the question, two
 //! or more `- ` choices, `Recommended:` and `If no reply:`.
 
+use jiff::Timestamp;
+
 use super::Outcome;
 use crate::external::cards::{Board, format_days};
 use crate::shared::decisions::{self, DecisionEntry};
 use crate::shared::run_folder::RunFolder;
-use crate::shared::{HubError, Tools};
+use crate::shared::{HubError, Tools, format_span};
 
-/// Prints the board line, `reviews.md`, then every decision entry in
+/// Prints the board line, one line per pending pde-gh-write request,
+/// read fresh at `now`, `reviews.md`, then every decision entry in
 /// full, so the user never has to ask what a numbered question was.
 /// A failed `card board` becomes a `board: REASON` line. Cards waiting
 /// on others come last, as news the user may chase but need not act on.
@@ -17,7 +20,7 @@ use crate::shared::{HubError, Tools};
 ///
 /// `HubError::NotDone`, printing nothing, when an entry lacks a part
 /// the user needs to decide.
-pub fn run_brief(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubError> {
+pub fn run_brief(tools: &Tools<'_>, run: &RunFolder, now: Timestamp) -> Result<Outcome, HubError> {
     let entries = decisions::read_decisions(&run.read_optional_file("decisions.md")?);
     let problems: Vec<String> = entries
         .iter()
@@ -48,6 +51,10 @@ pub fn run_brief(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubError
     board_lines.extend(board.as_ref().ok().and_then(Board::waiting_line));
     let waiting = board.map(|board| board.waiting).unwrap_or_default();
     let mut sections = vec![board_lines.join("\n")];
+    let approvals = list_pending_approvals(tools, now)?;
+    if !approvals.is_empty() {
+        sections.push(approvals.join("\n"));
+    }
     let pull_requests = run.read_optional_file("reviews.md")?;
     if !pull_requests.trim().is_empty() {
         sections.push(pull_requests.trim().to_owned());
@@ -57,7 +64,7 @@ pub fn run_brief(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubError
         section.extend(entry.lines.iter().cloned());
         sections.push(section.join("\n"));
     }
-    if pull_requests.trim().is_empty() && entries.is_empty() {
+    if approvals.is_empty() && pull_requests.trim().is_empty() && entries.is_empty() {
         sections.push("Nothing waits on the user.".to_owned());
     }
     if !waiting.is_empty() {
@@ -81,6 +88,43 @@ pub fn run_brief(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubError
     Ok(Outcome {
         lines: text.lines().map(str::to_owned).collect(),
     })
+}
+
+/// Returns one line per pending request, such as
+/// `approval A0016cd 1h12m left personal-dev-env #515 create`, and a
+/// line for request files that did not parse, since one may hold an
+/// approval that waits.
+fn list_pending_approvals(tools: &Tools<'_>, now: Timestamp) -> Result<Vec<String>, HubError> {
+    let saved = tools
+        .requests
+        .list_saved_requests(now)
+        .map_err(|source| HubError::File {
+            path: tools.requests.folder().to_owned(),
+            source,
+        })?;
+    let mut pending: Vec<_> = saved
+        .requests
+        .iter()
+        .filter(|request| request.is_open && request.state == "pending")
+        .collect();
+    pending.sort_by_key(|request| request.changed);
+    let mut lines: Vec<String> = pending
+        .iter()
+        .map(|request| {
+            let left = request
+                .time_left(now)
+                .map_or_else(String::new, |left| format!(" {} left", format_span(left)));
+            format!(
+                "approval {}{left} {}",
+                request.reference(),
+                request.pull_request
+            )
+        })
+        .collect();
+    if saved.bad_files > 0 {
+        lines.push(format!("requests: {} files did not parse", saved.bad_files));
+    }
+    Ok(lines)
 }
 
 /// Lists the parts an entry lacks, such as `two choices`. Lines that
