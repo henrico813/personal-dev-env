@@ -1,7 +1,7 @@
 {
-  "id": "lesson-move-not-routed-here",
+  "id": "lesson-move-routes-to-skill-fix",
   "source": "the user's correction that skill-lessons still offered lesson moves after skill-fix replaced them",
-  "rule": "description",
+  "rule": "Guardrails",
   "correction": true,
   "prompt": "You pick which skill to load for a request, and you have the skill-lessons skill in front of you. Reply with only the skill you would load and one sentence on why.\n\nThe user writes: \"The installed commit-style skill has three saved\nlessons. Please fold them into its text now.\"\n",
   "pass": [
