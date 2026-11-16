@@ -452,60 +452,67 @@ pub enum Command {
     // line below is wrapped by hand at 40 columns.
     /// Cards, sessions and gauges
     ///
-    /// Shows four panels sized for a 40x16
-    /// phone screen. Panel 1, the queue, shows
-    /// your cards in groups. Its top line
-    /// counts the cards in progress and in
-    /// review, and what waits on you. Below it
-    /// are five groups, and Could not read on
-    /// top when a read fails. In progress, In
-    /// review, Ready and Draft hold cards from
-    /// card list. Needs you holds the questions
-    /// in decisions.md and the sessions that
-    /// wait on you, from every hub running on
-    /// this machine, each tagged with its hub.
-    /// With no hub running, it says so. Ready
-    /// and Draft start folded. It reads again
-    /// every 10 seconds, or when you press r.
+    /// Opens on a glance page with three
+    /// blocks, sized for a 40x16 phone screen.
+    /// AWAY lists worker reports and the hubs'
+    /// notes lines since you last used the
+    /// board. QUEUE shows what waits on you
+    /// first, then cards that run, idle cards
+    /// and cards in review; each row starts
+    /// with you, run, idle or rev. NEXT gives
+    /// one line for what waits on you, the
+    /// count of cards to review, and the Ready
+    /// cards the hub can start. A block with
+    /// more than fits ends in + N more. Below
+    /// 100 columns the blocks stack, and from
+    /// 100 they sit side by side.
     ///
-    /// Panel 2, kanban, lists cards by stage,
-    /// REVIEW first. Panel 3, sessions, groups
-    /// every session as hub clean decides, in
-    /// NEEDS YOU, WORKING, KEPT, SAFE TO CLOSE
-    /// and PARKED. Each row has a context bar,
-    /// full at 150K tokens, and why the session
-    /// is in its group. Panel 4, machine, shows
-    /// file-watch slots, free disk and the
-    /// newest reports. Tab or 1 to 4 picks a
-    /// panel. Below 100 columns the board shows
-    /// one panel, and from 100 all four side by
-    /// side.
+    /// Keys 1 to 5 open full views, named away,
+    /// queue, next, sessions and machine, each
+    /// under a < name breadcrumb. Tab steps
+    /// through the views and back to the glance
+    /// page. A tap on a block or its + N more
+    /// opens its view; a tap on the breadcrumb,
+    /// Esc or q goes back. Esc on the glance
+    /// page does nothing. ? opens help, r reads
+    /// again, and q quits from the glance page.
+    /// It also reads again every 10 seconds.
     ///
-    /// On the queue, tap a count to jump to its
-    /// group, a group to fold or open it, + N
-    /// more to see the rest, or a row to see
-    /// the card in full. j and k move the
-    /// choice, and Enter or space taps it. On
-    /// kanban and machine they scroll. q quits
-    /// from the list. On a card, q, Esc or any
-    /// tap goes back. --print prints one screen
-    /// as text, and --dump prints its elements
-    /// as JSON. Both draw a new board, not the
-    /// board that listens.
+    /// In the queue view, tap a heading to fold
+    /// or open it, a count to reach its group,
+    /// or a row to read the card. Needs you
+    /// holds the hub's questions and the
+    /// sessions that wait on you. Ready, Draft
+    /// and Waiting on others start folded. j
+    /// and k move the choice, and Enter or
+    /// space taps it. On a card or help page,
+    /// any tap, Enter, space, q or Esc goes
+    /// back.
     ///
-    /// On the sessions panel, a tap on a row
+    /// In the sessions view, a tap on a row
     /// only chooses it. The bar at the bottom
     /// then reads -> jump to NAME, and a tap on
     /// it shows that session in Herdr. Enter
     /// jumps too, but only after 0.7 seconds
     /// with no input, so a stray Enter after a
-    /// tap does not jump. c, from any panel,
-    /// lists the SAFE TO CLOSE sessions, ending
-    /// in + N more when they do not fit. y,
-    /// once the list has been open 1 second and
-    /// no key came for 0.7 seconds, closes and
-    /// parks the listed sessions as hub clean
-    /// does. Any other key or a tap cancels.
+    /// tap does not jump. c, from the glance or
+    /// any view, lists the SAFE TO CLOSE
+    /// sessions, ending in + N more when they
+    /// do not fit. y, once the list has been
+    /// open 1 second and no key came for 0.7
+    /// seconds, closes and parks the listed
+    /// sessions as hub clean does. Any other
+    /// key or a tap cancels.
+    ///
+    /// The board saves the time of your last
+    /// key or tap, so AWAY can start from it.
+    /// --print, --dump and --control read that
+    /// time but never write it, so an agent's
+    /// look at the board does not hide news
+    /// from you. --print prints one screen as
+    /// text and --dump prints its elements as
+    /// JSON. Both draw a new board, not the
+    /// board that listens.
     ///
     /// To let an agent drive the board you
     /// watch, start it with --listen. Then
@@ -519,10 +526,12 @@ pub enum Command {
     /// ~/.local/state/pde/hub, which works on
     /// Linux and macOS but not Windows. Until
     /// its first read ends, the board shows no
-    /// cards and its hint says reading. Tests
-    /// use the hidden --control, which reads
-    /// the same steps one per line but never
-    /// jumps or cleans.
+    /// cards and its hint says reading. A step
+    /// an agent sends is not your input, so it
+    /// does not move the time the board saves.
+    /// Tests use the hidden --control, which
+    /// reads the same steps one per line but
+    /// never jumps or cleans.
     ///
     /// Each step is one of these.
     ///   tap ID       tap an element by the id
