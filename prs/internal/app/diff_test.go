@@ -37,7 +37,7 @@ printf '%s\n%s\t+1 -0\ta.go\n' "$key" "$row"
 `
 
 // The diff screen must keep the current file across less, the file picker
-// and every key, with L and H stopping at the ends. Otherwise a key shows
+// and every key, with l and h stopping at the ends. Otherwise a key shows
 // the wrong diff or closes the diff screen.
 func TestOpenDiffTracksFileAcrossKeys(t *testing.T) {
 	bin := writeScripts(
@@ -55,7 +55,7 @@ func TestOpenDiffTracksFileAcrossKeys(t *testing.T) {
 			bin,
 			"keys",
 		),
-		"LLLHoooHh",
+		"lllhooohq",
 		0o600,
 	)
 	writeFile(
@@ -85,17 +85,17 @@ func TestOpenDiffTracksFileAcrossKeys(t *testing.T) {
 		"log",
 	))
 	want := "diff --git a/a.go b/a.go\n" + // The first file.
-		"diff --git a/b.go b/b.go\n" + // L
-		"diff --git a/c.go b/c.go\n" + // L
-		"diff --git a/c.go b/c.go\n" + // L stays on the last file.
-		"diff --git a/b.go b/b.go\n" + // H
+		"diff --git a/b.go b/b.go\n" + // l
+		"diff --git a/c.go b/c.go\n" + // l
+		"diff --git a/c.go b/c.go\n" + // l stays on the last file.
+		"diff --git a/b.go b/b.go\n" + // h
 		"picker on 2\n" + // o opens the picker on b.go.
 		"diff --git a/b.go b/b.go\n" + // The picker's o, with a.go selected.
 		"picker on 2\n" + // o
 		"diff --git a/b.go b/b.go\n" + // The picker's l with nothing matching.
 		"picker on 2\n" + // o
 		"diff --git a/a.go b/a.go\n" + // The picker's l on a.go.
-		"diff --git a/a.go b/a.go\n" // H stays on the first file, then h.
+		"diff --git a/a.go b/a.go\n" // h stays on the first file, then q.
 	if string(shown) != want {
 		t.Errorf(
 			"screens shown were\n%s\nwant\n%s",
