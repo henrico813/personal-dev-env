@@ -190,7 +190,9 @@ pattern over the whole file.
   that changes a note (`write`, `append`, `append-note`, `apply-patch`,
   `move`, `delete`). `write` and `append` change the file in place, so
   on a network drive a dropped connection can leave a note cut short,
-  which sync then copies everywhere.
+  which sync then copies everywhere. The one exception is the
+  `obsidian-daily-note` skill, which adds a section to today's daily
+  note with `nobs append` and checks it with `nobs read`.
 - Only `nobs read` accepts the full path that `nobs find` prints.
   `nobs find` and the other `nobs` commands take vault-relative paths.
 - When the user asks you to sync a note to the vault, run
