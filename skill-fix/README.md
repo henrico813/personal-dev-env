@@ -56,10 +56,19 @@ skill-fix reads these keys in `~/.config/pde/config.json`:
 | `skill_fix_label` | A plain word for this PC, such as `desk`, in lowercase letters and digits |
 | `extra_skills_repo` | The checkout of the extra skills repository, when this PC has one |
 | `extra_terms_file` | A list of extra terms; a personal fix that holds one stays on this PC as a held fix |
+| `extra_gitea_repo_url` | The web address of the extra repository on Gitea, such as `http://127.0.0.1:3000/owner/skills`, when its fix pull requests are on Gitea |
+| `extra_gitea_token_file` | The file that holds the Gitea API token; set it with `extra_gitea_repo_url` |
 
 The label appears in public branch names and pull request titles, so
 it must name no machine. Until it is set, fixes are committed but
 nothing is pushed.
+
+When both Gitea keys are set, sync finds and opens the extra
+repository's fix pull request through the Gitea API, not `gh` and
+`pde-gh-write`. Make the token in Gitea under Settings, Applications,
+with the `write:repository` scope, and keep its file at mode 600.
+skill-fix opens the pull request at once, and you merge it in the
+Gitea web page.
 
 Sync fetches and pushes by the HTTPS form of a GitHub SSH remote,
 because the update timer has no SSH agent. Git then needs a

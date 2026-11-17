@@ -2,8 +2,10 @@
 
 Read ``sync_repo`` first. Pushes are plain ``git push``, never forced.
 Each batch gets its own branch, so a merged batch's branch is never
-pushed to again. The only PR write is one ``pde-gh-write pr create``
-per batch, and the user approves it there.
+pushed to again. On GitHub, the only PR write is one ``pde-gh-write pr
+create`` per batch, and the user approves it there. A repo whose fix
+PRs are on Gitea opens its PR through the Gitea API instead, and the
+user merges it in Gitea.
 
 Fetches and pushes go to the HTTPS form of a GitHub SSH remote, as in
 ``pde-installer update``, because its timer has no SSH agent.
@@ -19,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from skill_fix import repos
+from skill_fix import gitea, repos
 from skill_fix.repos import Repo, RepoName, Settings, ToolError
 
 SyncState = Literal[
@@ -231,8 +233,10 @@ def find_pr(repo: Repo, branch: str) -> dict | None:
     """Return the newest PR from branch, open, closed or merged, or None.
 
     Raises:
-        ToolError: gh failed.
+        ToolError: gh or the Gitea API failed.
     """
+    if repo.gitea is not None:
+        return gitea.find_pr(repo.gitea, branch)
     output = run_tool(
         repo,
         [
@@ -289,13 +293,17 @@ def open_fix_pr(repo: Repo, branch: str, label: str) -> SyncResult:
     """Ask pde-gh-write to open the fix PR; exit 3 means it waits.
 
     A rerun of the same command, with the same title, body and folder,
-    reads the waiting request instead of filing a second one.
+    reads the waiting request instead of filing a second one. A repo
+    on Gitea opens the PR at once through its API.
 
     Raises:
         ToolError: pde-gh-write is missing, refused the command, or
-            the request was declined.
+            the request was declined, or the Gitea API failed.
     """
     title = PR_TITLE.format(label=label)
+    if repo.gitea is not None:
+        number = gitea.open_pr(repo.gitea, branch, title, PR_BODY)
+        return SyncResult(repo.name, "pr_open", branch, number)
     body = repos.find_state_dir() / f"{repo.name}-pr-body.md"
     body.write_text(PR_BODY, encoding="utf-8")
     if repo.name == "personal":
