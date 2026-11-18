@@ -2,8 +2,11 @@
 
 Read ``sync_repo`` first. Pushes are plain ``git push``, never forced.
 Each batch gets its own branch, so a merged batch's branch is never
-pushed to again. The only PR write is one ``pde-gh-write pr create``
-per batch, and the user approves it there.
+pushed to again. On GitHub, the only PR write is one ``pde-gh-write pr
+create`` per batch, and the user approves it there. A repo whose fix
+PRs are on a forge opens its PR through the forge API instead, and the
+user merges it there. Each sync rebuilds that PR's body from its fix
+commits.
 
 Fetches and pushes go to the HTTPS form of a GitHub SSH remote, as in
 ``pde-installer update``, because its timer has no SSH agent.
@@ -19,8 +22,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from skill_fix import repos
-from skill_fix.repos import Repo, RepoName, Settings, ToolError
+from skill_fix import forge, pr_body, repos
+from skill_fix.repos import ForgeRepo, Repo, RepoName, Settings, ToolError
 
 SyncState = Literal[
     "pushed",
@@ -145,6 +148,8 @@ def sync_repo(repo: Repo, settings: Settings) -> SyncResult:
         push_branch(repo, url, branch)
         pushed = True
     if pr is not None:
+        if repo.forge is not None:
+            refresh_forge_body(repo.forge, repo, pr)
         return SyncResult(
             repo.name, "pushed" if pushed else "pr_open", branch, number
         )
@@ -231,8 +236,10 @@ def find_pr(repo: Repo, branch: str) -> dict | None:
     """Return the newest PR from branch, open, closed or merged, or None.
 
     Raises:
-        ToolError: gh failed.
+        ToolError: gh or the forge API failed.
     """
+    if repo.forge is not None:
+        return forge.find_pr(repo.forge, branch)
     output = run_tool(
         repo,
         [
@@ -289,15 +296,20 @@ def open_fix_pr(repo: Repo, branch: str, label: str) -> SyncResult:
     """Ask pde-gh-write to open the fix PR; exit 3 means it waits.
 
     A rerun of the same command, with the same title, body and folder,
-    reads the waiting request instead of filing a second one.
+    reads the waiting request instead of filing a second one. A repo
+    on a forge opens the PR at once through its API.
 
     Raises:
         ToolError: pde-gh-write is missing, refused the command, or
-            the request was declined.
+            the request was declined, or the forge API failed.
     """
     title = PR_TITLE.format(label=label)
-    body = repos.find_state_dir() / f"{repo.name}-pr-body.md"
-    body.write_text(PR_BODY, encoding="utf-8")
+    if repo.forge is not None:
+        body = pr_body.build_pr_body(repo)
+        number = forge.open_pr(repo.forge, branch, title, body)
+        return SyncResult(repo.name, "pr_open", branch, number)
+    body_file = repos.find_state_dir() / f"{repo.name}-pr-body.md"
+    body_file.write_text(PR_BODY, encoding="utf-8")
     if repo.name == "personal":
         with tempfile.TemporaryDirectory() as folder:
             text = Path(folder) / "text"
@@ -317,7 +329,7 @@ def open_fix_pr(repo: Repo, branch: str, label: str) -> SyncResult:
             "--title",
             title,
             "--body-file",
-            str(body),
+            str(body_file),
         ],
     )
     if result.returncode == 3:
@@ -330,6 +342,20 @@ def open_fix_pr(repo: Repo, branch: str, label: str) -> SyncResult:
     return SyncResult(
         repo.name, "pr_open", branch, pr["number"] if pr else None
     )
+
+
+def refresh_forge_body(forge_repo: ForgeRepo, repo: Repo, pr: dict) -> None:
+    """Rebuild an open forge PR's body from its fixes, when it changed.
+
+    A GitHub PR keeps ``PR_BODY``, since each edit there would wait
+    for the user's approval through pde-gh-write.
+
+    Raises:
+        ToolError: Git or the forge API failed.
+    """
+    body = pr_body.build_pr_body(repo)
+    if pr.get("body") != body:
+        forge.edit_pr_body(forge_repo, pr["number"], body)
 
 
 def run_scan(repo: Repo, *args: str) -> bool:
