@@ -412,76 +412,108 @@ record, adds the session to its card and closes its tab. Prints
 
 ### board
 
-`hub board` shows four panels, sized for a 40x16 phone screen.
-Panel 1, the queue, shows the cards by stage: In progress, In
-review, Waiting on others, Needs you, Ready and Draft. The cards come from
-`card list`. Needs you holds the questions in each `decisions.md`
-and the sessions that wait on the user, from every hub on this
-machine that Herdr lists: each `~/.local/state/herdr-hub.*` folder
-whose hub `hub watch start` named, auto runs included. Each
-question's tag is its hub's name, cut to 6 letters, and its
-details page names the hub in full. With no hub running, Needs you
-shows `no hub running`. It ignores `HUB_RUN`, and the hidden
-`--run DIR` shows one run only. A Could not read group shows on
-top when a read fails. An open group shows four rows, then
-`+ N more`; Waiting on others, Ready and Draft start folded, and
-Waiting on others shows only when it holds a card. Each row starts with a
-mark for its group: `*` in progress, `@` in review, `?` needs you,
-`o` ready, `.` draft and `!` could not read.
+`hub board` opens on a glance page, sized for a 40x16 phone screen,
+with three blocks: AWAY, QUEUE and NEXT. Each block shows only the
+rows that fit and ends in `+ N more` when it holds more. Below 100
+columns the blocks stack, with AWAY and NEXT giving up rows before
+QUEUE; from 100 columns they sit side by side.
 
-Panel 2, kanban, lists the cards by stage: REVIEW, ACTIVE,
-WAITING-ON-OTHERS, READY and DRAFT. Panel 3, sessions, groups
-every session as `hub clean` decides: NEEDS YOU, WORKING, KEPT,
-SAFE TO CLOSE and PARKED. Each
-row shows the name, a context bar full at 150K tokens, the context
-in thousands and why the session is in its group, such as
-`unpushed review`. A why too long for the row goes on the line
-below it. Panel 4, machine, shows the file-watch slots in
-use (`WATCH`, with `high` from 90%) and free disk (`DISK`), then
-the six newest reports. Tab or 1 to 4 picks a panel. Below 100
-columns the board shows one panel, and its hint starts with the
-panel number, such as `2/4`. From 100 columns it shows all four,
-and `>` marks the panel keys act on.
-
-- On the queue, a tap on a count jumps to its group, a tap on a
-  heading folds or opens it, and a tap on a row opens its details.
-  On a details page, any tap, Enter, space, q or Esc goes back.
-- On the queue, j, k, the arrow and page keys or the wheel move the
-  choice, and Enter or space acts on it. On kanban and machine they
-  scroll. r reads again, and q quits from the list. It also reads
-  again every 10 seconds. `NO_COLOR` turns colors off.
-- On the sessions panel, a tap on a row only chooses it. The bar
-  at the bottom then reads `-> jump to NAME`, and a tap on it
-  shows that session in Herdr. Enter also jumps, but only after
-  0.7 seconds with no input, so a stray Enter after a tap does not
-  jump. A failed jump shows `jump failed: REASON` on the bottom
-  line.
-- c, from any panel, lists the SAFE TO CLOSE sessions, each marked
-  `close` or `park`, and ends in `+ N more` when they do not fit.
-  The list does not change while it is open. y, once the list has
-  been open 1 second and no key came for 0.7 seconds, closes and
-  parks the listed sessions as `hub clean` does and shows its
-  output, with a `kept` line for any it now keeps. Any other key or
-  a tap cancels. With nothing to close or no hub running, c says so
-  and changes nothing.
+- AWAY lists worker reports and the hubs' `notes.md` lines, newest
+  first, from after the time the board last saved. Its heading
+  counts them, such as `AWAY  3 new`, or says `newest` when no
+  board has saved a time yet. Once a time is saved, AWAY also
+  reads runs whose hub has ended, so what a hub did before it
+  ended still shows.
+- QUEUE shows what waits on the user first, then cards that run,
+  idle cards and cards in review. Each row starts with its status
+  word: `you` waits on the user, `run` a worker is at work on it,
+  `idle` it has a worker and none is at work, `rev` a pull
+  request to read. The queue view adds two more words: `none`,
+  a card with no worker, and `!`, a source the read could not
+  get. A card whose worker waits on the user is left out of the
+  block; that worker already shows there as a `you` row. The
+  heading counts what runs, waits and sits idle, such as
+  `1 run · 2 you · 1 idle`.
+- NEXT gives one `you:` line per question or session that waits on
+  the user, one `then:` line counting the cards in review, and one
+  `hub:` line per Ready card in `card list` order. The block shows
+  the first of each; the next view shows them all.
+- Keys 1 to 5 open full views, named away, queue, next, sessions
+  and machine, each under a `< name` breadcrumb. Tab steps through
+  the views and back to the glance page. A tap on a block or its
+  `+ N more` opens its view; a tap on the breadcrumb, Esc or q
+  goes back. r reads again, and q quits from the glance page.
+  Ctrl-C quits from anywhere. The board also reads again every 10
+  seconds. `NO_COLOR` turns colors off. The away, next and
+  machine views and any details page scroll with j, k, the page
+  keys or the wheel, and on a details page any tap, Enter, space,
+  q or Esc goes back.
+- The queue view lists the cards by group: Needs you, In progress,
+  In review, Waiting on others, Ready and Draft. The cards come
+  from `card list`. Needs you holds the questions in each
+  `decisions.md` and the sessions that wait on the user, from
+  every hub on this machine that Herdr lists: each
+  `~/.local/state/herdr-hub.*` folder whose hub `hub watch start`
+  named, auto runs included. Each question's tag is its hub's
+  name, cut to 6 letters, and its details page names the hub in
+  full. With no hub running, Needs you shows `no hub running`. It
+  ignores `HUB_RUN`, and the hidden `--run DIR` shows one run
+  only. A Could not read group shows on top when a read fails.
+  Ready, Draft and Waiting on others start folded, and Waiting on
+  others shows only when it holds a card. An open group shows four
+  rows, then `+ N more`. A tap on a heading folds or opens it, a
+  tap on a count opens its group and scrolls to it, and a tap on
+  a row opens its details. j, k, the arrow and page keys or the
+  wheel move the choice, and Enter or space acts on it.
+- The sessions view groups every session as `hub clean` decides:
+  NEEDS YOU, WORKING, KEPT, SAFE TO CLOSE and PARKED. Each row
+  shows the name, a context bar full at 150K tokens, the context
+  in thousands and why the session is in its group, such as
+  `unpushed review`. A why too long for the row goes on the line
+  below it. A tap on a row only chooses it; the bar at the bottom
+  then reads `-> jump to NAME`, and a tap on it shows that session
+  in Herdr. Enter also jumps, but only after 0.7 seconds with no
+  input, so a stray Enter after a tap does not jump. A failed jump
+  shows `jump failed: REASON` on the bottom line.
+- The machine view shows the file-watch slots in use (`WATCH`,
+  with `high` from 90%) and free disk (`DISK`), then the six
+  newest reports.
+- c, from the glance page or any view, lists the SAFE TO CLOSE
+  sessions, each marked `close` or `park`, and ends in `+ N more`
+  when they do not fit. The list does not change while it is
+  open. y, once the list has been open 1 second and no key came
+  for 0.7 seconds, closes and parks the listed sessions as
+  `hub clean` does and shows its output, with a `kept` line for
+  any it now keeps. Any other key or a tap cancels. With nothing
+  to close or no hub running, c says so and changes nothing.
+- A visit is one stretch of the user using the board, ended by
+  10 quiet minutes with no key or tap. The board saves the time
+  of the user's latest key or tap in
+  `~/.local/state/pde/hub/board-seen`, so the next board's AWAY
+  lists what came after that time. Taps while the user reads do
+  not start a new visit. The live board writes the file at most
+  once a minute, and once more as it quits. `--print`, `--dump`
+  and `--control` read that time but never write it, so an
+  agent's look at the board does not hide news from the user.
 - `--print` prints one screen as text, and `--dump` prints its
-  elements as one JSON line. Both draw a new board from the run
-  folder, at `--size`, default 40x16.
+  elements as one JSON line. Both draw a new board, starting on
+  the glance page, at `--size`, default 40x16.
 - `--listen` shows the live board and also takes steps from
-  `board.sock` in the run folder. From another terminal,
-  `hub board --send 'STEP'` does one step on it and prints the screen
-  that follows as one JSON line. It exits 2 when the board cannot
-  follow the step, and 3 when no board listens. The socket works on
-  Linux and macOS, not Windows.
+  `board.sock` in `~/.local/state/pde/hub`. From another
+  terminal, `hub board --send 'STEP'` does one step on it and
+  prints the screen that follows as one JSON line. It exits 2
+  when the board cannot follow the step, and 3 when no board
+  listens. A step an agent sends and a window resize do not count
+  as the user's input, so they do not move the saved time. The
+  socket works on Linux and macOS, not Windows.
 - A step is `tap ID`, `tap COLUMN ROW`, `press KEY`, `wheel up` or
   `wheel down`. KEY is `enter`, `esc`, `space`, `tab`, `up`,
   `down`, `pageup`, `pagedown`, `ctrl-c` or one character, such as
   `q`. The hidden `--control`, which tests use, takes the same
   steps but never jumps or cleans.
 
-`hub board --help` describes the JSON fields. "Screens agents can see
-and tap" in the [README](../../README.md) gives the rules every such
-screen follows.
+"Screens agents can see and tap" in the [README](../../README.md)
+describes the element JSON and the rules every such screen follows.
 
 ### auto
 
