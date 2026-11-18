@@ -155,9 +155,8 @@ are off by default. Most lines end with your own context, such as
   [references/hub-next-lines.md](references/hub-next-lines.md) says.
 - `hand off now: hub at <N>k`: your context passed 150k. Hand off
   the hub now, as Hand off the hub says.
-- `to-close <names>: <why>; run hub clean`, or the same with
-  `to-park`: those sessions finished. Run `hub clean` as Cleanup
-  says.
+- `to-close <names>: <why>; run hub clean`, or the same with `to-park`:
+  those sessions finished. Run `hub clean` as Cleanup says.
 - `timeout`: the `--timeout` you gave ran out with no news. Start it
   again.
 - `replaced by a newer hub next`: start nothing, since a newer
@@ -184,9 +183,8 @@ tools, so you never read half a report.
   settles it. Bring the user only a question whose answer changes
   what the user sees. File it, with your recommendation, as
   Questions for the user says.
-- A request to go on with a routine step: tell the worker to go
-  ahead. A merge or pull request edit is never a routine step, as
-  Merges says.
+- A request to go on with a routine step: tell the worker to go ahead.
+  A merge or pull request edit is never a routine step, as Merges says.
 - Finished work: start the next step. For an open pull request, add
   it to the review list, as Merges says.
 - A merged pull request: check the merge. For a personal-dev-env pull
@@ -222,8 +220,7 @@ handed off goes to the newest live session on its card, and prints
 
 `hub send` exits 1 with `not sent` when Herdr turned the message
 down or the session is gone, and with `unsure` when it may have
-arrived. For `unsure`, read
-the pane with
+arrived. For `unsure`, read the pane with
 `herdr agent read <name> --source recent-unwrapped --lines 40`, then
 delete the `.sending` file it names and send again only if the
 message did not arrive.
@@ -236,11 +233,10 @@ it with `hub at`:
 
 `--all` means every live worker found at that time. A live worker is a
 session on a card or one that has reported, and never a hub. `hub at`
-prints
-`at 20:00 to <names>: <stored file>`, and exits 2 for a time already
-past today. Delete the stored file to cancel the message. At that time,
-`hub next` holds the message for each session and sends it as it sends
-other held messages.
+prints `at 20:00 to <names>: <stored file>`, and exits 2 for a time
+already past today. Delete the stored file to cancel the message. At
+that time, `hub next` holds the message for each session and sends it
+as it sends other held messages.
 
 ## Waiting on the user
 
@@ -299,6 +295,11 @@ vault. A hub never reports to a hub on another machine.
   When you move a card to `in-review`, add the user's one next step with
   `card note KEY "next: <step>"`, such as `next: review PR #498`.
   `hub board` shows it on the card's details page.
+- When the user decides something about one card's work, such as what
+  it leaves out, add it to the Decisions section every card has, since
+  its worker reads the card, not `notes.md`. Run
+  `card add KEY Decisions "<decision>"` at once, even with no question
+  asked. For an answer, also do the steps in Questions for the user.
 - Move a card to or from `blocked`, the stage for work
   that waits only on people outside the user's team, as
   [references/blocked.md](references/blocked.md)
