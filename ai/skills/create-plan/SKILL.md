@@ -19,8 +19,9 @@ Use this skill to create a repository-grounded implementation proposal with exac
 
 When another agent gave you this task, write or revise the plan
 yourself and run `planner check` until it passes; Step 4 has the
-procedure. Then report the plan path, the check result, and open
-questions, and stop.
+procedure. When your brief gives a size limit, check the plan against
+it as Step 5 says. Then report the plan path, the check result, the
+plan's line count against the limit, and open questions, and stop.
 
 Follow decisions marked `user-decided`, and report any evidence that
 contradicts one. Change an `orchestrator-proposed` or `inferred from
@@ -322,7 +323,15 @@ or explain it in the plan.
    cross-cutting work, delegate focused architecture, bug, and completeness
    reviews in parallel and reconcile evidence-backed findings.
 4. Fix validation or source-review failures before reporting success.
-5. Report the output path, validation result, scope summary, and blockers.
+5. When the request, brief or handoff sets a size limit for the plan,
+   such as "under about 1000 lines", count the plan's lines with
+   `wc -l` before you report, so a fresh reviewer need not spend a
+   whole review finding the cuts. When it is over, cut what the brief
+   does not ask for, such as extra tests, optional extras and long
+   prose. Keep every change and decision the brief needs. When it
+   still does not fit, say in your report why the rest stays.
+6. Report the output path, validation result, scope summary, the
+   plan's line count against any size limit, and blockers.
 
 ## Review Principles
 
