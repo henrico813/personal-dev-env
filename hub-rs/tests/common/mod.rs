@@ -667,19 +667,19 @@ pub fn write_opencode_db(path: &Path, rows: &[OpenCodeRow<'_>]) {
     }
 }
 
-/// Adds a row to the OpenCode database's `session` table at `path`,
-/// making the table first when it is missing.
+/// Adds a row to the OpenCode database's `session_v2` table at
+/// `path`, making the table first when it is missing.
 pub fn write_opencode_session(path: &Path, session: &str, directory: &Path) {
     let database = Connection::open(path).unwrap();
     database
         .execute(
-            "create table if not exists session (id text primary key, directory text)",
+            "create table if not exists session_v2 (id text primary key, directory text)",
             [],
         )
         .unwrap();
     database
         .execute(
-            "insert into session values (?1, ?2)",
+            "insert into session_v2 values (?1, ?2)",
             rusqlite::params![session, directory.to_string_lossy()],
         )
         .unwrap();

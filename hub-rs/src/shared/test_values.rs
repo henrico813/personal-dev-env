@@ -31,7 +31,7 @@ pub(crate) fn make_agent(name: &str, status: AgentStatus) -> Agent {
 /// One finished worker, the state table's base row, which parks. It is
 /// an idle OpenCode agent with session `ses_worker`, its card in review
 /// with no needs-you note, its report read, nothing waiting, its
-/// worktree clean and no approval.
+/// worktree clean, no approval and no open wait.
 pub(crate) fn make_facts(name: &str) -> SessionFacts {
     SessionFacts {
         name: name.to_owned(),
@@ -57,6 +57,7 @@ pub(crate) fn make_facts(name: &str) -> SessionFacts {
         unsaved: Unsaved::Clean,
         approval_pending: false,
         filed_request_recently: false,
+        wait_open: false,
         handed_off: false,
         context_tokens: None,
     }

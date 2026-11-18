@@ -19,6 +19,7 @@ use super::groups::{self, Group, Item};
 use super::panels::{self, Panel, WIDE_COLUMNS};
 use super::queue::Queue;
 use super::sessions::fit;
+use crate::shared::format_span;
 
 /// The blocks, top to bottom or left to right.
 const BLOCKS: [Panel; 3] = [Panel::Away, Panel::Queue, Panel::Next];
@@ -178,22 +179,8 @@ fn move_place(place: Place, column: u16, words: &str) -> Place {
 /// the board's status last.
 fn top_line(glance: &Glance<'_>) -> String {
     match glance.away_for {
-        Some(away_for) => format!("away {} · {}", describe_away(away_for), glance.status),
+        Some(away_for) => format!("away {} · {}", format_span(away_for), glance.status),
         None => glance.status.to_owned(),
-    }
-}
-
-/// Returns how long the user was away, such as `45m`, `1h29m` or
-/// `2d3h`.
-fn describe_away(away_for: SignedDuration) -> String {
-    let minutes = away_for.as_mins().max(0);
-    let (hours, days) = (minutes / 60, minutes / (60 * 24));
-    if days > 0 {
-        format!("{days}d{}h", hours % 24)
-    } else if hours > 0 {
-        format!("{hours}h{:02}m", minutes % 60)
-    } else {
-        format!("{minutes}m")
     }
 }
 

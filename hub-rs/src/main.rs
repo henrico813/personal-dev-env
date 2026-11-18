@@ -18,8 +18,8 @@ use hub::commands::next::NextOptions;
 use hub::commands::reports::{CardChoice, ReadRequest};
 use hub::commands::send::SendRequest;
 use hub::commands::{
-    Outcome, alive, at, auto, brief, clean, flag, handoff, launch, next, reports, send, sidebar,
-    status,
+    Outcome, alive, at, auto, brief, clean, flag, handoff, launch, next, reports, requests, send,
+    sidebar, status,
 };
 use hub::external::cards::CardCli;
 use hub::external::herdr::HerdrCli;
@@ -250,7 +250,7 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
             Ok(outcome)
         }
         Command::Note { run, text } => reports::run_note(&find_run(run)?, text, &now),
-        Command::Brief { run } => brief::run_brief(&tools, &find_run(run)?),
+        Command::Brief { run } => brief::run_brief(&tools, &find_run(run)?, now.timestamp()),
         Command::Handoff { run, name, handoff } => {
             let run = find_run(run)?;
             let poll = read_poll_interval()?;
@@ -301,6 +301,7 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         Command::Flag { name } => flag::run_flag(&tools, name),
         Command::Unflag { name } => flag::run_unflag(&tools, name),
         Command::Alive { session } => alive::run_alive(&tools, session, &now),
+        Command::Requests { json } => requests::run_requests(&tools, *json, now.timestamp()),
         Command::Go => sidebar::run_go(&tools),
         Command::Gather => sidebar::run_gather(&tools),
         Command::Desk => sidebar::run_desk(&tools, &home),

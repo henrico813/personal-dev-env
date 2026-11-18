@@ -50,7 +50,7 @@ It prints the hub's own line, the board, a waiting-on-others line
 when a card is in that stage, one count per state, the unread
 reports, then one row per session:
 
-    hub kanban-hub-18 131k, watcher running
+    hub kanban-hub-18 131k, watch running, hub next running
     board active 5 of 8, review 19 of 6
     waiting-on-others 2, oldest 8 days
     open 24: 4 working, 2 hub, 3 you,
@@ -107,10 +107,9 @@ into your pane. It prods a worker that sat idle 10 minutes owing a
 report and marks a blocked worker "needs you". When a report waits
 10 minutes with no `hub next` line, your next `hub next` prints it as
 `missed report <name>`. Only when you are gone does the watch alert
-the user's phone. A
-worker that waits on a long job registers it with `hub wait` and
-ends its turn. The watch prods it when the job ends and never counts
-it as stalled meanwhile, so you do nothing for it. When
+the user's phone. A worker that waits on a long job registers it with
+`hub wait` and ends its turn. The watch prods it when the job ends and
+never counts it as stalled meanwhile, so you do nothing for it. When
 `hub watch start` exits 3, tell the user its reason once, and go on
 with `hub next`. An auto hub, which never messages the user, lists the
 reason in its end brief instead.
@@ -122,7 +121,8 @@ once the first session works:
 
 The timeout ends it within 45 minutes, before OpenCode drops an idle
 folder's background commands, and its `timeout` line wakes you to
-start it again.
+start it again. If `hub status` says `watch stopped`, run
+`hub watch start` again; if it says `hub next stopped`, start one.
 
 It waits until a session has news, prints one line and ends, so its
 end starts your turn. While it waits it sends held messages. It never
@@ -257,6 +257,16 @@ When a session is `blocked`, read what it asks with
 `herdr agent read <name> --source recent-unwrapped --lines 40`. Tell
 the user which session waits, what it asks and your recommendation.
 The user answers in that session's pane; never answer it yourself.
+
+The `status-updates` skill says to look up an approval's state now
+before you list it as waiting. For pde-gh-write requests, look it up
+with `hub requests`, even to repeat a line from a handoff or your
+notes. Only state `pending` waits on the user. A `hub status` WHY of
+`request in the last hour` means a request already finished. Its
+`approval waits` also covers approved and running requests and an
+unreadable request file, so it alone does not mean the user owes an
+answer. This check goes once the hub's question queue lists live
+approvals itself.
 
 ## Cards
 
@@ -403,18 +413,8 @@ them with:
 
     hub brief --run "<run folder>"
 
-Its first line is `board active A of 8, review R of 6; K decisions`.
-When cards wait on others, a `waiting-on-others W, oldest D days`
-line follows. Then it prints `reviews.md` and every entry, and last
-the "Waiting on others (no action needed)" list, with each card's
-days in the stage, title and reason. That list is news for the user,
-such as for a standup, never a question, so do not repeat it in
-other messages unless the user asks. It exits 3, naming the entry,
-when one lacks its question, two choices, `Recommended:` or
-`If no reply:`. Fix the entry and run it again. Show `reviews.md` as
-printed, and each entry in the short form of `status-updates`: its
-title's words, question, then key; `(rec)` on the `Recommended:`
-choice; its reason and other lines after the reply line.
+Read [references/hub-brief.md](references/hub-brief.md) for what it
+prints and how to show each part to the user.
 
 ## Merges
 

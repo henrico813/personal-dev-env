@@ -8,6 +8,7 @@ use hub::commands::next::{NextOptions, run_next};
 use hub::commands::send::{SendRequest, run_send};
 use hub::external::cards::{BoardCounts, CardNote, Stage};
 use hub::external::herdr::{Agent, AgentStatus, HerdrCode};
+use hub::watch::wait::{WaitRequest, run_wait};
 use serde_json::{Value, json};
 
 use common::{
@@ -385,6 +386,32 @@ fn run_next_only_lists_finished_sessions() {
     assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
     assert!(test_tools.cards.links.borrow().is_empty());
     assert!(!test_tools.state_folder().join("hub/parked").exists());
+}
+
+/// A worker that ran `hub wait` still has a job to finish, such as a
+/// merge once CI passes. Listed `to-park`, a hub that trusts the line
+/// parks it in the middle of that job.
+#[test]
+fn run_next_keeps_worker_waiting_on_job() {
+    let mut test_tools = TestTools::new();
+    add_finished_worker(
+        &mut test_tools,
+        "demo-kb-007-impl",
+        "DEMO-KB-007",
+        Stage::Review,
+    );
+    let wait = WaitRequest {
+        name: "demo-kb-007-impl".parse().unwrap(),
+        pid: Some(std::process::id()),
+        file: None,
+        deadline_minutes: 30,
+    };
+    let now = make_time("2026-11-11T22:14:00+00:00[UTC]");
+    run_wait(&test_tools.run(), &wait, &now).unwrap();
+
+    let line = check_once(&test_tools);
+
+    assert_eq!(line, "timeout (hub -)");
 }
 
 /// The hub must hear about a finished session once. Listing it again on
