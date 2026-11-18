@@ -50,7 +50,7 @@ It prints the hub's own line, the board, a waiting-on-others line
 when a card is in that stage, one count per state, the unread
 reports, then one row per session:
 
-    hub kanban-hub-18 131k, watcher running
+    hub kanban-hub-18 131k, watch running, hub next running
     board active 5 of 8, review 19 of 6
     waiting-on-others 2, oldest 8 days
     open 24: 4 working, 2 hub, 3 you,
@@ -107,10 +107,9 @@ into your pane. It prods a worker that sat idle 10 minutes owing a
 report and marks a blocked worker "needs you". When a report waits
 10 minutes with no `hub next` line, your next `hub next` prints it as
 `missed report <name>`. Only when you are gone does the watch alert
-the user's phone. A
-worker that waits on a long job registers it with `hub wait` and
-ends its turn. The watch prods it when the job ends and never counts
-it as stalled meanwhile, so you do nothing for it. When
+the user's phone. A worker that waits on a long job registers it with
+`hub wait` and ends its turn. The watch prods it when the job ends and
+never counts it as stalled meanwhile, so you do nothing for it. When
 `hub watch start` exits 3, tell the user its reason once, and go on
 with `hub next`. An auto hub, which never messages the user, lists the
 reason in its end brief instead.
@@ -122,7 +121,8 @@ once the first session works:
 
 The timeout ends it within 45 minutes, before OpenCode drops an idle
 folder's background commands, and its `timeout` line wakes you to
-start it again.
+start it again. If `hub status` says `watch stopped`, run
+`hub watch start` again; if it says `hub next stopped`, start one.
 
 It waits until a session has news, prints one line and ends, so its
 end starts your turn. While it waits it sends held messages. It never

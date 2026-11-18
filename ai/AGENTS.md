@@ -270,6 +270,10 @@ pattern over the whole file.
   to an `AGENTS.md` file only where `skill-development` sends it, as
   a routing line or a rule for one repository.
 
-- Agents change pull requests only through `pde-gh-write`; a human supplies approval through Herdr, Moshi, or `pde-pr-approve`. Never answer approval requests, run `pde-pr-approve`, or set `PDE_GH_WRITE`.
+- Agents change pull requests only through pde-gh-write. The only
+  exception to this is skill-fix changes on non-github vcs forges. A
+  human supplies approval through Herdr, Moshi, or `pde-pr-approve`.
+  Never answer approval requests, run `pde-pr-approve`, or set
+  `PDE_GH_WRITE`.
 - Before sending a request to open or merge a PR, follow Guardrail 4
   of the `pull-request` skill.

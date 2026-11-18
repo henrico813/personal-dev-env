@@ -79,7 +79,7 @@ The top lines describe the hub and the board, then a table has one
 row per session. Your numbers and other rows differ:
 
 ```text
-hub - -, watcher stopped
+hub - -, watch stopped, hub next stopped
 board active 5 of 8, review 19 of 6
 open 1: 0 working, 0 hub, 0 you,
   1 kept, 0 to-close, 0 to-park; 0 parked
@@ -90,7 +90,8 @@ demo-docs  kept   -    yours
 ```
 
 `hub - -` means this pane runs no agent, so it has no name or context
-size. `watcher stopped` means no `hub next` runs for this folder. The
+size. `watch stopped` means no `hub watch` runs on this machine, and
+`hub next stopped` means no `hub next` waits for this folder. The
 board line reads `board: REASON` when `card` is not set up. STATE
 `kept` with WHY `yours` means the session never reported, so `hub`
 treats it as yours and leaves it open.

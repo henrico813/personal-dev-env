@@ -627,3 +627,22 @@ fn run_status_ignores_expired_pending_request() {
         )]
     );
 }
+
+/// The hub runs `hub watch start` again when status says
+/// `watch stopped`, and starts `hub next` when it says
+/// `hub next stopped`.
+/// Reading one lock for both once showed a running watch as stopped
+/// whenever no `hub next` waited, so neither could be trusted.
+#[test]
+fn run_status_tells_watch_from_hub_next() {
+    let test_tools = TestTools::new();
+    let watch_folder = test_tools.state_folder().join("hub");
+    fs::create_dir_all(&watch_folder).unwrap();
+    let watch_lock = File::create(watch_folder.join("watch.lock")).unwrap();
+    watch_lock.lock().unwrap();
+
+    let status = read_status_json(&test_tools);
+
+    assert_eq!(status["watch"], "running");
+    assert_eq!(status["watcher"], "stopped");
+}

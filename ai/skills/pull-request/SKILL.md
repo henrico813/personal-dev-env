@@ -13,9 +13,11 @@ steps' defaults.
 
 ## Guardrails
 
-1. Push or open/update only when the user asks. Merge only after explicit user
-   approval of the shown squash message. Do not rewrite another person's commits.
-   Never force push except `--force-with-lease`. Do not add AI attribution.
+1. Push or open/update only when the user asks. Except skill-fix
+   changes on non-github vcs forges, as ai/AGENTS.md says. Merge only
+   after explicit user approval of the shown squash message. Do not
+   rewrite another person's commits. Never force push except
+   `--force-with-lease`. Do not add AI attribution.
 2. Load `git-messages` before writing a title or description. Load and
    follow [plain-direct-english](../plain-direct-english/SKILL.md) for
    that text too, and review it for specific, real claims.

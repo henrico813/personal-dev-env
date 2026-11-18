@@ -462,155 +462,45 @@ pub enum Command {
     /// set up the workspace you watch from a phone.
     #[command(after_help = "Example: hub desk")]
     Desk,
-    // `verbatim_doc_comment` keeps the step list's columns, so every
-    // line below is wrapped by hand at 40 columns.
     /// Cards, sessions and gauges
     ///
-    /// Shows four panels sized for a 40x16
-    /// phone screen. Panel 1, the queue, shows
-    /// your cards in groups. Its top line
-    /// counts the cards in progress and in
-    /// review, and what waits on you. Below it
-    /// are five groups, and Could not read on
-    /// top when a read fails. In progress, In
-    /// review, Ready and Draft hold cards from
-    /// card list. Needs you holds the questions
-    /// in decisions.md and the sessions that
-    /// wait on you, from every hub running on
-    /// this machine, each tagged with its hub.
-    /// With no hub running, it says so. Ready
-    /// and Draft start folded. It reads again
-    /// every 10 seconds, or when you press r.
-    ///
-    /// Panel 2, kanban, lists cards by stage,
-    /// REVIEW first. Panel 3, sessions, groups
-    /// every session as hub clean decides, in
-    /// NEEDS YOU, WORKING, KEPT, SAFE TO CLOSE
-    /// and PARKED. Each row has a context bar,
-    /// full at 150K tokens, and why the session
-    /// is in its group. Panel 4, machine, shows
-    /// file-watch slots, free disk and the
-    /// newest reports. Tab or 1 to 4 picks a
-    /// panel. Below 100 columns the board shows
-    /// one panel, and from 100 all four side by
-    /// side.
-    ///
-    /// On the queue, tap a count to jump to its
-    /// group, a group to fold or open it, + N
-    /// more to see the rest, or a row to see
-    /// the card in full. j and k move the
-    /// choice, and Enter or space taps it. On
-    /// kanban and machine they scroll. q quits
-    /// from the list. On a card, q, Esc or any
-    /// tap goes back. --print prints one screen
-    /// as text, and --dump prints its elements
-    /// as JSON. Both draw a new board, not the
-    /// board that listens.
-    ///
-    /// On the sessions panel, a tap on a row
-    /// only chooses it. The bar at the bottom
-    /// then reads -> jump to NAME, and a tap on
-    /// it shows that session in Herdr. Enter
-    /// jumps too, but only after 0.7 seconds
-    /// with no input, so a stray Enter after a
-    /// tap does not jump. c, from any panel,
-    /// lists the SAFE TO CLOSE sessions, ending
-    /// in + N more when they do not fit. y,
-    /// once the list has been open 1 second and
-    /// no key came for 0.7 seconds, closes and
-    /// parks the listed sessions as hub clean
-    /// does. Any other key or a tap cancels.
-    ///
-    /// To let an agent drive the board you
-    /// watch, start it with --listen. Then
-    /// hub board --send STEP, from another
-    /// terminal, does one step on your screen
-    /// and prints the screen that follows as
-    /// JSON. --send exits 2 when the board
-    /// refuses the step and 3 when no board
-    /// listens. Only one board listens at a
-    /// time. They talk through board.sock in
-    /// ~/.local/state/pde/hub, which works on
-    /// Linux and macOS but not Windows. Until
-    /// its first read ends, the board shows no
-    /// cards and its hint says reading. Tests
-    /// use the hidden --control, which reads
-    /// the same steps one per line but never
-    /// jumps or cleans.
-    ///
-    /// Each step is one of these.
-    ///   tap ID       tap an element by the id
-    ///                --send prints for it
-    ///   tap COL ROW  tap a place; 0 0 is the
-    ///                top left
-    ///   press KEY    press a key
-    ///   wheel up     scroll up
-    ///   wheel down   scroll down
-    /// KEY is enter, esc, space, tab, up,
-    /// down, pageup, pagedown, ctrl-c, or one
-    /// character, such as q, r, j or k.
-    ///
-    /// The JSON has step, the step sent, and
-    /// page, which is list, details, confirm
-    /// for the c list, clean for its output, or
-    /// quit. lines holds the screen as text,
-    /// one string per row. elements lists all
-    /// the page holds, top first. Each has id,
-    /// kind, text and hidden, and tap when a
-    /// tap does something. kind is count,
-    /// heading, item, more, back, bar or text.
-    /// tap is jump, fold, unfold, show all,
-    /// open, back, choose or go. A drawn
-    /// element also has column, row and width,
-    /// and chosen is true on the row Enter acts
-    /// on.
-    ///
-    /// Rows scrolled off, cards in a folded
-    /// group and cards behind + N more have
-    /// hidden true, hidden_by (scroll, fold or
-    /// more) and show, the step to send next,
-    /// such as tap group:ready or press
-    /// pagedown. Send show, then find the
-    /// element in the reply, until hidden is
-    /// false. That can take many sends, and
-    /// show may change on the way. tap ID on a
-    /// hidden element fails and names show.
-    #[command(verbatim_doc_comment)]
-    #[command(after_help = "\
-Example: hub board --listen
-Steps, keys and JSON are in --help.")]
-    #[command(after_long_help = "\
-Example: hub board --listen
-Then: hub board --send 'press j'")]
+    /// --print, --dump and --control each draw
+    /// a new board, not the one that listens.
+    // The parent Cli sets max_term_width, and clap does not re-wrap this
+    // subcommand's help by a subcommand-level one, so use term_width: its
+    // built-in -h line otherwise reaches 40 columns.
+    #[command(term_width = 39)]
+    #[command(after_help = "Example: hub board --listen")]
     #[command(group(ArgGroup::new("output").args(["print", "dump", "control"])))]
     Board {
-        /// Show only this run's questions and sessions
+        /// Show only one run's questions and sessions
         #[arg(long = "run", value_name = "DIR", hide = true)]
         only_run: Option<PathBuf>,
-        /// Print one screen as text and exit
+        /// One screen as text
         #[arg(long)]
         print: bool,
-        /// Print one screen's elements as JSON and exit
+        /// One screen's elements as JSON
         #[arg(long)]
         dump: bool,
-        /// Read steps, one per line, and print JSON after each
+        /// Read steps from stdin
         #[arg(long, hide = true)]
         control: bool,
         /// Also take steps from --send
         #[arg(long, conflicts_with = "output")]
         listen: bool,
-        /// Do one step on the board that listens, and print its screen as JSON
+        /// Do one step, print JSON
         #[arg(
             long,
             value_name = "STEP",
             conflicts_with_all = ["output", "listen"]
         )]
         send: Option<String>,
-        /// The screen size --print, --dump and --control draw
+        /// Draw size, 40x16 default
         #[arg(
             long,
             value_name = "COLSxROWS",
             default_value = "40x16",
+            hide_default_value = true,
             requires = "output"
         )]
         size: ScreenSize,

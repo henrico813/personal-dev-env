@@ -2,8 +2,10 @@
 
 Read ``sync_repo`` first. Pushes are plain ``git push``, never forced.
 Each batch gets its own branch, so a merged batch's branch is never
-pushed to again. The only PR write is one ``pde-gh-write pr create``
-per batch, and the user approves it there.
+pushed to again. On GitHub, the only PR write is one ``pde-gh-write pr
+create`` per batch, and the user approves it there. A repo whose fix
+PRs are on a forge opens its PR through the forge API instead, and the
+user merges it there.
 
 Fetches and pushes go to the HTTPS form of a GitHub SSH remote, as in
 ``pde-installer update``, because its timer has no SSH agent.
@@ -19,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from skill_fix import repos
+from skill_fix import forge, repos
 from skill_fix.repos import Repo, RepoName, Settings, ToolError
 
 SyncState = Literal[
@@ -231,8 +233,13 @@ def find_pr(repo: Repo, branch: str) -> dict | None:
     """Return the newest PR from branch, open, closed or merged, or None.
 
     Raises:
-        ToolError: gh failed.
+        ToolError: gh or the forge API failed.
     """
+    if repo.forge is not None:
+        pr = forge.find_pr(repo.forge, branch)
+        if pr is not None:
+            pr["mergeable"] = find_mergeable(repo)
+        return pr
     output = run_tool(
         repo,
         [
@@ -253,6 +260,27 @@ def find_pr(repo: Repo, branch: str) -> dict | None:
         raise ToolError(f"gh pr list failed for {branch}")
     found = parse_json_list(output.stdout)
     return found[0] if found else None
+
+
+def find_mergeable(repo: Repo) -> str:
+    """Return ``CONFLICTING`` when the fix branch conflicts with main.
+
+    Otherwise return ``MERGEABLE``. A forge PR's own ``mergeable`` is
+    also false while the forge is still checking it, so sync cannot
+    read a conflict from it.
+
+    Raises:
+        ToolError: git merge-tree failed for a reason other than a
+            conflict.
+    """
+    main = f"{repo.remote}/main"
+    result = repos.call_git(
+        repo.worktree, ["merge-tree", "--write-tree", main, "HEAD"]
+    )
+    # merge-tree exits 1 on a conflict and above 1 on an error.
+    if result.returncode > 1:
+        raise ToolError(f"git merge-tree failed: {result.stderr.strip()}")
+    return "CONFLICTING" if result.returncode == 1 else "MERGEABLE"
 
 
 def start_new_batch(repo: Repo, label: str, merged_head: str) -> str | None:
@@ -289,15 +317,19 @@ def open_fix_pr(repo: Repo, branch: str, label: str) -> SyncResult:
     """Ask pde-gh-write to open the fix PR; exit 3 means it waits.
 
     A rerun of the same command, with the same title, body and folder,
-    reads the waiting request instead of filing a second one.
+    reads the waiting request instead of filing a second one. A repo
+    on a forge opens the PR at once through its API.
 
     Raises:
         ToolError: pde-gh-write is missing, refused the command, or
-            the request was declined.
+            the request was declined, or the forge API failed.
     """
     title = PR_TITLE.format(label=label)
-    body = repos.find_state_dir() / f"{repo.name}-pr-body.md"
-    body.write_text(PR_BODY, encoding="utf-8")
+    if repo.forge is not None:
+        number = forge.open_pr(repo.forge, branch, title, PR_BODY)
+        return SyncResult(repo.name, "pr_open", branch, number)
+    body_file = repos.find_state_dir() / f"{repo.name}-pr-body.md"
+    body_file.write_text(PR_BODY, encoding="utf-8")
     if repo.name == "personal":
         with tempfile.TemporaryDirectory() as folder:
             text = Path(folder) / "text"
@@ -317,7 +349,7 @@ def open_fix_pr(repo: Repo, branch: str, label: str) -> SyncResult:
             "--title",
             title,
             "--body-file",
-            str(body),
+            str(body_file),
         ],
     )
     if result.returncode == 3:
