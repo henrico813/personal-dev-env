@@ -68,9 +68,9 @@ repository's fix pull request through the forge's API at
 `/api/v1/repos/OWNER/REPO/pulls`, not `gh` and `pde-gh-write`. The
 token needs write access to the repository; keep its file at mode
 600. skill-fix opens the pull request at once, and you merge it in the
-forge's web page. Each sync rebuilds the pull request's body from its
-fix commits: one line per fix from its Missed and Intent lines, plus a
-Testing section.
+forge's web page. `extra_forge_repo_url` must name the same repository
+as the extra checkout's git remote. That remote must use HTTPS with a
+git credential helper, because the update timer has no SSH agent.
 
 Sync fetches and pushes by the HTTPS form of a GitHub SSH remote,
 because the update timer has no SSH agent. Git then needs a

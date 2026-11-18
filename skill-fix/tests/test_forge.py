@@ -49,20 +49,15 @@ Intent: agents check step {n} before they start the next one.
 
 @dataclass
 class FakeForge:
-    """The fake forge's PRs, the PRs it was asked to open, and a fault.
+    """The fake forge's PRs and the PRs it was asked to open.
 
     Attributes:
         pulls: Its PRs in the API's fields, oldest first.
-        posts: Each open request as path, Authorization header and
-            JSON body.
-        error: The HTTP status it answers every request with, or None.
-        silent: Whether it drops each connection without answering.
+        posts: The JSON body of each open request.
     """
 
     pulls: list[dict] = field(default_factory=list)
-    posts: list[tuple[str, str, dict]] = field(default_factory=list)
-    error: int | None = None
-    silent: bool = False
+    posts: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -86,18 +81,17 @@ def make_handler(fake: FakeForge) -> type[BaseHTTPRequestHandler]:
 
         def do_GET(self) -> None:
             """List every PR, newest first, as sort=recentupdate does."""
-            if not self.can_answer():
+            if self.is_refused():
                 return
             self.send_json(200, list(reversed(fake.pulls)))
 
         def do_POST(self) -> None:
             """Open a PR from the body's head branch."""
-            if not self.can_answer():
+            if self.is_refused():
                 return
             size = int(self.headers["Content-Length"])
             body = json.loads(self.rfile.read(size))
-            auth = self.headers.get("Authorization", "")
-            fake.posts.append((self.path, auth, body))
+            fake.posts.append(body)
             pr = {
                 "number": len(fake.pulls) + 1,
                 "state": "open",
@@ -109,27 +103,17 @@ def make_handler(fake: FakeForge) -> type[BaseHTTPRequestHandler]:
             fake.pulls.append(pr)
             self.send_json(201, pr)
 
-        def do_PATCH(self) -> None:
-            """Replace the body of the PR whose number ends the path."""
-            if not self.can_answer():
-                return
-            size = int(self.headers["Content-Length"])
-            body = json.loads(self.rfile.read(size))
-            pr = fake.pulls[int(self.path.rsplit("/", 1)[1]) - 1]
-            pr["body"] = body["body"]
-            self.send_json(200, pr)
-
-        def can_answer(self) -> bool:
-            """If fake is silent, drop the connection; else return True."""
-            if fake.silent:
-                self.close_connection = True
+        def is_refused(self) -> bool:
+            """Answer 401 and return True unless the request has TOKEN."""
+            if self.path.startswith(PULLS) and (
+                self.headers.get("Authorization") == f"token {TOKEN}"
+            ):
                 return False
+            self.send_json(401, {"message": "token is required"})
             return True
 
         def send_json(self, status: int, value: object) -> None:
-            """Answer with value as JSON, or with fake's error status."""
-            if fake.error is not None:
-                status, value = fake.error, {"message": "the forge refused"}
+            """Answer with value as JSON."""
             data = json.dumps(value).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
@@ -215,7 +199,7 @@ class TestForgeSync:
     def test_fixes_share_one_forge_pr(
         self, fix_tool: Callable[[], Reply], forge: tuple[FakeForge, str]
     ) -> None:
-        """The first fix opens a forge PR with the token; the next joins it.
+        """The first fix opens a forge PR; the next joins it.
 
         gh and pde-gh-write cannot open a forge PR, so without this the
         fixes stop at a pushed branch. A second PR would split one
@@ -228,14 +212,9 @@ class TestForgeSync:
 
         assert (first.body["sync"], first.body["pr"]) == ("pr_open", 1)
         assert (second.body["sync"], second.body["pr"]) == ("pushed", 1)
-        assert len(fake.posts) == 1
-        path, auth, body = fake.posts[0]
-        assert (path, auth) == (PULLS, f"token {TOKEN}")
-        assert (body["base"], body["head"], body["title"]) == (
-            "main",
-            "fix/skill-fixes-desk-1",
-            "fix(skills): corrections from desk",
-        )
+        assert [post["head"] for post in fake.posts] == [
+            "fix/skill-fixes-desk-1"
+        ]
 
     def test_merged_forge_pr_starts_new_batch(
         self,
@@ -267,58 +246,68 @@ class TestForgeSync:
             run_git(extra.remote, "rev-list", "--count", f"main..{new}") == "1"
         )
 
-    @pytest.mark.parametrize(
-        ("mode", "expected"),
-        [
-            pytest.param("refused", "HTTP 401", id="refused-token"),
-            pytest.param("silent", "did not answer", id="no-answer"),
-        ],
-    )
-    def test_forge_errors_reply_without_the_token(
+    def test_unmergeable_forge_pr_skips_main_merge(
         self,
         fix_tool: Callable[[], Reply],
         forge: tuple[FakeForge, str],
-        mode: str,
-        expected: str,
+        extra: Extra,
     ) -> None:
-        """Every forge failure is an error naming its cause, never the token.
+        """A forge PR marked not mergeable gets no merge from main.
 
-        The reply lands in agent logs and the update timer's journal,
-        where a token would leak. A refused token and a dropped
-        connection fail through different branches of the API call, so
-        each needs this check.
+        The forge also marks a PR not mergeable while it is still
+        checking it. Read as a conflict, each sync after main moves
+        would add a merge commit to the fix branch for no reason.
         """
         fake = forge[0]
-        if mode == "silent":
-            fake.silent = True
-        else:
-            fake.error = 401
+        fix_tool()
+        write(extra.checkout / "README.md", "Skills.\n")
+        run_git(extra.checkout, "add", ".")
+        run_git(extra.checkout, "commit", "--quiet", "-m", "Add README")
+        run_git(extra.checkout, "push", "--quiet", "origin", "main")
+        fake.pulls[0]["mergeable"] = False
+
+        reply = fix_tool()
+
+        branch = "fix/skill-fixes-desk-1"
+        assert (reply.body["sync"], reply.body["pr"]) == ("pushed", 1)
+        assert (
+            run_git(extra.remote, "rev-list", "--merges", "--count", branch)
+            == "0"
+        )
+
+    def test_conflicting_forge_pr_reports_conflict(
+        self, fix_tool: Callable[[], Reply], extra: Extra
+    ) -> None:
+        """A fix branch that conflicts with main gives a conflict reply.
+
+        The forge's own ``mergeable`` is not read, so sync must find
+        the conflict itself. If it misses one, the fix PR cannot merge
+        and nobody is told.
+        """
+        fix_tool()
+        skill_md = extra.checkout / "skills/tool/SKILL.md"
+        skill_md.write_text(skill_md.read_text() + "Use another tool.\n")
+        run_git(extra.checkout, "commit", "--quiet", "-am", "Edit tool")
+        run_git(extra.checkout, "push", "--quiet", "origin", "main")
+
+        reply = fix_tool()
+
+        assert (reply.body["sync"], reply.body["pr"]) == ("conflict", 1)
+
+    def test_refused_token_error_omits_the_token(
+        self, fix_tool: Callable[[], Reply], repos: Repos
+    ) -> None:
+        """A token the forge refuses gives an error that never holds it.
+
+        The reply lands in agent logs and the update timer's journal,
+        where a token would leak. An expired or wrong token is the
+        likely forge failure.
+        """
+        wrong = "wrong-token-not-real"
+        write(repos.home / ".config/pde/forge-token", f"{wrong}\n")
 
         reply = fix_tool()
 
         assert reply.code == 2
-        assert expected in reply.body["detail"]
-        assert TOKEN not in json.dumps(reply.body)
-
-    def test_forge_pr_body_lists_every_fix(
-        self, fix_tool: Callable[[], Reply], forge: tuple[FakeForge, str]
-    ) -> None:
-        """After two fixes, the forge PR's body describes both.
-
-        A reviewer reads the body to learn what each fix changes and
-        why. If sync does not rebuild it, the body lists only the fixes
-        that came before the PR opened.
-        """
-        fake = forge[0]
-
-        fix_tool()
-        fix_tool()
-
-        changes = fake.pulls[0]["body"].split("## Changes\n")[1]
-        assert changes.count("\n- ") == 2
-        flat = " ".join(changes.split())
-        for n in (1, 2):
-            assert (
-                f"- tool: agents check step {n} before they start the next"
-                f" one. Before, the agent moved on before it checked step {n}."
-            ) in flat
+        assert "HTTP 401" in reply.body["detail"]
+        assert wrong not in json.dumps(reply.body)

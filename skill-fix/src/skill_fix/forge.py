@@ -1,9 +1,10 @@
 """Find and open the extra repo's fix PR through a forge's API.
 
-``sync`` calls ``find_pr``, ``open_pr`` and ``edit_pr_body`` in place of
-``gh`` and ``pde-gh-write`` when the repo's fix PRs are on a forge. ``find_pr``
-returns the fields and values that ``gh pr list`` prints, so the rest
-of sync is the same for both. No reply or error holds the token.
+``sync`` calls ``find_pr`` and ``open_pr`` in place of ``gh`` and
+``pde-gh-write`` when the repo's fix PRs are on a forge. ``find_pr``
+returns the fields and values that ``gh pr list`` prints, except
+``mergeable``, which sync decides itself. No reply or error holds the
+token.
 """
 
 from __future__ import annotations
@@ -58,29 +59,16 @@ def open_pr(forge: ForgeRepo, branch: str, title: str, body: str) -> int:
     return pr["number"]
 
 
-def edit_pr_body(forge: ForgeRepo, number: int, body: str) -> None:
-    """Replace the body of PR number.
-
-    Raises:
-        ToolError: The forge did not answer or refused, or the token file
-            cannot be read.
-    """
-    call_api(forge, "PATCH", f"pulls/{number}", {"body": body})
-
-
 def to_gh_fields(pr: dict) -> dict:
     """Return a forge PR in the fields and values that gh prints.
 
-    The API marks a merged PR closed with ``merged`` true, and gives
-    ``mergeable`` as true or false.
+    The API marks a merged PR closed with ``merged`` true.
     """
     state = "MERGED" if pr["merged"] else pr["state"].upper()
     return {
         "number": pr["number"],
         "state": state,
         "headRefOid": pr["head"]["sha"],
-        "mergeable": "MERGEABLE" if pr["mergeable"] else "CONFLICTING",
-        "body": pr.get("body") or "",
     }
 
 

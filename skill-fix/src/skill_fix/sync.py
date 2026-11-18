@@ -5,8 +5,7 @@ Each batch gets its own branch, so a merged batch's branch is never
 pushed to again. On GitHub, the only PR write is one ``pde-gh-write pr
 create`` per batch, and the user approves it there. A repo whose fix
 PRs are on a forge opens its PR through the forge API instead, and the
-user merges it there. Each sync rebuilds that PR's body from its fix
-commits.
+user merges it there.
 
 Fetches and pushes go to the HTTPS form of a GitHub SSH remote, as in
 ``pde-installer update``, because its timer has no SSH agent.
@@ -22,8 +21,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from skill_fix import forge, pr_body, repos
-from skill_fix.repos import ForgeRepo, Repo, RepoName, Settings, ToolError
+from skill_fix import forge, repos
+from skill_fix.repos import Repo, RepoName, Settings, ToolError
 
 SyncState = Literal[
     "pushed",
@@ -148,8 +147,6 @@ def sync_repo(repo: Repo, settings: Settings) -> SyncResult:
         push_branch(repo, url, branch)
         pushed = True
     if pr is not None:
-        if repo.forge is not None:
-            refresh_forge_body(repo.forge, repo, pr)
         return SyncResult(
             repo.name, "pushed" if pushed else "pr_open", branch, number
         )
@@ -239,7 +236,10 @@ def find_pr(repo: Repo, branch: str) -> dict | None:
         ToolError: gh or the forge API failed.
     """
     if repo.forge is not None:
-        return forge.find_pr(repo.forge, branch)
+        pr = forge.find_pr(repo.forge, branch)
+        if pr is not None:
+            pr["mergeable"] = find_mergeable(repo)
+        return pr
     output = run_tool(
         repo,
         [
@@ -260,6 +260,27 @@ def find_pr(repo: Repo, branch: str) -> dict | None:
         raise ToolError(f"gh pr list failed for {branch}")
     found = parse_json_list(output.stdout)
     return found[0] if found else None
+
+
+def find_mergeable(repo: Repo) -> str:
+    """Return ``CONFLICTING`` when the fix branch conflicts with main.
+
+    Otherwise return ``MERGEABLE``. A forge PR's own ``mergeable`` is
+    also false while the forge is still checking it, so sync cannot
+    read a conflict from it.
+
+    Raises:
+        ToolError: git merge-tree failed for a reason other than a
+            conflict.
+    """
+    main = f"{repo.remote}/main"
+    result = repos.call_git(
+        repo.worktree, ["merge-tree", "--write-tree", main, "HEAD"]
+    )
+    # merge-tree exits 1 on a conflict and above 1 on an error.
+    if result.returncode > 1:
+        raise ToolError(f"git merge-tree failed: {result.stderr.strip()}")
+    return "CONFLICTING" if result.returncode == 1 else "MERGEABLE"
 
 
 def start_new_batch(repo: Repo, label: str, merged_head: str) -> str | None:
@@ -305,8 +326,7 @@ def open_fix_pr(repo: Repo, branch: str, label: str) -> SyncResult:
     """
     title = PR_TITLE.format(label=label)
     if repo.forge is not None:
-        body = pr_body.build_pr_body(repo)
-        number = forge.open_pr(repo.forge, branch, title, body)
+        number = forge.open_pr(repo.forge, branch, title, PR_BODY)
         return SyncResult(repo.name, "pr_open", branch, number)
     body_file = repos.find_state_dir() / f"{repo.name}-pr-body.md"
     body_file.write_text(PR_BODY, encoding="utf-8")
@@ -342,20 +362,6 @@ def open_fix_pr(repo: Repo, branch: str, label: str) -> SyncResult:
     return SyncResult(
         repo.name, "pr_open", branch, pr["number"] if pr else None
     )
-
-
-def refresh_forge_body(forge_repo: ForgeRepo, repo: Repo, pr: dict) -> None:
-    """Rebuild an open forge PR's body from its fixes, when it changed.
-
-    A GitHub PR keeps ``PR_BODY``, since each edit there would wait
-    for the user's approval through pde-gh-write.
-
-    Raises:
-        ToolError: Git or the forge API failed.
-    """
-    body = pr_body.build_pr_body(repo)
-    if pr.get("body") != body:
-        forge.edit_pr_body(forge_repo, pr["number"], body)
 
 
 def run_scan(repo: Repo, *args: str) -> bool:
