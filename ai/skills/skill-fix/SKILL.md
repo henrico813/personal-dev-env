@@ -186,6 +186,15 @@ text". Mention each finding to the user once.
 - Never push the fix branch yourself, and never answer the fix pull
   request's approval request. The tool pushes, and `pde-gh-write`
   asks the user.
+- A skill tagged `metadata.scope: extra` lives in the extra skills
+  repository. When `extra_forge_repo_url` in
+  `~/.config/pde/config.json` is set, that repository's fix pull
+  requests are on a forge such as Gitea, not GitHub. The tool then
+  opens the pull request there without asking, since the user chose
+  this in the setting. The user merges it in the forge's web page.
+- Never read or use the forge API token in the file that
+  `extra_forge_token_file` names. The token can also merge pull
+  requests, and only the user merges.
 - Never save a new lesson to a Lessons section with the older
   `skill-lessons add` command.
 

@@ -56,10 +56,21 @@ skill-fix reads these keys in `~/.config/pde/config.json`:
 | `skill_fix_label` | A plain word for this PC, such as `desk`, in lowercase letters and digits |
 | `extra_skills_repo` | The checkout of the extra skills repository, when this PC has one |
 | `extra_terms_file` | A list of extra terms; a personal fix that holds one stays on this PC as a held fix |
+| `extra_forge_repo_url` | The web address of the extra repository on a forge, such as `https://forge.example.com/owner/skills`, when its fix pull requests are there |
+| `extra_forge_token_file` | The file that holds the forge API token; set it with `extra_forge_repo_url` |
 
 The label appears in public branch names and pull request titles, so
 it must name no machine. Until it is set, fixes are committed but
 nothing is pushed.
+
+When both forge keys are set, sync finds and opens the extra
+repository's fix pull request through the forge's API at
+`/api/v1/repos/OWNER/REPO/pulls`, not `gh` and `pde-gh-write`. The
+token needs write access to the repository; keep its file at mode
+600. skill-fix opens the pull request at once, and you merge it in the
+forge's web page. `extra_forge_repo_url` must name the same repository
+as the extra checkout's git remote. That remote must use HTTPS with a
+git credential helper, because the update timer has no SSH agent.
 
 Sync fetches and pushes by the HTTPS form of a GitHub SSH remote,
 because the update timer has no SSH agent. Git then needs a
