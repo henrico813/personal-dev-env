@@ -15,6 +15,7 @@ use crate::external::cards::{CardError, CardKey, CardNote, ListedCard, Stage};
 use crate::external::git::{self, Unsaved};
 use crate::external::herdr::{Agent, AgentKind, AgentStatus};
 use crate::external::requests::PrRequest;
+use crate::watch::wait;
 
 /// The facts of every session, and what the status view needs beside
 /// them.
@@ -145,6 +146,10 @@ pub(crate) fn collect_session_facts(
         ));
     }
     let counts = messages::count_messages(run)?;
+    let open_waits: BTreeSet<String> = wait::list_waits(run)?
+        .into_iter()
+        .map(|wait| wait.name)
+        .collect();
     let live_ids: BTreeSet<String> = agents
         .iter()
         .filter_map(|agent| agent.session_id.clone())
@@ -221,6 +226,7 @@ pub(crate) fn collect_session_facts(
             approval_pending: has_bad_request
                 || match_open_request(&agent, &open_requests.requests),
             filed_request_recently: match_open_request(&agent, &open_requests.recent),
+            wait_open: open_waits.contains(&agent.name),
             handed_off: memory.handed_off.contains(&agent.name),
             messages: counts.get(&agent.name).copied().unwrap_or_default(),
             agent: Some(agent),
@@ -252,6 +258,7 @@ pub(crate) fn collect_session_facts(
             unsaved: Unsaved::NotChecked,
             approval_pending: false,
             filed_request_recently: false,
+            wait_open: false,
             handed_off: false,
             context_tokens: None,
             parked: Some(record),

@@ -785,7 +785,7 @@ pub fn restart_stopped_watch(
 }
 
 /// Tells whether a watch holds this machine's watch lock now.
-fn is_watch_running(state_folder: &Path) -> Result<bool, HubError> {
+pub(crate) fn is_watch_running(state_folder: &Path) -> Result<bool, HubError> {
     run_folder::is_file_locked(&state_folder.join(WATCH_FOLDER).join(LOCK_FILE))
 }
 
