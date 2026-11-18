@@ -76,6 +76,7 @@ pub(crate) enum KeptReason {
     OtherMachine,
     Yours,
     CardUnknown,
+    WaitsOnJob,
 }
 
 impl KeptReason {
@@ -94,6 +95,7 @@ impl KeptReason {
             KeptReason::OtherMachine => "other machine",
             KeptReason::Yours => "yours",
             KeptReason::CardUnknown => "card unknown",
+            KeptReason::WaitsOnJob => "waits on a job",
         }
     }
 }
@@ -142,6 +144,9 @@ pub(crate) struct SessionFacts {
     /// last hour. A worker that just merged one pull request may still
     /// have more to do.
     pub filed_request_recently: bool,
+    /// The run folder holds a `hub wait` of this session that the watch
+    /// has not ended, as while the worker waits on CI before a merge.
+    pub wait_open: bool,
     /// A `handoff` event of this run named the session as the old hub.
     pub handed_off: bool,
     pub context_tokens: Option<u64>,
@@ -311,8 +316,8 @@ fn split_hub_name(name: &str) -> Option<(&str, u64)> {
 
 /// Returns the first check that keeps a finished session open. The
 /// checks look for unsaved work, then the user in its pane, then a
-/// waiting or recent approval request. A session that would be
-/// parked also needs a way to reopen it.
+/// waiting or recent approval request, then an open `hub wait`. A
+/// session that would be parked also needs a way to reopen it.
 fn find_kept_reason(facts: &SessionFacts, agent: &Agent, needs_reopen: bool) -> Option<Verdict> {
     match &facts.unsaved {
         Unsaved::Clean => {}
@@ -337,6 +342,9 @@ fn find_kept_reason(facts: &SessionFacts, agent: &Agent, needs_reopen: bool) -> 
     }
     if let Some(verdict) = find_focus_or_approval(facts, agent) {
         return Some(verdict);
+    }
+    if facts.wait_open {
+        return Some(make_kept(KeptReason::WaitsOnJob));
     }
     let can_reopen = agent.kind == AgentKind::OpenCode && agent.session_id.is_some();
     if needs_reopen && !can_reopen {
@@ -630,6 +638,14 @@ mod tests {
                 expected: Lifecycle::Kept(KeptReason::ApprovalWaits),
             },
             Row {
+                id: "review-open-wait",
+                facts: SessionFacts {
+                    wait_open: true,
+                    ..make_facts(worker)
+                },
+                expected: Lifecycle::Kept(KeptReason::WaitsOnJob),
+            },
+            Row {
                 id: "accepted-recent-request",
                 facts: SessionFacts {
                     filed_request_recently: true,
@@ -728,6 +744,7 @@ mod tests {
             KeptReason::OtherMachine,
             KeptReason::Yours,
             KeptReason::CardUnknown,
+            KeptReason::WaitsOnJob,
         ];
         let mut states = vec![
             Lifecycle::Working,
@@ -755,7 +772,8 @@ mod tests {
                     | KeptReason::AnotherHub
                     | KeptReason::OtherMachine
                     | KeptReason::Yours
-                    | KeptReason::CardUnknown,
+                    | KeptReason::CardUnknown
+                    | KeptReason::WaitsOnJob,
                 )
                 | Lifecycle::ToClose
                 | Lifecycle::ToPark

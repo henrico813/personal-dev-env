@@ -15,6 +15,7 @@ use crate::shared::lifecycle::{self, Lifecycle, SessionFacts, Verdict};
 use crate::shared::messages::MessageCounts;
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{HubError, Tools};
+use crate::watch;
 
 /// Prints the hub line, the board line, the counts, the unread reports
 /// and one row per session with its lifecycle state.
@@ -60,7 +61,8 @@ pub fn run_status(
     let (counts, rows) = build_status_rows(verdicts, now.time_zone());
     let view = StatusView {
         hub,
-        watcher_running: run.is_watcher_running()?,
+        watch_running: watch::is_watch_running(tools.state_folder)?,
+        hub_next_running: run.is_watcher_running()?,
         board: tools.cards.read_board().map_err(|error| error.to_string()),
         counts,
         unread: collected.unread,
@@ -80,7 +82,12 @@ pub fn run_status(
 #[derive(Debug)]
 struct StatusView {
     hub: HubLine,
-    watcher_running: bool,
+    /// The machine's `hub watch`, such as hub-watch.service, holds its
+    /// lock.
+    watch_running: bool,
+    /// A `hub next` holds this run folder's `.watcher.lock`. It ends
+    /// after each line, so the hub starts it again.
+    hub_next_running: bool,
     /// The board counts and waiting cards, or why `card board` failed.
     board: Result<Board, String>,
     counts: StateCounts,
@@ -169,11 +176,8 @@ fn format_status_text(view: &StatusView) -> Vec<String> {
     } else {
         ""
     };
-    let watcher = if view.watcher_running {
-        "watcher running"
-    } else {
-        "watcher stopped"
-    };
+    let watch = describe_running(view.watch_running);
+    let hub_next = describe_running(view.hub_next_running);
     let board = match &view.board {
         Ok(board) => format!("board {}", board.counts),
         Err(reason) => format!("board: {reason}"),
@@ -187,7 +191,7 @@ fn format_status_text(view: &StatusView) -> Vec<String> {
         format!("unread {}: {}", view.unread.len(), view.unread.join(" "))
     };
     let mut lines = vec![
-        format!("hub {hub_name} {tokens}{hand_off}, {watcher}"),
+        format!("hub {hub_name} {tokens}{hand_off}, watch {watch}, hub next {hub_next}"),
         board,
     ];
     lines.extend(waiting);
@@ -286,7 +290,8 @@ fn format_status_json(view: &StatusView) -> String {
         .collect();
     json!({
         "hub": {"name": view.hub.name, "context_tokens": view.hub.context_tokens},
-        "watcher": if view.watcher_running { "running" } else { "stopped" },
+        "watch": describe_running(view.watch_running),
+        "watcher": describe_running(view.hub_next_running),
         "board": board,
         "counts": {
             "working": counts.working,
@@ -303,6 +308,10 @@ fn format_status_json(view: &StatusView) -> String {
         "problems": view.problems,
     })
     .to_string()
+}
+
+fn describe_running(running: bool) -> &'static str {
+    if running { "running" } else { "stopped" }
 }
 
 /// Returns the short WHY cell, such as `unread report` or `1 held`,
@@ -433,7 +442,8 @@ mod tests {
                 session_id: Some("ses_hub".to_owned()),
                 context_tokens: Some(131_204),
             },
-            watcher_running: true,
+            watch_running: true,
+            hub_next_running: false,
             board: Ok(Board {
                 counts: BoardCounts {
                     active: 5,
@@ -469,7 +479,7 @@ mod tests {
         assert_eq!(
             lines,
             [
-                "hub kanban-hub-18 131k, watcher running",
+                "hub kanban-hub-18 131k, watch running, hub next stopped",
                 "board active 5 of 8, review 19 of 6",
                 "waiting-on-others 1, oldest 8 days",
                 "open 6: 1 working, 1 hub, 1 you,",
@@ -493,6 +503,8 @@ mod tests {
     /// Scripts and the later board view read `--json`, so a renamed or
     /// missing field breaks them. It must hold the same facts as the
     /// text, including the kept reason apart from the WHY cell.
+    /// `watcher` keeps its old meaning, `hub next`, beside the new
+    /// `watch`.
     #[test]
     fn format_status_json_matches_example_object() {
         let view = make_example_view();
@@ -537,7 +549,8 @@ mod tests {
             printed,
             json!({
                 "hub": {"name": "kanban-hub-18", "context_tokens": 131_204},
-                "watcher": "running",
+                "watch": "running",
+                "watcher": "stopped",
                 "board": {
                     "active": 5,
                     "review": 19,

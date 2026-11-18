@@ -214,15 +214,16 @@ impl OpenCodeDb {
         }))
     }
 
-    /// Returns the folder a session works in, from the `session` table,
-    /// or `None` when the database lacks the session.
+    /// Returns the folder a session works in, from the `session_v2`
+    /// table, or `None` when the database lacks the session. OpenCode
+    /// no longer writes new sessions to its older `session` table.
     pub fn find_session(&self, session: &str) -> Result<Option<PathBuf>, OpenCodeError> {
         let Some(connection) = self.open()? else {
             return Ok(None);
         };
         let directory: Option<String> = connection
             .query_row(
-                "select directory from session where id = ?1",
+                "select directory from session_v2 where id = ?1",
                 [session],
                 |row| row.get(0),
             )
