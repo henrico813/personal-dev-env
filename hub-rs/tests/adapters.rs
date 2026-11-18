@@ -641,25 +641,25 @@ mod card_cli {
         assert_eq!(titles, expected);
     }
 
-    /// `hub auto ready` and `hub auto check` work from this list. A
+    /// `hub auto todo` and `hub auto check` work from this list. A
     /// draft card in it could be run without the user's say, and a
-    /// ready card left out never reaches the user's briefing.
+    /// todo card left out never reaches the user's briefing.
     #[test]
-    fn card_cli_lists_ready_keys_in_order() {
+    fn card_cli_lists_todo_keys_in_order() {
         let folder = TempFolder::new();
-        let card_list = "DEMO-KB-007\tready\ttask\tDemo\tRetry failed uploads\n\
-                         DEMO-KB-003\tready\ttask\tDemo\tFix the docs\n\
+        let card_list = "DEMO-KB-007\ttodo\ttask\tDemo\tRetry failed uploads\n\
+                         DEMO-KB-003\ttodo\ttask\tDemo\tFix the docs\n\
                          2 cards\n";
         let script = folder.write_script("card", card_list, "", 0);
         let cards = CardCli::new(script.clone());
 
-        let keys = cards.list_ready().unwrap();
+        let keys = cards.list_todo().unwrap();
 
         let keys: Vec<&str> = keys.iter().map(CardKey::as_str).collect();
         assert_eq!(keys, ["DEMO-KB-007", "DEMO-KB-003"]);
         assert_eq!(
             read_script_calls(&script),
-            [["list", "--tabs", "--stage", "ready"]]
+            [["list", "--tabs", "--stage", "todo"]]
         );
     }
 

@@ -323,7 +323,7 @@ pub enum Command {
     /// Starts a worker in a new tab or workspace, gives it the handoff
     /// file, and records the start on its card and in notes.md. A card
     /// key at the start of NAME makes it that card's worker, and a
-    /// ready card moves to active first. Run it to start each worker.
+    /// todo card moves to active first. Run it to start each worker.
     #[command(
         after_help = "Example: hub launch demo-kb-007-impl \\\n  /tmp/impl.md \\\n  --model anthropic/claude-sonnet-5#high"
     )]
@@ -386,7 +386,7 @@ pub enum Command {
     ///
     /// An auto run works a list of cards the user approved, without the
     /// user, until each stops at a pull request or a question. Run its
-    /// steps in the order ready, check, approve, now. Each step needs
+    /// steps in the order todo, check, approve, now. Each step needs
     /// --run DIR, the auto run's folder. In a hub's pane, $HUB_RUN is
     /// that hub's own folder.
     #[command(after_help = "Example: hub auto check --run /tmp/run2")]
@@ -528,19 +528,19 @@ pub enum WatchStep {
 // The steps run in the order the `auto-run` skill gives.
 #[derive(clap::Subcommand)]
 pub enum AutoStep {
-    /// Write the ready cards to ready.md
+    /// Write the todo cards to todo.md
     ///
-    /// Writes each ready card's title, project and criteria to ready.md
+    /// Writes each todo card's title, project and criteria to todo.md
     /// in the run folder, and prints it. Run it first, then write
     /// run.md from it.
-    #[command(after_help = "Example: hub auto ready --run /tmp/run2")]
-    Ready {
+    #[command(after_help = "Example: hub auto todo --run /tmp/run2")]
+    Todo {
         #[command(flatten)]
         run: AutoRunArg,
     },
-    /// Compare run.md against the ready cards
+    /// Compare run.md against the todo cards
     ///
-    /// Checks that run.md names every ready card once, and prints how
+    /// Checks that run.md names every todo card once, and prints how
     /// many cards the run works, or one line per problem. Run it after
     /// each change to run.md.
     #[command(after_help = "Example: hub auto check --run /tmp/run2")]

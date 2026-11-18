@@ -64,7 +64,7 @@ fn read_notes(run_path: &Path) -> String {
     fs::read_to_string(run_path.join("notes.md")).unwrap_or_default()
 }
 
-/// A finished session on an accepted card loses its tab, and the line
+/// A finished session on a done card loses its tab, and the line
 /// says which and why. A close with no line, or a line with no close,
 /// tells the user the wrong thing. `notes.md` and the event log are the
 /// only record of what the hub closed on its own.
@@ -75,22 +75,19 @@ fn run_clean_closes_tab_and_says_why() {
         &mut test_tools,
         "demo-kb-001-impl",
         "DEMO-KB-001",
-        Stage::Accepted,
+        Stage::Done,
     );
 
     let outcome = clean(&test_tools, false);
 
-    assert_eq!(
-        outcome.lines,
-        ["closed demo-kb-001-impl: DEMO-KB-001 accepted"]
-    );
+    assert_eq!(outcome.lines, ["closed demo-kb-001-impl: DEMO-KB-001 done"]);
     assert_eq!(
         *test_tools.herdr.closed_tabs.borrow(),
         ["w1:t-demo-kb-001-impl"]
     );
     assert!(
         read_notes(&test_tools.run_path())
-            .contains("- 2214 closed demo-kb-001-impl (DEMO-KB-001 accepted)\n")
+            .contains("- 2214 closed demo-kb-001-impl (DEMO-KB-001 done)\n")
     );
     let events = read_events(&test_tools.run_path());
     assert_eq!(events.last().unwrap()["event"], "closed");
@@ -107,13 +104,13 @@ fn run_clean_dry_run_changes_nothing() {
         &mut test_tools,
         "demo-kb-001-impl",
         "DEMO-KB-001",
-        Stage::Accepted,
+        Stage::Done,
     );
     add_finished_worker(
         &mut test_tools,
         "demo-kb-007-impl",
         "DEMO-KB-007",
-        Stage::Review,
+        Stage::InReview,
     );
 
     let outcome = clean(&test_tools, true);
@@ -121,7 +118,7 @@ fn run_clean_dry_run_changes_nothing() {
     assert_eq!(
         outcome.lines,
         [
-            "would close demo-kb-001-impl: DEMO-KB-001 accepted",
+            "would close demo-kb-001-impl: DEMO-KB-001 done",
             "would park demo-kb-007-impl: DEMO-KB-007 review",
         ]
     );
@@ -142,13 +139,13 @@ fn run_clean_listed_keeps_unlisted_sessions_open() {
         &mut test_tools,
         "demo-kb-001-impl",
         "DEMO-KB-001",
-        Stage::Accepted,
+        Stage::Done,
     );
     add_finished_worker(
         &mut test_tools,
         "demo-kb-002-impl",
         "DEMO-KB-002",
-        Stage::Accepted,
+        Stage::Done,
     );
     let now = make_time("2026-11-11T22:14:00+00:00[UTC]");
 
@@ -160,10 +157,7 @@ fn run_clean_listed_keeps_unlisted_sessions_open() {
     )
     .unwrap();
 
-    assert_eq!(
-        outcome.lines,
-        ["closed demo-kb-001-impl: DEMO-KB-001 accepted"]
-    );
+    assert_eq!(outcome.lines, ["closed demo-kb-001-impl: DEMO-KB-001 done"]);
     assert_eq!(
         *test_tools.herdr.closed_tabs.borrow(),
         ["w1:t-demo-kb-001-impl"]
@@ -181,13 +175,13 @@ fn run_clean_skips_session_messaged_meanwhile() {
         &mut test_tools,
         "demo-kb-001-impl",
         "DEMO-KB-001",
-        Stage::Accepted,
+        Stage::Done,
     );
     add_finished_worker(
         &mut test_tools,
         "demo-kb-007-impl",
         "DEMO-KB-007",
-        Stage::Review,
+        Stage::InReview,
     );
     let sends = test_tools.run_path().join("sends");
     test_tools.herdr.on_list_panes = Some(Box::new(move || {
@@ -223,13 +217,13 @@ fn run_clean_keeps_tab_focused_meanwhile() {
         &mut test_tools,
         "demo-kb-001-impl",
         "DEMO-KB-001",
-        Stage::Accepted,
+        Stage::Done,
     );
     add_finished_worker(
         &mut test_tools,
         "demo-kb-007-impl",
         "DEMO-KB-007",
-        Stage::Review,
+        Stage::InReview,
     );
     // From the second pane read on, each finished agent's own pane is
     // focused, and no pane comes or goes.
@@ -272,7 +266,7 @@ fn run_clean_keeps_tab_of_new_agent() {
         &mut test_tools,
         "demo-kb-001-impl",
         "DEMO-KB-001",
-        Stage::Accepted,
+        Stage::Done,
     );
     test_tools.herdr.quiet_shells = vec!["w1:p-user".to_owned()];
     // The user's pane is a quiet shell at the first pane read and runs
@@ -311,7 +305,7 @@ fn run_clean_closes_only_quiet_shell_tabs() {
             "quiet-shell",
             user_pane(),
             Vec::new(),
-            vec!["closed demo-kb-001-impl: DEMO-KB-001 accepted"],
+            vec!["closed demo-kb-001-impl: DEMO-KB-001 done"],
             vec!["w1:t-demo-kb-001-impl"],
         ),
         (
@@ -332,7 +326,7 @@ fn run_clean_closes_only_quiet_shell_tabs() {
             &mut test_tools,
             "demo-kb-001-impl",
             "DEMO-KB-001",
-            Stage::Accepted,
+            Stage::Done,
         );
         test_tools.herdr.quiet_shells = quiet_shells;
         test_tools.herdr.program_in_front = program_in_front;
@@ -367,7 +361,7 @@ fn run_clean_names_session_kept_by_shell() {
         &mut test_tools,
         "demo-kb-001-impl",
         "DEMO-KB-001",
-        Stage::Accepted,
+        Stage::Done,
     );
     // The editor pane is left out of `quiet_shells`, so it runs something.
     test_tools.herdr.on_list_panes = Some(Box::new(|| {
@@ -405,7 +399,7 @@ fn run_clean_parks_session_beside_stale_record() {
         &mut test_tools,
         "demo-kb-007-impl",
         "DEMO-KB-007",
-        Stage::Review,
+        Stage::InReview,
     );
     let parked = test_tools.state_folder().join("hub/parked");
     fs::create_dir_all(&parked).unwrap();
@@ -461,7 +455,7 @@ fn run_clean_keeps_record_of_parked_session() {
     test_tools
         .cards
         .stages
-        .insert("DEMO-KB-007".to_owned(), Stage::Review);
+        .insert("DEMO-KB-007".to_owned(), Stage::InReview);
     test_tools
         .cards
         .card_notes
@@ -493,7 +487,7 @@ fn run_clean_closes_nothing_while_requests_unreadable() {
         &mut test_tools,
         "demo-kb-001-impl",
         "DEMO-KB-001",
-        Stage::Accepted,
+        Stage::Done,
     );
     let requests = test_tools.state_folder().join("pr-write");
     fs::create_dir_all(&requests).unwrap();
@@ -511,7 +505,7 @@ fn run_clean_closes_nothing_while_requests_unreadable() {
     assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
 }
 
-/// A worker whose card is accepted may still be merging another pull
+/// A worker whose card is done may still be merging another pull
 /// request. A request it filed in the last hour must keep its tab
 /// through `hub clean`, or the user approves a request whose session
 /// is gone.
@@ -522,7 +516,7 @@ fn run_clean_keeps_worker_with_recent_request() {
         &mut test_tools,
         "demo-kb-001-impl",
         "DEMO-KB-001",
-        Stage::Accepted,
+        Stage::Done,
     );
     let requests = test_tools.state_folder().join("pr-write");
     fs::create_dir_all(&requests).unwrap();
@@ -556,7 +550,7 @@ fn run_park_records_session_then_closes_tab() {
         &mut test_tools,
         "demo-kb-007-impl",
         "DEMO-KB-007",
-        Stage::Review,
+        Stage::InReview,
     );
 
     let outcome = park(&test_tools, "demo-kb-007-impl").unwrap();
@@ -599,7 +593,7 @@ fn run_park_refuses_session_still_working() {
         &mut test_tools,
         "demo-kb-007-impl",
         "DEMO-KB-007",
-        Stage::Review,
+        Stage::InReview,
     );
     test_tools.herdr.agents[0].status = AgentStatus::Working;
 
@@ -620,7 +614,7 @@ fn run_park_failure_keeps_record_and_tab() {
         &mut test_tools,
         "demo-kb-007-impl",
         "DEMO-KB-007",
-        Stage::Review,
+        Stage::InReview,
     );
     test_tools.cards.link_error = Some("card: vault is read-only".to_owned());
 
@@ -641,7 +635,7 @@ fn run_park_keeps_tab_with_other_pane() {
         &mut test_tools,
         "demo-kb-007-impl",
         "DEMO-KB-007",
-        Stage::Review,
+        Stage::InReview,
     );
     test_tools.herdr.agents.push(Agent {
         tab_id: "w1:t-demo-kb-007-impl".to_owned(),
@@ -670,7 +664,7 @@ fn run_park_keeps_tab_messaged_during_link() {
         &mut test_tools,
         "demo-kb-007-impl",
         "DEMO-KB-007",
-        Stage::Review,
+        Stage::InReview,
     );
     let sends = test_tools.run_path().join("sends");
     test_tools.cards.on_link = Some(Box::new(move || {

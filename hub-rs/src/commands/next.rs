@@ -592,7 +592,7 @@ fn make_outcome(news: &News, hub_tokens: Option<u64>, json: bool) -> Outcome {
 /// Writes news as one line. Most lines end with the hub's own context,
 /// such as `report docs-fix (hub 131k)`. A finished line ends with what
 /// the hub should do, such as
-/// `to-close demo-kb-001-impl: DEMO-KB-001 accepted; run hub clean`.
+/// `to-close demo-kb-001-impl: DEMO-KB-001 done; run hub clean`.
 fn format_news_line(news: &News, hub_tokens: Option<u64>) -> String {
     let hub = format!("(hub {})", format_tokens(hub_tokens));
     match news {
@@ -854,12 +854,12 @@ mod tests {
                 "board-over",
                 News::BoardOver(BoardCounts {
                     active: 10,
-                    review: 18,
+                    in_review: 18,
                     active_limit: 8,
-                    review_limit: 6,
+                    in_review_limit: 6,
                 }),
                 Some(131_204),
-                r#"{"news":"board_over","name":null,"detail":"active 10 of 8, review 18 of 6","hub_context_tokens":131204}"#,
+                r#"{"news":"board_over","name":null,"detail":"active 10 of 8, in-review 18 of 6","hub_context_tokens":131204}"#,
             ),
         ];
 

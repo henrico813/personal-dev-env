@@ -225,7 +225,7 @@ class Sweep:
 
     def find_finished_review_cards(self) -> None:
         """List review cards whose pull request merged or closed."""
-        listing = self.run_command(["card", "list", "--stage", "review"])
+        listing = self.run_command(["card", "list", "--stage", "in-review"])
         for line in (listing or "").splitlines():
             fields = line.split()
             if not fields or not CARD_KEY_RE.match(fields[0]):

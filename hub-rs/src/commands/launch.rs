@@ -28,7 +28,7 @@ pub struct LaunchRequest {
 
 /// Starts the worker NAME and gives it its handoff. A worker with a
 /// card also gets a `Handoff PATH` note and its session on the card.
-/// Every start adds a line to `notes.md`. A `ready` card moves to
+/// Every start adds a line to `notes.md`. A `todo` card moves to
 /// `active` before the start, so `card` checks the work limit first.
 ///
 /// # Errors
@@ -83,7 +83,7 @@ pub fn run_launch(
     };
     let place = choose_place(tools, request, card.as_ref().map(|(key, _)| key))?;
     let moved = match &card {
-        Some((key, Stage::Ready)) => {
+        Some((key, Stage::Todo)) => {
             tools.cards.move_to_active(key)?;
             Some(key)
         }

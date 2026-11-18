@@ -15,7 +15,7 @@ use common::{TestTools, make_agent, make_refusal, make_time};
 const MODEL: &str = "github-copilot/claude-sonnet-5#high";
 
 /// A hub `kanban-hub` in workspace `w1`, labelled `kanban`, a workspace
-/// `w2` labelled `DEMO-KB-007 approvals`, the ready card DEMO-KB-007,
+/// `w2` labelled `DEMO-KB-007 approvals`, the todo card DEMO-KB-007,
 /// the active card DEMO-KB-009 and a handoff file, whose path it
 /// returns.
 fn make_launch_tools() -> (TestTools, PathBuf) {
@@ -33,7 +33,7 @@ fn make_launch_tools() -> (TestTools, PathBuf) {
         },
     ];
     test_tools.cards.stages = BTreeMap::from([
-        ("DEMO-KB-007".to_owned(), Stage::Ready),
+        ("DEMO-KB-007".to_owned(), Stage::Todo),
         ("DEMO-KB-009".to_owned(), Stage::Active),
     ]);
     let handoff = test_tools.path().join("impl.md");
@@ -134,13 +134,13 @@ fn run_launch_opens_worker_by_sidebar_rule() {
     }
 }
 
-/// A ready card moves to active before its worker starts, so the board
+/// A todo card moves to active before its worker starts, so the board
 /// counts the work. An active card stays, since `card` refuses active
 /// to active and every second worker on a card would fail.
 #[test]
-fn run_launch_activates_only_ready_cards() {
+fn run_launch_activates_only_todo_cards() {
     let cases = [
-        ("ready", "demo-kb-007-impl", vec!["DEMO-KB-007"]),
+        ("todo", "demo-kb-007-impl", vec!["DEMO-KB-007"]),
         ("active", "demo-kb-009-impl", vec![]),
     ];
 

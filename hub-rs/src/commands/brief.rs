@@ -48,8 +48,8 @@ pub fn run_brief(tools: &Tools<'_>, run: &RunFolder, now: Timestamp) -> Result<O
         Ok(board) => format!("board {}; {decision_count}", board.counts),
         Err(error) => format!("board: {error}"),
     }];
-    board_lines.extend(board.as_ref().ok().and_then(Board::waiting_line));
-    let waiting = board.map(|board| board.waiting).unwrap_or_default();
+    board_lines.extend(board.as_ref().ok().and_then(Board::blocked_line));
+    let blocked = board.map(|board| board.blocked).unwrap_or_default();
     let mut sections = vec![board_lines.join("\n")];
     let approvals = list_pending_approvals(tools, now)?;
     if !approvals.is_empty() {
@@ -67,9 +67,9 @@ pub fn run_brief(tools: &Tools<'_>, run: &RunFolder, now: Timestamp) -> Result<O
     if approvals.is_empty() && pull_requests.trim().is_empty() && entries.is_empty() {
         sections.push("Nothing waits on the user.".to_owned());
     }
-    if !waiting.is_empty() {
-        let mut section = vec!["Waiting on others (no action needed)".to_owned()];
-        for card in &waiting {
+    if !blocked.is_empty() {
+        let mut section = vec!["Blocked (no action needed)".to_owned()];
+        for card in &blocked {
             section.push(format!(
                 "- {}, {}",
                 card.key.as_str(),

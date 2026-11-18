@@ -182,7 +182,7 @@ fn format_status_text(view: &StatusView) -> Vec<String> {
         Ok(board) => format!("board {}", board.counts),
         Err(reason) => format!("board: {reason}"),
     };
-    let waiting = view.board.as_ref().ok().and_then(Board::waiting_line);
+    let blocked = view.board.as_ref().ok().and_then(Board::blocked_line);
     let counts = &view.counts;
     let open = view.rows.len() - counts.parked;
     let unread = if view.unread.is_empty() {
@@ -194,7 +194,7 @@ fn format_status_text(view: &StatusView) -> Vec<String> {
         format!("hub {hub_name} {tokens}{hand_off}, watch {watch}, hub next {hub_next}"),
         board,
     ];
-    lines.extend(waiting);
+    lines.extend(blocked);
     lines.extend([
         format!(
             "open {open}: {} working, {} hub, {} you,",
@@ -237,8 +237,8 @@ fn format_status_text(view: &StatusView) -> Vec<String> {
 fn format_status_json(view: &StatusView) -> String {
     let board = match &view.board {
         Ok(board) => {
-            let waiting: Vec<Value> = board
-                .waiting
+            let blocked: Vec<Value> = board
+                .blocked
                 .iter()
                 .map(|card| {
                     json!({
@@ -252,10 +252,10 @@ fn format_status_json(view: &StatusView) -> String {
             let counts = &board.counts;
             json!({
                 "active": counts.active,
-                "review": counts.review,
+                "in_review": counts.in_review,
                 "active_limit": counts.active_limit,
-                "review_limit": counts.review_limit,
-                "waiting_on_others": waiting,
+                "in_review_limit": counts.in_review_limit,
+                "blocked": blocked,
             })
         }
         Err(reason) => json!({"error": reason}),
@@ -374,7 +374,7 @@ pub(crate) fn format_columns<const N: usize>(table: &[[String; N]]) -> Vec<Strin
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::external::cards::{BoardCounts, WaitingCard};
+    use crate::external::cards::{BlockedCard, BoardCounts};
     use crate::external::git::Unsaved;
     use crate::shared::lifecycle::KeptReason;
     use crate::shared::test_values::{make_facts, make_parked_record};
@@ -404,14 +404,14 @@ mod tests {
     fn make_example_view() -> StatusView {
         let mut docs_fix = make_row_facts("docs-fix", Some(152_000), None);
         docs_fix.messages.held = 1;
-        let mut parked = make_row_facts("demo-kb-081-auto", None, Some(Stage::Review));
+        let mut parked = make_row_facts("demo-kb-081-auto", None, Some(Stage::InReview));
         parked.agent = None;
         parked.parked = Some(make_parked_record("demo-kb-081-auto"));
         parked.unsaved = Unsaved::NotChecked;
         let verdicts = vec![
             (parked, make_verdict(Lifecycle::Parked, "")),
             (
-                make_row_facts("demo-kb-090-auto", Some(104_000), Some(Stage::Review)),
+                make_row_facts("demo-kb-090-auto", Some(104_000), Some(Stage::InReview)),
                 make_verdict(Lifecycle::ToPark, ""),
             ),
             (
@@ -419,7 +419,7 @@ mod tests {
                 make_verdict(Lifecycle::ToClose, "report read"),
             ),
             (
-                make_row_facts("demo-kb-012-auto", Some(77_310), Some(Stage::Review)),
+                make_row_facts("demo-kb-012-auto", Some(77_310), Some(Stage::InReview)),
                 make_verdict(
                     Lifecycle::Kept(KeptReason::UnsavedFiles),
                     "unsaved files in /home/u/wt/demo-kb-012",
@@ -447,11 +447,11 @@ mod tests {
             board: Ok(Board {
                 counts: BoardCounts {
                     active: 5,
-                    review: 19,
+                    in_review: 19,
                     active_limit: 8,
-                    review_limit: 6,
+                    in_review_limit: 6,
                 },
-                waiting: vec![WaitingCard {
+                blocked: vec![BlockedCard {
                     key: "DEMO-KB-003".parse().unwrap(),
                     days: 8,
                     title: "Retry failed uploads".to_owned(),
@@ -480,8 +480,8 @@ mod tests {
             lines,
             [
                 "hub kanban-hub-18 131k, watch running, hub next stopped",
-                "board active 5 of 8, review 19 of 6",
-                "waiting-on-others 1, oldest 8 days",
+                "board active 5 of 8, in-review 19 of 6",
+                "blocked 1, oldest 8 days",
                 "open 6: 1 working, 1 hub, 1 you,",
                 "  1 kept, 1 to-close, 1 to-park; 1 parked",
                 "unread 2: demo-kb-007-impl docs-fix",
@@ -542,7 +542,7 @@ mod tests {
             "kept",
             "unsaved files in /home/u/wt/demo-kb-012",
             Some(77_310),
-            Some(("DEMO-KB-012", "review")),
+            Some(("DEMO-KB-012", "in-review")),
         );
         home["reason"] = json!("unsaved files");
         assert_eq!(
@@ -553,10 +553,10 @@ mod tests {
                 "watcher": "stopped",
                 "board": {
                     "active": 5,
-                    "review": 19,
+                    "in_review": 19,
                     "active_limit": 8,
-                    "review_limit": 6,
-                    "waiting_on_others": [{
+                    "in_review_limit": 6,
+                    "blocked": [{
                         "card": "DEMO-KB-003",
                         "days": 8,
                         "title": "Retry failed uploads",
@@ -596,14 +596,14 @@ mod tests {
                         "to-park",
                         "-",
                         Some(104_000),
-                        Some(("DEMO-KB-090", "review")),
+                        Some(("DEMO-KB-090", "in-review")),
                     ),
                     session(
                         "demo-kb-081-auto",
                         "parked",
                         "since 11-10 22:41",
                         None,
-                        Some(("DEMO-KB-081", "review")),
+                        Some(("DEMO-KB-081", "in-review")),
                     ),
                 ],
                 "no_session": [{"card": "DEMO-KB-004", "stage": "active"}],

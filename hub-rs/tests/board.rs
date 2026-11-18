@@ -226,7 +226,7 @@ fn print_board_reads_gone_hubs_once_saved() {
 /// as if nothing waits.
 #[test]
 fn print_board_hubless_shows_cards_and_note() {
-    let test_tools = tools_with_ready_card();
+    let test_tools = tools_with_todo_card();
     let hubs = Hubs::Live(test_tools.path().to_owned());
 
     let outcome = board::print_board(&test_tools.tools(), &hubs, &TimeZone::UTC, PHONE).unwrap();
@@ -237,19 +237,19 @@ fn print_board_hubless_shows_cards_and_note() {
         .position(|line| line.starts_with("NEXT"));
     let next = next.unwrap();
     assert_eq!(outcome.lines[next + 1], " you: no hub running");
-    assert_eq!(outcome.lines[next + 3], " hub: ready DEMO-KB-007");
+    assert_eq!(outcome.lines[next + 3], " hub: start DEMO-KB-007");
 }
 
-/// The one criterion in the note of `tools_with_ready_card`.
+/// The one criterion in the note of `tools_with_todo_card`.
 const CRITERION: &str = "- [ ] A failed upload retries.";
 
-/// A hub with one ready card, DEMO-KB-007, whose note holds `CRITERION`.
-fn tools_with_ready_card() -> TestTools {
+/// A hub with one todo card, DEMO-KB-007, whose note holds `CRITERION`.
+fn tools_with_todo_card() -> TestTools {
     let mut test_tools = TestTools::new();
     test_tools
         .cards
         .stages
-        .insert("DEMO-KB-007".to_owned(), Stage::Ready);
+        .insert("DEMO-KB-007".to_owned(), Stage::Todo);
     test_tools.cards.card_notes.insert(
         "DEMO-KB-007".to_owned(),
         CardNote {
@@ -266,10 +266,10 @@ fn tools_with_ready_card() -> TestTools {
 /// user never sees.
 #[test]
 fn control_board_prints_screen_after_each_step() {
-    let test_tools = tools_with_ready_card();
+    let test_tools = tools_with_todo_card();
 
     let steps =
-        "tap block:queue\ntap group:ready\ntap card:DEMO-KB-007\npress q\npress q\npress q\n";
+        "tap block:queue\ntap group:todo\ntap card:DEMO-KB-007\npress q\npress q\npress q\n";
     let (result, screens) = control(&test_tools, steps);
 
     result.unwrap();
@@ -283,7 +283,7 @@ fn control_board_prints_screen_after_each_step() {
     let expected = [
         ("first", "list"),
         ("tap block:queue", "list"),
-        ("tap group:ready", "list"),
+        ("tap group:todo", "list"),
         ("tap card:DEMO-KB-007", "details"),
         ("press q", "list"),
         ("press q", "list"),
@@ -292,14 +292,14 @@ fn control_board_prints_screen_after_each_step() {
     assert_eq!(pages, expected);
 }
 
-/// The hub's read skips the notes of ready cards, so opening one must
+/// The hub's read skips the notes of todo cards, so opening one must
 /// read its note. Otherwise the details page shows no criteria and the
 /// user cannot tell what the card has to do.
 #[test]
 fn control_board_open_card_reads_unread_note() {
-    let test_tools = tools_with_ready_card();
+    let test_tools = tools_with_todo_card();
 
-    let steps = "tap block:queue\ntap group:ready\ntap card:DEMO-KB-007\n";
+    let steps = "tap block:queue\ntap group:todo\ntap card:DEMO-KB-007\n";
     let (result, screens) = control(&test_tools, steps);
 
     result.unwrap();

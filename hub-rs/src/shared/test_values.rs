@@ -42,7 +42,7 @@ pub(crate) fn make_facts(name: &str) -> SessionFacts {
         parked: None,
         card: Some(CardFacts {
             key: CardKey::find_in_name(name).unwrap_or_else(|| "DEMO-KB-007".parse().unwrap()),
-            stage: Stage::Review,
+            stage: Stage::InReview,
             needs_you_open: false,
             newer_session_live: false,
             from_report: false,

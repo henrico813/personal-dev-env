@@ -62,54 +62,55 @@ from pathlib import Path
 STATE_DIR = Path.home() / ".local/state/card"
 PROJECTS_SUBDIR = "500 Zettelkasten/Projects"
 
-STAGES = [
-    "draft",
-    "ready",
-    "active",
-    "review",
-    "waiting-on-others",
-    "accepted",
-    "dropped",
-]
+# Each stage's word on cards and the command line. Code names a stage
+# only through these, so renaming a stage changes one line here.
+DRAFT = "draft"
+TODO = "todo"
+ACTIVE = "active"
+IN_REVIEW = "in-review"
+BLOCKED = "blocked"
+DONE = "done"
+DROPPED = "dropped"
+STAGES = [DRAFT, TODO, ACTIVE, IN_REVIEW, BLOCKED, DONE, DROPPED]
 KINDS = {
     "build": "ends in a change to code, config or the running setup",
     "research": "ends in a document or a decision",
 }
 DEFAULT_KIND = "build"
 # card move chains these moves when no single one reaches the stage, and
-# refuses a stage no chain reaches, so accepted is final and follow-up
+# refuses a stage no chain reaches, so done is final and follow-up
 # work gets a new card. "user" moves need --user, and "staff" moves
 # take it when the user makes them.
 MOVES = {
-    ("draft", "ready"): "user",
-    ("ready", "draft"): "staff",
-    ("ready", "active"): "staff",
-    ("active", "ready"): "staff",
-    ("active", "draft"): "user",
-    ("active", "review"): "staff",
-    ("review", "active"): "user",
-    ("review", "accepted"): "user",
-    # A waiting-on-others card waits only on people outside the team,
-    # so it never counts against a limit.
-    ("active", "waiting-on-others"): "staff",
-    ("review", "waiting-on-others"): "staff",
-    ("waiting-on-others", "review"): "staff",
-    ("waiting-on-others", "active"): "staff",
-    ("waiting-on-others", "accepted"): "user",
-    ("dropped", "draft"): "user",
+    (DRAFT, TODO): "user",
+    (TODO, DRAFT): "staff",
+    (TODO, ACTIVE): "staff",
+    (ACTIVE, TODO): "staff",
+    (ACTIVE, DRAFT): "user",
+    (ACTIVE, IN_REVIEW): "staff",
+    (IN_REVIEW, ACTIVE): "user",
+    (IN_REVIEW, DONE): "user",
+    # A blocked card waits only on people outside the team, so it never
+    # counts against a limit.
+    (ACTIVE, BLOCKED): "staff",
+    (IN_REVIEW, BLOCKED): "staff",
+    (BLOCKED, IN_REVIEW): "staff",
+    (BLOCKED, ACTIVE): "staff",
+    (BLOCKED, DONE): "user",
+    (DROPPED, DRAFT): "user",
     **{
-        (stage, "dropped"): "user"
+        (stage, DROPPED): "user"
         for stage in STAGES
-        if stage not in ("accepted", "dropped")
+        if stage not in (DONE, DROPPED)
     },
 }
-# Stages a chain of moves may pass through. Waiting on others needs a
-# reason naming who, and dropping is a decision, so a chain only ends
-# in those stages.
-CHAIN_STAGES = ["draft", "ready", "active", "review"]
+# Stages a chain of moves may pass through. Blocked needs a reason
+# naming who, and dropping is a decision, so a chain only ends in those
+# stages.
+CHAIN_STAGES = [DRAFT, TODO, ACTIVE, IN_REVIEW]
 # Only the user brings work already under way onto the board, straight
 # into one of these stages. These are not moves, so MOVES leaves them out.
-ADOPT_STAGES = ["active", "review", "waiting-on-others"]
+ADOPT_STAGES = [ACTIVE, IN_REVIEW, BLOCKED]
 # Cards in each stage across all projects. The user may move a card
 # past a limit with --user.
 ACTIVE_LIMIT = 8
@@ -459,14 +460,15 @@ def format_moves() -> str:
         lines.append(f"  {source} -> {target}: {who}")
     lines.append(
         "a stage no single move reaches takes the shortest chain of these"
-        " moves, through draft, ready, active and review, one Log line each"
+        f" moves, through {', '.join(CHAIN_STAGES[:-1])} and"
+        f" {CHAIN_STAGES[-1]}, one Log line each"
     )
     lines.append(
-        f"the user moves a card past the limits of {ACTIVE_LIMIT} active"
-        f" and {REVIEW_LIMIT} in review with --user"
+        f"the user moves a card past the limits of {ACTIVE_LIMIT} {ACTIVE}"
+        f" and {REVIEW_LIMIT} {IN_REVIEW} with --user"
     )
     lines.append(
-        "a move to waiting-on-others needs --why, naming who the card waits on"
+        f"a move to {BLOCKED} needs --why, naming who the card waits on"
     )
     lines.append("work already under way: card new --adopt STAGE --user")
     return "\n".join(lines)
@@ -524,7 +526,7 @@ def run_new(args: argparse.Namespace, projects: Path) -> int:
             "--session goes with --adopt. A draft card gets its session"
             " when it moves to active."
         )
-    require_reason_for_waiting(args.adopt, args.why)
+    require_blocked_reason(args.adopt, args.why)
     if args.from_file is not None:
         new_card = read_card_file(Path(args.from_file))
     else:
@@ -690,18 +692,18 @@ def run_list(args: argparse.Namespace, projects: Path) -> int:
             fields = [card.key, card.stage, card.kind, card.project]
             print(*fields, card.title, sep="\t")
             continue
-        print(fit(f"{card.key} {card.stage:<8} {card.kind:<8} {card.title}"))
+        print(fit(f"{card.key} {card.stage:<9} {card.kind:<8} {card.title}"))
     print(f"{len(cards)} cards")
     return 0
 
 
 def run_board(args: argparse.Namespace, projects: Path) -> int:
-    """Print counts per stage, then the review and waiting-on-others cards.
+    """Print counts per stage, then the in-review and blocked cards.
 
-    The hub reads the limits line, the waiting-on-others line and the
-    WAITING-ON-OTHERS list, so keep their words as they are. Both lists
-    put the card that has waited longest first. The waiting-on-others
-    line and list appear only when a card is in that stage.
+    The hub reads the limits line, the blocked line and the BLOCKED
+    list, so keep their words as they are. Both lists put the card that
+    has waited longest first. The blocked line and list appear only
+    when a card is in that stage.
 
     Args:
         args: The parsed arguments.
@@ -718,31 +720,31 @@ def run_board(args: argparse.Namespace, projects: Path) -> int:
     for stages in (STAGES[:3], STAGES[3:5], STAGES[5:]):
         print("  ".join(f"{stage} {counts[stage]}" for stage in stages))
     print(
-        f"active {counts['active']} of {ACTIVE_LIMIT},"
-        f" review {counts['review']} of {REVIEW_LIMIT}"
+        f"{ACTIVE} {counts[ACTIVE]} of {ACTIVE_LIMIT},"
+        f" {IN_REVIEW} {counts[IN_REVIEW]} of {REVIEW_LIMIT}"
     )
     today = date.today()
-    waiting = [
+    blocked = [
         (count_days_since(card.stage_date, today), card)
         for card in cards
-        if card.stage == "waiting-on-others"
+        if card.stage == BLOCKED
     ]
-    waiting.sort(key=lambda entry: (-entry[0], entry[1].key))
-    if waiting:
-        oldest = format_days(waiting[0][0])
-        print(f"waiting-on-others {len(waiting)}, oldest {oldest}")
-    review = [card for card in cards if card.stage == "review"]
-    review.sort(key=lambda card: (card.stage_date, card.key))
-    print(f"\nREVIEW, oldest first ({len(review)})")
-    for card in review:
+    blocked.sort(key=lambda entry: (-entry[0], entry[1].key))
+    if blocked:
+        oldest = format_days(blocked[0][0])
+        print(f"{BLOCKED} {len(blocked)}, oldest {oldest}")
+    in_review = [card for card in cards if card.stage == IN_REVIEW]
+    in_review.sort(key=lambda card: (card.stage_date, card.key))
+    print(f"\n{IN_REVIEW.upper()}, oldest first ({len(in_review)})")
+    for card in in_review:
         print(fit(f"- {card.key} {card.stage_date}", BOARD_WIDTH))
         print(fit(f"  {card.title}", BOARD_WIDTH))
-    if waiting:
-        print(f"\nWAITING-ON-OTHERS, oldest first ({len(waiting)})")
-    for days, card in waiting:
+    if blocked:
+        print(f"\n{BLOCKED.upper()}, oldest first ({len(blocked)})")
+    for days, card in blocked:
         print(fit(f"- {card.key} {format_days(days)}", BOARD_WIDTH))
         print(fit(f"  {card.title}", BOARD_WIDTH))
-        reason = read_waiting_reason(card.text)
+        reason = read_blocked_reason(card.text)
         if reason:
             print(fit(f"  {reason}", BOARD_WIDTH))
     return 0
@@ -779,11 +781,11 @@ def format_days(days: int) -> str:
     return "1 day" if days == 1 else f"{days} days"
 
 
-def read_waiting_reason(text: str) -> str:
-    """Return the --why of a card's newest move to waiting-on-others.
+def read_blocked_reason(text: str) -> str:
+    """Return the --why of a card's newest move to blocked.
 
-    format_log_entry writes ``waiting-on-others: by AUTHOR. WHY``, so
-    the reason is the text after the first ". ".
+    format_log_entry writes ``blocked: by AUTHOR. WHY``, so the reason
+    is the text after the first ". ".
 
     Args:
         text: The card text.
@@ -797,7 +799,7 @@ def read_waiting_reason(text: str) -> str:
         if len(words) < 3 or words[0] != "-":
             continue
         entry = words[2]
-        if entry.startswith("waiting-on-others: "):
+        if entry.startswith(f"{BLOCKED}: "):
             reason = entry.partition(". ")[2].strip()
     return reason
 
@@ -909,9 +911,9 @@ def run_move(args: argparse.Namespace, projects: Path) -> int:
     Returns:
         The exit code.
     """
-    if args.session is not None and args.stage != "active":
-        raise CardError("--session goes with a move to active")
-    require_reason_for_waiting(args.stage, args.why)
+    if args.session is not None and args.stage != ACTIVE:
+        raise CardError(f"--session goes with a move to {ACTIVE}")
+    require_blocked_reason(args.stage, args.why)
     card = find_card(projects, args.key)
     today = date.today().isoformat()
     author = f"by {find_author(args)}"
@@ -940,8 +942,8 @@ def run_move(args: argparse.Namespace, projects: Path) -> int:
     return 0
 
 
-def require_reason_for_waiting(stage: str | None, why: str | None) -> None:
-    """Refuse a card entering waiting-on-others without a --why.
+def require_blocked_reason(stage: str | None, why: str | None) -> None:
+    """Refuse a card entering blocked without a --why.
 
     The board shows the reason, so the user knows whom to chase.
 
@@ -950,12 +952,10 @@ def require_reason_for_waiting(stage: str | None, why: str | None) -> None:
         why: The --why text, or None.
 
     Raises:
-        CardError: The stage is waiting-on-others and why is empty.
+        CardError: The stage is blocked and why is empty.
     """
-    if stage == "waiting-on-others" and not (why and why.strip()):
-        raise CardError(
-            "waiting-on-others needs --why naming who the card waits on"
-        )
+    if stage == BLOCKED and not (why and why.strip()):
+        raise CardError(f"{BLOCKED} needs --why naming who the card waits on")
 
 
 def format_log_entry(
@@ -970,7 +970,7 @@ def format_log_entry(
         why: A reason, or None.
 
     Returns:
-        A line such as ``review: by general-staff for the user. PR open``.
+        A line such as ``in-review: by general-staff for the user. PR open``.
     """
     entry = f"{stage}: {author}"
     # The Log is the only record that the user, not the agent, decided.
@@ -999,7 +999,7 @@ def plan_moves(
         projects: The vault's Projects folder, for the stage limits.
 
     Returns:
-        The stages in order, such as ``["review", "accepted"]``.
+        The stages in order, such as ``["in-review", "done"]``.
 
     Raises:
         CardError: No allowed chain reaches target, with a hint, or a
@@ -1063,8 +1063,8 @@ def format_refused_move(
         user: True when the user made the move.
 
     Returns:
-        The reason, such as ``only the user moves review -> accepted.
-        You can move to review: card move KEY review``.
+        The reason, such as ``only the user moves in-review -> done.
+        You can move to in-review: card move KEY in-review``.
     """
     chain = None if user else find_move_chain(current, target, True)
     if chain is None:
@@ -1103,14 +1103,14 @@ def check_move(
     """
     # Only the user's release needs criteria. Paused work may be adopted
     # work that has none yet.
-    if (current, target) == ("draft", "ready") and not CHECKBOX_RE.search(
+    if (current, target) == (DRAFT, TODO) and not CHECKBOX_RE.search(
         read_section(text, CRITERIA) or ""
     ):
         raise CardError(
-            f"add a '- [ ] ...' item to {CRITERIA} before moving to ready"
+            f"add a '- [ ] ...' item to {CRITERIA} before moving to {TODO}"
         )
-    # Only staff moves can fill active or review; the user's moves pass.
-    limit = {"active": ACTIVE_LIMIT, "review": REVIEW_LIMIT}.get(target)
+    # Only staff moves can fill active or in-review; the user's moves pass.
+    limit = {ACTIVE: ACTIVE_LIMIT, IN_REVIEW: REVIEW_LIMIT}.get(target)
     if limit is not None and not user:
         count = sum(card.stage == target for card in load_all_cards(projects))
         if count >= limit:

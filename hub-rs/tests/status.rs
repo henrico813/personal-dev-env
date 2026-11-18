@@ -88,10 +88,10 @@ fn run_status_rows_cover_sessions_not_hub() {
         },
     ];
     test_tools.cards.stages = [
-        ("DEMO-KB-005".to_owned(), Stage::Review),
-        ("DEMO-KB-007".to_owned(), Stage::Review),
+        ("DEMO-KB-005".to_owned(), Stage::InReview),
+        ("DEMO-KB-007".to_owned(), Stage::InReview),
         ("DEMO-KB-009".to_owned(), Stage::Active),
-        ("DEMO-KB-081".to_owned(), Stage::Review),
+        ("DEMO-KB-081".to_owned(), Stage::InReview),
     ]
     .into();
     for key in ["DEMO-KB-007", "DEMO-KB-009", "DEMO-KB-081"] {
@@ -266,7 +266,7 @@ fn run_status_bad_request_file_keeps_sessions() {
         folders: vec![plain_folder],
         ..make_agent("demo-kb-007-impl", AgentStatus::Idle)
     }];
-    test_tools.cards.stages = [("DEMO-KB-007".to_owned(), Stage::Accepted)].into();
+    test_tools.cards.stages = [("DEMO-KB-007".to_owned(), Stage::Done)].into();
     let requests = test_tools.state_folder().join("pr-write");
     fs::create_dir(&requests).unwrap();
     fs::write(requests.join("req1.json"), r#"{"state": "pend"#).unwrap();
@@ -353,7 +353,7 @@ fn run_status_closes_every_handed_off_hub() {
 /// A worker can finish its own card and go on to another, such as a
 /// second pull request to merge. Its newest report names that card,
 /// here one in review whose pull request waits on the user. While that
-/// card is draft, ready, active or in review, the session must not be
+/// card is draft, todo, active or in review, the session must not be
 /// `to-close` or `to-park`, or the tidy pass closes a worker in the
 /// middle of its task. An older report names only the done card, so
 /// reading the wrong report closes the worker.
@@ -367,8 +367,8 @@ fn run_status_follows_card_in_newest_report() {
         ..make_agent("demo-kb-082-rebase", AgentStatus::Idle)
     }];
     test_tools.cards.stages = [
-        ("DEMO-KB-082".to_owned(), Stage::Accepted),
-        ("DEMO-KB-007".to_owned(), Stage::Review),
+        ("DEMO-KB-082".to_owned(), Stage::Done),
+        ("DEMO-KB-007".to_owned(), Stage::InReview),
     ]
     .into();
     test_tools
@@ -428,8 +428,8 @@ fn run_status_keeps_session_with_recent_request() {
         },
     ];
     test_tools.cards.stages = [
-        ("DEMO-KB-007".to_owned(), Stage::Accepted),
-        ("DEMO-KB-008".to_owned(), Stage::Accepted),
+        ("DEMO-KB-007".to_owned(), Stage::Done),
+        ("DEMO-KB-008".to_owned(), Stage::Done),
     ]
     .into();
     let requests = test_tools.state_folder().join("pr-write");
@@ -486,8 +486,8 @@ fn run_status_names_cards_with_no_session() {
     test_tools.cards.stages = [
         ("DEMO-KB-004".to_owned(), Stage::Active),
         ("DEMO-KB-007".to_owned(), Stage::Active),
-        ("DEMO-KB-010".to_owned(), Stage::Review),
-        ("DEMO-KB-011".to_owned(), Stage::Accepted),
+        ("DEMO-KB-010".to_owned(), Stage::InReview),
+        ("DEMO-KB-011".to_owned(), Stage::Done),
     ]
     .into();
     for key in ["DEMO-KB-007", "DEMO-KB-010"] {
@@ -554,9 +554,9 @@ fn run_status_keeps_sessions_git_cannot_clear() {
         },
     ];
     test_tools.cards.stages = [
-        ("DEMO-KB-001".to_owned(), Stage::Review),
-        ("DEMO-KB-002".to_owned(), Stage::Review),
-        ("DEMO-KB-003".to_owned(), Stage::Review),
+        ("DEMO-KB-001".to_owned(), Stage::InReview),
+        ("DEMO-KB-002".to_owned(), Stage::InReview),
+        ("DEMO-KB-003".to_owned(), Stage::InReview),
     ]
     .into();
     for key in ["DEMO-KB-001", "DEMO-KB-002", "DEMO-KB-003"] {
@@ -606,7 +606,7 @@ fn run_status_ignores_expired_pending_request() {
         folders: vec![plain_folder],
         ..make_agent("demo-kb-007-impl", AgentStatus::Idle)
     }];
-    test_tools.cards.stages = [("DEMO-KB-007".to_owned(), Stage::Accepted)].into();
+    test_tools.cards.stages = [("DEMO-KB-007".to_owned(), Stage::Done)].into();
     let requests = test_tools.state_folder().join("pr-write");
     fs::create_dir(&requests).unwrap();
     let request = json!({

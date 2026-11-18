@@ -3,7 +3,7 @@ mod common;
 use std::fs;
 
 use hub::commands::brief::run_brief;
-use hub::external::cards::{BoardCounts, WaitingCard};
+use hub::external::cards::{BlockedCard, BoardCounts};
 use hub::shared::HubError;
 use jiff::{SignedDuration, Timestamp};
 use serde_json::json;
@@ -30,9 +30,9 @@ fn run_brief_prints_board_reviews_then_decisions() {
     let mut test_tools = TestTools::new();
     test_tools.cards.board = Some(BoardCounts {
         active: 5,
-        review: 19,
+        in_review: 19,
         active_limit: 8,
-        review_limit: 6,
+        in_review_limit: 6,
     });
     fs::write(
         test_tools.run_path().join("reviews.md"),
@@ -46,7 +46,7 @@ fn run_brief_prints_board_reviews_then_decisions() {
     assert_eq!(
         outcome.lines,
         [
-            "board active 5 of 8, review 19 of 6; 1 decision",
+            "board active 5 of 8, in-review 19 of 6; 1 decision",
             "",
             "# PRs",
             "",
@@ -70,9 +70,9 @@ fn run_brief_says_when_nothing_waits() {
     let mut test_tools = TestTools::new();
     test_tools.cards.board = Some(BoardCounts {
         active: 3,
-        review: 0,
+        in_review: 0,
         active_limit: 8,
-        review_limit: 6,
+        in_review_limit: 6,
     });
 
     let outcome = run_brief(&test_tools.tools(), &test_tools.run(), Timestamp::now()).unwrap();
@@ -80,7 +80,7 @@ fn run_brief_says_when_nothing_waits() {
     assert_eq!(
         outcome.lines,
         [
-            "board active 3 of 8, review 0 of 6; 0 decisions",
+            "board active 3 of 8, in-review 0 of 6; 0 decisions",
             "",
             "Nothing waits on the user.",
         ]
@@ -92,22 +92,22 @@ fn run_brief_says_when_nothing_waits() {
 /// all-clear would vanish and the user would hunt for a step that is
 /// not theirs.
 #[test]
-fn run_brief_lists_waiting_cards_as_information_only() {
+fn run_brief_shows_blocked_cards_without_action() {
     let mut test_tools = TestTools::new();
     test_tools.cards.board = Some(BoardCounts {
         active: 3,
-        review: 0,
+        in_review: 0,
         active_limit: 8,
-        review_limit: 6,
+        in_review_limit: 6,
     });
-    test_tools.cards.waiting = vec![
-        WaitingCard {
+    test_tools.cards.blocked = vec![
+        BlockedCard {
             key: "DEMO-KB-003".parse().unwrap(),
             days: 8,
             title: "Retry failed uploads".to_owned(),
             reason: "platform team's review".to_owned(),
         },
-        WaitingCard {
+        BlockedCard {
             key: "DEMO-KB-009".parse().unwrap(),
             days: 1,
             title: "Add a cache".to_owned(),
@@ -120,12 +120,12 @@ fn run_brief_lists_waiting_cards_as_information_only() {
     assert_eq!(
         outcome.lines,
         [
-            "board active 3 of 8, review 0 of 6; 0 decisions",
-            "waiting-on-others 2, oldest 8 days",
+            "board active 3 of 8, in-review 0 of 6; 0 decisions",
+            "blocked 2, oldest 8 days",
             "",
             "Nothing waits on the user.",
             "",
-            "Waiting on others (no action needed)",
+            "Blocked (no action needed)",
             "- DEMO-KB-003, 8 days",
             "  Retry failed uploads",
             "  platform team's review",
@@ -168,9 +168,9 @@ fn run_brief_lists_only_live_pending_approvals() {
     let mut test_tools = TestTools::new();
     test_tools.cards.board = Some(BoardCounts {
         active: 3,
-        review: 0,
+        in_review: 0,
         active_limit: 8,
-        review_limit: 6,
+        in_review_limit: 6,
     });
     let requests = test_tools.state_folder().join("pr-write");
     fs::create_dir(&requests).unwrap();
@@ -209,7 +209,7 @@ fn run_brief_lists_only_live_pending_approvals() {
     assert_eq!(
         outcome.lines,
         [
-            "board active 3 of 8, review 0 of 6; 0 decisions",
+            "board active 3 of 8, in-review 0 of 6; 0 decisions",
             "",
             "approval A0016cd 1h12m left app #515 merge",
         ]
