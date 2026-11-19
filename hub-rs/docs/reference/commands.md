@@ -160,9 +160,8 @@ no session: DEMO-KB-004 active
 `hub next [--run DIR] [--timeout SECONDS] [--json]
 [--start-reviews]` waits until something needs the hub, prints one
 line and exits 0. While it waits, it sends held messages. At most
-once a minute it reads the board, finds finished sessions and asks
-each card's worker at 150k or more to hand off. It never closes or
-parks a session.
+once a minute it reads the board and finds finished sessions. It
+never closes or parks a session.
 
 - `report NAME (hub 131k)`: NAME wrote a report.
 - `missed report NAME (hub 131k)`: the report waited 10 minutes with
@@ -388,6 +387,18 @@ The second line comes only when it made a workspace.
   added the card note, but REASON`, so the hub does the rest by hand.
   Running it again after a start refuses, since NAME already runs.
 
+`hub launch [--run DIR] NAME HANDOFF --successor` is how a worker
+starts its own successor when `hub watch` asks it to hand off. NAME
+opens in a new tab of the caller's workspace, on the model and effort
+of the caller's newest reply, and the caller's "needs you" mark goes.
+The caller is the agent whose OpenCode session runs the command, from
+`OPENCODE_SESSION_ID`. The card steps and `notes.md` line are the
+same. `--successor` takes no `--model` or `--workspace`.
+
+- Exits 3 before it changes anything when no live agent runs the
+  caller's session, the session has no reply to take its model from,
+  or outside OpenCode.
+
 ### watch
 
 `hub watch start [--run DIR]` names this hub as the run's hub and
@@ -408,6 +419,15 @@ run's hub is gone, it notifies the phone instead, for reports from
 the last day. It never types into a hub's pane. Its lock and log are
 in `~/.local/state/pde/hub/`. The `hub-watch` systemd user unit keeps
 it running on full installs.
+
+The watch also asks each idle OpenCode session on this machine at
+150k context or more to hand off, with or without a hub. It never
+asks a hub, or a session in the `desk` workspace. The ask starts
+`hub watch: your context is about 152k` and names
+`hub launch --successor`. It comes again at each 20k more, such as
+170k and 190k, and from 190k the session is also marked "needs you".
+`hub/handoff-asks.json` keeps the highest context asked for each
+session, so a restarted watch does not ask again at the same step.
 
 The watch also reads `~/.local/state/pde/update.json`, which
 `pde-installer update` writes. For each new `failed` or `skipped`
