@@ -428,22 +428,24 @@ impl Herdr for &InMemoryHerdr {
     }
 }
 
-/// The `card` command, as the `Cards` trait, with the board, the
-/// stages, the todo cards and what `card show` gives in memory. It
-/// records each note it is asked to add, each session it links and
-/// each card it moves to active.
+/// The `Cards` trait in memory, with the board, the stages, the cards
+/// ready to start and each card's note. It records each note it is
+/// asked to add, each session it links and each card it moves into
+/// progress.
 #[derive(Default)]
 pub struct InMemoryCards {
-    /// Each card's stage, as `card list` gives it.
+    /// Each card's stage, as `Cards::list_cards` gives it.
     pub stages: BTreeMap<String, Stage>,
-    /// The keys of todo cards, in `card list` order.
+    /// The keys of cards ready to start, in the order
+    /// `Cards::list_todo` gives.
     pub todo: Vec<String>,
-    /// What `card show` gives, by card key. Any other card fails as
-    /// `card show` does for a missing card.
+    /// What `Cards::read_card` gives, by card key. Any other card fails
+    /// as `CardCli` does for a missing card.
     pub card_notes: BTreeMap<String, CardNote>,
-    /// `None` answers as `card` does without a vault.
+    /// `None` answers as `CardCli` does without a vault.
     pub board: Option<BoardCounts>,
-    /// The blocked list `read_board` gives with `board`.
+    /// The cards waiting on people outside the team that `read_board`
+    /// gives with `board`.
     pub blocked: Vec<BlockedCard>,
     /// Each `add_note` call, as the card key and the text.
     pub notes: RefCell<Vec<(String, String)>>,
@@ -458,12 +460,12 @@ pub struct InMemoryCards {
     /// process acting while the card is linked.
     pub on_link: Option<Box<dyn Fn()>>,
     /// When set, `list_cards` and `read_card` fail with this message,
-    /// as `card` does without a vault.
+    /// as `CardCli` does without a vault.
     pub read_error: Option<String>,
     /// The key of each `move_to_active` call.
     pub moves: RefCell<Vec<String>>,
     /// When set, `move_to_active` fails with this message and records
-    /// nothing, as `card` does past the work limit.
+    /// nothing, as `CardCli` does past the work limit.
     pub move_error: Option<String>,
 }
 

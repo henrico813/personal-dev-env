@@ -83,10 +83,11 @@ KINDS = {
     "research": "ends in a document or a decision",
 }
 DEFAULT_KIND = "build"
-# card move chains these moves when no single one reaches the stage, and
-# refuses a stage no chain reaches, so done is final and follow-up
-# work gets a new card. "user" moves need --user, and "staff" moves
-# take it when the user makes them.
+# Moving a card chains these moves, through `find_move_chain`, when no
+# single one reaches the stage, and refuses a stage no chain reaches,
+# so finishing a card is final and follow-up work gets a new card.
+# "user" moves need --user, and "staff" moves take it when the user
+# makes them.
 MOVES = {
     (DRAFT, TODO): "user",
     (TODO, DRAFT): "staff",
@@ -96,8 +97,8 @@ MOVES = {
     (ACTIVE, IN_REVIEW): "staff",
     (IN_REVIEW, ACTIVE): "user",
     (IN_REVIEW, DONE): "user",
-    # A blocked card waits only on people outside the team, so it never
-    # counts against a limit.
+    # A card in this stage waits only on people outside the team, so
+    # it never counts against a limit.
     (ACTIVE, BLOCKED): "staff",
     (IN_REVIEW, BLOCKED): "staff",
     (BLOCKED, IN_REVIEW): "staff",
@@ -110,9 +111,9 @@ MOVES = {
         if stage not in (DONE, DROPPED)
     },
 }
-# Stages a chain of moves may pass through. Blocked needs a reason
-# naming who, and dropping is a decision, so a chain only ends in those
-# stages.
+# Stages a chain of moves may pass through. Waiting on people outside
+# the team needs a reason naming who, and giving up on a card is a
+# decision, so a chain only ends in those stages.
 CHAIN_STAGES = [DRAFT, TODO, ACTIVE, IN_REVIEW]
 # Only the user brings work already under way onto the board, straight
 # into one of these stages. These are not moves, so MOVES leaves them out.
@@ -143,8 +144,8 @@ SECTIONS = [
     "Decisions",
     "Log",
 ]
-# Sections that card add, card edit and --from files fill. Only card
-# writes the Log.
+# Sections that `run_add` and `run_edit` may fill, as may the input
+# file of `run_new`. Only this program writes the Log.
 WRITABLE_SECTIONS = [name for name in SECTIONS if name != "Log"]
 CRITERIA = "Acceptance Criteria"
 
@@ -1154,7 +1155,8 @@ def check_move(
         raise CardError(
             f"add a '- [ ] ...' item to {CRITERIA} before moving to {TODO}"
         )
-    # Only staff moves can fill active or in-review; the user's moves pass.
+    # Only staff moves can fill a stage that has a limit; the user's
+    # moves pass.
     limit = {ACTIVE: ACTIVE_LIMIT, IN_REVIEW: REVIEW_LIMIT}.get(target)
     if limit is not None and not user:
         count = sum(card.stage == target for card in load_all_cards(projects))

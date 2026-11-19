@@ -24,8 +24,8 @@ static KEY_IN_NAME: LazyLock<Regex> =
 static KEY_IN_TEXT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\b[A-Z][A-Z0-9]*-KB-[0-9]{3,}\b").unwrap());
 
-/// The card sections whose bullets tell the AI model that sorts todo
-/// cards what the work needs.
+/// The card sections whose bullets tell the AI model that sorts
+/// cards ready to start what the work needs.
 const CRITERIA_SECTIONS: [&str; 2] = ["Context", "Acceptance Criteria"];
 
 /// The most `card show` calls `CardCli::read_cards` runs at once. Each
@@ -38,7 +38,7 @@ const MAX_PARALLEL_SHOWS: usize = 8;
 pub trait Cards {
     /// Returns every card from one `card list` call, in its order.
     fn list_cards(&self) -> Result<Vec<ListedCard>, CardError>;
-    /// Returns the keys of todo cards in `card list` order.
+    /// Returns the keys of cards ready to start, in `card list` order.
     fn list_todo(&self) -> Result<Vec<CardKey>, CardError>;
     /// Returns a card's title, project, session IDs, open needs-you note
     /// and criteria.
@@ -48,15 +48,16 @@ pub trait Cards {
     fn read_cards(&self, keys: &[CardKey]) -> Vec<Result<CardNote, CardError>> {
         keys.iter().map(|key| self.read_card(key)).collect()
     }
-    /// Returns the board's counts, their limits and the blocked cards.
+    /// Returns the board's counts, their limits, and the cards waiting
+    /// on people outside the team.
     fn read_board(&self) -> Result<Board, CardError>;
     /// Adds one line to the card's Log.
     fn add_note(&self, key: &CardKey, text: &str) -> Result<(), CardError>;
     /// Adds a live agent's session ID to the card's sessions list.
     /// `card` reads the ID from Herdr, so the agent must still run.
     fn link_session(&self, key: &CardKey, agent_name: &str) -> Result<(), CardError>;
-    /// Moves a todo card to active. `card` refuses a start past the
-    /// active limit, with its reason.
+    /// Moves a card ready to start into progress. `card` refuses a
+    /// start past the work limit, with its reason.
     fn move_to_active(&self, key: &CardKey) -> Result<(), CardError>;
 }
 
@@ -199,7 +200,8 @@ impl CardKey {
     }
 }
 
-/// Reads a key in any case, as `hub read --card demo-kb-007` gives it.
+/// Reads a key in any case, as a user may type it, such as
+/// `demo-kb-007`.
 impl FromStr for CardKey {
     type Err = String;
 
@@ -239,7 +241,7 @@ pub enum Stage {
 impl Stage {
     /// Returns `card`'s word for the stage, such as `in-review`. The hub
     /// passes stage words to `card` and reads them from it only through
-    /// this table. Board titles, `hub brief` headings and JSON keys keep
+    /// this table. Board titles, briefing headings and JSON keys keep
     /// their own spelling.
     pub(crate) fn as_str(self) -> &'static str {
         match self {
@@ -300,7 +302,8 @@ pub struct CardNote {
     /// The front matter's pull request links.
     pub prs: Vec<String>,
     /// The newest Log line that starts `next: `, such as `review PR
-    /// #498`, which the hub writes when it moves the card to in-review.
+    /// #498`, which the hub writes when it hands the card to the user
+    /// for review.
     pub next_step: Option<String>,
 }
 
@@ -315,7 +318,7 @@ pub struct BoardCounts {
 }
 
 impl BoardCounts {
-    /// Returns true when active or in-review holds more cards than its
+    /// Returns true when a limited stage holds more cards than its
     /// limit.
     pub fn is_over(&self) -> bool {
         self.active > self.active_limit || self.in_review > self.in_review_limit
@@ -343,13 +346,13 @@ impl fmt::Display for BoardCounts {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Board {
     pub counts: BoardCounts,
-    /// The blocked cards, oldest first.
+    /// The cards waiting on people outside the team, oldest first.
     pub blocked: Vec<BlockedCard>,
 }
 
 impl Board {
     /// Returns a line such as `blocked 2, oldest 8 days`, or `None`
-    /// when no card is blocked.
+    /// when the list is empty.
     pub fn blocked_line(&self) -> Option<String> {
         let oldest = self.blocked.iter().map(|card| card.days).max()?;
         Some(format!(
@@ -361,7 +364,8 @@ impl Board {
     }
 }
 
-/// A card in the blocked stage, from `card board`.
+/// A card from the `card board` list that waits on people outside
+/// the team.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BlockedCard {
     pub key: CardKey,
@@ -523,9 +527,10 @@ fn parse_board_counts(text: &str) -> Option<BoardCounts> {
     })
 }
 
-/// Reads the `BLOCKED` list of `card board` text. Each card is a
-/// `- KEY N days` line, then its title and its reason, each indented
-/// two spaces. A board without the list gives none.
+/// Reads the `card board` list for the stage that waits on people
+/// outside the team. Each card is a `- KEY N days` line, then its
+/// title and its reason, each indented two spaces. A board without
+/// the list gives none.
 fn parse_blocked_cards(text: &str) -> Vec<BlockedCard> {
     let mut lines = text
         .lines()
@@ -570,9 +575,10 @@ fn is_list_heading(line: &str, stage: Stage) -> bool {
 mod tests {
     use super::*;
 
-    /// `hub status` and `hub brief` show each blocked card's days and
-    /// reason from this list, and a board with no blocked card prints
-    /// none. A card read wrong tells the user the wrong team to chase.
+    /// `run_status` and `run_brief` show the days and reason of each
+    /// card waiting on people outside the team from this list, and an
+    /// empty list prints none. A card read wrong tells the user the
+    /// wrong team to chase.
     #[test]
     fn parse_blocked_cards_reads_list_or_none() {
         let board = "active 3 of 8, in-review 2 of 6\n\
@@ -616,11 +622,11 @@ mod tests {
         assert_eq!(parse_blocked_cards(no_blocked), []);
     }
 
-    /// `hub brief` and `hub status` print the board line from these
+    /// `run_brief` and `run_status` print the board line from these
     /// counts, and the user decides from it whether to review before
-    /// starting more. A limit or in-review count read from the wrong
-    /// word misleads the user, and `hub status --json` also gives the
-    /// active count to scripts.
+    /// starting more. A limit or count read from the wrong word
+    /// misleads the user, and the status JSON also gives these counts
+    /// to scripts.
     #[test]
     fn parse_board_counts_reads_counts_or_none() {
         let board = "draft 79  todo 7  active 9\n\
@@ -650,9 +656,9 @@ mod tests {
         }
     }
 
-    /// The AI model sorts todo cards from `hub auto todo`'s text
-    /// alone. A title, project or criterion read wrong, or a Log line
-    /// read as a criterion, sorts the card on wrong facts.
+    /// The AI model sorts cards ready to start from `run_auto_todo`'s
+    /// text alone. A title, project or criterion read wrong, or a Log
+    /// line read as a criterion, sorts the card on wrong facts.
     #[test]
     fn parse_card_note_reads_title_project_criteria() {
         let card_show = "---\n\
@@ -697,10 +703,10 @@ mod tests {
         );
     }
 
-    /// `hub board` tells the user what to do next on each card in
-    /// in-review from these links and Log lines. A link read from the
-    /// wrong list, or an older `next:` line winning, sends the user to
-    /// the wrong plan or PR.
+    /// The board tells the user what to do next on each card needing
+    /// the user's review, from these links and Log lines. A link read
+    /// from the wrong list, or an older `next:` line winning, sends the
+    /// user to the wrong plan or PR.
     #[test]
     fn parse_card_note_reads_plans_prs_next() {
         let card_show = "---\n\
@@ -729,11 +735,12 @@ mod tests {
     }
 
     /// Every session's lifecycle starts from its card's stage, read
-    /// from one `card list` line, and `hub board` shows the title and
+    /// from one `card list` line, and the board shows the title and
     /// project on the card's row. A stage read from the wrong field, or
     /// the count line read as a card, gives sessions the wrong state,
-    /// such as `to-close` for a worker whose card is still active. A
-    /// card with no kind must not shift its project into the title.
+    /// such as `to-close` for a worker whose card is still in
+    /// progress. A card with no kind must not shift its project into
+    /// the title.
     #[test]
     fn parse_card_list_reads_tab_separated_fields() {
         let listing = "DEMO-KB-004\tactive\t\tDemo\tFix the docs\n\
@@ -763,7 +770,7 @@ mod tests {
     }
 
     /// A card whose last needs-you line has no answer after it waits
-    /// on the user, so `hub status` shows its session as `you`. Reading
+    /// on the user, so `run_status` shows its session as `you`. Reading
     /// an answered question as open hides a finished worker behind
     /// `you`, and missing a new question after an answer leaves the
     /// user's question unseen.

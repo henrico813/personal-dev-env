@@ -1,4 +1,4 @@
-//! Reads what the board shows, through the same steps as `hub status`,
+//! Reads what the board shows, through the same steps as `run_status`,
 //! into plain values the screen draws. Read `read_queue` first.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -24,7 +24,7 @@ pub enum Hubs {
     /// Every hub Herdr lists now, found among the `herdr-hub.*` folders
     /// in this folder, `~/.local/state`.
     Live(PathBuf),
-    /// Only the run in this folder, from the hidden `hub board --run`.
+    /// Only the run in this folder, from the board's hidden run option.
     Given(PathBuf),
 }
 
@@ -38,8 +38,8 @@ pub(crate) struct Queue {
     pub read_at: String,
     /// How long the read took.
     pub took: Duration,
-    /// Draft, todo, active, in-review and blocked cards, in `card list`
-    /// order.
+    /// The cards `is_on_board` keeps, in the order `Cards::list_cards`
+    /// gives.
     pub cards: Vec<CardLine>,
     /// The entries of each hub's `decisions.md`.
     pub questions: Vec<Question>,
@@ -58,8 +58,8 @@ pub(crate) struct Queue {
     /// The run whose facts the board shows, where y in the clean dialog
     /// cleans, or `None` with no hub running.
     pub run: Option<PathBuf>,
-    /// What `card show` gave for each open card a session, a parked
-    /// record or a report names.
+    /// What `Cards::read_cards` gave for each open card a session, a
+    /// parked record or a report names.
     /// The details page reads any other card when it opens.
     pub notes: BTreeMap<CardKey, CardNote>,
     /// One line per source that could not be read.
@@ -92,20 +92,19 @@ pub(crate) struct Question {
 #[derive(Debug)]
 pub(crate) struct SessionLine {
     pub name: String,
-    /// The same words as the WHY cell of `hub status`, such as
-    /// `needs you`.
+    /// The words `describe_why` gives, such as `needs you`.
     pub why: String,
     /// The card and its stage, such as `DEMO-KB-001 active`.
     pub card: Option<String>,
 }
 
-/// One session and the lifecycle verdict `hub clean` acts on.
+/// One session and the lifecycle verdict the tidy pass acts on.
 #[derive(Debug)]
 pub(crate) struct SessionRow {
     pub name: String,
     pub state: Lifecycle,
     /// For a kept session, the reason's label, such as `unpushed`.
-    /// Otherwise the WHY cell of `hub status`, empty for its `-`.
+    /// Otherwise what `describe_why` gives, empty for its `-`.
     pub why: String,
     /// The stage of the session's card, when it has one.
     pub stage: Option<Stage>,
@@ -114,7 +113,7 @@ pub(crate) struct SessionRow {
 }
 
 impl SessionRow {
-    /// Makes a row with `why` as `hub status` gives it. Its `-`, for
+    /// Makes a row with `why` as `describe_why` gives it. Its `-`, for
     /// nothing to say, becomes an empty why, so the sessions panel shows
     /// the state word instead.
     pub(crate) fn new(
@@ -143,7 +142,7 @@ impl SessionRow {
 ///
 /// `HubError::Herdr` when Herdr cannot list the agents, and
 /// `HubError::File` when the runs folder or a run folder file cannot be
-/// read. A failed `card` or OpenCode read becomes a problem line
+/// read. A failed `Cards` or OpenCode read becomes a problem line
 /// instead.
 pub(crate) fn read_queue(
     tools: &Tools<'_>,

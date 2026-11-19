@@ -1,5 +1,5 @@
-//! Runs `hub launch`, which starts a worker from its handoff file and
-//! does the bookkeeping a hub once did by hand. Read `run_launch` first.
+//! Starts a worker from its handoff file and does the bookkeeping a
+//! hub once did by hand. Read `run_launch` first.
 
 use std::path::PathBuf;
 
@@ -12,7 +12,7 @@ use crate::shared::parking::find_card_workspace;
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{AgentName, HubError, Tools};
 
-/// What `hub launch` starts, from its command line.
+/// What `run_launch` starts, from its command line.
 pub struct LaunchRequest {
     /// A card key at its start, as in `demo-kb-007-impl`, makes the
     /// worker that card's worker.
@@ -28,20 +28,22 @@ pub struct LaunchRequest {
 
 /// Starts the worker NAME and gives it its handoff. A worker with a
 /// card also gets a `Handoff PATH` note and its session on the card.
-/// Every start adds a line to `notes.md`. A `todo` card moves to
-/// `active` before the start, so `card` checks the work limit first.
+/// Every start adds a line to `notes.md`. A card ready to start moves
+/// into progress before the start, so the work limit is checked
+/// first.
 ///
 /// # Errors
 ///
 /// `HubError::NotDone` before anything changes, for a missing handoff,
-/// a live agent named NAME, a card `card list` does not show, or no
-/// workspace to open in. `HubError::Card` when `card` refuses the
-/// move, also before the start. A start that fails after the move is
-/// `HubError::PartlyDone` worded `moved KEY to active, but ...`. After
-/// the start, `HubError::PartlyDone` starts with `started NAME` and
-/// lists each later step that finished, as in `started NAME, sent the
-/// handoff prompt, but ...`, so the hub finishes the rest by hand
-/// instead of running the command again.
+/// a live agent named NAME, a card `Cards::list_cards` does not give,
+/// or no workspace to open in. `HubError::Card` when
+/// `Cards::move_to_active` refuses the move, also before the start. A
+/// start that fails after the move is `HubError::PartlyDone` worded
+/// `moved KEY to active, but ...`. After the start,
+/// `HubError::PartlyDone` starts with `started NAME` and lists each
+/// later step that finished, as in `started NAME, sent the handoff
+/// prompt, but ...`, so the hub finishes the rest by hand instead of
+/// running the command again.
 pub fn run_launch(
     tools: &Tools<'_>,
     run: &RunFolder,
@@ -143,8 +145,8 @@ pub fn run_launch(
     Ok(Outcome { lines })
 }
 
-/// Returns where the worker opens, by the sidebar rule of the
-/// `herdr-hub` skill. `--workspace` names the workspace, made when
+/// Returns where the worker opens, by the sidebar rule of the hub's
+/// skill. `--workspace` names the workspace, made when
 /// missing. Otherwise a card's worker opens in its card's workspace,
 /// else in a new one named after the card. Work with no card opens in
 /// the hub's own workspace.

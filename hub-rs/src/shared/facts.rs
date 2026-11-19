@@ -24,16 +24,18 @@ pub(crate) struct CollectedFacts {
     pub sessions: Vec<SessionFacts>,
     /// The names with an unread report, a gone session's included.
     pub unread: Vec<String>,
-    /// Active and review cards with no live or parked session.
+    /// Cards in progress or needing the user's review, with no live
+    /// or parked session.
     pub no_session: Vec<(CardKey, Stage)>,
     /// The names of parked records whose session is live again, left by
     /// a failed close or a reopen. The tidy pass deletes them.
     pub live_records: Vec<String>,
-    /// Every card in `card list` order, or none when `card list`
-    /// failed.
+    /// Every card in the order `Cards::list_cards` gives, or none when
+    /// that call failed.
     pub cards: Vec<ListedCard>,
-    /// What `card show` gave for each open card a session, a parked
-    /// record or a report names. A card that failed to read is left out.
+    /// What `Cards::read_cards` gave for each open card a session, a
+    /// parked record or a report names. A card that failed to read is
+    /// left out.
     pub notes: BTreeMap<CardKey, CardNote>,
     /// One line per failed source, such as `cards: ...`.
     pub problems: Vec<String>,
@@ -52,10 +54,10 @@ pub(crate) struct HubLine {
 /// every parked session that is not live again. A card, database,
 /// report or request file failure becomes a problem line, not an
 /// error. A request file that does not parse also keeps every live
-/// session. A worker keeps its own card while that card is draft, todo
-/// or active and no newer live session took it over. Otherwise it takes
-/// the first other draft, todo, active or in-review card its newest
-/// report names, if any.
+/// session. A worker keeps its own card while `is_work_open` holds
+/// for it and no newer live session took it over. Otherwise it takes
+/// the first other card its newest report names that has not gone
+/// past the user's review in `Stage` order, if any.
 pub(crate) fn collect_session_facts(
     tools: &Tools<'_>,
     run: &RunFolder,
@@ -172,8 +174,8 @@ pub(crate) fn collect_session_facts(
             .flatten()
             .filter(|reported| Some(*reported) != key.as_ref())
             .filter_map(&read_card_facts)
-            // A worker that reported a card in review may still have
-            // merges to run for it.
+            // A worker that reported a card needing the user's review
+            // may still have merges to run for it.
             .find(|card| is_work_open(card.stage) || card.stage == Stage::InReview)
             .map(|card| CardFacts {
                 from_report: true,
@@ -185,8 +187,8 @@ pub(crate) fn collect_session_facts(
             Some(own) if is_work_open(own.stage) && !own.newer_session_live => Some(own),
             own => reported_card.or(own),
         };
-        // A report that cannot be read, or a card it names that `card
-        // show` failed on, may hide work the worker still has.
+        // A report that cannot be read, or a card it names whose note
+        // failed to read, may hide work the worker still has.
         let report_unknown = match reported_keys {
             Some(Some(keys)) => keys.iter().any(|key| failed_keys.contains(key)),
             Some(None) => true,
@@ -340,7 +342,7 @@ fn is_work_open(stage: Stage) -> bool {
 }
 
 /// Reads the session's reports from the run folder and the hub's
-/// memory. A message delivered after the last `hub read` counts as a
+/// memory. A message delivered after the last `run_read` counts as a
 /// reply.
 fn read_report_facts(name: &str, reported: &ReportedNames, memory: &Memory) -> ReportFacts {
     let last_read = memory.last_read.get(name);
@@ -354,8 +356,8 @@ fn read_report_facts(name: &str, reported: &ReportedNames, memory: &Memory) -> R
 
 /// Tells whether a session could be parked or closed, so git must
 /// look first. Only an idle or done session on this machine needs it,
-/// and only when its card is in-review, blocked, done or dropped, or
-/// when it has no card and a read report.
+/// and only when its card has reached the user's review or a later
+/// stage in `Stage` order, or when it has no card and a read report.
 fn needs_git_check(agent: &Agent, stage: Option<Stage>, report_read: bool) -> bool {
     let is_free = matches!(agent.status, AgentStatus::Idle | AgentStatus::Done);
     let could_finish = match stage {
