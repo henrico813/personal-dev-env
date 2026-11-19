@@ -186,7 +186,8 @@ fn run_launch_prompts_worker_and_records_handoff() {
 /// successor opens in a new tab beside the worker, not by the sidebar
 /// rule, on the worker's model and effort, so the work goes on as it
 /// was. The worker's "needs you" mark goes, or `hub clean` keeps it
-/// open as waiting on the user after the successor took over.
+/// open as waiting on the user after the successor took over, and the
+/// watch saves it as never to be asked or marked again.
 #[test]
 fn run_launch_successor_takes_over_from_caller() {
     let (mut test_tools, handoff) = make_launch_tools();
@@ -222,6 +223,9 @@ fn run_launch_successor_takes_over_from_caller() {
         ["--model", "claude-code/claude-opus-5-5[1m]#high", "--auto"]
     );
     assert_eq!(*test_tools.herdr.cleared.borrow(), ["w3:demo-kb-007-impl"]);
+    let asks = fs::read_to_string(test_tools.state_folder().join("hub/handoff-asks.json")).unwrap();
+    let asks: BTreeMap<String, u64> = serde_json::from_str(&asks).unwrap();
+    assert_eq!(asks.get("ses_007"), Some(&u64::MAX));
 }
 
 /// Each refusal comes before any tab, workspace, agent, card change or

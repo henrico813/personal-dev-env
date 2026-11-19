@@ -13,6 +13,7 @@ use crate::external::herdr::Agent;
 use crate::shared::parking::find_card_workspace;
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{AgentName, HubError, Tools};
+use crate::watch::handoff_ask;
 
 /// What `run_launch` starts, from its command line.
 pub struct LaunchRequest {
@@ -176,6 +177,11 @@ pub fn run_launch(
             .clear_marks(&caller.pane_id)
             .map_err(|error| partly_done(&done, error.into()))?;
         done.push(format!("cleared the mark of {}", caller.name));
+        if let Some(session) = &caller.session_id {
+            handoff_ask::stop_asking(tools.state_folder, session)
+                .map_err(|error| partly_done(&done, error))?;
+            done.push(format!("stopped the handoff asks to {}", caller.name));
+        }
     }
     Ok(Outcome { lines })
 }

@@ -109,7 +109,7 @@ fn make_desk(tools: &Tools<'_>, home: &Path) -> Result<String, HubError> {
 }
 
 /// Returns the first workspace labelled `desk`.
-fn find_desk(workspaces: &[Workspace]) -> Option<&Workspace> {
+pub(crate) fn find_desk(workspaces: &[Workspace]) -> Option<&Workspace> {
     workspaces
         .iter()
         .find(|workspace| workspace.label == DESK_LABEL)

@@ -8,7 +8,7 @@ use std::process::Command;
 use std::thread;
 use std::time::{Duration, SystemTime};
 
-use hub::external::herdr::{Agent, AgentStatus, HerdrError};
+use hub::external::herdr::{Agent, AgentStatus, HerdrError, Workspace};
 use hub::shared::run_folder::RunFolder;
 use hub::watch::background::start_in_background;
 use hub::watch::wait::{WaitRequest, run_wait};
@@ -19,7 +19,10 @@ use hub::watch::{
 use jiff::{SignedDuration, Zoned};
 use serde_json::{Value, json};
 
-use common::{TempFolder, TestTools, make_agent, read_events, read_script_calls};
+use common::{
+    OpenCodeRow, TempFolder, TestTools, make_agent, read_events, read_script_calls,
+    write_opencode_db,
+};
 
 /// The worker most tests watch, named after its card as hubs name
 /// workers.
@@ -336,6 +339,81 @@ fn check_once_marks_blocked_worker() {
         *test_tools.herdr.marks.borrow(),
         [(format!("w1:{WORKER}"), vec![AgentStatus::Blocked])]
     );
+}
+
+/// Writes a new OpenCode database in which each session's newest reply
+/// holds this many tokens of context.
+fn write_context(test_tools: &TestTools, sessions: &[(&str, u64)]) {
+    let path = test_tools.opencode_path();
+    let _ = fs::remove_file(&path);
+    let rows: Vec<OpenCodeRow> = sessions
+        .iter()
+        .map(|(session, tokens)| OpenCodeRow {
+            session,
+            kind: "assistant",
+            updated_ms: 0,
+            data: json!({"tokens": {"input": tokens, "cache": {"read": 0, "write": 0}}}),
+        })
+        .collect();
+    write_opencode_db(&path, &rows);
+}
+
+/// A session past 150k runs out of context mid-task unless it hands
+/// off, and nothing else tells a session with no hub. The watch asks at
+/// 150k and again at each 20k more, and from 190k also marks it "needs
+/// you". Asked on every check, a session could never finish its
+/// handoff. A hub, whose pane is the user's own chat, gets no ask, and
+/// neither does a session in the desk, where its successor would open.
+#[test]
+fn check_once_asks_then_marks_idle_workers() {
+    let mut test_tools = TestTools::new();
+    for (name, session, workspace) in [
+        (WORKER, "ses_007", "w1"),
+        ("kanban-hub-1", "ses_hub1", "w1"),
+        ("notes", "ses_desk", "w9"),
+    ] {
+        test_tools.herdr.agents.push(Agent {
+            session_id: Some(session.to_owned()),
+            workspace_id: workspace.to_owned(),
+            ..make_agent(name, AgentStatus::Idle)
+        });
+    }
+    test_tools.herdr.workspaces.push(Workspace {
+        workspace_id: "w9".to_owned(),
+        label: "desk".to_owned(),
+    });
+    // Each check starts a new clock, as a restarted watch does, so only
+    // the saved asks keep a step from being asked twice.
+    let cases = [
+        (152_000, 1, 0),
+        (160_000, 1, 0),
+        (171_000, 2, 0),
+        (191_000, 3, 1),
+    ];
+
+    for (tokens, asks, marks) in cases {
+        write_context(
+            &test_tools,
+            &[
+                ("ses_007", tokens),
+                ("ses_hub1", tokens),
+                ("ses_desk", tokens),
+            ],
+        );
+
+        check_at(&test_tools, &Zoned::now(), &[0]);
+
+        let prompts = read_prompts(&test_tools, WORKER);
+        assert_eq!(prompts.len(), asks, "{tokens}: {prompts:?}");
+        assert_eq!(test_tools.herdr.marks.borrow().len(), marks, "{tokens}");
+    }
+    let prompts = read_prompts(&test_tools, WORKER);
+    assert!(
+        prompts[2].starts_with("hub watch: your context is about 191k"),
+        "{prompts:?}"
+    );
+    assert!(read_prompts(&test_tools, "kanban-hub-1").is_empty());
+    assert!(read_prompts(&test_tools, "notes").is_empty());
 }
 
 /// A report the hub was never told about means no `hub next` ran for
