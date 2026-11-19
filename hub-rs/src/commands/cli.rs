@@ -310,7 +310,7 @@ pub enum Command {
     /// starts with a ## title, then the question, two or more choices
     /// that each start with -, a Recommended line and an If no reply
     /// line. It refuses a card that already waits on the user.
-    #[command(after_help = "Example: hub ask DEMO-KB-007 \\\n  /tmp/question.md")]
+    #[command(after_help = "Example: hub ask DEMO-KB-007 question.md")]
     Ask {
         /// The card's key, such as DEMO-KB-007
         key: CardKey,

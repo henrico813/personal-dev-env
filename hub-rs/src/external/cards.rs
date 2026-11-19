@@ -71,8 +71,8 @@ pub trait Cards {
     /// spaces, or `card` reads it as an item of its own.
     fn add_item(&self, key: &CardKey, section: &str, text: &str) -> Result<(), CardError>;
     /// Removes item `number`, counted from 1 as `card show --section`
-    /// numbers them. `card` logs the removal with the Herdr agent's
-    /// name as author.
+    /// numbers them. `card` logs the removal by `hub`, so no Herdr pane
+    /// is needed.
     fn remove_item(&self, key: &CardKey, section: &str, number: usize) -> Result<(), CardError>;
     /// Adds a needs-you or answered line to the card's Log.
     fn add_mark(&self, key: &CardKey, mark: Mark, text: &str) -> Result<(), CardError>;
@@ -217,8 +217,17 @@ impl Cards for CardCli {
 
     fn remove_item(&self, key: &CardKey, section: &str, number: usize) -> Result<(), CardError> {
         let number = number.to_string();
-        self.run_card(&["edit", "--remove", "--", key.as_str(), section, &number])
-            .map(drop)
+        self.run_card(&[
+            "edit",
+            "--remove",
+            "--by",
+            "hub",
+            "--",
+            key.as_str(),
+            section,
+            &number,
+        ])
+        .map(drop)
     }
 
     fn add_mark(&self, key: &CardKey, mark: Mark, text: &str) -> Result<(), CardError> {
@@ -592,7 +601,8 @@ fn read_question_line(items: &mut Vec<Vec<String>>, previous: &str, line: &str) 
     }
 }
 
-/// Reads `card grep` lines such as
+/// Returns the keys whose last mark in `card grep` output is needs-you,
+/// in key order. Lines read like
 /// `DEMO-KB-007 Log: - 2026-11-10 needs-you: which bucket?`, in file
 /// order within each card. `card` cuts long lines, but the key and the
 /// mark always fit. The last line, `N matches in M cards`, holds no

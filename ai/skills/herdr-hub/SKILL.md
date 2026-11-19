@@ -397,7 +397,8 @@ made with `card new <project> "<title>"`, so every reader finds it.
 
 `hub ask` refuses a question with a part missing. It also refuses a
 card that already waits on the user, since a card shows one open
-question; ask the next one after the user answers. It marks the card
+question. Keep the next question for that card in `notes.md`, and ask
+it with `hub ask` right after `hub answer`. `hub ask` marks the card
 needs-you, so `hub status` shows the card's sessions as `you`. While
 the mark is open, a session that handed off that card also shows
 `you`: that session waits on the same question, not a new one. Close

@@ -13,6 +13,8 @@ use common::TestTools;
 /// desk. Hubs once named questions by number alone and the user
 /// had to ask what they were, so every line of each card's open
 /// question prints, after the board line and the pull requests.
+/// `hub ask` adds its item last, so an older item with the same title
+/// must not hide the question's lines.
 #[test]
 fn run_brief_prints_board_reviews_then_questions() {
     let mut test_tools = TestTools::new();
@@ -27,14 +29,17 @@ fn run_brief_prints_board_reviews_then_questions() {
         CardNote {
             project: "Demo".to_owned(),
             needs_you: Some("New model overnight".to_owned()),
-            open_questions: vec![vec![
-                "New model overnight".to_owned(),
-                "Deploy the new model tonight?".to_owned(),
-                "- A. Deploy from the branch.".to_owned(),
-                "- B. Wait until you return.".to_owned(),
-                "Recommended: A, since you test in the morning.".to_owned(),
-                "If no reply: B.".to_owned(),
-            ]],
+            open_questions: vec![
+                vec!["New model overnight".to_owned()],
+                vec![
+                    "New model overnight".to_owned(),
+                    "Deploy the new model tonight?".to_owned(),
+                    "- A. Deploy from the branch.".to_owned(),
+                    "- B. Wait until you return.".to_owned(),
+                    "Recommended: A, since you test in the morning.".to_owned(),
+                    "If no reply: B.".to_owned(),
+                ],
+            ],
             ..CardNote::default()
         },
     );
@@ -160,6 +165,32 @@ fn run_brief_reports_failed_question_read() {
             "board active 3 of 8, in-review 0 of 6; questions unread",
             "",
             "questions: card: grep failed",
+        ]
+    );
+}
+
+/// The search finds a marked card that `card show` then cannot read.
+/// Its question still waits, so skipping the card would give the user
+/// a false all-clear; the brief names the failure instead.
+#[test]
+fn run_brief_reports_unreadable_marked_card() {
+    let mut test_tools = TestTools::new();
+    test_tools.cards.board = Some(BoardCounts {
+        active: 3,
+        in_review: 0,
+        active_limit: 8,
+        in_review_limit: 6,
+    });
+    test_tools.cards.unreadable_needs_you = vec!["DEMO-KB-008".to_owned()];
+
+    let outcome = run_brief(&test_tools.tools(), &test_tools.run(), Timestamp::now()).unwrap();
+
+    assert_eq!(
+        outcome.lines,
+        [
+            "board active 3 of 8, in-review 0 of 6; questions unread",
+            "",
+            "questions: card: no card DEMO-KB-008",
         ]
     );
 }

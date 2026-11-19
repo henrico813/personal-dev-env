@@ -277,12 +277,11 @@ then the question, two or more `- ` choices, a `Recommended:` line,
 an `If no reply:` line and an optional `Depends on:` line, as
 herdr-hub's Questions for the user shows.
 
-- Exits 3 with `question 'TITLE': PROBLEMS` when FILE lacks the
-  question, two or more `- ` choices, `Recommended:` or
-  `If no reply:`, and with `KEY already waits on the user: TEXT` when
-  the card's needs-you mark is open. Neither writes to the card.
-- Run it, and `hub answer`, in a Herdr pane: `card` takes the author
-  of each Log line from the pane's agent and stops without one.
+- Exits 3 with `the question must start with a ## title line`, with
+  `question 'TITLE': PROBLEMS` when FILE lacks the question, two or
+  more `- ` choices, `Recommended:` or `If no reply:`, and with
+  `KEY already waits on the user: TEXT` when the card's needs-you
+  mark is open. None writes to the card.
 
 ### answer
 
@@ -291,7 +290,11 @@ Decisions, with `Answer: ANSWER` as its last line, removes it from
 Open Questions, then logs an answered mark. Prints
 `KEY answered 'TITLE': ANSWER`.
 
-- Exits 3 with `KEY waits on no question`.
+- Exits 3, changing nothing, with
+  `the answer must be one line of text` when ANSWER is empty or has a
+  line break, and with `KEY waits on no question`.
+- Needs no Herdr pane: `card` logs the removal from Open Questions
+  by `hub`.
 - When a step after the first fails, the error says what was done.
   The answered mark comes last, so the card still shows that it
   waits.

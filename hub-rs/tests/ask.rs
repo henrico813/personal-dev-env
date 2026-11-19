@@ -99,14 +99,17 @@ fn run_ask_refuses_card_already_waiting() {
 
 /// The answer keeps the question beside it in Decisions, so a later
 /// reader sees what was decided and why. `card` numbers items from 1,
-/// so removing the wrong number deletes another open question. The
-/// answered mark comes last, so a failed step leaves the card waiting.
+/// so removing the wrong number deletes another open question.
+/// `hub ask` adds its item last, so an older item with the same title
+/// stays. The answered mark comes last, so a failed step leaves the
+/// card waiting.
 #[test]
 fn run_answer_moves_question_to_decisions() {
     let test_tools = tools_with_card(CardNote {
         needs_you: Some("Deploy tonight?".to_owned()),
         open_questions: vec![
             vec!["Is the cache needed?".to_owned()],
+            vec!["Deploy tonight?".to_owned()],
             vec![
                 "Deploy tonight?".to_owned(),
                 "- A. Deploy from the branch.".to_owned(),
@@ -126,8 +129,33 @@ fn run_answer_moves_question_to_decisions() {
              - A. Deploy from the branch.\n  \
              - B. Wait until you return.\n  \
              Answer: A",
-            "remove DEMO-KB-007 Open Questions 2",
+            "remove DEMO-KB-007 Open Questions 3",
             "answered DEMO-KB-007: A",
         ]
     );
+}
+
+/// A line break in the answer lets `card` read the rest as an item or
+/// Log line of its own, such as a needs-you mark nobody set, and an
+/// empty answer records no decision. Both are refused before any write.
+#[test]
+fn run_answer_refuses_empty_or_multiline_answer() {
+    let cases = [
+        ("empty", " "),
+        ("newline", "A\n- 2026-11-19 needs-you: injected?"),
+    ];
+    for (name, answer) in cases {
+        let test_tools = tools_with_card(CardNote {
+            needs_you: Some("Deploy tonight?".to_owned()),
+            ..CardNote::default()
+        });
+
+        let error = run_answer(&test_tools.tools(), &demo_key(), answer).unwrap_err();
+
+        let HubError::NotDone(message) = error else {
+            panic!("{name}: expected NotDone, got {error:?}");
+        };
+        assert_eq!(message, "the answer must be one line of text", "{name}");
+        assert!(test_tools.cards.writes.borrow().is_empty(), "{name}");
+    }
 }

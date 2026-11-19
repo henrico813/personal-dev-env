@@ -278,7 +278,7 @@ pub(super) fn count_statuses(groups: &[(Group, Vec<Item>)]) -> Vec<(Status, usiz
 }
 
 /// Returns the NEXT lines from the groups. `no_hub` is true when no hub
-/// ran at the read, so nothing could wait on the user.
+/// ran at the read.
 pub(super) fn write_next_lines(groups: &[(Group, Vec<Item>)], no_hub: bool) -> NextLines {
     let items = |wanted: Group| {
         groups
