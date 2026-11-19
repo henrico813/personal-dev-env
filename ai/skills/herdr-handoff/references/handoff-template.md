@@ -90,11 +90,11 @@ Coordination says.>
   uses an interactive question tool, since Herdr then rejects every
   message to it. It sends a merge or pull request edit request only
   after the hub tells it the user reviewed that pull request. When its
-  card is accepted or dropped, or once it has written a handoff that
-  pauses the card, it checks that it holds nothing unsaved, such as
-  uncommitted files or an unpushed branch, or, for a pause, that its
-  handoff lists each one. It never closes its own tab; the hub closes
-  or parks it, and closes it after a pause once it has read that
+  card reaches the `done` or `dropped` stage, or once it has written a
+  handoff that pauses the card, it checks that it holds nothing unsaved,
+  such as uncommitted files or an unpushed branch, or, for a pause, that
+  its handoff lists each one. It never closes its own tab; the hub
+  closes or parks it, and closes it after a pause once it has read that
   report.>
 
 ## Rules for the files you edit

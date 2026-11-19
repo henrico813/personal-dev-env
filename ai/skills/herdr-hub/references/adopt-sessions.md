@@ -2,10 +2,10 @@
 
 Read this when sessions run with no card, such as when a hub starts on
 a machine full of earlier sessions, or the user asks to turn sessions
-into cards and close them. Adopting makes a card that starts in
-`active`, `review` or `waiting-on-others`, skipping `draft` and
-`ready`. Only the user
-adopts, so the user approves the list before any card exists.
+into cards and close them. Adopting makes a card that starts in the
+`active`, `in-review` or `blocked` stage, skipping `draft` and `todo`.
+Only the user adopts, so the user approves the list before any card
+exists.
 
 Copy this checklist into `notes.md` and tick it off:
 
@@ -17,6 +17,15 @@ Copy this checklist into `notes.md` and tick it off:
 - [ ] 5. Cards made
 - [ ] 6. Each session kept, handed off or paused
 ```
+
+## Contents
+
+- Take stock
+- Close finished sessions
+- Project codes
+- Adoption list
+- Make the cards
+- Keep, hand off or pause
 
 ## 1. Take stock
 
@@ -52,9 +61,9 @@ user where it is, its counts and the decisions it needs.
 - One card per piece of work, not per session. Name the sessions each
   card covers, its project, title, kind and stage, and what the
   sessions show.
-- Stage `review` when the work waits only on the user, such as an
+- Stage `in-review` when the work waits only on the user, such as an
   open pull request, a plan to approve or a question. Stage `active`
-  when the session can go on alone. Stage `waiting-on-others` when
+  when the session can go on alone. Stage `blocked` when
   the user already reviewed the work and it waits only on people
   outside the user's team; its `--why` names them, as Cards in
   SKILL.md says. Never propose `draft` for running
@@ -78,9 +87,9 @@ For a card that covers several sessions, add the others with
 `card link <KEY> --session <agent>`. Put what the sessions found and
 what is left in the card with `card add <KEY> Context "<text>"`.
 
-Adoption skips the board's limits, 8 cards in active and 6 in
-review, as `card board` shows, so the board can go over them. Start
-no ready card until both counts are back within their limits.
+Adoption skips the board's limits, 8 cards in `active` and 6 in
+`in-review`, as `card board` shows, so the board can go over them.
+Start no `todo` card until both counts are back within their limits.
 
 ## 6. Keep, hand off or pause
 
@@ -93,11 +102,11 @@ no ready card until both counts are back within their limits.
 - Pause: when the user wants a session closed before its work is
   done, have it write a handoff by `herdr-handoff` that pauses its
   card, and close it once it reports. Then move its card back to
-  `ready`, or note a card in `review`, naming the handoff, as
+  `todo`, or note a card in `in-review`, naming the handoff, as
   herdr-handoff's Record the handoff on its card shows. A paused
-  `ready` card starts again like any ready card, from its handoff. A
-  paused `review` card starts again once the user answers: move it to
-  `active` with `--user` and start a session from its handoff. The
+  `todo` card starts again like any todo card, from its handoff. A
+  paused `in-review` card starts again once the user answers: move it
+  to `active` with `--user` and start a session from its handoff. The
   card's `sessions` list keeps the old session for the user to reopen.
 
 Files in a shared checkout stay as they are. Each handoff from that

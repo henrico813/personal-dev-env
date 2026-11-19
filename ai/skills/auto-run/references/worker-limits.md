@@ -179,6 +179,6 @@ skills of your current step again.
   this file, your status file and each PR folder's `status.txt`, and
   copies none of their rules. Record it in your status file and
   report it to the hub instead of starting a session yourself.
-- When the hub says your card is accepted or dropped, check that you
+- When the hub says your card is done or dropped, check that you
   hold nothing unsaved, then end your turn. Never close your own tab;
   the hub closes or parks it.

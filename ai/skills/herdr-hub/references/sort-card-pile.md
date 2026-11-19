@@ -1,7 +1,7 @@
 # Sort a card pile
 
 Read this when the user asks you to sort many cards at once, such as
-every card in `review`, into a pick list. Reading each card is a
+every card in `in-review`, into a pick list. Reading each card is a
 reading job for the local model, as `model-routing` says. A script
 checks what it wrote, and only then does a stronger model sort it.
 

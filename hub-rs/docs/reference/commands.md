@@ -120,8 +120,8 @@ the count per state, the unread reports and one row per session:
 
 ```text
 hub kanban-hub-18 131k, watch running, hub next running
-board active 5 of 8, review 19 of 6
-waiting-on-others 1, oldest 8 days
+board active 5 of 8, in-review 19 of 6
+blocked 1, oldest 8 days
 open 6: 1 working, 1 hub, 1 you,
   1 kept, 1 to-close, 1 to-park; 1 parked
 unread 2: demo-kb-007-impl docs-fix
@@ -145,13 +145,13 @@ no session: DEMO-KB-004 active
   can read `stopped`, as in `watch stopped, hub next stopped`. A
   `next` ends after each line, so the hub starts a new one right after.
 - The board line is `board: REASON` when `card` fails.
-- The `waiting-on-others` line shows only when a card is in that
+- The `blocked` line shows only when a card is in that
   stage, which waits on people outside the team and has no limit.
   `hub next` never counts these cards.
 - STATE is one of `working`, `hub` (waits on the hub), `you` (waits
   on the user), `kept` (finished, but WHY says what keeps it open),
   `to-close`, `to-park` and `parked` (no tab, can reopen).
-- `no session:` names active and review cards that no session works
+- `no session:` names active and in-review cards that no session works
   on.
 - `--json` prints the same facts as one JSON object.
 
@@ -173,8 +173,8 @@ parks a session.
 - `timed message to N sessions: PATH (hub 131k)`: a message stored
   with `at` reached its time and is held for each session. PATH is
   the `--file` given to `at`.
-- `board over its limit: active 10 of 8, review 18 of 6 (hub 131k)`:
-  active or review holds more cards than its limit.
+- `board over its limit: active 10 of 8, in-review 18 of 6 (hub 131k)`:
+  active or in-review holds more cards than its limit.
 - `hand off now: hub at 152k`: the hub should hand off now.
 - `to-close NAMES: WHY; run hub clean`, or the same with `to-park`:
   sessions that finished, listed once.
@@ -247,18 +247,18 @@ date heading on the day's first line. Prints `noted HHMM`.
 ### brief
 
 `hub brief [--run DIR]` prints what waits on the user. The first line
-is `board active 5 of 8, review 19 of 6; 4 decisions`, or
+is `board active 5 of 8, in-review 19 of 6; 4 decisions`, or
 `board: REASON`. Then come one line per pending pde-gh-write request,
 oldest first, such as `approval A0016cd 1h12m left app #515 merge`,
 then `reviews.md` and one `Decision: TITLE` section per entry in
 `decisions.md`, or `Nothing waits on the user.` A pending request past
 pde-gh-write's four-hour expiry does not show.
-When cards wait on others, the board line is followed by
-`waiting-on-others 2, oldest 8 days`, and the brief ends with a list
+When cards are blocked, the board line is followed by
+`blocked 2, oldest 8 days`, and the brief ends with a list
 the user need not act on:
 
 ```text
-Waiting on others (no action needed)
+Blocked (no action needed)
 - DEMO-KB-003, 8 days
   Retry failed uploads
   platform team's review
@@ -335,7 +335,7 @@ worker opens in a new tab of the workspace whose label starts with
 the key, else in a new workspace such as `demo-kb-007 impl`. Work
 with no card opens in the hub's workspace, so run it in the hub's
 own pane. `--workspace LABEL` opens it in that workspace, and makes
-the workspace if none has that label. A ready card moves to active
+the workspace if none has that label. A todo card moves to active
 first, so `card` checks the active limit before anything starts. After
 the start, the card gets a `Handoff PATH` note and the worker's
 session, and `notes.md` gets a line. Prints:
@@ -436,7 +436,7 @@ QUEUE; from 100 columns they sit side by side.
   `1 run · 2 you · 1 idle`.
 - NEXT gives one `you:` line per question or session that waits on
   the user, one `then:` line counting the cards in review, and one
-  `hub:` line per Ready card in `card list` order. The block shows
+  `hub:` line per Todo card in `card list` order. The block shows
   the first of each; the next view shows them all.
 - Keys 1 to 5 open full views, named away, queue, next, sessions
   and machine, each under a `< name` breadcrumb. Tab steps through
@@ -448,8 +448,8 @@ QUEUE; from 100 columns they sit side by side.
   machine views and any details page scroll with j, k, the page
   keys or the wheel, and on a details page any tap, Enter, space,
   q or Esc goes back.
-- The queue view lists the cards by group: Needs you, In progress,
-  In review, Waiting on others, Ready and Draft. The cards come
+- The queue view lists the cards by group: Needs you, Active,
+  In review, Blocked, Todo and Draft. The cards come
   from `card list`. Needs you holds the questions in each
   `decisions.md` and the sessions that wait on the user, from
   every hub on this machine that Herdr lists: each
@@ -459,8 +459,8 @@ QUEUE; from 100 columns they sit side by side.
   full. With no hub running, Needs you shows `no hub running`. It
   ignores `HUB_RUN`, and the hidden `--run DIR` shows one run
   only. A Could not read group shows on top when a read fails.
-  Ready, Draft and Waiting on others start folded, and Waiting on
-  others shows only when it holds a card. An open group shows four
+  Todo, Draft and Blocked start folded, and Blocked shows only
+  when it holds a card. An open group shows four
   rows, then `+ N more`. A tap on a heading folds or opens it, a
   tap on a count opens its group and scrolls to it, and a tap on
   a row opens its details. j, k, the arrow and page keys or the
@@ -519,8 +519,8 @@ describes the element JSON and the rules every such screen follows.
 
 The steps of an auto run, in order. Each takes `--run DIR`.
 
-- `hub auto ready` writes the ready cards to `ready.md` and prints
-  them, or `No ready cards.`
+- `hub auto todo` writes the todo cards to `todo.md` and prints
+  them, or `No todo cards.`
 - `hub auto check` checks `run.md` and prints
   `run N: K cards to run`. Exits 3 with one line per problem.
 - `hub auto approve N REPLY` saves `approved.md` when REPLY is

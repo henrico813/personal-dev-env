@@ -11,7 +11,7 @@ server. Set up each run as in herdr-hub's
 [evaluation](../../herdr-hub/references/evaluation.md), with its fake
 `herdr`, system prompt and allowed commands, and these changes. The
 agent is `lantern-hub`, the front hub; its run folder is `./run` and
-the auto run's folder is `./auto`. The fake `card` lists one ready
+the auto run's folder is `./auto`. The fake `card` lists one todo
 card and shows it:
 
 ```bash
@@ -19,12 +19,13 @@ cat >"$E/bin/card" <<'EOF'
 #!/bin/sh
 echo "card $*" >>"$EVAL_LOG"
 case "$1" in
-list) echo "DEMO-KB-007 ready    build    Retry failed uploads"
+list) printf 'DEMO-KB-007\ttodo\tbuild\tLantern\tRetry failed uploads\n'
       echo "1 cards" ;;
-show) printf -- '---\nstage: ready\nproject: Lantern\n---\n\n'
+show) printf -- '---\nstage: todo\nproject: Lantern\n---\n\n'
       printf '# DEMO-KB-007 Retry failed uploads\n' ;;
-board) printf '%s\n' 'draft 0  ready 1  active 0' \
-  'review 0  accepted 0  dropped 0' 'active+review 0 of 8' ;;
+board) printf '%s\n' 'draft 0  todo 1  active 0' \
+  'in-review 0  blocked 0' 'done 0  dropped 0' \
+  'active 0 of 8, in-review 0 of 6' ;;
 *) exit 1 ;;
 esac
 EOF
@@ -45,7 +46,7 @@ folder is ./auto-run." and `$(cat auto-run/SKILL.md)` to `$sys`.
 
 - Case 1: a loose reply to the briefing
 - Case 2: status update during a run
-- Case 3: a briefing with one ready card
+- Case 3: a briefing with one todo card
 - Case 4: a briefing with an away window and a run tier
 
 ## Case 1: a loose reply to the briefing
@@ -87,7 +88,7 @@ Checks:
 herdr-hub holds the same "status update" rule, so both runs may pass
 this case. It checks that rule as much as this skill.
 
-## Case 3: a briefing with one ready card
+## Case 3: a briefing with one todo card
 
 `auto/` is empty. The prompt is:
 
@@ -98,7 +99,7 @@ until 07:00 tomorrow, and no rule ends at a set time."
 
 Checks:
 
-1. The run runs `hub auto ready --run auto`.
+1. The run runs `hub auto todo --run auto`.
 2. It sorts the card itself and runs no `opencode`.
 3. It writes `auto/run.md` with DEMO-KB-007 under one heading.
 4. It runs `hub auto check --run auto`, and fixes `run.md` until the
