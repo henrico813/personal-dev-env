@@ -13,7 +13,7 @@ use hub::board::{self, Hubs};
 use hub::commands::at::{AtRequest, Recipients};
 use hub::commands::auto::AutoApproval;
 use hub::commands::cli::{self, AutoRunArg, AutoStep, Cli, Command, RunArg, WatchStep};
-use hub::commands::launch::LaunchRequest;
+use hub::commands::launch::{LaunchMode, LaunchRequest};
 use hub::commands::next::NextOptions;
 use hub::commands::reports::{CardChoice, ReadRequest};
 use hub::commands::send::SendRequest;
@@ -271,13 +271,23 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
             handoff,
             model,
             workspace,
+            successor: _,
         } => {
             let run = find_run(run)?;
+            // Clap takes either `--model` or `--successor`, never both.
+            let mode = match model {
+                Some(model) => LaunchMode::Worker {
+                    model: model.clone(),
+                    workspace: workspace.clone(),
+                },
+                None => LaunchMode::Successor {
+                    session_id: env::var("OPENCODE_SESSION_ID").ok(),
+                },
+            };
             let request = LaunchRequest {
                 name: name.clone(),
                 handoff: handoff.clone(),
-                model: model.clone(),
-                workspace: workspace.clone(),
+                mode,
                 cwd: read_current_folder()?,
             };
             launch::run_launch(&tools, &run, &request, &now)
