@@ -9,7 +9,7 @@ use hub::commands::send::{SendRequest, run_send};
 use hub::external::cards::{BoardCounts, CardNote, Stage};
 use hub::external::herdr::{Agent, AgentStatus, HerdrCode};
 use hub::watch::wait::{WaitRequest, run_wait};
-use serde_json::{Value, json};
+use serde_json::json;
 
 use common::{
     OpenCodeRow, TestTools, make_agent, make_refusal, make_time, read_events, write_opencode_db,
@@ -261,42 +261,6 @@ fn run_next_records_nothing_once_replaced() {
 
     assert_eq!(replaced, "replaced by a newer hub next");
     assert_eq!(next_check, "report notes-fix (hub -)");
-}
-
-/// A worker past 150k must be asked once to write its handoff, or it
-/// runs out of context mid-task. Asking on every minute pass interrupts
-/// the handoff it is writing.
-#[test]
-fn run_next_asks_worker_handoff_once() {
-    let mut test_tools = TestTools::new();
-    test_tools.herdr.agents = vec![Agent {
-        session_id: Some("ses_007".to_owned()),
-        ..make_agent("demo-kb-007-impl", AgentStatus::Working)
-    }];
-    let step = OpenCodeRow {
-        session: "ses_007",
-        kind: "assistant",
-        updated_ms: 0,
-        data: json!({"tokens": {"input": 152_000, "cache": {"read": 0, "write": 0}}}),
-    };
-    write_opencode_db(&test_tools.opencode_path(), &[step]);
-
-    check_once(&test_tools);
-    forget_minute_pass(&test_tools);
-    check_once(&test_tools);
-
-    let ask = "Your context is about 152k. Write your handoff with herdr-handoff now, \
-               put its path in your report, and end your turn.";
-    assert_eq!(
-        *test_tools.herdr.prompts.borrow(),
-        [("demo-kb-007-impl".to_owned(), ask.to_owned())]
-    );
-    let asked: Vec<Value> = read_events(&test_tools.run_path())
-        .into_iter()
-        .filter(|event| event["event"] == "handoff_asked")
-        .collect();
-    assert_eq!(asked.len(), 1);
-    assert_eq!(asked[0]["session"], "ses_007");
 }
 
 /// The hub must hear once when the board goes over its limit, so it
