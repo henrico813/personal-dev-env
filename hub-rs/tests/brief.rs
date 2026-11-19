@@ -169,6 +169,32 @@ fn run_brief_reports_failed_question_read() {
     );
 }
 
+/// The search finds a marked card that `card show` then cannot read.
+/// Its question still waits, so skipping the card would give the user
+/// a false all-clear; the brief names the failure instead.
+#[test]
+fn run_brief_reports_unreadable_marked_card() {
+    let mut test_tools = TestTools::new();
+    test_tools.cards.board = Some(BoardCounts {
+        active: 3,
+        in_review: 0,
+        active_limit: 8,
+        in_review_limit: 6,
+    });
+    test_tools.cards.unreadable_needs_you = vec!["DEMO-KB-008".to_owned()];
+
+    let outcome = run_brief(&test_tools.tools(), &test_tools.run(), Timestamp::now()).unwrap();
+
+    assert_eq!(
+        outcome.lines,
+        [
+            "board active 3 of 8, in-review 0 of 6; questions unread",
+            "",
+            "questions: card: no card DEMO-KB-008",
+        ]
+    );
+}
+
 /// Hubs told the user an approval waited after it had run or expired,
 /// because they repeated an old line. The brief reads each request
 /// file fresh, so it names only pending requests with the time left,

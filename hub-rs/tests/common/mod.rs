@@ -444,6 +444,9 @@ pub struct InMemoryCards {
     /// as `CardCli` does for a missing card. A card whose `needs_you` is
     /// set is one `list_needs_you` finds.
     pub card_notes: BTreeMap<String, CardNote>,
+    /// Keys `list_needs_you` also gives with no card in `card_notes`, so
+    /// reading them fails, as when a marked card's file breaks.
+    pub unreadable_needs_you: Vec<String>,
     /// `None` answers as `CardCli` does without a vault.
     pub board: Option<BoardCounts>,
     /// The cards waiting on people outside the team that `read_board`
@@ -557,11 +560,14 @@ impl Cards for InMemoryCards {
 
     fn list_needs_you(&self) -> Result<Vec<CardKey>, CardError> {
         self.check_read_error()?;
-        Ok(self
+        let marked = self
             .card_notes
             .iter()
             .filter(|(_, note)| note.needs_you.is_some())
-            .map(|(key, _)| key.parse().unwrap())
+            .map(|(key, _)| key);
+        Ok(marked
+            .chain(&self.unreadable_needs_you)
+            .map(|key| key.parse().unwrap())
             .collect())
     }
 
