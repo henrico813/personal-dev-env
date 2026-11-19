@@ -34,10 +34,11 @@ pub(crate) fn read_open_questions(cards: &dyn Cards) -> Result<Vec<OpenQuestion>
         let Some(title) = note.needs_you else {
             continue;
         };
+        // `hub ask` adds its item last, after any older item with that title.
         let lines = note
             .open_questions
             .into_iter()
-            .find(|item| item.first() == Some(&title))
+            .rfind(|item| item.first() == Some(&title))
             .map(|item| item[1..].to_vec())
             .unwrap_or_default();
         questions.push(OpenQuestion {

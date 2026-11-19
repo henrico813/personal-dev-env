@@ -46,11 +46,18 @@ pub fn run_ask(tools: &Tools<'_>, key: &CardKey, text: &str) -> Result<Outcome, 
 ///
 /// # Errors
 ///
-/// `HubError::NotDone`, changing nothing, when the card waits on no
-/// question. `HubError::PartlyDone` when a step failed after the answer
+/// `HubError::NotDone`, changing nothing, when `answer` is empty or
+/// has a line break, or the card waits on no question.
+/// `HubError::PartlyDone` when a step failed after the answer
 /// was added. The answered mark comes last, so after any failure the
 /// card still shows that it waits.
 pub fn run_answer(tools: &Tools<'_>, key: &CardKey, answer: &str) -> Result<Outcome, HubError> {
+    // `card` would read a second line as an item or Log line of its own.
+    if answer.trim().is_empty() || answer.contains(['\n', '\r']) {
+        return Err(HubError::NotDone(
+            "the answer must be one line of text".to_owned(),
+        ));
+    }
     let note = tools.cards.read_card(key)?;
     let Some(title) = note.needs_you else {
         return Err(HubError::NotDone(format!(
@@ -58,11 +65,12 @@ pub fn run_answer(tools: &Tools<'_>, key: &CardKey, answer: &str) -> Result<Outc
             key.as_str()
         )));
     };
-    // A worker may have marked the card with no Open Questions item.
+    // `hub ask` adds its item last, after any older item with that
+    // title. A worker may have marked the card with no item at all.
     let found = note
         .open_questions
         .iter()
-        .position(|item| item.first() == Some(&title));
+        .rposition(|item| item.first() == Some(&title));
     let mut decision = match found {
         Some(index) => note.open_questions[index].clone(),
         None => vec![title.clone()],

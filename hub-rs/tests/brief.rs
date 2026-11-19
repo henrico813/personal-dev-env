@@ -13,6 +13,8 @@ use common::TestTools;
 /// desk. Hubs once named questions by number alone and the user
 /// had to ask what they were, so every line of each card's open
 /// question prints, after the board line and the pull requests.
+/// `hub ask` adds its item last, so an older item with the same title
+/// must not hide the question's lines.
 #[test]
 fn run_brief_prints_board_reviews_then_questions() {
     let mut test_tools = TestTools::new();
@@ -27,14 +29,17 @@ fn run_brief_prints_board_reviews_then_questions() {
         CardNote {
             project: "Demo".to_owned(),
             needs_you: Some("New model overnight".to_owned()),
-            open_questions: vec![vec![
-                "New model overnight".to_owned(),
-                "Deploy the new model tonight?".to_owned(),
-                "- A. Deploy from the branch.".to_owned(),
-                "- B. Wait until you return.".to_owned(),
-                "Recommended: A, since you test in the morning.".to_owned(),
-                "If no reply: B.".to_owned(),
-            ]],
+            open_questions: vec![
+                vec!["New model overnight".to_owned()],
+                vec![
+                    "New model overnight".to_owned(),
+                    "Deploy the new model tonight?".to_owned(),
+                    "- A. Deploy from the branch.".to_owned(),
+                    "- B. Wait until you return.".to_owned(),
+                    "Recommended: A, since you test in the morning.".to_owned(),
+                    "If no reply: B.".to_owned(),
+                ],
+            ],
             ..CardNote::default()
         },
     );

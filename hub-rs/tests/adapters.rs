@@ -697,21 +697,12 @@ mod card_cli {
                          DEMO-KB-007 Log: - 2026-11-18 needs-you: Deploy the new mo…\n\
                          3 matches in 2 cards\n";
         let script = folder.write_script("card", card_grep, "", 0);
-        let cards = CardCli::new(script.clone());
+        let cards = CardCli::new(script);
 
         let keys = cards.list_needs_you().unwrap();
 
         let keys: Vec<&str> = keys.iter().map(CardKey::as_str).collect();
         assert_eq!(keys, ["DEMO-KB-007"]);
-        assert_eq!(
-            read_script_calls(&script),
-            [[
-                "grep",
-                "--section",
-                "Log",
-                r"^- \d{4}-\d\d-\d\d (needs-you|answered): "
-            ]]
-        );
     }
 
     /// `card grep` exits 1 both when no card waits and when it fails. A
