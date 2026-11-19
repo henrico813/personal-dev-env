@@ -1,5 +1,5 @@
 //! Draws the sessions panel, which groups every session by the
-//! verdict `hub clean` acts on, above the jump bar. Read
+//! verdict the tidy pass acts on, above the jump bar. Read
 //! `session_lines` and `session_elements` first.
 
 use ratatui::Frame;
@@ -275,9 +275,9 @@ fn describe_session(session: &SessionRow) -> String {
     )
 }
 
-/// Returns why a session is in its group, such as `unpushed review`.
-/// A kept session and one waiting on the hub also name their card's
-/// stage.
+/// Returns why a session is in its group, such as `unpushed
+/// in-review`. A kept session and one waiting on the hub also name
+/// their card's stage.
 fn describe_why(session: &SessionRow) -> String {
     let why = if session.why.is_empty() {
         session.state.word().to_owned()

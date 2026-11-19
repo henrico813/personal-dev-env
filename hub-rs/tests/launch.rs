@@ -15,9 +15,9 @@ use common::{TestTools, make_agent, make_refusal, make_time};
 const MODEL: &str = "github-copilot/claude-sonnet-5#high";
 
 /// A hub `kanban-hub` in workspace `w1`, labelled `kanban`, a workspace
-/// `w2` labelled `DEMO-KB-007 approvals`, the todo card DEMO-KB-007,
-/// the active card DEMO-KB-009 and a handoff file, whose path it
-/// returns.
+/// `w2` labelled `DEMO-KB-007 approvals`, the card DEMO-KB-007 ready
+/// to start, the card DEMO-KB-009 in progress and a handoff file,
+/// whose path it returns.
 fn make_launch_tools() -> (TestTools, PathBuf) {
     let mut test_tools = TestTools::new();
     test_tools.herdr.agents = vec![make_agent("kanban-hub", AgentStatus::Working)];
@@ -41,8 +41,8 @@ fn make_launch_tools() -> (TestTools, PathBuf) {
     (test_tools, handoff)
 }
 
-/// Runs `hub launch WORKER HANDOFF --model MODEL`, with
-/// `--workspace LABEL` when one is given.
+/// Runs `run_launch` for WORKER with HANDOFF and `MODEL`, and in the
+/// workspace LABEL when one is given.
 fn launch_worker(
     test_tools: &TestTools,
     worker: &str,
@@ -67,7 +67,7 @@ fn launch_worker(
 
 /// A card's worker opens in its card's workspace, else in a new one
 /// named after the card, and work with no card in the hub's own, as the
-/// herdr-hub skill's sidebar rule says. A worker in the wrong place is
+/// hub skill's sidebar rule says. A worker in the wrong place is
 /// lost in the user's sidebar.
 #[test]
 fn run_launch_opens_worker_by_sidebar_rule() {
@@ -134,9 +134,10 @@ fn run_launch_opens_worker_by_sidebar_rule() {
     }
 }
 
-/// A todo card moves to active before its worker starts, so the board
-/// counts the work. An active card stays, since `card` refuses active
-/// to active and every second worker on a card would fail.
+/// A card ready to start moves into progress before its worker
+/// starts, so the board counts the work. A card already in progress
+/// is not moved again, since the card program refuses that move and
+/// a second worker on the card would fail to start.
 #[test]
 fn run_launch_activates_only_todo_cards() {
     let cases = [

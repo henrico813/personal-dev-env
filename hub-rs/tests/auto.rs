@@ -11,8 +11,8 @@ use hub::shared::HubError;
 
 use common::{TestTools, make_agent, make_time, make_workspaces};
 
-/// Doubles whose todo cards are these keys, each with a note, and an
-/// empty run folder.
+/// Doubles whose cards ready to start are these keys, each with a
+/// note, and an empty run folder.
 fn make_todo_cards(keys: &[&str]) -> TestTools {
     let mut test_tools = TestTools::new();
     for key in keys {
@@ -52,9 +52,9 @@ fn make_approval(number: u32, reply: &str, given: bool) -> AutoApproval {
     }
 }
 
-/// The AI model sorts the todo cards from `todo.md` alone, so a card
-/// left out or cut short is sorted on a guess. A card with no project
-/// shows `-` rather than an empty line.
+/// The AI model sorts the cards ready to start from `todo.md` alone,
+/// so a card left out or cut short is sorted on a guess. A card with
+/// no project shows `-` rather than an empty line.
 #[test]
 fn run_auto_todo_describes_each_todo_card() {
     let mut test_tools = TestTools::new();
@@ -194,8 +194,9 @@ fn run_auto_approve_ignores_other_replies() {
     }
 }
 
-/// `hub auto approve` re-checks `run.md`, so a card a run may not
-/// work, a draft for example, stops the approval and leaves no
+/// `run_auto_approve` re-checks `run.md`, so a card a run may not
+/// work, such as one the user has not refined, stops the approval and
+/// leaves no
 /// `approved.md` for workers to start from.
 #[test]
 fn run_auto_approve_stops_when_list_fails() {
@@ -312,7 +313,8 @@ fn run_auto_approve_keeps_existing_approval() {
 }
 
 /// The hub the user talks to once answered "status update" with
-/// "nothing new" while four cards were done and a question waited.
+/// "nothing new" while four cards were finished and a question
+/// waited.
 /// Each run card's line comes from the files instead, not from the
 /// hub's memory. A card under another heading gets no line.
 #[test]
@@ -357,7 +359,7 @@ fn run_auto_now_writes_brief_from_files() {
     );
 }
 
-/// The auto hub runs `hub auto now` first, so a run the user never
+/// The auto hub runs `run_auto_now` first, so a run the user never
 /// approved stops with exit 3 before any worker starts.
 #[test]
 fn run_auto_now_stops_without_approval() {
@@ -380,9 +382,9 @@ fn write_approved_run(test_tools: &TestTools) {
     .unwrap();
 }
 
-/// The auto hub runs `hub auto now` at each start, and its run's
-/// workspace once sat at the bottom of the sidebar because no agent ran
-/// `hub gather`. The front hub prints the output word for word, so a
+/// The auto hub runs `run_auto_now` at each start, and its run's
+/// workspace once sat at the bottom of the sidebar because nothing ran
+/// `run_gather`. The front hub prints the output word for word, so a
 /// working gather adds no line to it.
 #[test]
 fn run_auto_now_gathers_hubs_silently() {

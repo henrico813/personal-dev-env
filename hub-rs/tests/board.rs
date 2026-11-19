@@ -18,7 +18,7 @@ const PHONE: ScreenSize = ScreenSize {
     rows: 16,
 };
 
-/// Runs `hub board --control` with `steps` as its input, and returns
+/// Runs `board::control_board` with `steps` as its input, and returns
 /// its result and each screen it printed.
 fn control(test_tools: &TestTools, steps: &str) -> (Result<(), HubError>, Vec<Value>) {
     let mut output = Vec::new();
@@ -38,7 +38,7 @@ fn control(test_tools: &TestTools, steps: &str) -> (Result<(), HubError>, Vec<Va
     (result.map(|_| ()), screens)
 }
 
-/// Without a card vault every `card` call fails. The board must still
+/// Without a card vault every `Cards` call fails. The board must still
 /// draw, with the failure as the QUEUE block's first row, or the user
 /// gets an error in place of the questions and sessions that wait.
 #[test]
@@ -58,7 +58,7 @@ fn print_board_shows_card_failure_on_top() {
     assert!(outcome.lines[6].starts_with(" !    cards: card: no default"));
 }
 
-/// The user opens `hub board` from any shell, with no run folder named,
+/// The user opens the board from any shell, with no run folder named,
 /// while two hubs work. QUEUE must hold the questions of every hub
 /// Herdr lists, each tagged with its hub, and none from the folder of a
 /// hub that is gone. A worker that reported to the second hub has
@@ -243,7 +243,8 @@ fn print_board_hubless_shows_cards_and_note() {
 /// The one criterion in the note of `tools_with_todo_card`.
 const CRITERION: &str = "- [ ] A failed upload retries.";
 
-/// A hub with one todo card, DEMO-KB-007, whose note holds `CRITERION`.
+/// A hub with one card ready to start, DEMO-KB-007, whose note holds
+/// `CRITERION`.
 fn tools_with_todo_card() -> TestTools {
     let mut test_tools = TestTools::new();
     test_tools
@@ -292,9 +293,9 @@ fn control_board_prints_screen_after_each_step() {
     assert_eq!(pages, expected);
 }
 
-/// The hub's read skips the notes of todo cards, so opening one must
-/// read its note. Otherwise the details page shows no criteria and the
-/// user cannot tell what the card has to do.
+/// The hub's read skips the notes of cards ready to start, so
+/// opening one must read its note. Otherwise the details page shows
+/// no criteria and the user cannot tell what the card has to do.
 #[test]
 fn control_board_open_card_reads_unread_note() {
     let test_tools = tools_with_todo_card();

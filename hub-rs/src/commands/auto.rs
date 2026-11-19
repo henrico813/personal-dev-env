@@ -1,9 +1,11 @@
-//! Runs `hub auto`, the steps of an auto run, in the order `todo`,
-//! `check`, `approve`, `now`. An auto run works a list of cards the
-//! user approved, without the user, until each card stops at a pull
-//! request or a question. That list, `run.md`, names every todo card
-//! once, and may name active or in-review cards the user picked. Only the
-//! cards under `## Run` are worked.
+//! Runs the steps of an auto run, in `AutoStep` order. They write the
+//! cards ready to start to `todo.md`, check `run.md`, save the user's
+//! approval, and write the run's status brief. An auto run works a
+//! list of cards the user approved, without the user, until each card
+//! stops at a pull request or a question. That list, `run.md`, names
+//! every card ready to start once, and may name cards in progress or
+//! needing the user's review that the user picked. Only the cards
+//! under `## Run` are worked.
 //!
 //! ```text
 //! # Auto run 2
@@ -33,7 +35,7 @@ static RUN_TITLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^# Auto run ([
 static LISTED_CARD: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^- ([A-Z][A-Z0-9]*-KB-[0-9]{3,})\b").unwrap());
 
-/// The user's approval, as `hub auto approve` takes it.
+/// The user's approval, as `run_auto_approve` takes it.
 pub struct AutoApproval {
     pub number: u32,
     /// The user's reply, word for word.
@@ -58,12 +60,13 @@ impl RunList {
     }
 }
 
-/// Writes every todo card's title, project and criteria to `todo.md`,
-/// and prints it.
+/// Writes the title, project and criteria of every card ready to
+/// start to `todo.md`, and prints it.
 ///
 /// # Errors
 ///
-/// `HubError::Card` when `card` fails, before `todo.md` changes.
+/// `HubError::Card` when a `Cards` call fails, before `todo.md`
+/// changes.
 pub fn run_auto_todo(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubError> {
     let mut descriptions = Vec::new();
     for key in tools.cards.list_todo()? {
@@ -223,10 +226,12 @@ pub fn run_auto_now(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubEr
 }
 
 /// Returns the run's number when `run.md` can go to the user, else
-/// every problem. A listed card must be todo, active or in-review and
-/// listed only once, and every todo card must be listed, so the
-/// briefing accounts for each one. The user's `approve run N`, not the
-/// stage, is what lets the run work a card.
+/// every problem. A listed card must be ready to start, in progress
+/// or needing the user's review, and listed only once. Every card
+/// ready to start must be listed, so the briefing accounts for each
+/// one.
+/// The user's `approve run N`, not the stage, is what lets the run
+/// work a card.
 fn check_run_list(cards: &[ListedCard], list: &RunList) -> Result<u32, Vec<String>> {
     let listed: Vec<&CardKey> = list.sections.values().flatten().collect();
     let mut problems = Vec::new();
@@ -326,13 +331,13 @@ mod tests {
     use super::*;
 
     /// A list the user cannot run as approved must not reach the user.
-    /// A draft card waits for the user's refinement, while an active or
-    /// in-review card the user picked runs without moving back to todo. A
-    /// card listed twice
-    /// gets two workers. An empty Run starts nothing. A todo card left
-    /// out never reaches the briefing. A list with no number cannot be
-    /// approved by `approve run N`. A card under another heading counts
-    /// as listed.
+    /// A card the user has not refined waits for the user, while a
+    /// picked card in progress or needing the user's review runs
+    /// without first moving back to ready to start. A card listed
+    /// twice gets two workers. An empty Run starts nothing. A card
+    /// ready to start that is left out never reaches the briefing. A
+    /// list with no number cannot be approved by `approve run N`. A
+    /// card under another heading counts as listed.
     #[test]
     fn check_run_list_names_each_problem() {
         struct Case {

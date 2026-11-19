@@ -1,6 +1,7 @@
-//! Sorts a `Queue` into the board's groups, such as In review, and
-//! writes each row's words, its details page and the NEXT lines.
-//! Nothing here draws. Read `build_groups` and `describe_item` first.
+//! Sorts a `Queue` into the board's groups, such as one for cards
+//! needing the user's review, and writes each row's words, its
+//! details page and the NEXT lines. Nothing here draws. Read
+//! `build_groups` and `describe_item` first.
 
 use ratatui::style::Color;
 
@@ -11,7 +12,8 @@ use crate::shared::lifecycle::Lifecycle;
 /// The board's groups, in screen order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum Group {
-    /// What the read could not get, such as a failed `card list`.
+    /// What the read could not get, such as a failed
+    /// `Cards::list_cards` call.
     Problems,
     NeedsYou,
     Active,
@@ -31,7 +33,7 @@ pub(super) enum Status {
     Run,
     /// Its card has a worker session, and none of them is working.
     Idle,
-    /// Its card is in review, and no worker runs on it.
+    /// Its card needs the user's review, and no worker runs on it.
     Rev,
     /// Its card has no worker session.
     None,
@@ -147,8 +149,9 @@ impl Target {
     }
 }
 
-/// Returns every group with its items, in screen order. The Could not
-/// read group shows only when a read failed, and Blocked only when it
+/// Returns every group with its items, in screen order. The
+/// `Could not read` group shows only when a read failed, and the
+/// group of cards waiting on people outside the team only when it
 /// holds a card.
 pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
     let cards_at = |stage: Stage| -> Vec<Item> {
@@ -210,7 +213,8 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
         (Group::Todo, cards_at(Stage::Todo)),
         (Group::Draft, cards_at(Stage::Draft)),
     ]);
-    // Most boards have no blocked card, and a phone has few rows.
+    // Most boards have no card waiting on people outside the team,
+    // and a phone has few rows.
     groups.retain(|(group, items)| *group != Group::Blocked || !items.is_empty());
     groups
 }
@@ -223,17 +227,20 @@ const COUNTED: [Status; 3] = [Status::Run, Status::You, Status::Idle];
 pub(super) struct NextLines {
     /// One `you:` line per row of Needs you, or one that says none.
     pub you: Vec<String>,
-    /// The `then:` line, which counts the cards in review.
+    /// The `then:` line, which counts the cards needing the user's
+    /// review.
     pub then: String,
-    /// One `hub:` line per Todo card, in `card list` order, or one
-    /// that says none. The hub may start another card first.
+    /// One `hub:` line per card ready to start, in the order
+    /// `Cards::list_cards` gives, or one that says none. The hub may
+    /// start another card first.
     pub hub: Vec<String>,
 }
 
-/// Returns the rows of the glance page's QUEUE block. They are what
-/// could not be read, what waits on the user, then cards that run, idle
-/// cards and cards in review. A card whose worker waits on the user is left
-/// out, since that worker is already a row of Needs you.
+/// Returns the rows of the glance page's QUEUE block, which are what
+/// could not be read, what waits on the user, then cards that run,
+/// idle cards and cards needing the user's review. A card whose worker
+/// waits on the user is left out, since that worker is already a row
+/// of the `Needs you` group.
 pub(super) fn glance_items(groups: &[(Group, Vec<Item>)]) -> Vec<(Group, &Item)> {
     let order = [
         Status::Problem,
@@ -385,7 +392,7 @@ fn card_item(index: usize, card: &CardLine, sessions: &[SessionRow]) -> Item {
 
 /// Returns a card's status from its workers' states. A worker that
 /// waits on the user wins over one at work, and one at work wins over
-/// the card being in review.
+/// the card needing the user's review.
 fn card_status(card: &CardLine, sessions: &[SessionRow]) -> Status {
     let states: Vec<Lifecycle> = card
         .workers
@@ -429,9 +436,9 @@ mod tests {
 
     use crate::board::view::tests::sample_queue;
 
-    /// A worker that runs on a card in review, such as one fixing review
-    /// comments, means the card is in work now. Shown as `rev`, it would
-    /// look like it waits for the user's review.
+    /// A worker that runs on a card needing the user's review, such as
+    /// one fixing review comments, means the card is in work now. Shown
+    /// as `rev`, it would look like it waits for the user's review.
     #[test]
     fn build_groups_marks_working_review_card_run() {
         let mut queue = sample_queue();

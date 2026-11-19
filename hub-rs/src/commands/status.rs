@@ -1,6 +1,7 @@
-//! Runs `hub status`. Read `run_status` first. `build_status_rows` and
-//! the two format functions are pure and hold every rule of the
-//! output, so tests check them without Herdr.
+//! Prints the hub's status, with each session and its state. Read
+//! `run_status` first. `build_status_rows` and the two format
+//! functions are pure and hold every rule of the output, so tests
+//! check them without Herdr.
 
 use jiff::Zoned;
 use jiff::tz::TimeZone;
@@ -24,7 +25,7 @@ use crate::watch;
 ///
 /// `HubError::Herdr` when Herdr cannot list the agents, since no row
 /// is left to print. A failed read of the run, parked or request
-/// folder also stops it. A failed `card` or OpenCode database read
+/// folder also stops it. A failed `Cards` or OpenCode database read
 /// becomes a problem line instead.
 pub fn run_status(
     tools: &Tools<'_>,
@@ -78,17 +79,18 @@ pub fn run_status(
     Ok(Outcome { lines })
 }
 
-/// Everything `hub status` shows, in the order it shows it.
+/// Everything `run_status` shows, in the order it shows it.
 #[derive(Debug)]
 struct StatusView {
     hub: HubLine,
-    /// The machine's `hub watch`, such as hub-watch.service, holds its
+    /// The machine's watch loop, which `run_watch` runs, holds its
     /// lock.
     watch_running: bool,
-    /// A `hub next` holds this run folder's `.watcher.lock`. It ends
+    /// A running `run_next` holds this run folder's `.watcher.lock`. It ends
     /// after each line, so the hub starts it again.
     hub_next_running: bool,
-    /// The board counts and waiting cards, or why `card board` failed.
+    /// The board counts and the cards waiting on people outside the
+    /// team, or why `Cards::read_board` failed.
     board: Result<Board, String>,
     counts: StateCounts,
     unread: Vec<String>,
@@ -503,8 +505,8 @@ mod tests {
     /// Scripts and the later board view read `--json`, so a renamed or
     /// missing field breaks them. It must hold the same facts as the
     /// text, including the kept reason apart from the WHY cell.
-    /// `watcher` keeps its old meaning, `hub next`, beside the new
-    /// `watch`.
+    /// `watcher` keeps its old meaning, a running `run_next`, beside
+    /// the new `watch`.
     #[test]
     fn format_status_json_matches_example_object() {
         let view = make_example_view();

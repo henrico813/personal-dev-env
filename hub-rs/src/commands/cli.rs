@@ -98,8 +98,8 @@ pub struct RunArg {
     pub run: Option<PathBuf>,
 }
 
-// The folder of an auto run, for each `hub auto` step. The user's
-// usual hub runs these steps while its own `hub next` holds its own
+// The folder of an auto run, for each `AutoStep`. The user's usual
+// hub runs these steps while its own `run_next` holds its own
 // folder's lock, so a search would find the wrong folder. `None` falls
 // back to `HUB_RUN` only, and in that hub's pane `HUB_RUN` names the
 // same wrong folder, so the steps need `--run`.
@@ -519,7 +519,7 @@ pub enum WatchStep {
         #[command(flatten)]
         run: RunArg,
     },
-    // The loop that systemd and `hub watch start` run, never typed by
+    // The loop that systemd and `run_watch_start` run, never typed by
     // hand.
     #[command(hide = true)]
     Run,
@@ -633,7 +633,7 @@ pub fn parse_command() -> Result<Cli, HubError> {
 }
 
 /// Returns the run folder from `--run`, else from `HUB_RUN`, else the
-/// hub's folder in `local_state`, which is `~/.local/state`. `hub auto`
+/// hub's folder in `local_state`, which is `~/.local/state`. `AutoStep`
 /// steps pass `None` as `local_state`, since the user's usual hub runs
 /// them and a search would find that hub's own folder. That hub's
 /// `HUB_RUN` names the same folder, so those steps need `--run`.
@@ -665,13 +665,13 @@ pub fn find_run_folder(
 }
 
 /// Returns the one `herdr-hub.*` folder in `local_state` whose watcher
-/// lock a `hub next` holds now. The herdr-hub skill makes each run
+/// lock a `run_next` holds now. The hub's skill makes each run
 /// folder there with `mktemp`, and old ones stay after their hub ends,
 /// so only a held lock tells the running hub apart.
 ///
-/// A hub has no `hub next` running while it handles a line. With no
+/// A hub has no `run_next` running while it handles a line. With no
 /// lock held, the search takes the folder whose `events.jsonl` changed
-/// last, since `hub next` writes there, and names it on stderr.
+/// last, since `run_next` writes there, and names it on stderr.
 ///
 /// During an auto run the user's hub and the auto hub both run. The
 /// search then skips folders with an `approved.md`, which only auto
@@ -698,7 +698,8 @@ fn find_hub_folder(local_state: &Path) -> Result<RunFolder, HubError> {
     };
 
     let mut running = Vec::new();
-    // Folders with no `hub next` running, and when `events.jsonl` changed.
+    // Folders with no `run_next` running, and when `events.jsonl`
+    // changed.
     let mut resting = Vec::new();
     for path in paths {
         let is_hub_name = path

@@ -1,4 +1,4 @@
-//! Runs `hub brief`, which prints everything that waits on the user.
+//! Prints the briefing, everything that waits on the user.
 //! An entry in `decisions.md` holds a `## <title>`, the question, two
 //! or more `- ` choices, `Recommended:` and `If no reply:`.
 
@@ -10,11 +10,12 @@ use crate::shared::decisions::{self, DecisionEntry};
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{HubError, Tools, format_span};
 
-/// Prints the board line, one line per pending pde-gh-write request,
+/// Prints the board line, one line per pending approval request,
 /// read fresh at `now`, `reviews.md`, then every decision entry in
 /// full, so the user never has to ask what a numbered question was.
-/// A failed `card board` becomes a `board: REASON` line. Cards waiting
-/// on others come last, as news the user may chase but need not act on.
+/// A failed `Cards::read_board` becomes a `board: REASON` line.
+/// Cards waiting on people outside the team come last, as news the
+/// user may chase but need not act on.
 ///
 /// # Errors
 ///

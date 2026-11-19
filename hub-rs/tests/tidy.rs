@@ -33,13 +33,13 @@ fn add_finished_worker(test_tools: &mut TestTools, name: &str, key: &str, stage:
     fs::write(test_tools.run_path().join(archive), "PR opened.\n").unwrap();
 }
 
-/// Runs `hub clean`, or `hub clean --dry-run`, at `22:14`.
+/// Runs `run_clean`, as a dry run when `dry_run` is set, at `22:14`.
 fn clean(test_tools: &TestTools, dry_run: bool) -> Outcome {
     let now = make_time("2026-11-11T22:14:00+00:00[UTC]");
     run_clean(&test_tools.tools(), &test_tools.run(), dry_run, &now).unwrap()
 }
 
-/// Runs `hub park NAME` at `22:14`.
+/// Runs `run_park` for NAME at `22:14`.
 fn park(test_tools: &TestTools, name: &str) -> Result<Outcome, HubError> {
     let now = make_time("2026-11-11T22:14:00+00:00[UTC]");
     run_park(
@@ -64,10 +64,10 @@ fn read_notes(run_path: &Path) -> String {
     fs::read_to_string(run_path.join("notes.md")).unwrap_or_default()
 }
 
-/// A finished session on a done card loses its tab, and the line
-/// says which and why. A close with no line, or a line with no close,
-/// tells the user the wrong thing. `notes.md` and the event log are the
-/// only record of what the hub closed on its own.
+/// A finished session on a card whose work is over loses its tab,
+/// and the line says which and why. A close with no line, or a line
+/// with no close, tells the user the wrong thing. `notes.md` and the
+/// event log are the only record of what the hub closed on its own.
 #[test]
 fn run_clean_closes_tab_and_says_why() {
     let mut test_tools = TestTools::new();
@@ -94,8 +94,8 @@ fn run_clean_closes_tab_and_says_why() {
     assert_eq!(events.last().unwrap()["tab"], "w1:t-demo-kb-001-impl");
 }
 
-/// The user reads `hub clean --dry-run` on real tabs before the first
-/// real run, so it must close, park, link and write nothing while it
+/// The user reads a dry run of `run_clean` on real tabs before the
+/// first real run, so it must close, park, link and write nothing while it
 /// names what it would do.
 #[test]
 fn run_clean_dry_run_changes_nothing() {
@@ -164,7 +164,7 @@ fn run_clean_listed_keeps_unlisted_sessions_open() {
     );
 }
 
-/// The hub runs `hub send` as a process of its own, beside `hub clean`.
+/// The hub runs `run_send` as a process of its own, beside `run_clean`.
 /// So a message can come in between the verdict and the close or park.
 /// Closing then would leave the message for a closed tab. The state is
 /// worked out again first.
@@ -350,9 +350,9 @@ fn run_clean_closes_only_quiet_shell_tabs() {
     }
 }
 
-/// `hub status` and `hub next` call a session `to-close` whose tab a
+/// `run_status` and `run_next` call a session `to-close` whose tab a
 /// busy shell keeps, such as an editor beside an old hub. Without a line
-/// saying why, `hub clean` prints only `nothing to close`, and the user
+/// saying why, `run_clean` prints only `nothing to close`, and the user
 /// cannot tell why the tab stays open.
 #[test]
 fn run_clean_names_session_kept_by_shell() {
@@ -447,8 +447,8 @@ fn run_clean_forgets_live_session_record() {
 }
 
 /// A parked session's record is its only way back to its OpenCode
-/// session. `hub clean` must keep it while the card waits in review,
-/// or the next message to that session has nothing to reopen.
+/// session. `run_clean` must keep it while the card needs the user's
+/// review, or the next message to that session has nothing to reopen.
 #[test]
 fn run_clean_keeps_record_of_parked_session() {
     let mut test_tools = TestTools::new();
@@ -505,10 +505,10 @@ fn run_clean_closes_nothing_while_requests_unreadable() {
     assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
 }
 
-/// A worker whose card is done may still be merging another pull
-/// request. A request it filed in the last hour must keep its tab
-/// through `hub clean`, or the user approves a request whose session
-/// is gone.
+/// A worker whose card's work is over may still be merging another
+/// pull request. A request it filed in the last hour must keep its
+/// tab through `run_clean`, or the user approves a request whose
+/// session is gone.
 #[test]
 fn run_clean_keeps_worker_with_recent_request() {
     let mut test_tools = TestTools::new();
@@ -584,7 +584,7 @@ fn run_park_records_session_then_closes_tab() {
     );
 }
 
-/// `hub park` on a worker still in its turn must refuse and change
+/// `run_park` on a worker still in its turn must refuse and change
 /// nothing. A park there closes the tab and cuts the turn off.
 #[test]
 fn run_park_refuses_session_still_working() {
@@ -604,9 +604,10 @@ fn run_park_refuses_session_still_working() {
     assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
 }
 
-/// A `card link` failure after the record is written must leave both
-/// the record and the open tab. Closing the tab first, or deleting the
-/// record, loses the session ID of work that waits for review.
+/// A `Cards::link_session` failure after the record is written must
+/// leave both the record and the open tab. Closing the tab first, or
+/// deleting the record, loses the session ID of work that needs the
+/// user's review.
 #[test]
 fn run_park_failure_keeps_record_and_tab() {
     let mut test_tools = TestTools::new();
@@ -625,7 +626,7 @@ fn run_park_failure_keeps_record_and_tab() {
     assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
 }
 
-/// `hub park` closes the session's whole tab. Another agent or a busy
+/// `run_park` closes the session's whole tab. Another agent or a busy
 /// shell in that tab must keep it open, as in the tidy pass, or the
 /// hub parking one worker kills the other's turn.
 #[test]
@@ -652,11 +653,11 @@ fn run_park_keeps_tab_with_other_pane() {
     assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
 }
 
-/// A message can come in while `card link` runs on the network drive.
-/// The park must check again after the link and keep the tab, or the
-/// message waits for a closed session. The record stays for the next
-/// pass, which deletes it while the session is live. The card's Log
-/// must not say the session parked.
+/// A message can come in while `Cards::link_session` runs on the
+/// network drive. The park must check again after the link and keep
+/// the tab, or the message waits for a closed session. The record
+/// stays for the next pass, which deletes it while the session is
+/// live. The card's Log must not say the session parked.
 #[test]
 fn run_park_keeps_tab_messaged_during_link() {
     let mut test_tools = TestTools::new();

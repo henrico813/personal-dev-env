@@ -53,10 +53,11 @@ pub(crate) enum Step {
     Refresh,
     /// Read this card's note for the open details page.
     ReadCard(CardKey),
-    /// Show this session in Herdr, through `herdr agent focus`.
+    /// Show this session in Herdr, through `Herdr::focus_agent`.
     Jump(String),
     /// Close and park these sessions, the ones the clean dialog
-    /// listed, in the run they were read from, as `hub clean` does.
+    /// listed, in the run they were read from, through
+    /// `run_clean_listed`.
     Clean {
         run: PathBuf,
         names: Vec<String>,
@@ -678,8 +679,9 @@ impl Board {
         }
     }
 
-    /// Opens an item's details page. A card the read did not get from
-    /// `card show` shows what `card list` gave, and asks for its note.
+    /// Opens an item's details page. A card whose note the read did
+    /// not get shows what `Cards::list_cards` gave, and asks for its
+    /// note.
     fn open_details(&mut self, group: Group, index: usize) -> Step {
         let (Some(queue), Some(item)) = (&self.queue, self.item(group, index)) else {
             return Step::Stay;
@@ -984,10 +986,11 @@ pub(super) mod tests {
     use crate::external::cards::Stage;
     use crate::shared::lifecycle::{KeptReason, Lifecycle};
 
-    /// A queue with five cards in work, one in review, a question, a
-    /// session that waits on the user as the worker of DEMO-KB-003, and
-    /// one todo and one draft card. Its sessions fill every session
-    /// group, one waiting on the hub and one to park. Its watch gauge is
+    /// A queue with five cards in progress, one needing the user's
+    /// review, a question, a session that waits on the user as the
+    /// worker of DEMO-KB-003, one card ready to start and one the user
+    /// has not refined. Its sessions fill every session group, one
+    /// waiting on the hub and one to park. Its watch gauge is
     /// past 90%, its feed holds two reports, and AWAY has those and a
     /// `notes.md` line, the newest at `10:40`.
     pub(crate) fn sample_queue() -> Queue {
@@ -1317,11 +1320,11 @@ pub(super) mod tests {
     }
 
     /// The user reads the board on a phone, 40 by 16. What needs the
-    /// user comes first, then cards in work and in review, a few rows
-    /// each, while Todo and Draft stay folded. Each row's status word
-    /// tells whether a worker runs on it now or waits on the user. A row
-    /// cut without `~`, a wrong word, or a group out of order hides what
-    /// the user looks for.
+    /// user comes first, then cards in progress or needing the user's
+    /// review, a few rows each, while cards not yet started stay
+    /// folded. Each row's status word tells whether a worker runs on
+    /// it now or waits on the user. A row cut without `~`, a wrong
+    /// word, or a group out of order hides what the user looks for.
     #[test]
     fn render_lines_groups_folds_and_cuts_rows() {
         let mut board = queue_board();
@@ -1428,7 +1431,7 @@ pub(super) mod tests {
     /// The row cuts a card to one line, so its details page is where
     /// the user sees who works on it, what to do next and its pull
     /// request. The read already holds this card's note, so opening the
-    /// page must not run `card show` again and make the user wait.
+    /// page must not read the note again and make the user wait.
     #[test]
     fn handle_input_tap_shows_details_without_reading() {
         let mut board = queue_board();
@@ -1453,10 +1456,10 @@ pub(super) mod tests {
         assert_eq!(details[..10], expected);
     }
 
-    /// The read runs `card show` only for cards a session, a parked
+    /// The read gets the note only of cards a session, a parked
     /// record or a report names, to stay fast. Any other card's page
-    /// must ask for its note and then show it, or todo and draft cards
-    /// never show their criteria.
+    /// must ask for its note and then show it, or cards not yet
+    /// started never show their criteria.
     #[test]
     fn handle_input_unread_card_loads_its_note() {
         let mut board = queue_board();
@@ -1482,7 +1485,7 @@ pub(super) mod tests {
         );
     }
 
-    /// `hub board --dump` and `--control` show agents the elements, not
+    /// The board's dump and control modes show agents the elements, not
     /// the screen, and a tap finds its element by place. An element
     /// whose id, place or words differ from the drawn row sends an
     /// agent's tap to another row, or shows it words the user never
