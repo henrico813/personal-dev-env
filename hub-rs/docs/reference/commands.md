@@ -247,12 +247,16 @@ date heading on the day's first line. Prints `noted HHMM`.
 ### brief
 
 `hub brief [--run DIR]` prints what waits on the user. The first line
-is `board active 5 of 8, in-review 19 of 6; 4 decisions`, or
+is `board active 5 of 8, in-review 19 of 6; 2 questions`, or
 `board: REASON`. Then come one line per pending pde-gh-write request,
 oldest first, such as `approval A0016cd 1h12m left app #515 merge`,
-then `reviews.md` and one `Decision: TITLE` section per entry in
-`decisions.md`, or `Nothing waits on the user.` A pending request past
-pde-gh-write's four-hour expiry does not show.
+then `reviews.md` and one section per card's open question, or
+`Nothing waits on the user.` A pending request past pde-gh-write's
+four-hour expiry does not show. A question's section starts
+`Question KEY: TITLE`, then its lines as `hub ask` saved them. When
+`card` cannot list the questions, the board line ends
+`questions unread`, a `questions: REASON` section follows, and the
+brief never says that nothing waits.
 When cards are blocked, the board line is followed by
 `blocked 2, oldest 8 days`, and the brief ends with a list
 the user need not act on:
@@ -264,8 +268,34 @@ Blocked (no action needed)
   platform team's review
 ```
 
-- Exits 3 with `decisions.md entry 'TITLE' lacks ...` for an
-  incomplete entry.
+### ask
+
+`hub ask KEY FILE` puts the question in FILE on card KEY. It adds the
+question as one item at the end of the card's Open Questions, then
+logs a needs-you mark with the title, so `hub brief` and `hub board`
+show it. Prints `KEY asks 'TITLE'`. FILE starts with `## TITLE`,
+then the question, two or more `- ` choices, a `Recommended:` line,
+an `If no reply:` line and an optional `Depends on:` line, as
+herdr-hub's Questions for the user shows.
+
+- Exits 3 with `question 'TITLE': PROBLEMS` when FILE lacks the
+  question, two or more `- ` choices, `Recommended:` or
+  `If no reply:`, and with `KEY already waits on the user: TEXT` when
+  the card's needs-you mark is open. Neither writes to the card.
+- Run it, and `hub answer`, in a Herdr pane: `card` takes the author
+  of each Log line from the pane's agent and stops without one.
+
+### answer
+
+`hub answer KEY ANSWER` adds the card's open question to its
+Decisions, with `Answer: ANSWER` as its last line, removes it from
+Open Questions, then logs an answered mark. Prints
+`KEY answered 'TITLE': ANSWER`.
+
+- Exits 3 with `KEY waits on no question`.
+- When a step after the first fails, the error says what was done.
+  The answered mark comes last, so the card still shows that it
+  waits.
 
 ### requests
 
@@ -450,15 +480,15 @@ QUEUE; from 100 columns they sit side by side.
   q or Esc goes back.
 - The queue view lists the cards by group: Needs you, Active,
   In review, Blocked, Todo and Draft. The cards come
-  from `card list`. Needs you holds the questions in each
-  `decisions.md` and the sessions that wait on the user, from
-  every hub on this machine that Herdr lists: each
+  from `card list`. Needs you holds each card's open question, as
+  `hub brief` shows them, and the sessions that wait on the user,
+  from every hub on this machine that Herdr lists: each
   `~/.local/state/herdr-hub.*` folder whose hub `hub watch start`
-  named, auto runs included. Each question's tag is its hub's
-  name, cut to 6 letters, and its details page names the hub in
-  full. With no hub running, Needs you shows `no hub running`. It
-  ignores `HUB_RUN`, and the hidden `--run DIR` shows one run
-  only. A Could not read group shows on top when a read fails.
+  named, auto runs included. Each question's tag is its card's
+  project, and its details page names the card. With no hub
+  running, Needs you shows `no hub running`. It ignores `HUB_RUN`,
+  and the hidden `--run DIR` shows one run's sessions only. A Could
+  not read group shows on top when a read fails.
   Todo, Draft and Blocked start folded, and Blocked shows only
   when it holds a card. An open group shows four
   rows, then `+ N more`. A tap on a heading folds or opens it, a
@@ -528,7 +558,9 @@ The steps of an auto run, in order. Each takes `--run DIR`.
   `--given`, REPLY must name exactly the cards under `## Run`. Exits 3
   when nothing was approved.
 - `hub auto now` writes and prints `brief-now.md`: `Auto run N`, one
-  line per card and `Questions for you: N`. Exits 3 with
+  line per card and `Questions for you: N`, then `- KEY TITLE` for
+  each open question on a card under `## Run`. A card with an open
+  question gets `(needs you)`. Exits 3 with
   `the run is not approved; start nothing`.
 
 ## Commands for the user's screen

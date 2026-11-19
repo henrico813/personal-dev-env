@@ -44,7 +44,7 @@ for people and skills that used the Python one.
   `archived report-NAME.HHMM.read, but`. The exit code is that failed
   step's own code.
 - `brief`'s first line is
-  `board active 5 of 8, in-review 19 of 6; 4 decisions`, or
+  `board active 5 of 8, in-review 19 of 6; 2 questions`, or
   `board: REASON` when `card` fails. When nothing else waits, the
   board line is followed by `Nothing waits on the user.`, the same
   line the Python hub printed.
