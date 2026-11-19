@@ -307,12 +307,12 @@ fn run_next_asks_worker_handoff_once() {
 #[test]
 fn run_next_wakes_once_per_board_crossing() {
     let mut test_tools = TestTools::new();
-    // Review alone passes its limit; a combined count once hid this.
-    let board = |review| BoardCounts {
+    // In-review alone passes its limit; a combined count once hid this.
+    let board = |in_review| BoardCounts {
         active: 2,
-        review,
+        in_review,
         active_limit: 8,
-        review_limit: 6,
+        in_review_limit: 6,
     };
     test_tools.cards.board = Some(board(9));
 
@@ -331,7 +331,7 @@ fn run_next_wakes_once_per_board_crossing() {
     assert_eq!(under, "timeout (hub -)");
     assert_eq!(
         over_again,
-        "board over its limit: active 2 of 8, review 9 of 6 (hub -)"
+        "board over its limit: active 2 of 8, in-review 9 of 6 (hub -)"
     );
 }
 
@@ -363,13 +363,13 @@ fn run_next_only_lists_finished_sessions() {
         &mut test_tools,
         "demo-kb-001-impl",
         "DEMO-KB-001",
-        Stage::Accepted,
+        Stage::Done,
     );
     add_finished_worker(
         &mut test_tools,
         "demo-kb-007-impl",
         "DEMO-KB-007",
-        Stage::Review,
+        Stage::InReview,
     );
 
     let first = check_once(&test_tools);
@@ -377,7 +377,7 @@ fn run_next_only_lists_finished_sessions() {
 
     assert_eq!(
         first,
-        "to-close demo-kb-001-impl: DEMO-KB-001 accepted; run hub clean"
+        "to-close demo-kb-001-impl: DEMO-KB-001 done; run hub clean"
     );
     assert_eq!(
         second,
@@ -398,7 +398,7 @@ fn run_next_keeps_worker_waiting_on_job() {
         &mut test_tools,
         "demo-kb-007-impl",
         "DEMO-KB-007",
-        Stage::Review,
+        Stage::InReview,
     );
     let wait = WaitRequest {
         name: "demo-kb-007-impl".parse().unwrap(),
@@ -426,7 +426,7 @@ fn run_next_lists_each_finished_session_once() {
         &mut test_tools,
         "demo-kb-001-impl",
         "DEMO-KB-001",
-        Stage::Accepted,
+        Stage::Done,
     );
 
     let listed = check_once(&test_tools);
@@ -443,19 +443,19 @@ fn run_next_lists_each_finished_session_once() {
     test_tools
         .cards
         .stages
-        .insert("DEMO-KB-001".to_owned(), Stage::Accepted);
+        .insert("DEMO-KB-001".to_owned(), Stage::Done);
     forget_minute_pass(&test_tools);
     let finished_again = check_once(&test_tools);
 
     assert_eq!(
         listed,
-        "to-close demo-kb-001-impl: DEMO-KB-001 accepted; run hub clean"
+        "to-close demo-kb-001-impl: DEMO-KB-001 done; run hub clean"
     );
     assert_eq!(next_pass, "timeout (hub -)");
     assert_eq!(working_pass, "timeout (hub -)");
     assert_eq!(
         finished_again,
-        "to-close demo-kb-001-impl: DEMO-KB-001 accepted; run hub clean"
+        "to-close demo-kb-001-impl: DEMO-KB-001 done; run hub clean"
     );
 }
 
@@ -469,7 +469,7 @@ fn run_next_skips_handoff_of_finished_worker() {
         &mut test_tools,
         "demo-kb-007-impl",
         "DEMO-KB-007",
-        Stage::Review,
+        Stage::InReview,
     );
     let folder = test_tools.path().to_owned();
     let step = OpenCodeRow {

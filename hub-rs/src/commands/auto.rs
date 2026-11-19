@@ -1,8 +1,8 @@
-//! Runs `hub auto`, the steps of an auto run, in the order `ready`,
+//! Runs `hub auto`, the steps of an auto run, in the order `todo`,
 //! `check`, `approve`, `now`. An auto run works a list of cards the
 //! user approved, without the user, until each card stops at a pull
-//! request or a question. That list, `run.md`, names every ready card
-//! once, and may name active or review cards the user picked. Only the
+//! request or a question. That list, `run.md`, names every todo card
+//! once, and may name active or in-review cards the user picked. Only the
 //! cards under `## Run` are worked.
 //!
 //! ```text
@@ -58,24 +58,24 @@ impl RunList {
     }
 }
 
-/// Writes every ready card's title, project and criteria to
-/// `ready.md`, and prints it.
+/// Writes every todo card's title, project and criteria to `todo.md`,
+/// and prints it.
 ///
 /// # Errors
 ///
-/// `HubError::Card` when `card` fails, before `ready.md` changes.
-pub fn run_auto_ready(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubError> {
+/// `HubError::Card` when `card` fails, before `todo.md` changes.
+pub fn run_auto_todo(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubError> {
     let mut descriptions = Vec::new();
-    for key in tools.cards.list_ready()? {
+    for key in tools.cards.list_todo()? {
         let note = tools.cards.read_card(&key)?;
         descriptions.push(describe_card(&key, &note));
     }
     let text = if descriptions.is_empty() {
-        "No ready cards.\n".to_owned()
+        format!("No {} cards.\n", Stage::Todo.as_str())
     } else {
         descriptions.join("\n\n") + "\n"
     };
-    run_folder::write_file_whole(&run.path().join("ready.md"), &text)?;
+    run_folder::write_file_whole(&run.path().join("todo.md"), &text)?;
     Ok(Outcome {
         lines: text.lines().map(str::to_owned).collect(),
     })
@@ -223,8 +223,8 @@ pub fn run_auto_now(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubEr
 }
 
 /// Returns the run's number when `run.md` can go to the user, else
-/// every problem. A listed card must be ready, active or review and
-/// listed only once, and every ready card must be listed, so the
+/// every problem. A listed card must be todo, active or in-review and
+/// listed only once, and every todo card must be listed, so the
 /// briefing accounts for each one. The user's `approve run N`, not the
 /// stage, is what lets the run work a card.
 fn check_run_list(cards: &[ListedCard], list: &RunList) -> Result<u32, Vec<String>> {
@@ -242,22 +242,26 @@ fn check_run_list(cards: &[ListedCard], list: &RunList) -> Result<u32, Vec<Strin
         }
         match cards.iter().find(|card| card.key == *key) {
             None => problems.push(format!("{} is not on the board", key.as_str())),
-            Some(card) if matches!(card.stage, Stage::Ready | Stage::Active | Stage::Review) => {}
+            Some(card) if matches!(card.stage, Stage::Todo | Stage::Active | Stage::InReview) => {}
             Some(card) => problems.push(format!(
-                "{} is a {} card; a run takes ready, active or review cards",
+                "{} is a {} card; a run takes {}, {} or {} cards",
                 key.as_str(),
-                card.stage.as_str()
+                card.stage.as_str(),
+                Stage::Todo.as_str(),
+                Stage::Active.as_str(),
+                Stage::InReview.as_str()
             )),
         }
     }
     for key in cards
         .iter()
-        .filter(|card| card.stage == Stage::Ready)
+        .filter(|card| card.stage == Stage::Todo)
         .map(|card| &card.key)
     {
         if !listed.contains(&key) {
             problems.push(format!(
-                "ready card {} is missing from run.md",
+                "{} card {} is missing from run.md",
+                Stage::Todo.as_str(),
                 key.as_str()
             ));
         }
@@ -323,9 +327,9 @@ mod tests {
 
     /// A list the user cannot run as approved must not reach the user.
     /// A draft card waits for the user's refinement, while an active or
-    /// review card the user picked runs without moving back to ready. A
+    /// in-review card the user picked runs without moving back to todo. A
     /// card listed twice
-    /// gets two workers. An empty Run starts nothing. A ready card left
+    /// gets two workers. An empty Run starts nothing. A todo card left
     /// out never reaches the briefing. A list with no number cannot be
     /// approved by `approve run N`. A card under another heading counts
     /// as listed.
@@ -356,7 +360,7 @@ mod tests {
                          - DEMO-KB-002 demo: resume\n- DEMO-KB-003 demo: draft\n\
                          - DEMO-KB-099 demo: typo\n",
                 expected: Err(vec![
-                    "DEMO-KB-003 is a draft card; a run takes ready, active or review cards",
+                    "DEMO-KB-003 is a draft card; a run takes todo, active or in-review cards",
                     "DEMO-KB-099 is not on the board",
                 ]),
             },
@@ -373,9 +377,9 @@ mod tests {
                 expected: Err(vec!["run.md lists no card under '## Run'"]),
             },
             Case {
-                name: "missing-ready",
+                name: "missing-todo",
                 run_md: "# Auto run 2\n\n## Run\n- DEMO-KB-001 demo: retry\n",
-                expected: Err(vec!["ready card DEMO-KB-002 is missing from run.md"]),
+                expected: Err(vec!["todo card DEMO-KB-002 is missing from run.md"]),
             },
             Case {
                 name: "no-title",
@@ -384,11 +388,11 @@ mod tests {
             },
         ];
         let cards: Vec<ListedCard> = [
-            ("DEMO-KB-001", Stage::Ready),
-            ("DEMO-KB-002", Stage::Ready),
+            ("DEMO-KB-001", Stage::Todo),
+            ("DEMO-KB-002", Stage::Todo),
             ("DEMO-KB-003", Stage::Draft),
             ("DEMO-KB-004", Stage::Active),
-            ("DEMO-KB-005", Stage::Review),
+            ("DEMO-KB-005", Stage::InReview),
         ]
         .into_iter()
         .map(|(key, stage)| ListedCard {

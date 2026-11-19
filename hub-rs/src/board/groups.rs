@@ -14,10 +14,10 @@ pub(super) enum Group {
     /// What the read could not get, such as a failed `card list`.
     Problems,
     NeedsYou,
-    InProgress,
+    Active,
     InReview,
-    WaitingOnOthers,
-    Ready,
+    Blocked,
+    Todo,
     Draft,
 }
 
@@ -43,11 +43,11 @@ impl Group {
     pub(super) fn title(self) -> &'static str {
         match self {
             Group::Problems => "Could not read",
-            Group::InProgress => "In progress",
+            Group::Active => "Active",
             Group::InReview => "In review",
-            Group::WaitingOnOthers => "Waiting on others",
+            Group::Blocked => "Blocked",
             Group::NeedsYou => "Needs you",
-            Group::Ready => "Ready",
+            Group::Todo => "Todo",
             Group::Draft => "Draft",
         }
     }
@@ -57,11 +57,11 @@ impl Group {
     pub(super) fn slug(self) -> &'static str {
         match self {
             Group::Problems => "could-not-read",
-            Group::InProgress => "in-progress",
+            Group::Active => "active",
             Group::InReview => "in-review",
-            Group::WaitingOnOthers => "waiting-on-others",
+            Group::Blocked => "blocked",
             Group::NeedsYou => "needs-you",
-            Group::Ready => "ready",
+            Group::Todo => "todo",
             Group::Draft => "draft",
         }
     }
@@ -72,11 +72,11 @@ impl Group {
     pub(super) fn color(self) -> Color {
         match self {
             Group::Problems => Color::Red,
-            Group::InProgress => Color::Yellow,
+            Group::Active => Color::Yellow,
             Group::InReview => Color::Green,
-            Group::WaitingOnOthers => Color::Cyan,
+            Group::Blocked => Color::Cyan,
             Group::NeedsYou => Color::Magenta,
-            Group::Ready => Color::Blue,
+            Group::Todo => Color::Blue,
             Group::Draft => Color::Reset,
         }
     }
@@ -102,7 +102,7 @@ impl Status {
     pub(super) fn color(self) -> Color {
         match self {
             Status::You => Group::NeedsYou.color(),
-            Status::Run => Group::InProgress.color(),
+            Status::Run => Group::Active.color(),
             Status::Rev => Group::InReview.color(),
             Status::Problem => Group::Problems.color(),
             Status::Idle | Status::None => Color::Reset,
@@ -148,8 +148,8 @@ impl Target {
 }
 
 /// Returns every group with its items, in screen order. The Could not
-/// read group shows only when a read failed, and Waiting on others
-/// only when it holds a card.
+/// read group shows only when a read failed, and Blocked only when it
+/// holds a card.
 pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
     let cards_at = |stage: Stage| -> Vec<Item> {
         queue
@@ -204,14 +204,14 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
     }
     groups.extend([
         (Group::NeedsYou, needs_you),
-        (Group::InProgress, cards_at(Stage::Active)),
-        (Group::InReview, cards_at(Stage::Review)),
-        (Group::WaitingOnOthers, cards_at(Stage::WaitingOnOthers)),
-        (Group::Ready, cards_at(Stage::Ready)),
+        (Group::Active, cards_at(Stage::Active)),
+        (Group::InReview, cards_at(Stage::InReview)),
+        (Group::Blocked, cards_at(Stage::Blocked)),
+        (Group::Todo, cards_at(Stage::Todo)),
         (Group::Draft, cards_at(Stage::Draft)),
     ]);
-    // Most boards have no waiting card, and a phone has few rows.
-    groups.retain(|(group, items)| *group != Group::WaitingOnOthers || !items.is_empty());
+    // Most boards have no blocked card, and a phone has few rows.
+    groups.retain(|(group, items)| *group != Group::Blocked || !items.is_empty());
     groups
 }
 
@@ -225,7 +225,7 @@ pub(super) struct NextLines {
     pub you: Vec<String>,
     /// The `then:` line, which counts the cards in review.
     pub then: String,
-    /// One `hub:` line per Ready card, in `card list` order, or one
+    /// One `hub:` line per Todo card, in `card list` order, or one
     /// that says none. The hub may start another card first.
     pub hub: Vec<String>,
 }
@@ -299,12 +299,12 @@ pub(super) fn write_next_lines(groups: &[(Group, Vec<Item>)], no_hub: bool) -> N
         1 => "then: review 1 card".to_owned(),
         count => format!("then: review {count} cards"),
     };
-    let mut hub: Vec<String> = items(Group::Ready)
+    let mut hub: Vec<String> = items(Group::Todo)
         .iter()
-        .map(|item| format!("hub: ready {}", item.text))
+        .map(|item| format!("hub: start {}", item.text))
         .collect();
     if hub.is_empty() {
-        hub.push("hub: no ready card".to_owned());
+        hub.push(format!("hub: no {} card", Stage::Todo.as_str()));
     }
     NextLines { you, then, hub }
 }
@@ -336,7 +336,7 @@ pub(super) fn describe_item(queue: &Queue, target: Target, note: Option<&CardNot
 }
 
 /// Returns a card's details page lines, such as its title, then
-/// `DEMO-KB-001  review  Demo`, its workers, next step, PR links and
+/// `DEMO-KB-001  in-review  Demo`, its workers, next step, PR links and
 /// criteria.
 pub(super) fn describe_card(card: &CardLine, note: Option<&CardNote>) -> Vec<String> {
     let mut lines = vec![
@@ -397,7 +397,7 @@ fn card_status(card: &CardLine, sessions: &[SessionRow]) -> Status {
         Status::You
     } else if states.contains(&Lifecycle::Working) {
         Status::Run
-    } else if card.stage == Stage::Review {
+    } else if card.stage == Stage::InReview {
         Status::Rev
     } else if states.is_empty() {
         Status::None

@@ -280,7 +280,7 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         }
         Command::Park { run, name } => clean::run_park(&tools, &find_run(run)?, name, &now),
         Command::Auto { step } => match step {
-            AutoStep::Ready { run } => auto::run_auto_ready(&tools, &find_auto_run(run)?),
+            AutoStep::Todo { run } => auto::run_auto_todo(&tools, &find_auto_run(run)?),
             AutoStep::Check { run } => auto::run_auto_check(&tools, &find_auto_run(run)?),
             AutoStep::Approve {
                 run,

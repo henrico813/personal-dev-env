@@ -38,7 +38,8 @@ pub(crate) struct Queue {
     pub read_at: String,
     /// How long the read took.
     pub took: Duration,
-    /// Draft, ready, active and review cards, in `card list` order.
+    /// Draft, todo, active, in-review and blocked cards, in `card list`
+    /// order.
     pub cards: Vec<CardLine>,
     /// The entries of each hub's `decisions.md`.
     pub questions: Vec<Question>,
@@ -305,7 +306,7 @@ pub(crate) fn read_queue(
 fn is_on_board(stage: Stage) -> bool {
     matches!(
         stage,
-        Stage::Draft | Stage::Ready | Stage::Active | Stage::Review | Stage::WaitingOnOthers
+        Stage::Draft | Stage::Todo | Stage::Active | Stage::InReview | Stage::Blocked
     )
 }
 

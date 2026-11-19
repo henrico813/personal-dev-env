@@ -338,7 +338,7 @@ mod tests {
             "  no reply yet active",
             "KEPT 1",
             "docs-fix            █░░  90",
-            "  request in the last hour review",
+            "  request in the last hour in-review",
             "SAFE TO CLOSE 2",
             "old-search          ░░░   - card done",
             "ship-docs           ░░░  30 to-park",

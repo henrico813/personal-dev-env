@@ -477,11 +477,11 @@ fn describe_planned_action(action: &TidyAction<'_>) -> TidyOutcome {
     }
 }
 
-/// Returns why a session's tab closes, such as `DEMO-KB-007 accepted`
+/// Returns why a session's tab closes, such as `DEMO-KB-007 done`
 /// for a done card, else the verdict's why, such as `report read`.
 pub(crate) fn describe_close_why(facts: &SessionFacts, verdict: &Verdict) -> String {
     match &facts.card {
-        Some(card) if matches!(card.stage, Stage::Accepted | Stage::Dropped) => {
+        Some(card) if matches!(card.stage, Stage::Done | Stage::Dropped) => {
             format!("{} {}", card.key.as_str(), card.stage.as_str())
         }
         _ => verdict.why.clone(),
@@ -518,7 +518,7 @@ mod tests {
     }
 
     /// A finished worker in tab `tab_id` whose card DEMO-KB-001 is
-    /// accepted, with its `to-close` verdict.
+    /// done, with its `to-close` verdict.
     fn make_closing_worker(name: &str, tab_id: &str) -> (SessionFacts, Verdict) {
         let mut facts = make_facts(name);
         if let Some(agent) = facts.agent.as_mut() {
@@ -526,7 +526,7 @@ mod tests {
         }
         facts.card = Some(CardFacts {
             key: "DEMO-KB-001".parse().unwrap(),
-            stage: Stage::Accepted,
+            stage: Stage::Done,
             needs_you_open: false,
             newer_session_live: false,
             from_report: false,
@@ -684,7 +684,7 @@ mod tests {
     /// comments come. A done card's worker must close instead. Swapping the
     /// two closes reviewed work with no way back.
     #[test]
-    fn plan_tidy_actions_parks_review_closes_accepted() {
+    fn plan_tidy_actions_parks_review_closes_done() {
         let review = (
             make_facts("demo-kb-007-impl"),
             Verdict {
@@ -692,19 +692,19 @@ mod tests {
                 why: String::new(),
             },
         );
-        let accepted = make_closing_worker("demo-kb-001-impl", "w1:t1");
+        let done = make_closing_worker("demo-kb-001-impl", "w1:t1");
         let panes = [
             make_pane("w1:demo-kb-007-impl", "w1:t-demo-kb-007-impl", true),
             make_pane("w1:demo-kb-001-impl", "w1:t1", true),
         ];
 
-        let actions = plan_for(&[review, accepted], &panes, None, &[]);
+        let actions = plan_for(&[review, done], &panes, None, &[]);
 
         assert_eq!(
             actions,
             [
                 "park demo-kb-007-impl DEMO-KB-007",
-                "close w1:t1 demo-kb-001-impl: DEMO-KB-001 accepted",
+                "close w1:t1 demo-kb-001-impl: DEMO-KB-001 done",
             ]
         );
     }
@@ -735,9 +735,6 @@ mod tests {
 
         let actions = plan_for(&[worker], &panes, None, &["w1:p8"]);
 
-        assert_eq!(
-            actions,
-            ["close w1:t1 demo-kb-001-impl: DEMO-KB-001 accepted"]
-        );
+        assert_eq!(actions, ["close w1:t1 demo-kb-001-impl: DEMO-KB-001 done"]);
     }
 }

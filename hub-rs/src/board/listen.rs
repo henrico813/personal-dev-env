@@ -262,7 +262,7 @@ mod tests {
         assert_eq!(error.exit_code(), 2);
         assert_eq!(
             error.to_string(),
-            "card:DEMO-KB-020 is hidden by fold; send tap group:ready first"
+            "card:DEMO-KB-020 is hidden by fold; send tap group:todo first"
         );
     }
 

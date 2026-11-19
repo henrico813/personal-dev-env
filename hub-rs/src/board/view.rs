@@ -173,9 +173,9 @@ impl Board {
         Board {
             queue: None,
             groups: Vec::new(),
-            // Ready and Draft hold most cards, and Waiting on others holds
-            // nothing for the user to do, so they start folded.
-            open: BTreeSet::from([Group::InProgress, Group::InReview, Group::NeedsYou]),
+            // Todo and Draft hold most cards, and Blocked holds nothing
+            // for the user to do, so they start folded.
+            open: BTreeSet::from([Group::Active, Group::InReview, Group::NeedsYou]),
             shown_in_full: BTreeSet::new(),
             lines: Vec::new(),
             list: ListState::default(),
@@ -986,7 +986,7 @@ pub(super) mod tests {
 
     /// A queue with five cards in work, one in review, a question, a
     /// session that waits on the user as the worker of DEMO-KB-003, and
-    /// one ready and one draft card. Its sessions fill every session
+    /// one todo and one draft card. Its sessions fill every session
     /// group, one waiting on the hub and one to park. Its watch gauge is
     /// past 90%, its feed holds two reports, and AWAY has those and a
     /// `notes.md` line, the newest at `10:40`.
@@ -1051,11 +1051,11 @@ pub(super) mod tests {
                 card("DEMO-KB-005", Stage::Active, "Rotate the backup keys", &[]),
                 card(
                     "DEMO-KB-010",
-                    Stage::Review,
+                    Stage::InReview,
                     "Retry a failed upload twice, then show the error",
                     &["docs-fix"],
                 ),
-                card("DEMO-KB-020", Stage::Ready, "Sort ready cards", &[]),
+                card("DEMO-KB-020", Stage::Todo, "Sort ready cards", &[]),
                 card("OPS-KB-001", Stage::Draft, "Watch the disks", &[]),
             ],
             questions: vec![Question {
@@ -1099,28 +1099,28 @@ pub(super) mod tests {
                     "docs-fix",
                     Lifecycle::Kept(KeptReason::RecentRequest),
                     "request in the last hour",
-                    Some(Stage::Review),
+                    Some(Stage::InReview),
                     Some(90_000),
                 ),
                 session(
                     "old-search",
                     Lifecycle::ToClose,
                     "card done",
-                    Some(Stage::Accepted),
+                    Some(Stage::Done),
                     None,
                 ),
                 session(
                     "ship-docs",
                     Lifecycle::ToPark,
                     "-",
-                    Some(Stage::Review),
+                    Some(Stage::InReview),
                     Some(30_000),
                 ),
                 session(
                     "upload-retry",
                     Lifecycle::Parked,
                     "-",
-                    Some(Stage::Review),
+                    Some(Stage::InReview),
                     None,
                 ),
             ],
@@ -1212,7 +1212,7 @@ pub(super) mod tests {
             "NEXT                                 [3]",
             " you: answer Deploy tonight?",
             " then: review 1 card",
-            " hub: ready Sort ready cards",
+            " hub: start Sort ready cards",
             "? help  4 sessions  5 machine  q quit",
         ];
         assert_eq!(lines, expected);
@@ -1318,7 +1318,7 @@ pub(super) mod tests {
 
     /// The user reads the board on a phone, 40 by 16. What needs the
     /// user comes first, then cards in work and in review, a few rows
-    /// each, while Ready and Draft stay folded. Each row's status word
+    /// each, while Todo and Draft stay folded. Each row's status word
     /// tells whether a worker runs on it now or waits on the user. A row
     /// cut without `~`, a wrong word, or a group out of order hides what
     /// the user looks for.
@@ -1333,7 +1333,7 @@ pub(super) mod tests {
             "v Needs you 2",
             " you  Deploy tonight?             kanban",
             " you  blocked-fix  needs you      worker",
-            "v In progress 5",
+            "v Active 5",
             " run  Faster search               Demo",
             " idle Board for the phone         Demo",
             " you  Trim the build cache        Demo",
@@ -1341,7 +1341,7 @@ pub(super) mod tests {
             "   + 1 more",
             "v In review 1",
             " rev  Retry a failed upload twic~ Demo",
-            "> Ready 1",
+            "> Todo 1",
             "> Draft 1",
             "",
             "esc back  ? help  read 10:42 0.6s",
@@ -1357,14 +1357,14 @@ pub(super) mod tests {
         let mut board = queue_board();
         let lines = board.render_lines(40, 16);
 
-        board.handle_input(&tap_on(&lines, "v In progress"));
+        board.handle_input(&tap_on(&lines, "v Active"));
         let folded = board.render_lines(40, 16);
-        board.handle_input(&tap_on(&folded, "> In progress"));
+        board.handle_input(&tap_on(&folded, "> Active"));
         let opened = board.render_lines(40, 16);
         board.handle_input(&tap_on(&opened, "+ 1 more"));
         let in_full = board.render_lines(40, 16);
 
-        assert_eq!(folded[4..6], ["> In progress 5", "v In review 1"]);
+        assert_eq!(folded[4..6], ["> Active 5", "v In review 1"]);
         assert_eq!(opened, lines);
         assert_eq!(in_full[9], " none Rotate the backup keys      Demo");
         assert_eq!(in_full[10], "v In review 1");
@@ -1405,8 +1405,8 @@ pub(super) mod tests {
         board.handle_input(&tap_on(&lines, "1 run"));
         let jumped = board.render_lines(40, 8);
 
-        assert!(!lines.iter().any(|line| line.contains("In progress")));
-        assert!(jumped.iter().any(|line| line == "v In progress 5"));
+        assert!(!lines.iter().any(|line| line.contains("Active")));
+        assert!(jumped.iter().any(|line| line == "v Active 5"));
         assert!(jumped.iter().any(|line| line.contains("Faster search")));
     }
 
@@ -1443,7 +1443,7 @@ pub(super) mod tests {
             "Retry a failed upload twice, then show",
             "the error",
             "",
-            "DEMO-KB-010  review  Demo",
+            "DEMO-KB-010  in-review  Demo",
             "by docs-fix",
             "next: merge after the checks pass",
             "https://github.com/demo/app/pull/301",
@@ -1455,7 +1455,7 @@ pub(super) mod tests {
 
     /// The read runs `card show` only for cards a session, a parked
     /// record or a report names, to stay fast. Any other card's page
-    /// must ask for its note and then show it, or ready and draft cards
+    /// must ask for its note and then show it, or todo and draft cards
     /// never show their criteria.
     #[test]
     fn handle_input_unread_card_loads_its_note() {
@@ -1510,15 +1510,15 @@ pub(super) mod tests {
             "group:needs-you",
             "question:Deploy tonight?",
             "session:blocked-fix",
-            "group:in-progress",
+            "group:active",
             "card:DEMO-KB-001",
             "card:DEMO-KB-002",
             "card:DEMO-KB-003",
             "card:DEMO-KB-004",
-            "more:in-progress",
+            "more:active",
             "group:in-review",
             "card:DEMO-KB-010",
-            "group:ready",
+            "group:todo",
             "group:draft",
             "hint",
         ];
@@ -1563,13 +1563,8 @@ pub(super) mod tests {
             })
             .collect();
         let expected = [
-            [
-                "more:in-progress",
-                "card:DEMO-KB-005",
-                "more",
-                "tap more:in-progress",
-            ],
-            ["group:ready", "card:DEMO-KB-020", "fold", "tap group:ready"],
+            ["more:active", "card:DEMO-KB-005", "more", "tap more:active"],
+            ["group:todo", "card:DEMO-KB-020", "fold", "tap group:todo"],
             ["group:draft", "card:OPS-KB-001", "fold", "tap group:draft"],
         ];
         assert_eq!(hidden, expected);
@@ -1896,7 +1891,7 @@ pub(super) mod tests {
             name: format!("old-{number:02}"),
             state: Lifecycle::ToClose,
             why: "card done".to_owned(),
-            stage: Some(Stage::Accepted),
+            stage: Some(Stage::Done),
             context_tokens: None,
         }));
         let mut board = Board::new(false);
@@ -1996,7 +1991,7 @@ pub(super) mod tests {
             name: "late-close".to_owned(),
             state: Lifecycle::ToClose,
             why: "card done".to_owned(),
-            stage: Some(Stage::Accepted),
+            stage: Some(Stage::Done),
             context_tokens: None,
         });
 

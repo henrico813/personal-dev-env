@@ -3,7 +3,7 @@ mod common;
 use std::fs;
 
 use hub::commands::auto::{
-    AutoApproval, run_auto_approve, run_auto_check, run_auto_now, run_auto_ready,
+    AutoApproval, run_auto_approve, run_auto_check, run_auto_now, run_auto_todo,
 };
 use hub::external::cards::{CardNote, Stage};
 use hub::external::herdr::{AgentStatus, HerdrError};
@@ -11,16 +11,16 @@ use hub::shared::HubError;
 
 use common::{TestTools, make_agent, make_time, make_workspaces};
 
-/// Doubles whose ready cards are these keys, each with a note, and an
+/// Doubles whose todo cards are these keys, each with a note, and an
 /// empty run folder.
-fn make_ready_cards(keys: &[&str]) -> TestTools {
+fn make_todo_cards(keys: &[&str]) -> TestTools {
     let mut test_tools = TestTools::new();
     for key in keys {
-        test_tools.cards.ready.push((*key).to_owned());
+        test_tools.cards.todo.push((*key).to_owned());
         test_tools
             .cards
             .stages
-            .insert((*key).to_owned(), Stage::Ready);
+            .insert((*key).to_owned(), Stage::Todo);
         test_tools.cards.card_notes.insert(
             (*key).to_owned(),
             CardNote {
@@ -52,13 +52,13 @@ fn make_approval(number: u32, reply: &str, given: bool) -> AutoApproval {
     }
 }
 
-/// The AI model sorts the ready cards from `ready.md` alone, so a card
+/// The AI model sorts the todo cards from `todo.md` alone, so a card
 /// left out or cut short is sorted on a guess. A card with no project
 /// shows `-` rather than an empty line.
 #[test]
-fn run_auto_ready_describes_each_ready_card() {
+fn run_auto_todo_describes_each_todo_card() {
     let mut test_tools = TestTools::new();
-    test_tools.cards.ready = vec!["DEMO-KB-001".to_owned(), "DEMO-KB-002".to_owned()];
+    test_tools.cards.todo = vec!["DEMO-KB-001".to_owned(), "DEMO-KB-002".to_owned()];
     test_tools.cards.card_notes = [
         (
             "DEMO-KB-001".to_owned(),
@@ -82,7 +82,7 @@ fn run_auto_ready_describes_each_ready_card() {
     ]
     .into();
 
-    let outcome = run_auto_ready(&test_tools.tools(), &test_tools.run()).unwrap();
+    let outcome = run_auto_todo(&test_tools.tools(), &test_tools.run()).unwrap();
 
     let expected = "## DEMO-KB-001 Retry failed uploads\n\
                     Project: Demo\n\
@@ -93,7 +93,7 @@ fn run_auto_ready_describes_each_ready_card() {
                     Project: -\n";
     assert_eq!(outcome.lines.join("\n") + "\n", expected);
     assert_eq!(
-        fs::read_to_string(test_tools.run_path().join("ready.md")).unwrap(),
+        fs::read_to_string(test_tools.run_path().join("todo.md")).unwrap(),
         expected
     );
 }
@@ -124,12 +124,12 @@ fn run_auto_check_prints_problems_or_count() {
             rest: "",
             expected: Err("DEMO-KB-001 is listed more than once\n\
                            DEMO-KB-009 is not on the board\n\
-                           ready card DEMO-KB-002 is missing from run.md"),
+                           todo card DEMO-KB-002 is missing from run.md"),
         },
     ];
 
     for case in cases {
-        let test_tools = make_ready_cards(&["DEMO-KB-001", "DEMO-KB-002"]);
+        let test_tools = make_todo_cards(&["DEMO-KB-001", "DEMO-KB-002"]);
         write_run_list(&test_tools, case.run, case.rest);
 
         let printed = match run_auto_check(&test_tools.tools(), &test_tools.run()) {
@@ -178,7 +178,7 @@ fn run_auto_approve_ignores_other_replies() {
     ];
 
     for case in cases {
-        let test_tools = make_ready_cards(&["DEMO-KB-001"]);
+        let test_tools = make_todo_cards(&["DEMO-KB-001"]);
         write_run_list(&test_tools, "- DEMO-KB-001 demo: retry", "");
         let approval = make_approval(case.number, case.reply, false);
         let now = make_time("2026-11-11T22:14:00+00:00[UTC]");
@@ -199,7 +199,7 @@ fn run_auto_approve_ignores_other_replies() {
 /// `approved.md` for workers to start from.
 #[test]
 fn run_auto_approve_stops_when_list_fails() {
-    let mut test_tools = make_ready_cards(&["DEMO-KB-001"]);
+    let mut test_tools = make_todo_cards(&["DEMO-KB-001"]);
     test_tools
         .cards
         .stages
@@ -219,7 +219,7 @@ fn run_auto_approve_stops_when_list_fails() {
 /// final period in the reply do not matter.
 #[test]
 fn run_auto_approve_saves_words_and_list() {
-    let test_tools = make_ready_cards(&["DEMO-KB-001"]);
+    let test_tools = make_todo_cards(&["DEMO-KB-001"]);
     write_run_list(&test_tools, "- DEMO-KB-001 demo: retry", "");
     let approval = make_approval(2, "Approve run 2.", false);
     let now = make_time("2026-11-11T22:14:00+00:00[UTC]");
@@ -250,7 +250,7 @@ fn run_auto_approve_given_needs_exact_cards() {
     ];
 
     for (case_name, words) in cases {
-        let test_tools = make_ready_cards(&["DEMO-KB-001", "DEMO-KB-002", "DEMO-KB-003"]);
+        let test_tools = make_todo_cards(&["DEMO-KB-001", "DEMO-KB-002", "DEMO-KB-003"]);
         write_run_list(
             &test_tools,
             "- DEMO-KB-001 demo: retry\n- DEMO-KB-002 demo: resume",
@@ -274,7 +274,7 @@ fn run_auto_approve_given_needs_exact_cards() {
 /// `approved.md` by hand. Keys count in lower case too.
 #[test]
 fn run_auto_approve_given_saves_own_words() {
-    let test_tools = make_ready_cards(&["DEMO-KB-001", "DEMO-KB-002"]);
+    let test_tools = make_todo_cards(&["DEMO-KB-001", "DEMO-KB-002"]);
     write_run_list(
         &test_tools,
         "- DEMO-KB-001 demo: retry\n- DEMO-KB-002 demo: resume",
@@ -295,7 +295,7 @@ fn run_auto_approve_given_saves_own_words() {
 /// words other than the ones the user approved first.
 #[test]
 fn run_auto_approve_keeps_existing_approval() {
-    let test_tools = make_ready_cards(&["DEMO-KB-001"]);
+    let test_tools = make_todo_cards(&["DEMO-KB-001"]);
     write_run_list(&test_tools, "- DEMO-KB-001 demo: retry", "");
     let first = "# Auto run 2 approved\n\nThe user's words: approve run 2\n";
     fs::write(test_tools.run_path().join("approved.md"), first).unwrap();

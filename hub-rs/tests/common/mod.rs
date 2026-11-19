@@ -11,7 +11,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use hub::external::cards::{
-    Board, BoardCounts, CardError, CardKey, CardNote, Cards, ListedCard, Stage, WaitingCard,
+    BlockedCard, Board, BoardCounts, CardError, CardKey, CardNote, Cards, ListedCard, Stage,
 };
 use hub::external::herdr::{
     Agent, AgentKind, AgentStart, AgentStatus, Herdr, HerdrCode, HerdrError, HubKind, NewPlace,
@@ -429,22 +429,22 @@ impl Herdr for &InMemoryHerdr {
 }
 
 /// The `card` command, as the `Cards` trait, with the board, the
-/// stages, the ready cards and what `card show` gives in memory. It
+/// stages, the todo cards and what `card show` gives in memory. It
 /// records each note it is asked to add, each session it links and
 /// each card it moves to active.
 #[derive(Default)]
 pub struct InMemoryCards {
     /// Each card's stage, as `card list` gives it.
     pub stages: BTreeMap<String, Stage>,
-    /// The keys of ready cards, in `card list` order.
-    pub ready: Vec<String>,
+    /// The keys of todo cards, in `card list` order.
+    pub todo: Vec<String>,
     /// What `card show` gives, by card key. Any other card fails as
     /// `card show` does for a missing card.
     pub card_notes: BTreeMap<String, CardNote>,
     /// `None` answers as `card` does without a vault.
     pub board: Option<BoardCounts>,
-    /// The waiting-on-others list `read_board` gives with `board`.
-    pub waiting: Vec<WaitingCard>,
+    /// The blocked list `read_board` gives with `board`.
+    pub blocked: Vec<BlockedCard>,
     /// Each `add_note` call, as the card key and the text.
     pub notes: RefCell<Vec<(String, String)>>,
     /// When set, `add_note` fails with this message and records nothing.
@@ -492,8 +492,8 @@ impl Cards for InMemoryCards {
             .collect())
     }
 
-    fn list_ready(&self) -> Result<Vec<CardKey>, CardError> {
-        Ok(self.ready.iter().map(|key| key.parse().unwrap()).collect())
+    fn list_todo(&self) -> Result<Vec<CardKey>, CardError> {
+        Ok(self.todo.iter().map(|key| key.parse().unwrap()).collect())
     }
 
     fn read_card(&self, key: &CardKey) -> Result<CardNote, CardError> {
@@ -511,7 +511,7 @@ impl Cards for InMemoryCards {
             .ok_or_else(|| CardError::Failed("card: no default vault".to_owned()))?;
         Ok(Board {
             counts,
-            waiting: self.waiting.clone(),
+            blocked: self.blocked.clone(),
         })
     }
 

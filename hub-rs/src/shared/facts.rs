@@ -52,9 +52,9 @@ pub(crate) struct HubLine {
 /// every parked session that is not live again. A card, database,
 /// report or request file failure becomes a problem line, not an
 /// error. A request file that does not parse also keeps every live
-/// session. A worker keeps its own card while that card is draft, ready
+/// session. A worker keeps its own card while that card is draft, todo
 /// or active and no newer live session took it over. Otherwise it takes
-/// the first other draft, ready, active or in-review card its newest
+/// the first other draft, todo, active or in-review card its newest
 /// report names, if any.
 pub(crate) fn collect_session_facts(
     tools: &Tools<'_>,
@@ -104,13 +104,7 @@ pub(crate) fn collect_session_facts(
         .filter(|key| {
             matches!(
                 stages.get(key),
-                Some(
-                    Stage::Draft
-                        | Stage::Ready
-                        | Stage::Active
-                        | Stage::Review
-                        | Stage::WaitingOnOthers
-                )
+                Some(Stage::Draft | Stage::Todo | Stage::Active | Stage::InReview | Stage::Blocked)
             )
         })
         .collect::<BTreeSet<_>>()
@@ -180,7 +174,7 @@ pub(crate) fn collect_session_facts(
             .filter_map(&read_card_facts)
             // A worker that reported a card in review may still have
             // merges to run for it.
-            .find(|card| is_work_open(card.stage) || card.stage == Stage::Review)
+            .find(|card| is_work_open(card.stage) || card.stage == Stage::InReview)
             .map(|card| CardFacts {
                 from_report: true,
                 ..card
@@ -272,7 +266,7 @@ pub(crate) fn collect_session_facts(
     let no_session = stages
         .iter()
         .filter(|(key, stage)| {
-            matches!(stage, Stage::Active | Stage::Review) && !worked_on.contains(key)
+            matches!(stage, Stage::Active | Stage::InReview) && !worked_on.contains(key)
         })
         .map(|(key, stage)| (key.clone(), *stage))
         .collect();
@@ -342,7 +336,7 @@ fn read_reported_keys(
 
 /// Tells whether a card in this stage still has work to do.
 fn is_work_open(stage: Stage) -> bool {
-    matches!(stage, Stage::Draft | Stage::Ready | Stage::Active)
+    matches!(stage, Stage::Draft | Stage::Todo | Stage::Active)
 }
 
 /// Reads the session's reports from the run folder and the hub's
@@ -360,13 +354,13 @@ fn read_report_facts(name: &str, reported: &ReportedNames, memory: &Memory) -> R
 
 /// Tells whether a session could be parked or closed, so git must
 /// look first. Only an idle or done session on this machine needs it,
-/// and only when its card is in review, waiting on others, accepted or
-/// dropped, or when it has no card and a read report.
+/// and only when its card is in-review, blocked, done or dropped, or
+/// when it has no card and a read report.
 fn needs_git_check(agent: &Agent, stage: Option<Stage>, report_read: bool) -> bool {
     let is_free = matches!(agent.status, AgentStatus::Idle | AgentStatus::Done);
     let could_finish = match stage {
-        Some(Stage::Review | Stage::WaitingOnOthers | Stage::Accepted | Stage::Dropped) => true,
-        Some(Stage::Draft | Stage::Ready | Stage::Active) => false,
+        Some(Stage::InReview | Stage::Blocked | Stage::Done | Stage::Dropped) => true,
+        Some(Stage::Draft | Stage::Todo | Stage::Active) => false,
         None => report_read,
     };
     agent.machine.is_none() && is_free && could_finish

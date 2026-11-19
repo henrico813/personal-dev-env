@@ -1,7 +1,7 @@
 //! Works out one session's lifecycle state from its facts, with no
 //! external calls. Read `decide_lifecycle` first. Its rules apply in
 //! order and the first match wins, so a blocked session is `you` even
-//! when its card is accepted. The later tidy pass closes or parks a
+//! when its card is done. The later tidy pass closes or parks a
 //! session only in the `to-close` or `to-park` state, so each rule
 //! that gives one of those decides what the hub may close.
 
@@ -182,7 +182,7 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
     // parked record. Its record goes once its card is done.
     let Some(agent) = &facts.agent else {
         return match stage {
-            Some(Stage::Accepted | Stage::Dropped) => make_verdict(Lifecycle::ToClose, "card done"),
+            Some(Stage::Done | Stage::Dropped) => make_verdict(Lifecycle::ToClose, "card done"),
             _ => make_verdict(Lifecycle::Parked, ""),
         };
     };
@@ -239,8 +239,8 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
         // worktree, so closing this tab changes no file. A card in
         // review that the newest report names counts too, since its
         // worker may still have merges to run.
-        (Some(card), Some(Stage::Draft | Stage::Ready | Stage::Active | Stage::Review))
-            if card.stage != Stage::Review || card.from_report =>
+        (Some(card), Some(Stage::Draft | Stage::Todo | Stage::Active | Stage::InReview))
+            if card.stage != Stage::InReview || card.from_report =>
         {
             if card.newer_session_live {
                 make_close_unless_user_waits(facts, agent, "newer session")
@@ -254,10 +254,8 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
         }
         // Rule 8. A finished worker waits for the user's review or for
         // people outside the team, and parking keeps a way back to it.
-        (Some(_), Some(Stage::Review | Stage::WaitingOnOthers)) => {
-            find_kept_reason(facts, agent, true)
-                .unwrap_or_else(|| make_verdict(Lifecycle::ToPark, ""))
-        }
+        (Some(_), Some(Stage::InReview | Stage::Blocked)) => find_kept_reason(facts, agent, true)
+            .unwrap_or_else(|| make_verdict(Lifecycle::ToPark, "")),
         // Rule 9. Nothing waits on a done card's session.
         (Some(_), _) => find_kept_reason(facts, agent, false)
             .unwrap_or_else(|| make_verdict(Lifecycle::ToClose, "card done")),
@@ -462,12 +460,12 @@ mod tests {
         vec![
             Row {
                 id: "parked",
-                facts: parked(Stage::Review),
+                facts: parked(Stage::InReview),
                 expected: Lifecycle::Parked,
             },
             Row {
                 id: "parked-card-done",
-                facts: parked(Stage::Accepted),
+                facts: parked(Stage::Done),
                 expected: Lifecycle::ToClose,
             },
             Row {
@@ -476,10 +474,10 @@ mod tests {
                 expected: Lifecycle::Kept(KeptReason::OtherMachine),
             },
             Row {
-                id: "blocked-card-accepted",
+                id: "blocked-card-done",
                 facts: SessionFacts {
                     agent: Some(make_agent(worker, AgentStatus::Blocked)),
-                    ..with_stage(Stage::Accepted)
+                    ..with_stage(Stage::Done)
                 },
                 expected: Lifecycle::WaitsOnUser,
             },
@@ -596,8 +594,8 @@ mod tests {
                 expected: Lifecycle::ToPark,
             },
             Row {
-                id: "waiting-on-others-clean",
-                facts: with_stage(Stage::WaitingOnOthers),
+                id: "blocked-clean",
+                facts: with_stage(Stage::Blocked),
                 expected: Lifecycle::ToPark,
             },
             Row {
@@ -646,10 +644,10 @@ mod tests {
                 expected: Lifecycle::Kept(KeptReason::WaitsOnJob),
             },
             Row {
-                id: "accepted-recent-request",
+                id: "done-recent-request",
                 facts: SessionFacts {
                     filed_request_recently: true,
-                    ..with_stage(Stage::Accepted)
+                    ..with_stage(Stage::Done)
                 },
                 expected: Lifecycle::Kept(KeptReason::RecentRequest),
             },
@@ -664,32 +662,32 @@ mod tests {
                 expected: Lifecycle::Kept(KeptReason::CannotReopen),
             },
             Row {
-                id: "accepted-clean",
-                facts: with_stage(Stage::Accepted),
+                id: "done-clean",
+                facts: with_stage(Stage::Done),
                 expected: Lifecycle::ToClose,
             },
             Row {
-                id: "accepted-files",
+                id: "done-files",
                 facts: SessionFacts {
                     unsaved: Unsaved::Files(PathBuf::from("/home/u/wt/demo-kb-007")),
-                    ..with_stage(Stage::Accepted)
+                    ..with_stage(Stage::Done)
                 },
                 expected: Lifecycle::Kept(KeptReason::UnsavedFiles),
             },
             Row {
-                id: "accepted-focused",
+                id: "done-focused",
                 facts: {
-                    let mut facts = with_stage(Stage::Accepted);
+                    let mut facts = with_stage(Stage::Done);
                     facts.agent.as_mut().unwrap().focused = true;
                     facts
                 },
                 expected: Lifecycle::Kept(KeptReason::UserInPane),
             },
             Row {
-                id: "accepted-not-checked",
+                id: "done-not-checked",
                 facts: SessionFacts {
                     unsaved: Unsaved::NotChecked,
-                    ..with_stage(Stage::Accepted)
+                    ..with_stage(Stage::Done)
                 },
                 expected: Lifecycle::Kept(KeptReason::GitFailed),
             },
@@ -714,7 +712,7 @@ mod tests {
     /// The tidy pass will close every `to-close` session and park
     /// every `to-park` one. A rule out of order, or a check left out,
     /// can close a tab that holds unsaved work, a pending approval, or
-    /// the user's own typing. A blocked session whose card was accepted must still
+    /// the user's own typing. A blocked session whose card is done must still
     /// reach the user.
     #[test]
     fn decide_lifecycle_matches_state_table() {
