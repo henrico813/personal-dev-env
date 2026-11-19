@@ -22,7 +22,7 @@ wait for the next report.
 1. Start: a situation report to the user. It covers what changed since
    the last report, which workers are working, what is blocked, and
    what needs the user.
-2. During work: start `ready` cards, check finished work, prepare the
+2. During work: start `todo` cards, check finished work, prepare the
    next cards, and bring the user only the four things below.
 3. End: a closing report. It covers what was finished, what failed a
    check, what changed in the plan, what should happen next, and what
@@ -33,14 +33,14 @@ wait for the next report.
 
 - Keeps the board. It makes cards with `card new`, moves them with
   `card move`, and links plans and PRs with `card link`.
-- Starts work. It starts `ready` cards oldest first, unless the user
+- Starts work. It starts `todo` cards oldest first, unless the user
   names one. Before starting one, it runs `card board`. When active
   is at its limit, it asks the user which card to finish first. When
-  review is full, it leaves finished cards in active and tells the
+  in-review is full, it leaves finished cards in active and tells the
   user.
 - Watches sessions with `fleet`. Each worker session is named after
   its card key, such as `pdev-kb-004-impl`.
-- Retires sessions. When a card is `accepted` or `dropped`, it closes
+- Retires sessions. When a card is `done` or `dropped`, it closes
   that card's tab with `herdr tab close`.
 - Never writes code, never merges, and never edits a plan.
 
@@ -53,7 +53,7 @@ reads the evidence only when they want to.
 
 1. A question that blocks work. The worker's report asks it, and the
    card's Log gets a `needs-you` line.
-2. Work to accept. These are cards in `review`; `card board` lists
+2. Work to accept. These are cards in `in-review`; `card board` lists
    them oldest first.
 3. An approval, such as a plan, or a PR write waiting in
    `pde-gh-write`.
@@ -65,24 +65,24 @@ Everything else it handles itself or leaves alone.
 ---
 
 - The user decides design, what starts next, and whether finished work
-  is accepted. Only the user makes these moves: `draft -> ready`,
-  `active -> draft`, `review -> active`, `review -> accepted`, and any
+  is accepted. Only the user makes these moves: `draft -> todo`,
+  `active -> draft`, `in-review -> active`, `in-review -> done`, and any
   move to or from `dropped`. Only the user adopts work already under
-  way, with `card new --adopt active`, `--adopt review` or
-  `--adopt waiting-on-others`. The staff agent passes `--user` only
+  way, with `card new --adopt active`, `--adopt in-review` or
+  `--adopt blocked`. The staff agent passes `--user` only
   after the user said so in this session.
-- The staff agent moves `ready -> active` when a worker starts,
-  `active -> review` when a worker reports ready with a PR or other
-  evidence, `active -> ready` when work is paused, with `--why`
-  naming its handoff, and `ready -> draft` when a card has a gap.
-- The staff agent moves a card to `waiting-on-others` when its work
+- The staff agent moves `todo -> active` when a worker starts,
+  `active -> in-review` when a worker reports ready with a PR or other
+  evidence, `active -> todo` when work is paused, with `--why`
+  naming its handoff, and `todo -> draft` when a card has a gap.
+- The staff agent moves a card to `blocked` when its work
   waits only on people outside the team, with `--why` naming them,
   such as `--why "platform team's review"`. A PR moves there from
-  `review` only after the user reviewed it. Work blocked on another
+  `in-review` only after the user reviewed it. Work blocked on another
   team's change moves there from `active`. The card goes back to
-  `review` when the merge or a question waits on the user, and to
+  `in-review` when the merge or a question waits on the user, and to
   `active` when the outside reviewers ask for changes.
-- Before `active -> review`, the staff agent checks the work itself,
+- Before `active -> in-review`, the staff agent checks the work itself,
   not only the report. The PR or branch must exist, and its tests must
   pass.
 - Workers never edit a card. They write a report file, and the staff
@@ -118,7 +118,7 @@ is missing, then renames the report to `report-<name>.read`.
 | Make a card | `card new DevEnv "title" --kind build` |
 | See the board | `card board`, `card list --stage active` |
 | Find text | `card grep "nobs" --section Context` |
-| Move a card | `card move KEY review --why "PR #450 open"` |
+| Move a card | `card move KEY in-review --why "PR #450 open"` |
 | Fix one item | `card show KEY --section "Acceptance Criteria"`, then `card edit KEY "Acceptance Criteria" N "new text"` or `N --remove` |
 | Attach a photo or file | `card attach KEY ~/photo.jpg` |
 | Record a question or answer | `card note KEY --needs-you "..."` |
@@ -132,8 +132,8 @@ is missing, then renames the report to `report-<name>.read`.
 ## Set for the first week
 ---
 
-- The limits are 8 cards in active and 6 in review.
-  `waiting-on-others` has no limit. The user
+- The limits are 8 active cards and 6 in-review cards.
+  `blocked` has no limit. The user
   revisits them from that week's merges per day and the age of the
   oldest item waiting on the user.
 - Every session doing real work holds a card. A short chat, named

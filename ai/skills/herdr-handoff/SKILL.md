@@ -268,13 +268,14 @@ the `card` command:
       card link <KEY> --session <name>
 
 - When the work pauses with a handoff and no session takes it now,
-  move the card from active back to ready with a note that names the
+  move the card from active back to todo with a note that names the
   handoff:
 
-      card move <KEY> ready --why "Paused; handoff <handoff path>"
+      card move <KEY> todo --why "Paused; handoff <handoff path>"
 
-  A card in review cannot move back to ready. It stays in review,
-  with only the note:
+  Only the user takes an `in-review` card back to `todo`, with
+  `card move --user`, which goes through `active`. Leave it in
+  `in-review`, with only a note that names the handoff:
 
       card note <KEY> "Paused; handoff <handoff path>"
 
@@ -322,7 +323,7 @@ or revising this skill.
   pull request edit request only after the hub says the user reviewed
   that pull request.
 - When the work has a card, the card has the handoff's Log note and
-  the new session, or is back in ready with a note naming the handoff.
+  the new session, or is back in todo with a note naming the handoff.
 
 ## Rules
 

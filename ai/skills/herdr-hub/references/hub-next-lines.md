@@ -14,10 +14,10 @@ does not list, or when a session runs on another machine.
   `hub at` has reached its time and is held for N sessions. `<path>` is
   the `--file` given to `hub at`. A session that is gone or turns it
   down gets its own `not sent` or `unsure` line.
-- `board over its limit: active N of 8, review N of 6`: the cards
-  now in active or in review passed that stage's limit. Tell the
+- `board over its limit: active N of 8, in-review N of 6`: the cards
+  now in active or in-review passed that stage's limit. Tell the
   user at once, with the board line, and propose cards to pause as
-  SKILL.md's Cards says. Start no ready card until both counts are
+  SKILL.md's Cards says. Start no todo card until both counts are
   back within their limits or the user says to go on.
 - `old send file: <path>`: handle it as the `hub status` line of the
   same name in SKILL.md's The sessions.
@@ -40,8 +40,9 @@ does not list, or when a session runs on another machine.
 A session started with `herdr --machine <label>` runs on that
 machine's Herdr server, and you cannot read its files, so `hub next`
 does not see it. Write in its handoff that it ends each turn with its
-report. Learn of the turn's end with one background command, and read
-the report with the second:
+report. Learn of the turn's end with one background command, which
+waits for a Herdr agent state, not a card stage. Read the report with
+the second:
 
     herdr --machine <label> agent wait <name> --until idle \
       --until done --until blocked

@@ -40,19 +40,20 @@ user before you add it, since the hub follows every line there.
 
 Keep no list of sessions of your own. Herdr's session names and the
 kanban cards are the record: a card's worker is named after the card,
-such as `demo-kb-007-impl`, and the card logs its sessions. See every
-session with the `hub` command, instead of `ls`, `cat` or
-`herdr agent list`:
+such as `demo-kb-007-impl`, and the card logs its sessions. Card stages
+never set Herdr agent states, even `blocked` and `done`, which come from
+`herdr agent wait`, not `hub status`. See every session with the `hub`
+command, instead of `ls`, `cat` or `herdr agent list`:
 
     hub status --run "<run folder>"
 
-It prints the hub's own line, the board, a waiting-on-others line
-when a card is in that stage, one count per state, the unread
-reports, then one row per session:
+It prints the hub's own line, the board, a `blocked` line when a card is
+in that stage, one count per state, the unread reports, then one row per
+session:
 
     hub kanban-hub-18 131k, watch running, hub next running
-    board active 5 of 8, review 19 of 6
-    waiting-on-others 2, oldest 8 days
+    board active 5 of 8, in-review 19 of 6
+    blocked 2, oldest 8 days
     open 24: 4 working, 2 hub, 3 you,
       5 kept, 1 to-close, 2 to-park; 12 parked
     unread 2: demo-kb-007-impl docs-fix
@@ -63,13 +64,12 @@ reports, then one row per session:
 STATE says who must act: `working` needs nothing, `hub` waits on you,
 `you` waits on the user, `kept` is finished but holds something (WHY
 says what), `to-close` and `to-park` are finished and `hub clean` will
-close or park them, and `parked` has no tab but can reopen. CTX is
-the session's context size, `-` when it cannot be read. A last
-`no session:` line names the active and review cards no session works
-on. After the switch from the Python hub, it also prints an
-`old send file: <path>` line for each Python send file left in the
-run folder. Send again any message in it that still matters, with
-`hub send`, then delete the file.
+close or park them, and `parked` has no tab but can reopen. CTX is the
+session's context size, `-` when it cannot be read. A last `no session:`
+line names the active and in-review cards no session works on. After the
+switch from the Python hub, it also prints an `old send file: <path>`
+line for each Python send file left in the run folder. Send again any
+message in it that still matters, with `hub send`, then delete the file.
 
 Run `hub status` at the start and on each turn. Read its counts line
 and its `unread` line each time; never list the run folder. Tell the
@@ -143,8 +143,8 @@ are off by default. Most lines end with your own context, such as
   acts on this one, with a note on what you did.
 - `missed report <name>`: handle it as a `report` line. No
   `hub next` ran for 10 minutes before it, so keep one running.
-- `blocked <name>`: the session waits at an approval or question in
-  its pane. Handle it as Waiting on the user says.
+- `blocked <name>`: the session is in the `blocked` Herdr agent state,
+  at an approval or question. Handle it as Waiting on the user says.
 - Any other line, such as `not sent`, `unsure` or
   `no hub handoff`: handle it as
   [references/hub-next-lines.md](references/hub-next-lines.md) says.
@@ -186,7 +186,7 @@ tools, so you never read half a report.
   it to the review list, as Merges says.
 - A merged pull request: check the merge. For a personal-dev-env pull
   request, also check that `pde-installer update` ran. Then accept the
-  work yourself, such as by moving its card to accepted. Do not ask
+  work yourself, such as by moving its card to `done`. Do not ask
   the user, who already approved the merge. A merge worker's summary
   shows the merge, and the update when it ran with `--update`, so
   start no other session to check either.
@@ -278,30 +278,30 @@ vault. A hub never reports to a hub on another machine.
   sessions on the same work share one card, and its `sessions` list
   keeps each of them.
 - Two limits, each across every project: 8 cards in `active` and 6
-  in `review`, as `card board` shows. `card` refuses a move into a
+  in `in-review`, as `card board` shows. `card` refuses a move into a
   full stage unless the move has `--user`. While active has room,
-  start the oldest ready card, or the one the user names. Pass
-  `--user` past a limit only when the user says so. When review is
+  start the oldest todo card, or the one the user names. Pass
+  `--user` past a limit only when the user says so. When in-review is
   full, leave a finished card in `active` and tell the user its work
   waits on them. When work is over a limit, propose which cards to
   pause, and let the user decide. If `card` refuses a move that the
   limits allow, pass `--user` and say so in `--why`.
-- Move a card to `review` as soon as its work waits only on the user,
+- Move a card to `in-review` as soon as its work waits only on the user,
   such as an open pull request or a plan or question for the user,
   even when more work follows. When the user has answered or
   reviewed and more work follows, move it back to `active` with
   `--user`, since the user's review is the go-ahead.
-  When you move a card to `review`, add the user's one next step with
+  When you move a card to `in-review`, add the user's one next step with
   `card note KEY "next: <step>"`, such as `next: review PR #498`.
   `hub board` shows it on the card's details page.
-- Move a card to or from `waiting-on-others`, the stage for work
+- Move a card to or from `blocked`, the stage for work
   that waits only on people outside the user's team, as
-  [references/waiting-on-others.md](references/waiting-on-others.md)
+  [references/blocked.md](references/blocked.md)
   says. These cards count against neither limit.
 - When one wake needs several card commands, such as `card note`,
   `card move` and `card add`, put them in one shell script and run it
   in one tool call.
-- Only the user moves a card from `draft` to `ready`, adopts work
+- Only the user moves a card from `draft` to `todo`, adopts work
   already under way, or drops a card. Never release a card the user
   described in a sentence: it stays in `draft` until the user has
   refined it. Refining can take time and happen in any session; the
@@ -315,7 +315,7 @@ vault. A hub never reports to a hub on another machine.
   user lets one skip it, case by case.
 - Work data stays on the machine that holds it. Never send it to
   another machine or put it in public text.
-- To sort a pile of cards, such as every card in `review`, follow
+- To sort a pile of cards, such as every card in `in-review`, follow
   [references/sort-card-pile.md](references/sort-card-pile.md).
 
 When sessions run with no card, such as on a machine where the hub
@@ -366,7 +366,7 @@ message sent to it with `hub send` reopens it in a new tab. Run
 `hub park <name>` to park one `to-park` session now.
 Never close a `kept` session; its WHY says what closing would lose.
 `hub clean` never closes a worker whose handoff paused its card, since
-its card is back in ready. Close its tab yourself once you have read
+its card is back in todo. Close its tab yourself once you have read
 that report. Never ask the user to close a worker.
 
 ## Questions for the user

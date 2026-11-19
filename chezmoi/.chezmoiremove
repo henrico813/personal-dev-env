@@ -103,3 +103,5 @@ Projects/CLAUDE.md
 .agents/skills/promote-memory
 # plain-direct-english moved these files to references/.
 .agents/skills/plain-direct-english/reference
+# herdr-hub renamed this file to blocked.md.
+.agents/skills/herdr-hub/references/waiting-on-others.md
