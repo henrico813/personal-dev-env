@@ -1,15 +1,23 @@
 """Tests for the card command, run against a made-up Projects folder."""
 
+import json
 import os
+import re
 import subprocess
+import tomllib
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import card
 import pytest
 
 KEY = "PDEV-KB-001"
 TODAY = "2026-11-07"
+REPO = Path(__file__).resolve().parents[1]
+RULES_FILE = REPO / "chezmoi/dot_config/pde/names.toml"
+# Names every reader of the rules file must make and read alike.
+CASES = tomllib.loads((REPO / "testdata/names/cases.toml").read_text())
 # A card as the user might leave it after editing in Obsidian. The
 # fields are reordered and quoted, plans is an inline list, and an
 # extra field was added.
@@ -82,6 +90,16 @@ def projects(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     folder.mkdir(parents=True)
     (folder / "AGENTS.md").write_text("Project code: `PDEV`\n")
     return tmp_path / "Projects"
+
+
+@pytest.fixture(autouse=True)
+def rules_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point card at the repository's rules file, which chezmoi installs.
+
+    Tests then check the rules users get, and never read a rules file
+    installed on the computer running them.
+    """
+    monkeypatch.setenv("PDE_NAMES_FILE", str(RULES_FILE))
 
 
 def run_card(projects: Path, *argv: str) -> int:
@@ -648,6 +666,79 @@ class TestSessions:
             f"- {TODAY} session: worker-1 (opencode ses_abc)\n"
         )
 
+    def test_link_refuses_session_on_other_card(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A session another card holds is refused, naming that card.
+
+        The hub shows a worker's state on the card that holds its
+        session, so a session on two cards would show one worker on the
+        wrong card. A worker that serves a second card is told to log it
+        with card note instead.
+        """
+        write_card(projects, "PDEV-KB-001", "active")
+        run_card(projects, "link", "PDEV-KB-001", "--session")
+        other = write_card(projects, "PDEV-KB-002", "active")
+        before = other.read_text()
+        capsys.readouterr()
+
+        code = run_card(projects, "link", "PDEV-KB-002", "--session")
+
+        assert code == 1
+        err = capsys.readouterr().err
+        assert "session ID already on PDEV-KB-001" in err
+        assert "run card note PDEV-KB-002 TEXT" in err
+        assert other.read_text() == before
+
+    def test_link_allows_session_card_already_holds(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Relinking a session this card holds passes, even if another has it.
+
+        The hub relinks a worker's own card when it parks the worker. A
+        refusal would fail every park of a worker whose session another
+        card also holds.
+        """
+        for key in ("PDEV-KB-001", "PDEV-KB-002"):
+            path = write_card(projects, key, "active")
+            text = card.set_field(
+                path.read_text(), "sessions", ["opencode ses_abc"]
+            )
+            path.write_text(text)
+        before = path.read_text()
+
+        code = run_card(projects, "link", "PDEV-KB-002", "--session")
+
+        assert code == 0
+        assert capsys.readouterr().out == (
+            "PDEV-KB-002 sessions: opencode ses_abc (already)\n"
+        )
+        assert path.read_text() == before
+
+    def test_check_reports_session_on_two_cards(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """card check names both cards that hold one session.
+
+        Hand edits, card move --session and card new --adopt --session
+        can put a session on two cards. card check is where the user
+        finds it.
+        """
+        for key in ("PDEV-KB-001", "PDEV-KB-002"):
+            path = write_card(projects, key, "active")
+            text = card.set_field(
+                path.read_text(), "sessions", ["opencode ses_abc"]
+            )
+            path.write_text(text)
+
+        code = run_card(projects, "check")
+
+        assert code == 1
+        assert capsys.readouterr().out == (
+            "PDEV-KB-002 session also on PDEV-KB-001: opencode ses_abc\n"
+            "1 problems in 2 cards\n"
+        )
+
 
 class TestEdit:
     """One numbered item of a section can be replaced or removed."""
@@ -1016,3 +1107,122 @@ class TestHandEditedCard:
         text = path.read_text()
         assert "Hand edit." in text
         assert text.endswith("- added by card\n")
+
+
+class TestNamingRules:
+    """card makes and reads names with the rules in the rules file."""
+
+    @pytest.mark.parametrize(
+        "case",
+        [
+            pytest.param(case, id=f"{case['rule']}-{case['name']}")
+            for case in CASES["make"]
+        ],
+    )
+    def test_make_name_round_trips_shared_cases(
+        self, case: dict[str, Any]
+    ) -> None:
+        """Each rule makes the name the shared cases list and reads it back.
+
+        The shared cases let each program that names plans, branches and
+        agents check that its names match card's. card name refuses a
+        made name its rule cannot read, so a rule that fails the round
+        trip makes card name refuse every use of it.
+        """
+        rule = card.find_rule(case["rule"])
+
+        name = card.make_name(rule, case["fields"])
+
+        assert name == case["name"]
+        assert card.parse_name(rule, name) is not None
+
+    @pytest.mark.parametrize(
+        "case",
+        [
+            pytest.param(case, id=f"{case['rule']}-{case['name']}")
+            for case in CASES["parse"]
+        ],
+    )
+    def test_parse_name_reads_shared_cases(self, case: dict[str, Any]) -> None:
+        """Each rule reads the fields the shared cases list, or nothing.
+
+        card finds cards by reading their file names. Reading a plan or
+        research note as a card, or missing a card, would change the
+        list, the board and the next key.
+        """
+        rule = card.find_rule(case["rule"])
+
+        assert card.parse_name(rule, case["name"]) == case.get("fields")
+
+    def test_rules_file_defaults_to_checkout_copy(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """card reads its checkout's rules when PDE_NAMES_FILE is unset.
+
+        card changes with git pull, before the installer copies the
+        rules file. Reading the checkout's copy keeps card and the hub
+        board working in between, with rules that match card's code.
+        """
+        monkeypatch.delenv("PDE_NAMES_FILE")
+        monkeypatch.setenv("HOME", str(tmp_path))
+
+        code = card.main(["name", "agent", "PDEV-KB-012", "build"])
+
+        assert code == 0
+        assert capsys.readouterr().out == "pdev-kb-012-build\n"
+
+    def test_name_prints_branch_from_values(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """card name fills fields in order, and the last takes the rest.
+
+        A branch made from this output must hold every VALUE in its
+        field. A VALUE dropped or put in the wrong field could still
+        print a branch the rule reads, so the fit check would not catch
+        it.
+        """
+        code = card.main(["name", "branch", "feat", "retry", "uploads"])
+
+        assert code == 0
+        assert capsys.readouterr().out == "feat/retry-uploads\n"
+
+    def test_name_refuses_value_rule_cannot_read(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """card name refuses a name its own rule would not read back.
+
+        A name made from card's output is used as a branch or agent
+        name. A wrong branch type that still printed a name would make a
+        branch pde-check-branch refuses, with no error from card.
+        """
+        code = card.main(["name", "branch", "nope", "retry"])
+
+        assert code == 1
+        assert capsys.readouterr().err.startswith(
+            "card: nope/retry does not fit the branch rule"
+        )
+
+    def test_template_embeds_rule_patterns(self) -> None:
+        """The Obsidian template reads names with the rules file's patterns.
+
+        Cards made in Obsidian and by card share one number series. A
+        template with its own copy of a pattern could take a number a
+        card already holds. JavaScript rejects a ``(?P<name>`` group, so
+        a template that kept one could not make a card at all. An
+        unfilled ``_JSON`` placeholder would also fail only in Obsidian.
+        """
+        text = card.render_template()
+
+        assert "_JSON" not in text
+        literals = re.findall(r'new RegExp\(("(?:[^"\\]|\\.)*")\)', text)
+        patterns = [json.loads(literal) for literal in literals]
+        assert not any("(?P<" in pattern for pattern in patterns)
+        assert [
+            re.compile(pattern.replace("(?<", "(?P<")) for pattern in patterns
+        ] == [
+            card.find_rule("card_file").parse,
+            card.find_rule("card_key").parse,
+        ]
