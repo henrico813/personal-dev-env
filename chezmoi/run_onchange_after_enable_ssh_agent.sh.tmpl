@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Makes pde-ssh-agent.service the only SSH agent, so a key added once with
+# ssh-add in a terminal works in every shell and no popup asks for it.
+# The hash below makes chezmoi run this again when the unit changes.
+# unit {{ include "dot_config/systemd/user/pde-ssh-agent.service" | sha256sum }}
+set -euo pipefail
+
+backup="$HOME/.local/state/pde/ssh-agent-backup"
+others=(gcr-ssh-agent.socket gcr-ssh-agent.service gpg-agent-ssh.socket)
+
+# Keep the first restore.sh, so it returns to the state before this script.
+# It leaves pde-ssh-agent running, because shells and the session still use it.
+if [[ ! -e "$backup/restore.sh" ]]; then
+    mkdir -p "$backup"
+    cat >"$backup/restore.sh" <<EOF
+#!/usr/bin/env bash
+systemctl --user unmask ${others[*]}
+systemctl --user start gcr-ssh-agent.socket gpg-agent-ssh.socket
+EOF
+    echo "To turn the other SSH agents back on: bash $backup/restore.sh"
+fi
+
+# systemctl --user only works when a systemd user manager is running, which
+# Docker smoke tests lack.
+if ! command -v systemctl >/dev/null 2>&1 || ! systemctl --user show-environment >/dev/null 2>&1; then
+    exit 0
+fi
+systemctl --user daemon-reload
+systemctl --user mask "${others[@]}"
+# Desktop and gnupg packages ship these units, so a server may lack some.
+for unit in "${others[@]}"; do
+    systemctl --user stop "$unit" || true
+done
+systemctl --user enable --now pde-ssh-agent.service
+# environment.d is read only when the user manager starts.
+systemctl --user set-environment \
+    SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/pde-ssh-agent.socket" \
+    SSH_ASKPASS_REQUIRE=never
