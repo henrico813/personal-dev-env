@@ -37,14 +37,31 @@ sock="$XDG_RUNTIME_DIR/pde-ssh-agent.socket"
 # ssh-add -l exits 0 only when the agent answers and holds a key.
 holds_keys() { [[ -S $1 ]] && SSH_AUTH_SOCK="$1" ssh-add -l >/dev/null 2>&1; }
 
-# Hand over a key added before the install, so the user need not run ssh-add
-# again. Only a plain ssh-agent socket counts; the keyring's agent would pop up.
-# The unit's ExecStartPre removes the link at the next boot.
+# With no id_github.pub, want stays empty and no old agent is reused.
+want=$(ssh-keygen -lf "$HOME/.ssh/id_github.pub" 2>/dev/null | awk '{print $2}' || true)
+# The shared agent must hold only the GitHub key; id_homelab logs in as root.
+holds_only_github() {
+    local have
+    have=$(SSH_AUTH_SOCK="$1" ssh-add -l 2>/dev/null | awk '{print $2}') || return 1
+    [[ -n $want && $have == "$want" ]]
+}
+# A forwarded agent from ssh -A has no SSH_AGENT_PID, so it fails here.
+is_own_ssh_agent() {
+    local pid=$1 old=$2 dir=${2%/*}
+    [[ $pid =~ ^[0-9]+$ && -O /proc/$pid && $(cat "/proc/$pid/comm" 2>/dev/null) == ssh-agent ]] || return 1
+    [[ -S $old && ! -L $old && -O $old && ! -L $dir && -O $dir && $(stat -c %a "$dir") == 700 ]]
+}
+
+# Hand over a GitHub key added before the install, so the user need not run
+# ssh-add again. The keyring's agent asks in a popup, so it is never reused.
+# Any start of the unit replaces the link with a new, empty agent.
 if ! holds_keys "$sock"; then
     keychain_env="$HOME/.keychain/$(uname -n)-sh"
     keychain_sock=$(sed -n 's/^SSH_AUTH_SOCK="\{0,1\}\([^";]*\).*/\1/p' "$keychain_env" 2>/dev/null || true)
-    for old in "${SSH_AUTH_SOCK:-}" "$keychain_sock"; do
-        if [[ $old == */ssh-*/agent.* ]] && holds_keys "$old"; then
+    keychain_pid=$(sed -n 's/^SSH_AGENT_PID=\([0-9]*\).*/\1/p' "$keychain_env" 2>/dev/null || true)
+    for pair in "${SSH_AGENT_PID:-}:${SSH_AUTH_SOCK:-}" "$keychain_pid:$keychain_sock"; do
+        pid=${pair%%:*} old=${pair#*:}
+        if is_own_ssh_agent "$pid" "$old" && holds_only_github "$old"; then
             systemctl --user stop pde-ssh-agent.service
             ln -sfn "$old" "$sock"
             break
@@ -54,7 +71,3 @@ fi
 if ! holds_keys "$sock"; then
     systemctl --user start pde-ssh-agent.service
 fi
-# environment.d is read only when the user manager starts.
-systemctl --user set-environment \
-    SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/pde-ssh-agent.socket" \
-    SSH_ASKPASS_REQUIRE=never
