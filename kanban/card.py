@@ -5,7 +5,9 @@ A card is one piece of work the user wants, like a GitHub issue. A plan
 made from it is like a pull request. Each card is one note,
 ``500 Zettelkasten/Projects/<Project>/<KEY> <Title>.md``, with a key
 such as PDEV-KB-012 built from the project code in the project
-folder's AGENTS.md.
+folder's AGENTS.md. The key and the file name follow the naming
+rules in ``chezmoi/dot_config/pde/names.toml``, installed as
+``~/.config/pde/names.toml``.
 
 The tables FIELDS, SECTIONS, STAGES, KINDS and MOVES below define the
 note layout and the rules. ``card template`` prints the Obsidian
@@ -33,6 +35,7 @@ Usage::
     card link KEY --session [AGENT]    record a Herdr agent's session
     card delete KEY --user
     card check                         cards with a broken layout
+    card name RULE VALUE...            make a name, such as a branch
     card template                      print the Obsidian template
 
 Agents pass --user only when the user told them to make that change.
@@ -46,18 +49,21 @@ note since it was read.
 
 import argparse
 import fcntl
+import functools
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from collections import deque
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 STATE_DIR = Path.home() / ".local/state/card"
 PROJECTS_SUBDIR = "500 Zettelkasten/Projects"
@@ -145,7 +151,18 @@ CRITERIA = "Acceptance Criteria"
 WIDTH = 60
 BOARD_WIDTH = 40
 
-CARD_NAME_RE = re.compile(r"^([A-Z][A-Z0-9]*-KB-\d{3,})\b.*\.md$")
+RULES_FILE = "~/.config/pde/names.toml"
+CHECKOUT_RULES_FILE = (
+    Path(__file__).resolve().parents[1] / "chezmoi/dot_config/pde/names.toml"
+)
+RULES_VERSION = 1
+# A field in a template, such as {key|lower}, with an optional filter.
+SLOT_RE = re.compile(r"\{([a-z_]+)(?:\|([a-z0-9]+))?\}")
+FILTERS: dict[str, Callable[[str], str]] = {
+    "lower": str.lower,
+    "slug": lambda text: "-".join(re.findall(r"[a-z0-9]+", text.lower())),
+    "pad3": lambda text: text.zfill(3),
+}
 PROJECT_CODE_RE = re.compile(r"Project code:\s*`?([A-Z][A-Z0-9]*)`?")
 FIELD_RE = re.compile(r"^([A-Za-z_][\w-]*):(.*)$")
 LIST_ITEM_RE = re.compile(r"^\s+-\s+(.*)$")
@@ -223,6 +240,18 @@ class AgentSession:
     entry: str
 
 
+@dataclass(frozen=True)
+class Rule:
+    """One rule from names.toml.
+
+    ``make`` builds a name and ``parse`` reads it back.
+    """
+
+    name: str
+    make: str
+    parse: re.Pattern[str]
+
+
 def main(argv: list[str], projects: Path | None = None) -> int:
     """Run one card command.
 
@@ -239,6 +268,8 @@ def main(argv: list[str], projects: Path | None = None) -> int:
         if args.command == "template":
             print(render_template(), end="")
             return 0
+        if args.command == "name":
+            return args.run(args)
         if projects is None:
             projects = find_projects_folder(args.vault)
         return args.run(args, projects)
@@ -401,6 +432,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     check = commands.add_parser("check", help="find broken cards")
     check.set_defaults(run=run_check)
+
+    name = commands.add_parser(
+        "name",
+        help="make a name from a naming rule",
+        description="VALUEs fill the rule's fields in order, and the last"
+        " field takes the rest, such as: card name branch feat retry uploads",
+    )
+    name.add_argument("rule", help="a rule in names.toml, such as branch")
+    name.add_argument("values", nargs="*", metavar="VALUE")
+    name.set_defaults(run=run_name)
 
     commands.add_parser("template", help="print the Obsidian template")
     return parser
@@ -634,8 +675,11 @@ def create_card(
         raise CardError("the title needs a letter or digit")
     today = date.today().isoformat()
     with hold_lock(STATE_DIR / "new.lock"):
-        key = f"{code}-KB-{find_next_number(folder, code):03d}"
-        path = folder / f"{key} {name}.md"
+        number = str(find_next_number(folder, code))
+        key = make_name(find_rule("card_key"), {"code": code, "n": number})
+        path = folder / make_name(
+            find_rule("card_file"), {"key": key, "title": name}
+        )
         text = render_card(
             key=key,
             title=new_card.title.strip(),
@@ -666,12 +710,13 @@ def find_next_number(folder: Path, code: str) -> int:
     Returns:
         The number for the next card.
     """
-    number_re = re.compile(rf"^{re.escape(code)}-KB-(\d+)")
-    numbers = [
-        int(match[1])
-        for path in folder.iterdir()
-        if (match := number_re.match(path.name))
-    ]
+    key_rule = find_rule("card_key")
+    numbers = []
+    for path in folder.iterdir():
+        key = read_card_key(path.name)
+        fields = parse_name(key_rule, key) if key else None
+        if fields and fields.get("code") == code:
+            numbers.append(int(fields["n"]))
     return max(numbers, default=0) + 1
 
 
@@ -1378,7 +1423,9 @@ def run_set(args: argparse.Namespace, projects: Path) -> int:
     name = BAD_NAME_CHARS_RE.sub("", args.value).strip()
     if not name:
         raise CardError("the title needs a letter or digit")
-    new_path = card.path.with_name(f"{card.key} {name}.md")
+    new_path = card.path.with_name(
+        make_name(find_rule("card_file"), {"key": card.key, "title": name})
+    )
     if new_path != card.path and new_path.exists():
         raise CardError(f"{new_path.name} already exists")
     update_card(
@@ -1393,6 +1440,9 @@ def run_set(args: argparse.Namespace, projects: Path) -> int:
 def run_link(args: argparse.Namespace, projects: Path) -> int:
     """Add a plan link to ``plans``, a PR URL to ``prs``, or a session.
 
+    A session only another card holds is refused, since the hub maps
+    each session to one card.
+
     Args:
         args: The parsed arguments.
         projects: The vault's Projects folder.
@@ -1405,6 +1455,16 @@ def run_link(args: argparse.Namespace, projects: Path) -> int:
     card = find_card(projects, args.key)
     if args.session is not None:
         session = find_agent_session(args.session)
+        # The hub relinks a worker's own card when it parks the worker, so
+        # a session this card holds passes even if another card has it.
+        held = find_session_holder([card], session.entry) is not None
+        cards = [] if held else load_all_cards(projects)
+        holder = find_session_holder(cards, session.entry)
+        if holder is not None:
+            raise CardError(
+                f"session ID already on {holder.key}: {session.entry}."
+                f" To log work on {card.key}, run card note {card.key} TEXT."
+            )
         today = date.today().isoformat()
         written = update_card(
             card, lambda text: add_session(text, today, session)
@@ -1450,6 +1510,22 @@ def add_session(text: str, today: str, session: AgentSession) -> str:
     return add_to_section(text, "Log", line)
 
 
+def find_session_holder(cards: list[Card], entry: str) -> Card | None:
+    """Return the first card whose sessions field holds the entry.
+
+    Args:
+        cards: The cards to search.
+        entry: A sessions entry, such as ``opencode ses_abc``.
+
+    Returns:
+        The card, or None when no card holds the entry.
+    """
+    for card in cards:
+        if entry in as_list(read_fields(card.text).get("sessions")):
+            return card
+    return None
+
+
 def run_delete(args: argparse.Namespace, projects: Path) -> int:
     """Remove a card note. Unwanted work normally goes to dropped instead.
 
@@ -1484,6 +1560,16 @@ def run_check(args: argparse.Namespace, projects: Path) -> int:
         if card.key in seen:
             problems.append(f"{card.key} also in {seen[card.key]}")
         seen[card.key] = card.path.name
+    # The hub maps a session to one card, so a session on two cards
+    # shows one worker's state on the wrong card.
+    holders: dict[str, str] = {}
+    for card in cards:
+        for entry in as_list(read_fields(card.text).get("sessions")):
+            holder = holders.setdefault(entry, card.key)
+            if holder != card.key:
+                problems.append(
+                    f"{card.key} session also on {holder}: {entry}"
+                )
     for problem in problems:
         print(fit(problem))
     print(f"{len(problems)} problems in {len(cards)} cards")
@@ -1511,6 +1597,42 @@ def find_card_issues(card: Card) -> list[str]:
         if find_heading(lines, name) is None:
             issues.append(f"no {name} section")
     return issues
+
+
+def run_name(args: argparse.Namespace) -> int:
+    """Print the name a rule makes from VALUEs.
+
+    The VALUEs fill the template's fields in the order they first
+    appear, and the last field takes the rest, joined by spaces.
+
+    Args:
+        args: The parsed arguments.
+
+    Returns:
+        The exit code.
+
+    Raises:
+        CardError: Too few VALUEs were given, or the made name does not
+            fit the rule.
+    """
+    rule = find_rule(args.rule)
+    slots = SLOT_RE.finditer(rule.make)
+    fields = list(dict.fromkeys(slot[1] for slot in slots))
+    if len(args.values) < len(fields):
+        wanted = " ".join(field.upper() for field in fields)
+        raise CardError(f"card name {rule.name} needs {wanted}")
+    values = dict(zip(fields, args.values))
+    if fields:
+        values[fields[-1]] = " ".join(args.values[len(fields) - 1 :])
+    name = make_name(rule, values)
+    # A bad VALUE, such as an unknown branch type, stops here instead of
+    # naming a branch or agent.
+    if parse_name(rule, name) is None:
+        raise CardError(
+            f"{name} does not fit the {rule.name} rule {rule.make}"
+        )
+    print(name)
+    return 0
 
 
 def render_card(
@@ -1576,7 +1698,18 @@ def render_template() -> str:
     Returns:
         The template text.
     """
-    script = TEMPLATER_SCRIPT.replace("KINDS_JSON", json.dumps(KINDS))
+    key_rule = find_rule("card_key")
+    file_rule = find_rule("card_file")
+    constants = {
+        "KINDS_JSON": KINDS,
+        "CARD_KEY_MAKE_JSON": key_rule.make,
+        "CARD_FILE_MAKE_JSON": file_rule.make,
+        "CARD_KEY_RE_JSON": format_js_pattern(key_rule),
+        "CARD_FILE_RE_JSON": format_js_pattern(file_rule),
+    }
+    script = TEMPLATER_SCRIPT
+    for placeholder, value in constants.items():
+        script = script.replace(placeholder, json.dumps(value))
     text = render_card(
         key="<% key %>",
         title="<% title %>",
@@ -1589,8 +1722,21 @@ def render_template() -> str:
     return text.replace("---\n", "---\n" + script, 1)
 
 
+def format_js_pattern(rule: Rule) -> str:
+    """Return the rule's parse pattern in JavaScript's named-group form.
+
+    Args:
+        rule: The rule.
+
+    Returns:
+        The pattern, with each ``(?P<name>`` written ``(?<name>``.
+    """
+    return rule.parse.pattern.replace("(?P<", "(?<")
+
+
 # Runs inside Obsidian's Templater plugin. Keep its name rule the same
-# as BAD_NAME_CHARS_RE and its number rule the same as find_next_number.
+# as BAD_NAME_CHARS_RE, fill() the same as SLOT_RE and FILTERS, and
+# its number rule the same as find_next_number.
 TEMPLATER_SCRIPT = r"""<%*
 const root = "500 Zettelkasten/Projects";
 const projects = [];
@@ -1608,16 +1754,30 @@ const kinds = KINDS_JSON;
 const kind = await tp.system.suggester(
   Object.entries(kinds).map(([name, meaning]) => `${name}: ${meaning}`),
   Object.keys(kinds), true, "Kind");
-const numberRe = new RegExp(`^${project.code}-KB-(\\d+)`);
+const fill = (template, values) => template.replace(
+  /\{([a-z_]+)(?:\|([a-z0-9]+))?\}/g, (slot, field, filter) => {
+    const value = String(values[field]);
+    if (filter === "lower") return value.toLowerCase();
+    if (filter === "slug") {
+      return (value.toLowerCase().match(/[a-z0-9]+/g) || []).join("-");
+    }
+    if (filter === "pad3") return value.padStart(3, "0");
+    return value;
+  });
+const cardFileRe = new RegExp(CARD_FILE_RE_JSON);
+const cardKeyRe = new RegExp(CARD_KEY_RE_JSON);
 let high = 0;
 for (const file of project.folder.children) {
-  const found = file.name.match(numberRe);
-  if (found) high = Math.max(high, Number(found[1]));
+  const found = file.name.match(cardFileRe)?.groups.key.match(cardKeyRe);
+  if (found && found.groups.code === project.code) {
+    high = Math.max(high, Number(found.groups.n));
+  }
 }
-const key = `${project.code}-KB-${String(high + 1).padStart(3, "0")}`;
+const key = fill(CARD_KEY_MAKE_JSON, { code: project.code, n: high + 1 });
 const today = tp.date.now("YYYY-MM-DD");
 const name = title.replace(/[\\/:*?"<>|#^\[\]]/g, "").trim();
-await tp.file.move(`${project.folder.path}/${key} ${name}`);
+const fileName = fill(CARD_FILE_MAKE_JSON, { key, title: name });
+await tp.file.move(`${project.folder.path}/${fileName.replace(/\.md$/, "")}`);
 -%>
 """
 
@@ -2017,11 +2177,11 @@ def load_card(path: Path) -> Card:
     Raises:
         CardError: The file name holds no card key.
     """
-    match = CARD_NAME_RE.match(path.name)
-    if not match:
+    key = read_card_key(path.name)
+    if not key:
         raise CardError(f"{path.name} is not a card note")
     mtime_ns = path.stat().st_mtime_ns
-    return Card(path, match[1], path.read_text(encoding="utf-8"), mtime_ns)
+    return Card(path, key, path.read_text(encoding="utf-8"), mtime_ns)
 
 
 def load_all_cards(projects: Path) -> list[Card]:
@@ -2035,8 +2195,8 @@ def load_all_cards(projects: Path) -> list[Card]:
     """
     return [
         load_card(path)
-        for path in sorted(projects.glob("*/*-KB-*.md"))
-        if CARD_NAME_RE.match(path.name)
+        for path in sorted(projects.glob("*/*.md"))
+        if read_card_key(path.name)
     ]
 
 
@@ -2076,7 +2236,7 @@ def find_card(projects: Path, key: str) -> Card:
     paths = [
         path
         for path in projects.glob(f"*/{key}*.md")
-        if (match := CARD_NAME_RE.match(path.name)) and match[1] == key
+        if read_card_key(path.name) == key
     ]
     if not paths:
         raise CardError(f"no card {key}")
@@ -2099,8 +2259,171 @@ def list_key_holders(folder: Path, key: str) -> list[Path]:
     return [
         path
         for path in folder.glob(f"{key}*.md")
-        if (match := CARD_NAME_RE.match(path.name)) and match[1] == key
+        if read_card_key(path.name) == key
     ]
+
+
+def find_rule(name: str) -> Rule:
+    """Return one naming rule from the rules file.
+
+    Args:
+        name: The rule name, such as card_key.
+
+    Returns:
+        The rule.
+
+    Raises:
+        CardError: No rule has the name, or the rules cannot be read.
+    """
+    path = find_rules_file()
+    rules = read_rules_file(path)
+    if name not in rules:
+        raise CardError(f"{path} has no naming rule {name}")
+    return rules[name]
+
+
+def make_name(rule: Rule, values: dict[str, str]) -> str:
+    """Fill the rule's template with values, running each field's filter.
+
+    Args:
+        rule: The rule.
+        values: A value for each field the template names.
+
+    Returns:
+        The name, such as ``pdev-kb-012-build``.
+    """
+
+    def fill(slot: re.Match[str]) -> str:
+        """Return one field's value, filtered."""
+        value = values[slot[1]]
+        return FILTERS[slot[2]](value) if slot[2] else value
+
+    return SLOT_RE.sub(fill, rule.make)
+
+
+def parse_name(rule: Rule, name: str) -> dict[str, str] | None:
+    """Read a name's fields with the rule's parse pattern.
+
+    Args:
+        rule: The rule.
+        name: The name, which the pattern must match whole.
+
+    Returns:
+        The fields, leaving out groups that matched nothing, or None
+        when the pattern does not read the name.
+    """
+    match = rule.parse.fullmatch(name)
+    if not match:
+        return None
+    groups = match.groupdict().items()
+    return {field: text for field, text in groups if text is not None}
+
+
+def read_card_key(file_name: str) -> str | None:
+    """Return the card key a file name holds, under the card_file rule.
+
+    Args:
+        file_name: A file name, such as ``PDEV-KB-012 Retry uploads.md``.
+
+    Returns:
+        The key, or None when the file is not a card note.
+    """
+    fields = parse_name(find_rule("card_file"), file_name)
+    return fields.get("key") if fields else None
+
+
+def find_rules_file() -> Path:
+    """Return ``$PDE_NAMES_FILE``, else the checkout's copy, else RULES_FILE.
+
+    ~/.local/bin/card links into its checkout, so the checkout's copy
+    matches card's code between a git pull and the next install.
+
+    Returns:
+        The rules file.
+
+    Raises:
+        CardError: The file is missing, as when card runs outside a
+            checkout before the installer has run.
+    """
+    shown = os.environ.get("PDE_NAMES_FILE")
+    if not shown:
+        found = CHECKOUT_RULES_FILE.is_file()
+        shown = str(CHECKOUT_RULES_FILE) if found else RULES_FILE
+    path = Path(shown).expanduser()
+    if not path.is_file():
+        raise CardError(
+            f"no naming rules at {shown}: run pde-installer install"
+        )
+    return path
+
+
+@functools.cache
+def read_rules_file(path: Path) -> dict[str, Rule]:
+    """Read the rules file.
+
+    card reads a rule for every note it lists, so each process reads
+    the file once.
+
+    Args:
+        path: The rules file.
+
+    Returns:
+        The rules, by name, in the file's order.
+
+    Raises:
+        CardError: The file cannot be read, is not TOML, has another
+            version, or holds a rule card cannot use.
+    """
+    try:
+        tables = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        raise CardError(f"cannot read {path}: {error}") from error
+    version = tables.pop("version", "unset")
+    if version != RULES_VERSION:
+        raise CardError(
+            f"{path} is version {version}; this card reads version"
+            f" {RULES_VERSION}"
+        )
+    for name, table in tables.items():
+        if not isinstance(table, dict):
+            raise CardError(f"{path}: {name} is not a [{name}] table")
+    return {
+        name: build_rule(path, name, table) for name, table in tables.items()
+    }
+
+
+def build_rule(path: Path, name: str, table: dict[str, Any]) -> Rule:
+    """Make a Rule from its table in the rules file.
+
+    Args:
+        path: The rules file, for messages.
+        name: The rule name.
+        table: The table, with make and parse.
+
+    Returns:
+        The rule.
+
+    Raises:
+        CardError: The table lacks make or parse, the pattern does not
+            compile, or the template names an unknown filter.
+    """
+    make = table.get("make")
+    parse = table.get("parse")
+    if not isinstance(make, str) or not isinstance(parse, str):
+        raise CardError(f"{path}: rule {name} needs make and parse")
+    for _field, filter_name in SLOT_RE.findall(make):
+        if filter_name and filter_name not in FILTERS:
+            raise CardError(
+                f"{path}: rule {name} has unknown filter {filter_name};"
+                f" filters are {', '.join(FILTERS)}"
+            )
+    try:
+        pattern = re.compile(parse)
+    except re.error as error:
+        raise CardError(
+            f"{path}: rule {name} has a bad pattern {parse!r}: {error}"
+        ) from error
+    return Rule(name, make, pattern)
 
 
 def find_project_folder(projects: Path, project: str) -> Path:

@@ -18,7 +18,8 @@ Project code: `PDEV`
 
 `card` refuses to make a card in a project with no such line. It finds
 the vault with `nobs vault path`; `card --vault NAME COMMAND` uses a
-named vault.
+named vault. The shape of the key and the file name comes from the
+[naming rules](#naming-rules).
 
 ## Commands
 ---
@@ -27,7 +28,7 @@ named vault.
 | --- | --- |
 | `card new PROJECT TITLE [--kind K] [--user] [--why TEXT]` | Makes a card in `draft` and prints its name. |
 | `card new PROJECT --from FILE [--user] [--why TEXT]` | Makes a card in `draft` with the title, kind and section text from FILE, laid out as `card new --help` shows. Refuses any other heading, a repeated heading, and text before the first heading, so no line is lost. |
-| `card new PROJECT TITLE --adopt STAGE --user [--why TEXT] [--session [AGENT]]` | Makes a card straight in `active`, `review` or `waiting-on-others`, for work already under way. `waiting-on-others` needs `--why`. `--session` also records the agent's session, as `card link --session` does. |
+| `card new PROJECT TITLE --adopt STAGE --user [--why TEXT] [--session [AGENT]]` | Makes a card straight in `active`, `review` or `waiting-on-others`, for work already under way. `waiting-on-others` needs `--why`. `--session` also records the agent's session, as `card link --session` does, but skips its check for a session on another card. |
 | `card list [--stage S] [--project P] [--kind K] [--tabs]` | Prints one line per card: key, stage, kind and title, in stage order. A long line is cut to 60 characters. With `--tabs`, each line holds the key, stage, kind, project folder and whole title, split by tabs, for scripts such as `hub board`. |
 | `card board` | Prints the count per stage, active and review each against its limit, and the review queue by `stage_date`, oldest first. When a card waits on others, it also prints their count and the oldest wait, and lists them, longest wait first, with days waited and the reason. See [Board](#board). |
 | `card show KEY [--section S]` | Prints the whole card, or one section with its items numbered from 1. |
@@ -45,9 +46,10 @@ named vault.
 | `card set KEY kind VALUE` | Changes the kind. |
 | `card link KEY PLAN` | Adds `[[PLAN]]` to `plans`. |
 | `card link KEY URL` | Adds a pull request URL to `prs`. |
-| `card link KEY --session [AGENT]` | Adds a Herdr agent's session to `sessions` and logs it. Without AGENT, it uses the agent in the current pane. |
+| `card link KEY --session [AGENT]` | Adds a Herdr agent's session to `sessions` and logs it. Without AGENT, it uses the agent in the current pane. Refuses a session already on another card, unless this card holds it too. A session that serves a second card, such as a merge worker's, logs its work there with `card note KEY2 TEXT` instead. |
 | `card delete KEY --user` | Deletes the note. Use `dropped` instead to keep a record. |
-| `card check` | Lists cards with a broken layout, an unknown stage or kind, or a key two files share. Exits 1 when it finds one. |
+| `card check` | Lists cards with a broken layout, an unknown stage or kind, a key two files share, or a session two cards share. Exits 1 when it finds one. |
+| `card name RULE VALUE...` | Prints the name a naming rule makes. The VALUEs fill the rule's fields in order, and the last field takes the rest: `card name branch feat retry uploads` prints `feat/retry-uploads`. Refuses a name the rule would not read back, such as one with an unknown branch type. Needs no vault. |
 | `card template` | Prints the Obsidian template, `001.09 Zettel-Kanban.md`. |
 
 `--user` records that the user decided. The tool cannot tell who
@@ -258,3 +260,32 @@ such as a save in Obsidian, `card` reads it again and redoes its
 change once, then stops. `card new` picks the next number under the
 lock `~/.local/state/card/new.lock`. The Obsidian template takes no
 lock, so `card check` finds a key two cards share.
+
+## Naming rules
+---
+
+`card` makes and reads names with the rules in `names.toml`. It reads
+`$PDE_NAMES_FILE` when set, else the copy in its own checkout,
+`chezmoi/dot_config/pde/names.toml`, so its code and rules match right
+after a `git pull`. Without that copy it reads
+`~/.config/pde/names.toml`, which `pde-installer install` puts there.
+With no file, every command stops with
+`no naming rules at ~/.config/pde/names.toml: run pde-installer install`.
+
+Each rule has a `make` template, such as `{key|lower}-{role}`, and a
+`parse` pattern that reads a name back:
+
+```toml
+[agent]
+make = "{key|lower}-{role}"
+parse = '^(?P<key>[a-z][a-z0-9]*-kb-[0-9]{3,})-(?P<role>[a-z0-9-]+)$'
+```
+
+`card name agent PDEV-KB-012 build` fills that template and prints
+`pdev-kb-012-build`.
+
+`card name RULE` takes the rules `card_key`, `card_file`, `plan_file`,
+`branch`, `commit_title`, `agent`, `hub` and `review_agent`. The
+comments at the top of `names.toml` give the filters, the limits on
+patterns, and the step after changing `card_key` or `card_file`.
+`card` reads only `version = 1`.
