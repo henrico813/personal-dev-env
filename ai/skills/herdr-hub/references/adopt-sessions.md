@@ -7,6 +7,15 @@ into cards and close them. Adopting makes a card that starts in
 `ready`. Only the user
 adopts, so the user approves the list before any card exists.
 
+## Contents
+
+- Take stock
+- Close finished sessions
+- Project codes
+- Adoption list
+- Make the cards
+- Keep, hand off or pause
+
 Copy this checklist into `notes.md` and tick it off:
 
 ```text
@@ -85,8 +94,8 @@ no ready card until both counts are back within their limits.
 ## 6. Keep, hand off or pause
 
 - Keep: rename the agent and its tab to `<card key>-<role>`, as
-  Sidebar names says, and send it the rules for a worker the user
-  hands you.
+  [sidebar-names.md](sidebar-names.md) says, and send it the rules for
+  a worker the user hands you.
 - Hand off: have the session write a handoff by `herdr-handoff` for a
   fresh session named `<card key>-<role>`, naming any uncommitted
   files that pass to it. Start that session, then close the old one.

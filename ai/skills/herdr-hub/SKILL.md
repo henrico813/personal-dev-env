@@ -72,12 +72,15 @@ run folder. Send again any message in it that still matters, with
 `hub send`, then delete the file.
 
 Run `hub status` at the start and on each turn. Read its counts line
-and its `unread` line each time; never list the run folder. Tell the
-user what each `you` session waits on, and keep that in every later
-message until the session no longer waits on the user, as
-`status-updates` says. When such a session has never reported to
-you, bring it under the hub at once: send it the new rules that Rules
-gives for a worker the user hands you.
+and its `unread` line each time; never list the run folder. When you
+need a count or summary of a folder's contents that `hub status`
+does not cover, hand it to a worker as a `model-routing`
+`local-script` job, per Rules, instead of running `ls` directly.
+Tell the user what each `you` session waits on, and keep that in
+every later message until the session no longer waits on the user,
+as `status-updates` says. When such a session has never reported to
+you, bring it under the hub at once: send it the new rules that
+Rules gives for a worker the user hands you.
 
 Before you send a worker new build work, check its CTX in
 `hub status`. A worker near 150k writes its handoff first, and the
@@ -328,8 +331,9 @@ you make any card.
 - At the start, check that your agent's name ends in `-hub-<n>`,
   such as `kanban-hub-13`: a word for the run, then a number, 1 for
   the run's first hub. `hub go` and `hub gather` find hubs by this
-  name. If yours does not, rename your agent and its tab as the bullet
-  on adopted sessions below shows.
+  name. Follow
+  [references/sidebar-names.md](references/sidebar-names.md) when
+  the name is wrong, or to place or rename a card's worker.
 - `hub handoff`, `hub adopt` and `hub auto now` move every hub's
   workspace on this machine into one block at the top of the sidebar.
   `hub gather` makes the same move when the user runs it.
@@ -337,21 +341,6 @@ you make any card.
   next hub in sidebar order, wrapping to the first.
 - The workspace labelled `desk` is the user's. Never open a tab or pane
   in it or start an agent there.
-- A card's worker gets its own workspace, named
-  `<card key> <one word>`, such as `demo-kb-007 approvals`. Cards that
-  belong together share one workspace, named `<project> <topic>`, such
-  as `demo review-tools`. When you start a card's worker with
-  `herdr-handoff`, make its place by this rule, not as a tab in your
-  workspace. Work with no card gets a tab in your workspace.
-- Name each tab after its agent. Name a card's agent
-  `<card key>-<role>`, such as `demo-kb-007-impl`, so `hub status`
-  maps it to its card. This holds for every worker, adopted sessions
-  included. When you adopt a session whose name lacks its card key,
-  rename the agent and its tab to `<card key>-<role>`. The tab ID is
-  `.result.agent.tab_id` of `herdr agent get <old name>`:
-
-      herdr agent rename <old name> <card key>-<role>
-      herdr tab rename <tab ID> <card key>-<role>
 - No name holds a status word, such as done, paused or waiting.
   Herdr's state and the "needs you" mark show status.
 
