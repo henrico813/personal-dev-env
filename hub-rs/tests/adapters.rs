@@ -682,6 +682,8 @@ mod card_cli {
             read_script_calls(&script),
             [["link", "DEMO-KB-007", "--session", "demo-kb-007-impl"]]
         );
+    }
+
     /// `hub brief` and `hub board` list a question only while its card's
     /// newest mark is needs-you. A card answered since would show as
     /// waiting, and one missed would hide a question from the user.
@@ -737,8 +739,6 @@ mod card_cli {
                 .map_err(|error| error.to_string());
             assert_eq!(result, expected.map_err(str::to_owned), "{name}");
         }
-    }
-
     }
 
     /// `run_brief` shows `card`'s own reason on its board line, such as a
