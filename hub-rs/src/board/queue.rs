@@ -13,13 +13,13 @@ use super::machine::{self, FeedLine, Gauges};
 use super::seen;
 use crate::commands::status::describe_why;
 use crate::external::cards::{CardKey, CardNote, Stage};
-use crate::shared::decisions::{self, DecisionEntry};
 use crate::shared::lifecycle::{self, Lifecycle};
+use crate::shared::questions::{OpenQuestion, read_open_questions};
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{HubError, Tools, events, facts};
-use crate::watch::{self, LiveRun};
+use crate::watch;
 
-/// The hubs whose questions and waiting sessions Needs you shows.
+/// The hubs whose waiting sessions Needs you shows.
 pub enum Hubs {
     /// Every hub Herdr lists now, found among the `herdr-hub.*` folders
     /// in this folder, `~/.local/state`.
@@ -41,8 +41,8 @@ pub(crate) struct Queue {
     /// The cards `is_on_board` keeps, in the order `Cards::list_cards`
     /// gives.
     pub cards: Vec<CardLine>,
-    /// The entries of each hub's `decisions.md`.
-    pub questions: Vec<Question>,
+    /// The open question of each card, in key order.
+    pub questions: Vec<OpenQuestion>,
     /// Sessions that wait on the user, by name.
     pub waiting: Vec<SessionLine>,
     /// Every session, live or parked, by name, for the sessions panel.
@@ -76,16 +76,6 @@ pub(crate) struct CardLine {
     pub title: String,
     /// The names of live sessions whose card this is.
     pub workers: Vec<String>,
-}
-
-/// One question in a hub's `decisions.md`.
-#[derive(Debug)]
-pub(crate) struct Question {
-    /// The hub that asks, such as `kanban-hub-3`.
-    pub hub: String,
-    pub title: String,
-    /// Every line of the entry, for the details page.
-    pub lines: Vec<String>,
 }
 
 /// One session that waits on the user, and why.
@@ -135,8 +125,9 @@ impl SessionRow {
 }
 
 /// Reads the cards, sessions and questions once. Times print in
-/// `time_zone`. With no hub running, the queue holds the cards and,
-/// once a board saved a time, the AWAY events of hubs that are gone.
+/// `time_zone`. With no hub running, the queue holds the cards, their
+/// open questions and, once a board saved a time, the AWAY events of
+/// hubs that are gone.
 ///
 /// # Errors
 ///
@@ -155,11 +146,7 @@ pub(crate) fn read_queue(
     // that fills.
     let gauges = machine::read_gauges(tools.state_folder);
     let (runs, gone) = match hubs {
-        Hubs::Given(path) => {
-            let run = RunFolder::open(path)?;
-            let hub = watch::read_hub_name(&run)?.unwrap_or_else(|| "hub".to_owned());
-            (vec![LiveRun { run, hub }], Vec::new())
-        }
+        Hubs::Given(path) => (vec![RunFolder::open(path)?], Vec::new()),
         Hubs::Live(runs_folder) => {
             let found = watch::find_hub_runs(runs_folder, &tools.herdr.list_agents()?)?;
             problems.extend(
@@ -175,22 +162,17 @@ pub(crate) fn read_queue(
     // ended while the user was away still shows. With no saved time AWAY
     // shows the newest events, which would list hubs that ended long ago,
     // so gone runs wait until a board saves a time.
-    let mut away_runs: Vec<&RunFolder> = runs.iter().map(|live| &live.run).collect();
+    let mut away_runs: Vec<&RunFolder> = runs.iter().collect();
     if seen::has_saved_time(tools.state_folder) {
         away_runs.extend(&gone);
     }
     let away_feed = machine::read_feed(&away_runs, time_zone);
     let away_events = away::read_events(&away_runs, &away_feed, time_zone)?;
-    let mut questions = Vec::new();
-    for live in &runs {
-        let entries = decisions::read_decisions(&live.run.read_optional_file("decisions.md")?);
-        questions.extend(
-            entries
-                .iter()
-                .map(|entry| Question::from_entry(entry, &live.hub)),
-        );
-    }
-    let Some(LiveRun { run: first_run, .. }) = runs.first() else {
+    let questions = read_open_questions(tools.cards).unwrap_or_else(|error| {
+        problems.push(format!("questions: {error}"));
+        Vec::new()
+    });
+    let Some(first_run) = runs.first() else {
         let cards = tools.cards.list_cards().unwrap_or_else(|error| {
             problems.push(format!("cards: {error}"));
             Vec::new()
@@ -227,8 +209,8 @@ pub(crate) fn read_queue(
     let memory = events::load_memory(first_run)?;
     let mut collected = facts::collect_session_facts(tools, first_run, &memory)?;
     let mut reported = BTreeSet::new();
-    for live in &runs {
-        reported.extend(live.run.list_reported_names()?.any);
+    for run in &runs {
+        reported.extend(run.list_reported_names()?.any);
     }
     for facts in &mut collected.sessions {
         facts.reports.ever_reported |= reported.contains(&facts.name);
@@ -270,7 +252,7 @@ pub(crate) fn read_queue(
     }
     waiting.sort_by(|left, right| left.name.cmp(&right.name));
     sessions.sort_by(|left, right| left.name.cmp(&right.name));
-    let run_folders: Vec<&RunFolder> = runs.iter().map(|live| &live.run).collect();
+    let run_folders: Vec<&RunFolder> = runs.iter().collect();
     let feed = machine::read_feed(&run_folders, time_zone);
     let cards = collected
         .cards
@@ -315,19 +297,6 @@ fn format_read_time(time_zone: &TimeZone) -> String {
         .to_zoned(time_zone.clone())
         .strftime("%H:%M")
         .to_string()
-}
-
-impl Question {
-    /// Returns the entry's title and every line, so the details page
-    /// shows the choices and `Recommended:` the user decides from, with
-    /// the `hub` that asks.
-    fn from_entry(entry: &DecisionEntry, hub: &str) -> Question {
-        Question {
-            hub: hub.to_owned(),
-            title: entry.title.clone(),
-            lines: entry.lines.clone(),
-        }
-    }
 }
 
 /// Returns true when a session in `state` counts as working on its

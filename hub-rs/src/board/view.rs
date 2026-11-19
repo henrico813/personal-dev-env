@@ -982,9 +982,10 @@ pub(super) mod tests {
 
     use crate::board::away::AwayEvent;
     use crate::board::machine::{FeedLine, Gauges, Usage};
-    use crate::board::queue::{CardLine, Question, SessionLine, SessionRow};
+    use crate::board::queue::{CardLine, SessionLine, SessionRow};
     use crate::external::cards::Stage;
     use crate::shared::lifecycle::{KeptReason, Lifecycle};
+    use crate::shared::questions::OpenQuestion;
 
     /// A queue with five cards in progress, one needing the user's
     /// review, a question, a session that waits on the user as the
@@ -1061,8 +1062,9 @@ pub(super) mod tests {
                 card("DEMO-KB-020", Stage::Todo, "Sort ready cards", &[]),
                 card("OPS-KB-001", Stage::Draft, "Watch the disks", &[]),
             ],
-            questions: vec![Question {
-                hub: "kanban-hub-1".to_owned(),
+            questions: vec![OpenQuestion {
+                key: "DEMO-KB-001".parse().unwrap(),
+                project: "Demo".to_owned(),
                 title: "Deploy tonight?".to_owned(),
                 lines: vec![
                     "Deploy the new model tonight?".to_owned(),
@@ -1207,7 +1209,7 @@ pub(super) mod tests {
             " 10:31 launched card-sync on DEMO-KB-002",
             " 10:12 docs-fix reported",
             "QUEUE  1 run · 2 you · 1 idle        [2]",
-            " you  Deploy tonight?             kanban",
+            " you  Deploy tonight?             Demo",
             " you  blocked-fix  needs you      worker",
             " run  Faster search               Demo",
             " idle Board for the phone         Demo",
@@ -1254,7 +1256,7 @@ pub(super) mod tests {
             "AWAY  newest                         [1]",
             "   + 3 more",
             "QUEUE  1 run · 2 you · 1 idle        [2]",
-            " you  Deploy tonight?             kanban",
+            " you  Deploy tonight?             Demo",
             " you  blocked-fix  needs you      worker",
             "   + 3 more",
             "NEXT                                 [3]",
@@ -1304,10 +1306,7 @@ pub(super) mod tests {
             })
             .collect();
         let expected = [
-            (
-                " you  Question 4?                 kanban",
-                "tap block:queue",
-            ),
+            (" you  Question 4?                 Demo", "tap block:queue"),
             (
                 " you  blocked-fix  needs you      worker",
                 "tap block:queue",
@@ -1334,7 +1333,7 @@ pub(super) mod tests {
         let expected = [
             "< queue  1 run · 2 you · 1 idle",
             "v Needs you 2",
-            " you  Deploy tonight?             kanban",
+            " you  Deploy tonight?             Demo",
             " you  blocked-fix  needs you      worker",
             "v Active 5",
             " run  Faster search               Demo",
@@ -1378,8 +1377,9 @@ pub(super) mod tests {
     /// page's QUEUE block at 40x16 cuts five rows.
     fn many_questions_queue() -> Queue {
         let mut queue = sample_queue();
-        queue.questions.extend((1..=4).map(|number| Question {
-            hub: "kanban-hub-1".to_owned(),
+        queue.questions.extend((1..=4).map(|number| OpenQuestion {
+            key: "DEMO-KB-001".parse().unwrap(),
+            project: "Demo".to_owned(),
             title: format!("Question {number}?"),
             lines: Vec::new(),
         }));

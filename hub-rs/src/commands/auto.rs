@@ -25,7 +25,7 @@ use regex::Regex;
 
 use super::{Outcome, sidebar};
 use crate::external::cards::{CardKey, CardNote, ListedCard, Stage};
-use crate::shared::decisions;
+use crate::shared::questions::read_open_questions;
 use crate::shared::run_folder::{self, RunFolder};
 use crate::shared::{HubError, Tools};
 
@@ -170,16 +170,17 @@ pub fn run_auto_approve(
 
 /// Writes `brief-now.md`, one line per card of the run, and prints it.
 /// A card's line is the first non-empty line of its worker's status
-/// file. It says `(needs you)` while `decisions.md` holds a question
-/// whose title starts with the card's key. A `Questions for you: N`
-/// line follows, then one line per question title. It then puts the
-/// hubs at the top of the sidebar, and a failure there adds a warning
-/// line to the output, never to the file.
+/// file. It says `(needs you)` while the card holds an open question.
+/// A `Questions for you: N` line follows, then one line per open
+/// question of the run's cards, such as `- DEMO-KB-002 Deploy
+/// tonight?`. It then puts the hubs at the top of the sidebar, and a
+/// failure there adds a warning line to the output, never to the file.
 ///
 /// # Errors
 ///
 /// `HubError::NotDone` when the run has no `approved.md`, so a run the
-/// user never approved starts nothing.
+/// user never approved starts nothing. `HubError::Card` when the open
+/// questions cannot be read.
 pub fn run_auto_now(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubError> {
     let Some(approved) = run.read_file_if_exists("approved.md")? else {
         return Err(HubError::NotDone(
@@ -187,11 +188,8 @@ pub fn run_auto_now(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubEr
         ));
     };
     let list = read_run_list(&approved);
-    let questions = decisions::read_decisions(&run.read_optional_file("decisions.md")?);
-    let asking: BTreeSet<&str> = questions
-        .iter()
-        .filter_map(|question| question.title.split_whitespace().next())
-        .collect();
+    let mut questions = read_open_questions(tools.cards)?;
+    questions.retain(|question| list.run_keys().contains(&question.key));
     let mut lines = vec![match list.number {
         Some(number) => format!("Auto run {number}"),
         None => "Auto run".to_owned(),
@@ -204,7 +202,7 @@ pub fn run_auto_now(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubEr
             .map(str::trim)
             .find(|line| !line.is_empty())
             .unwrap_or("not started");
-        let mark = if asking.contains(key.as_str()) {
+        let mark = if questions.iter().any(|question| question.key == *key) {
             " (needs you)"
         } else {
             ""
@@ -215,7 +213,7 @@ pub fn run_auto_now(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubEr
     lines.extend(
         questions
             .iter()
-            .map(|question| format!("- {}", question.title)),
+            .map(|question| format!("- {} {}", question.key.as_str(), question.title)),
     );
     let text = lines.join("\n") + "\n";
     run_folder::write_file_whole(&run.path().join("brief-now.md"), &text)?;

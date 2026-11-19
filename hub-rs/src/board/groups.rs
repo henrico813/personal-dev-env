@@ -120,8 +120,8 @@ pub(super) struct Item {
     /// problem.
     pub id: String,
     pub text: String,
-    /// A short word for the row's right end, such as `DevEnv` for a
-    /// card's project folder or `kanban-hub-3` for a hub's question.
+    /// A short word for the row's right end, such as `DevEnv` for the
+    /// project folder of a card or of a question's card.
     pub tag: String,
     pub status: Status,
     pub target: Target,
@@ -170,7 +170,7 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
         .map(|(index, question)| Item {
             id: question.title.clone(),
             text: question.title.clone(),
-            tag: question.hub.clone(),
+            tag: question.project.clone(),
             status: Status::You,
             target: Target::Question(index),
         })
@@ -326,7 +326,7 @@ pub(super) fn describe_item(queue: &Queue, target: Target, note: Option<&CardNot
             let question = &queue.questions[index];
             let mut lines = vec![
                 question.title.clone(),
-                format!("from {}", question.hub),
+                format!("card {}", question.key.as_str()),
                 String::new(),
             ];
             lines.extend(question.lines.iter().cloned());
