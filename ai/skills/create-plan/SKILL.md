@@ -328,10 +328,13 @@ or explain it in the plan.
    `wc -l` before you report, so a fresh reviewer need not spend a
    whole review finding the cuts. When it is over, cut what the brief
    does not ask for, such as extra tests, optional extras and long
-   prose. Keep every change and decision the brief needs. When it
-   still does not fit, say in your report why the rest stays.
+   prose, then count again. Keep every change and decision the brief
+   needs. When it still does not fit, say in your report why the rest
+   stays. State the count and whether it fits; never report it as
+   pending or leave the number for later.
 6. Report the output path, validation result, scope summary, the
-   plan's line count against any size limit, and blockers.
+   plan's line count and whether it fits any size limit, and
+   blockers.
 
 ## Review Principles
 
