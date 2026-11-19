@@ -80,9 +80,9 @@ you, bring it under the hub at once: send it the new rules that Rules
 gives for a worker the user hands you.
 
 Before you send a worker new build work, check its CTX in `hub status`.
-A worker past 150k hands off by `herdr-handoff`'s Hand off when hub
-watch asks and reports its successor, who gets the work. Send no ask.
-Start no session unless your handoff or `auto-run` says to.
+Past 150k it hands off by `herdr-handoff` and reports its successor,
+who gets the work; send no ask. An auto run's worker reports its
+handoff instead: start its successor from that handoff yourself.
 
 Before you tell the user that a worker or subagent died, run
 `hub alive <session ID>` with its OpenCode session ID. Its line ends

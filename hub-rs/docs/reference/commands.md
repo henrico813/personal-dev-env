@@ -395,9 +395,9 @@ The caller is the agent whose OpenCode session runs the command, from
 `OPENCODE_SESSION_ID`. The card steps and `notes.md` line are the
 same. `--successor` takes no `--model` or `--workspace`.
 
-- Exits 3 before it changes anything when no live agent runs the
-  caller's session, the session has no reply to take its model from,
-  or outside OpenCode.
+- Exits 3 before it changes anything outside OpenCode, or when no
+  live agent runs the caller's session or that session has no reply
+  to take its model from.
 
 ### watch
 

@@ -155,9 +155,12 @@ fn make_ask(tokens: u64) -> String {
     format!(
         "your context is about {}, past the {} handoff point. \
          Hand off now as the herdr-handoff skill says: write your handoff, \
-         start your successor with hub launch --successor --run FOLDER, \
-         where FOLDER is your run folder, else ~/.local/state/pde/handoffs, \
-         report its name to your hub if one runs, and end your turn. \
+         start your successor with \
+         hub launch NAME HANDOFF --successor --run FOLDER, \
+         where NAME is your name with -2 added, or with its last number \
+         raised by one when it ends in a number, HANDOFF is your handoff \
+         file, and FOLDER is your run folder, else ~/.local/state/pde/handoffs. \
+         Then report its name to your hub if one runs, and end your turn. \
          If your brief or a skill you follow says what to do near your \
          context limit, do that instead. If you already started a \
          successor, or your work is done, or your card is done or \

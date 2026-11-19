@@ -362,25 +362,13 @@ fn write_context(test_tools: &TestTools, sessions: &[(&str, u64)]) {
 /// off, and nothing else tells a session with no hub. The watch asks at
 /// 150k and again at each 20k more, and from 190k also marks it "needs
 /// you". Asked on every check, a session could never finish its
-/// handoff. A hub, whose pane is the user's own chat, gets no ask, and
-/// neither does a session in the desk, where its successor would open.
+/// handoff.
 #[test]
 fn check_once_asks_then_marks_idle_workers() {
     let mut test_tools = TestTools::new();
-    for (name, session, workspace) in [
-        (WORKER, "ses_007", "w1"),
-        ("kanban-hub-1", "ses_hub1", "w1"),
-        ("notes", "ses_desk", "w9"),
-    ] {
-        test_tools.herdr.agents.push(Agent {
-            session_id: Some(session.to_owned()),
-            workspace_id: workspace.to_owned(),
-            ..make_agent(name, AgentStatus::Idle)
-        });
-    }
-    test_tools.herdr.workspaces.push(Workspace {
-        workspace_id: "w9".to_owned(),
-        label: "desk".to_owned(),
+    test_tools.herdr.agents.push(Agent {
+        session_id: Some("ses_007".to_owned()),
+        ..make_agent(WORKER, AgentStatus::Idle)
     });
     // Each check starts a new clock, as a restarted watch does, so only
     // the saved asks keep a step from being asked twice.
@@ -392,14 +380,7 @@ fn check_once_asks_then_marks_idle_workers() {
     ];
 
     for (tokens, asks, marks) in cases {
-        write_context(
-            &test_tools,
-            &[
-                ("ses_007", tokens),
-                ("ses_hub1", tokens),
-                ("ses_desk", tokens),
-            ],
-        );
+        write_context(&test_tools, &[("ses_007", tokens)]);
 
         check_at(&test_tools, &Zoned::now(), &[0]);
 
@@ -412,8 +393,45 @@ fn check_once_asks_then_marks_idle_workers() {
         prompts[2].starts_with("hub watch: your context is about 191k"),
         "{prompts:?}"
     );
-    assert!(read_prompts(&test_tools, "kanban-hub-1").is_empty());
-    assert!(read_prompts(&test_tools, "notes").is_empty());
+}
+
+/// The ask must never land mid-turn in a working session, or in a
+/// hub's pane, which is the user's own chat, or in the desk, where the
+/// successor would open. At 191k each would get both the ask and the
+/// "needs you" mark.
+#[test]
+fn check_once_skips_busy_hub_desk_sessions() {
+    let mut test_tools = TestTools::new();
+    for (name, session, workspace, status) in [
+        ("demo-kb-008-impl", "ses_008", "w1", AgentStatus::Working),
+        ("kanban-hub-1", "ses_hub1", "w1", AgentStatus::Idle),
+        ("notes", "ses_desk", "w9", AgentStatus::Idle),
+    ] {
+        test_tools.herdr.agents.push(Agent {
+            session_id: Some(session.to_owned()),
+            workspace_id: workspace.to_owned(),
+            ..make_agent(name, status)
+        });
+    }
+    test_tools.herdr.workspaces.push(Workspace {
+        workspace_id: "w9".to_owned(),
+        label: "desk".to_owned(),
+    });
+    write_context(
+        &test_tools,
+        &[
+            ("ses_008", 191_000),
+            ("ses_hub1", 191_000),
+            ("ses_desk", 191_000),
+        ],
+    );
+
+    check_at(&test_tools, &Zoned::now(), &[0]);
+
+    for name in ["demo-kb-008-impl", "kanban-hub-1", "notes"] {
+        assert!(read_prompts(&test_tools, name).is_empty(), "{name}");
+    }
+    assert!(test_tools.herdr.marks.borrow().is_empty());
 }
 
 /// A report the hub was never told about means no `hub next` ran for

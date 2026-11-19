@@ -70,10 +70,10 @@ user where it is, its counts and the decisions it needs.
   work: a draft card is one the user has not released yet.
 - For each session, propose its next step from step 6: keep, hand off
   or pause. Propose pause when the user wants it closed. Past 150k
-  tokens of context, propose keep for an OpenCode session, since
-  `hub watch` asks it to hand off by itself, as Hand off when hub
-  watch asks of `herdr-handoff` says. Propose hand off for any other
-  session past 150k.
+  tokens of context, propose keep for an OpenCode session outside the
+  `desk` workspace, since `hub watch` asks it to hand off by itself,
+  as Hand off when hub watch asks of `herdr-handoff` says. Propose
+  hand off for any other session past 150k, such as one in the desk.
 - List the sessions that get no card, and why, such as work already
   merged.
 - End with each decision for the user, with your recommendation.

@@ -268,8 +268,9 @@ pub fn run_watch(
 /// that two runs claim gets at most one prod per Herdr state, and a
 /// wait open in either run keeps it from counting as stalled. Last, it
 /// asks idle sessions past the handoff point to hand off, whether or
-/// not a run claims them. Returns each failure, most of them led by
-/// their run folder, so one broken run never stops the others.
+/// not a run claims them, but only when every run log was read.
+/// Returns each failure, most of them led by their run folder, so one
+/// broken run never stops the others.
 ///
 /// # Errors
 ///
@@ -367,11 +368,22 @@ pub fn check_once(
             }
         }
     }
-    let held: Vec<_> = read_runs.iter().map(|(_, workers)| &workers.held).collect();
-    let asked =
-        handoff_ask::ask_for_handoffs(tools, &agents, &hubs, &held, clock, &prodded, &mut failures);
-    if let Err(error) = asked {
-        failures.push(error.to_string());
+    // A run that could not be read may name a hub with no `-hub-N`
+    // name, and the ask must never go to a hub's pane.
+    if every_run_read {
+        let held: Vec<_> = read_runs.iter().map(|(_, workers)| &workers.held).collect();
+        let asked = handoff_ask::ask_for_handoffs(
+            tools,
+            &agents,
+            &hubs,
+            &held,
+            clock,
+            &prodded,
+            &mut failures,
+        );
+        if let Err(error) = asked {
+            failures.push(error.to_string());
+        }
     }
     Ok(failures)
 }
