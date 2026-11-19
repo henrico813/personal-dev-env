@@ -60,8 +60,8 @@ The user's rules for every run:
   the hub. `decisions.md` keeps the question for the user. It is not
   the user's plan review.
 - The user reviews every other plan's pull request before it merges.
-- Cards in the run may go past herdr-hub's limit on cards in
-  `active` and `review`.
+- Cards in the run may go past herdr-hub's limits on cards in
+  `active` and `in-review`.
 - The run ends when every card on the list has stopped.
 - Nothing merges without the user's explicit yes.
 
@@ -72,21 +72,21 @@ The user's rules for every run:
    `notes.md`. N is one more than the last auto run your notes or an
    `approved.md` in `~/.local/state/herdr-hub.*/` name; ask the user
    when unsure.
-2. Pick the cards and roadmaps. Write the ready cards to `ready.md`
-   and print them:
+2. Pick the cards and roadmaps. Write the cards in the `todo` stage
+   to `todo.md` and print them:
 
-       hub auto ready --run "<run folder>"
+       hub auto todo --run "<run folder>"
 
-   A roadmap the user wants built runs as a ready card that links its
+   A roadmap the user wants built runs as a todo card that links its
    design and its roadmap page. Read both. When either is not
    approved, the card goes under `## Left out` with that reason.
-3. Sort every ready card into one of three groups yourself, even
+3. Sort every todo card into one of three groups yourself, even
    when there is only one card: other-pc (the work runs on the other PC
    or uses its data), hands (it needs the user at a device, a login,
    a purchase or a choice before work can start) or alone (the rest).
    Read each card before you sort it.
 4. Write `<run folder>/run.md`. Put under `## Run` the `alone` cards
-   you pick, and every other ready card under `## Needs your hands`,
+   you pick, and every other todo card under `## Needs your hands`,
    `## Other PC` or `## Left out`, with a reason. Each line is the key,
    the project and the problem it solves, in plain words. Under the
    title, before the first `## ` heading, write the run tier you
@@ -110,9 +110,9 @@ The user's rules for every run:
 
    It exits 3, with one problem per line, when the list fails its
    check.
-   A card the user picks may be ready, active or review. A card the
+   A card the user picks may be todo, active or in-review. A card the
    user wants that is still a draft stays out until the
-   user moves it to ready, or tells you to.
+   user moves it to todo, or tells you to.
 6. Find out when the user is away, and each of the user's rules that
    ends at a set time, such as a model limit until a quota resets.
    Ask the user when you do not know. Then send the briefing, by

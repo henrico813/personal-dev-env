@@ -8,7 +8,7 @@ where `card` runs.
 A **card** is one vault note that tracks one piece of work, from idea
 to the moment you accept it. Each card has a **key**, such as
 `PDEV-KB-012`: the project code, `KB` for kanban, and a number. A card
-sits in one **stage** at a time, such as `draft` or `ready`, and
+sits in one **stage** at a time, such as `draft` or `todo`, and
 changes stage only through a **move**.
 
 ## 1. Make the card
@@ -41,7 +41,7 @@ work matters: the problem, and links to anything related. Under
 checkbox line each, such as:
 
 ```markdown
-- [ ] `card board` lists the new card under ready.
+- [ ] `card board` lists the new card under todo.
 - [ ] Relevant tests and validation pass.
 ```
 
@@ -57,13 +57,13 @@ Use the key `card new` printed for you.
 ## 3. Release it
 ---
 
-Releasing a card moves it from `draft` to `ready`, which tells the
+Releasing a card moves it from `draft` to `todo`, which tells the
 staff agent the card may start. Only you can release a card, and
 `card` refuses until Acceptance Criteria holds at least one `- [ ]`
 line.
 
 ```sh
-card move PDEV-KB-005 ready --by user --user
+card move PDEV-KB-005 todo --by user --user
 ```
 
 Make moves with `card move`, not by editing `stage` in Obsidian's
@@ -80,16 +80,16 @@ card board
 ```
 
 It prints how many cards sit in each stage, then the `active` count
-out of its limit of 8 and the `review` count out of its limit of 6.
+out of its limit of 8 and the `in-review` count out of its limit of 6.
 The limits keep the work waiting on you small enough to clear. Last
-comes the review queue, the cards waiting for you to accept them,
+comes the in-review queue, the cards waiting for you to accept them,
 oldest first.
 
 A card that waits only on people outside the team, such as another
-team's reviewers, sits in `waiting-on-others` instead. It counts
+team's reviewers, sits in `blocked` instead. It counts
 against no limit. When one is there, `card board` adds a line such as
-`waiting-on-others 2, oldest 8 days`, and lists those cards after the
-review queue, each with its days waited and who it waits on.
+`blocked 2, oldest 8 days`, and lists those cards after the
+in-review queue, each with its days waited and who it waits on.
 
 In Obsidian, open the note `500 Zettelkasten/Kanban.md`. Its Board
 view groups every card by stage, and its Review queue view shows the

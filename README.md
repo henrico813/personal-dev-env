@@ -192,7 +192,7 @@ loads `~/.agents/skills/`.
 | `delegate` | Have an agent do a task, review and iterate until it is ready | "Have an agent fix the flaky test, review it until it's ready for me" |
 | `herdr-handoff` | Hand work to a new session in a new Herdr workspace, with a handoff file it reads first | "Hand the docs work to a new session" |
 | `herdr-hub` | Coordinate other Herdr sessions: pass messages, answer their questions, run merges | "You are the hub of this run" |
-| `auto-run` | Brief the user on ready cards and roadmaps, then have a separate hub plan, build, review and file the approved list as PRs | "Set up an auto run", "Build the rest of the roadmap overnight" |
+| `auto-run` | Brief the user on todo cards and roadmaps, then have a separate hub plan, build, review and file the approved list as PRs | "Set up an auto run", "Build the rest of the roadmap overnight" |
 | `session-review` | Review a session for token use, skill fixes to write and jobs a local model could run, then wait for your pick | "Review this session for token usage, skill lessons and local model handoff" |
 | `conclude-session` | Close out a session: review it, wait for your pick, then commit skill fixes, open one skill PR and hand off or report | "conclude-session" |
 | `model-routing` | Pick each agent's model from its job kind with `pde_route.py`, and retry a failed job on the next model | "Which model should run these test jobs?" |

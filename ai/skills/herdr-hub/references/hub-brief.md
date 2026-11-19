@@ -3,14 +3,14 @@
 Read this when you run `hub brief` to bring the user what waits on
 them.
 
-Its first line is `board active A of 8, review R of 6; K decisions`.
-When cards wait on others, a `waiting-on-others W, oldest D days`
+Its first line is `board active A of 8, in-review R of 6; K decisions`.
+When cards are blocked, a `blocked W, oldest D days`
 line follows. Then it prints one line per pull request approval
 that waits on the user, read fresh from the request files, with its
 reference, time before it expires, repository, number and action,
 such as `approval A0016cd 1h12m left personal-dev-env #515 merge`.
 `hub requests` lists the same reference. Then come
-`reviews.md` and every entry, and last the "Waiting on others (no
+`reviews.md` and every entry, and last the "Blocked (no
 action needed)" list, with each card's days in the stage, title and
 reason. That list is news for the user, such as for a standup, never
 a question, so do not repeat it in other messages unless the user
