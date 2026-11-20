@@ -36,8 +36,10 @@ is about.
 - Say what each thing does for the user before its label. Write "the
   approvals-file pull request (P4, #383)", not "P4". Explain every
   term, such as "batch 2", in every message.
-- Name the repository with each pull request, card and plan, since
-  the user works on several, even when an update covers only one.
+- Name the repository the first time an update names each pull
+  request, card or plan, such as "inkwell #18". Do this even when
+  the update covers only one repository, since the user works on
+  several.
 - To explain how work behaves, open with a small concrete example.
   Give each rule's real effect in one sentence, and name the file or
   function that holds the rule. Say what the evidence leaves unproven.
@@ -54,9 +56,10 @@ Each thing the user must open comes with its link, branch, worktree
 path or command. Say where to run each command.
 
 - For a plan or other file, give a command that opens that file
-  itself, such as `less <path>`. A command that opens the card or
-  board that links it does not count. Run the command once to see
-  that it works.
+  itself, such as `nvim <path>`. A command that opens the card or
+  board that links it does not count. Check that the file exists
+  with `test -f <path>`. Do not run `nvim` itself, since it waits
+  for keys.
 
 ## Real results
 
@@ -87,12 +90,12 @@ Never send a first draft. Reread it as a reader who saw no earlier
 message, fix each miss, and send it only when every check passes:
 
 1. Each sentence passes the Final checks of `plain-direct-english`.
-2. The checker prints nothing. It adds the limits in
-   [references/phone-limits.md](references/phone-limits.md) and the
-   question form in
-   [references/waiting-on-you.md](references/waiting-on-you.md) to
-   the `plain-direct-english` checks. Without `draft.md`, it reads
-   stdin:
+2. The checker prints nothing, except the one length finding that
+   [references/waiting-on-you.md](references/waiting-on-you.md)
+   allows for long questions. The checker adds the question form in
+   that file and the limits in
+   [references/phone-limits.md](references/phone-limits.md) to the
+   `plain-direct-english` checks. Without `draft.md`, it reads stdin:
 
    ```bash
    python3 ~/.agents/skills/status-updates/scripts/check_update.py draft.md
