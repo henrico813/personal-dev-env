@@ -1,5 +1,5 @@
 //! Runs `hub send` and `hub inbox`. The message rules themselves live
-//! in `shared/messages.rs`, which `hub next` shares.
+//! in `shared/messages.rs`, which `run_next` shares.
 
 use jiff::Zoned;
 
@@ -18,7 +18,7 @@ pub struct SendRequest {
     pub name: AgentName,
     /// The saved Herdr machine from `--machine`, or `None` for this
     /// one. `main` already points `tools.herdr` at the chosen machine.
-    /// A held message keeps that machine's label, so `hub next` sends
+    /// A held message keeps that machine's label, so `run_next` sends
     /// it there too.
     pub machine: Option<String>,
     pub text: String,
@@ -128,7 +128,7 @@ pub fn run_send(
 }
 
 /// Prints every message held for the session and counts each as
-/// delivered, so `hub next` never sends it again. A worker runs it
+/// delivered, so `run_next` never sends it again. A worker runs it
 /// before it writes its handoff.
 pub fn run_inbox(run: &RunFolder, name: &AgentName, now: &Zoned) -> Result<Outcome, HubError> {
     let name = name.as_str();

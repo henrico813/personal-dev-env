@@ -1,5 +1,5 @@
 //! Starts a program that keeps running after the command that started
-//! it ends, for `hub watch start`, `hub report` and `hub wait`. It works
+//! it ends, for `run_watch_start` and `restart_stopped_watch`. It works
 //! the same on Linux and macOS, and under any harness.
 
 use std::ffi::OsString;

@@ -3,7 +3,7 @@
 //! `load_watch_memory` and `append_watch_event` first. The hub's
 //! `load_memory` skips these kinds. This fold skips the lines the hub's
 //! own commands write, except `handoff`, which names the run's next
-//! hub. The one line the watch writes for `hub next`, `report_missed`,
+//! hub. The one line the watch writes for `run_next`, `report_missed`,
 //! is of the hub's own kinds.
 
 use std::collections::BTreeMap;
@@ -28,10 +28,10 @@ struct WatchLine {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub(crate) enum WatchEvent {
-    /// `hub handoff` or `hub adopt` made `new` the run's hub. The watch
+    /// `run_handoff` or `run_adopt` made `new` the run's hub. The watch
     /// only reads this kind, and reads only `new`.
     Handoff { new: String },
-    /// `hub watch start` named `hub` as the run's hub.
+    /// `run_watch_start` named `hub` as the run's hub.
     WatchStarted { hub: String },
     /// The watch prompted worker NAME while Herdr's state number was
     /// `state_seq`, for `why`, such as a stall or an ended wait.

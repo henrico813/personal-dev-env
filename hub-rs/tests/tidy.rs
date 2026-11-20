@@ -119,7 +119,7 @@ fn run_clean_dry_run_changes_nothing() {
         outcome.lines,
         [
             "would close demo-kb-001-impl: DEMO-KB-001 done",
-            "would park demo-kb-007-impl: DEMO-KB-007 review",
+            "would park demo-kb-007-impl: DEMO-KB-007 in-review",
         ]
     );
     assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
@@ -576,7 +576,7 @@ fn run_park_records_session_then_closes_tab() {
     );
     assert!(
         read_notes(&test_tools.run_path())
-            .contains("- 2214 parked demo-kb-007-impl (DEMO-KB-007 review)\n")
+            .contains("- 2214 parked demo-kb-007-impl (DEMO-KB-007 in-review)\n")
     );
     assert_eq!(
         read_events(&test_tools.run_path()).last().unwrap()["event"],

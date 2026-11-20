@@ -168,10 +168,10 @@ pub fn run_launch(
         .map_err(|error| partly_done(&done, error))?;
     done.push("wrote the notes line".to_owned());
     if let Some(caller) = &caller {
-        // A marked session waits on the user, so `hub clean` would keep
+        // A marked session waits on the user, so `run_clean` would keep
         // the caller open after its successor took the work. This comes
-        // last, so a failure here cannot skip the card link that `hub
-        // clean` needs to close the caller.
+        // last, so a failure here cannot skip the card link that
+        // `run_clean` needs to close the caller.
         tools
             .herdr
             .clear_marks(&caller.pane_id)

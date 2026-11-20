@@ -445,7 +445,7 @@ since the watch keeps the last result in `hub/update-seen.json`.
 session and parks each `to-park` session. It looks at every session
 in Herdr on this machine. Only `clean` and `park` close tabs.
 
-- `closed NAME: WHY` and `parked NAME: KEY review`.
+- `closed NAME: WHY` and `parked NAME: KEY in-review`.
 - `forgot NAME`: a parked session that is live again.
 - `kept NAME: WHY` for each kept session, and for a finished one
   whose tab also holds other work, with `its tab holds other work`.
