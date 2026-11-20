@@ -31,9 +31,9 @@ its step comes, such as `herdr-handoff` when you start a session.
 The hub's run folder is the one its handoff names. Without one, make
 it at the start with `mktemp -d ~/.local/state/herdr-hub.XXXXXX`.
 Record the user's standing decisions in its `rules.md`, the pull
-requests that wait for the user's review in `reviews.md`, each
-question that waits on the user in `decisions.md`, as Questions for
-the user says, and detail the user need not read in `notes.md`.
+requests that wait for the user's review in `reviews.md`, and detail
+the user need not read in `notes.md`. Each question that waits on the
+user goes on its card, as Questions for the user says.
 Add a rule to `rules.md` only when the user gave it. When you think
 of a rule yourself, such as a pattern in the user's answers, ask the
 user before you add it, since the hub follows every line there.
@@ -79,10 +79,10 @@ message until the session no longer waits on the user, as
 you, bring it under the hub at once: send it the new rules that Rules
 gives for a worker the user hands you.
 
-Before you send a worker new build work, check its CTX in
-`hub status`. A worker near 150k writes its handoff first, and the
-new session it hands off to gets the work. `hub next` asks each
-worker past 150k to hand off by itself, so send no second ask.
+Before you send a worker new build work, check its CTX in `hub status`.
+Past 150k it hands off by `herdr-handoff` and reports its successor,
+who gets the work; send no ask. An auto run's worker reports its
+handoff instead: start its successor from that handoff yourself.
 
 Before you tell the user that a worker or subagent died, run
 `hub alive <session ID>` with its OpenCode session ID. Its line ends
@@ -246,10 +246,10 @@ When a session waits on the user, flag it, so the sidebar shows
 
 A session waits on the user when it is `blocked` at an approval or a
 question in its pane, or when you bring the user a question from its
-report. A question from a report also gets its entry and card note,
-as Questions for the user says. A blocked session's mark goes away by
-itself once it works again. Unflag any other session when you send it
-the user's answer:
+report. A question from a report is also asked on its card with
+`hub ask`, as Questions for the user says. A blocked session's mark
+goes away by itself once it works again. Unflag any other session when
+you send it the user's answer:
 
     hub unflag <name>
 
@@ -371,12 +371,12 @@ that report. Never ask the user to close a worker.
 
 ## Questions for the user
 
-Keep each question that waits on the user as one entry in
-`<run folder>/decisions.md`, in full, so no message names it by
-number alone. Start its title with the key of the card it blocks,
-when it blocks one:
+Put each question that waits on the user on the card it blocks with
+`hub ask`, so the question and the needs-you mark in the card's Log
+agree. Write the whole question to a file, so no message names it by
+number alone, and run `hub ask <key> <question file>`:
 
-    ## DEMO-KB-007: New model overnight
+    ## New model overnight
 
     Deploy the new model tonight so you can test it in the morning?
 
@@ -387,29 +387,27 @@ when it blocks one:
     If no reply: nothing deploys; the worker goes on with its tests.
     Depends on: your rule of 2026-11-09 to test it in the morning.
 
-The `If no reply:` line, which `hub brief` requires, says what stays
-blocked and what the worker does meanwhile. The work the entry asks
-about never goes ahead without the user's answer, and no agent
-answers an entry for the user.
+The `If no reply:` line says what stays blocked and what the worker
+does meanwhile. The work the question asks about never goes ahead
+without the user's answer, and no agent answers a question for the
+user. Add `Depends on:` when the question rests on an earlier
+decision, and name who made it. A question that blocks no card, such
+as which changes a session review makes, goes on a new draft card
+made with `card new <project> "<title>"`, so every reader finds it.
 
-No `hub` command keeps these entries yet, so also mark the entry's
-card. `hub status` then shows the card's sessions as `you`:
+`hub ask` refuses a question with a part missing. It also refuses a
+card that already waits on the user, since a card shows one open
+question. Keep the next question for that card in `notes.md`, and ask
+it with `hub ask` right after `hub answer`. `hub ask` marks the card
+needs-you, so `hub status` shows the card's sessions as `you`. While
+the mark is open, a session that handed off that card also shows
+`you`: that session waits on the same question, not a new one. Close
+its tab yourself once the session that took over runs.
 
-    card note <key> "<entry title>" --needs-you
-
-An entry that blocks no card, such as a session review's question
-about which changes to make, has no key and no card note.
-
-While the note is open, a session that handed off that card also
-shows `you`. It waits on the same entry, not a new one. Close its tab
-yourself once the session that took over is running.
-
-Add `Depends on:` when the question rests on an earlier decision, and
-name who made it. When the user answers, delete the entry. Record an
-answer that sets a rule for later work in `rules.md`. Run
-`card note <key> "<the answer>" --answered` only when no other entry
-title starts with that key. Bring the user everything that waits on
-them with:
+When the user answers, run `hub answer <key> "<answer>"`. It moves
+the question to the card's Decisions with the answer and marks the
+card answered. Record an answer that sets a rule for later work in
+`rules.md`. Bring the user everything that waits on them with:
 
     hub brief --run "<run folder>"
 

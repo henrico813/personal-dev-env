@@ -159,7 +159,7 @@ pub(crate) fn collect_session_facts(
             Some(CardFacts {
                 key: key.clone(),
                 stage: *stages.get(key)?,
-                needs_you_open: note.is_some_and(|note| note.needs_you_open),
+                needs_you_open: note.is_some_and(|note| note.needs_you.is_some()),
                 newer_session_live: note
                     .is_some_and(|note| has_newer_live_session(note, session_id, &live_ids)),
                 from_report: false,
@@ -240,7 +240,7 @@ pub(crate) fn collect_session_facts(
             stage: *stage,
             needs_you_open: notes
                 .get(&record.card)
-                .is_some_and(|note| note.needs_you_open),
+                .is_some_and(|note| note.needs_you.is_some()),
             newer_session_live: false,
             from_report: false,
         });

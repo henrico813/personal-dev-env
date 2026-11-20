@@ -684,6 +684,54 @@ mod card_cli {
         );
     }
 
+    /// `hub brief` and `hub board` list a question only while its card's
+    /// newest mark is needs-you. A card answered since would show as
+    /// waiting, and one missed would hide a question from the user.
+    /// `card grep` cuts long lines with `…`, so a cut line must still
+    /// count.
+    #[test]
+    fn card_cli_lists_needs_you_from_grep() {
+        let folder = TempFolder::new();
+        let card_grep = "DEMO-KB-003 Log: - 2026-11-17 needs-you: Which bucket?\n\
+                         DEMO-KB-003 Log: - 2026-11-18 answered: B\n\
+                         DEMO-KB-007 Log: - 2026-11-18 needs-you: Deploy the new mo…\n\
+                         3 matches in 2 cards\n";
+        let script = folder.write_script("card", card_grep, "", 0);
+        let cards = CardCli::new(script);
+
+        let keys = cards.list_needs_you().unwrap();
+
+        let keys: Vec<&str> = keys.iter().map(CardKey::as_str).collect();
+        assert_eq!(keys, ["DEMO-KB-007"]);
+    }
+
+    /// `card grep` exits 1 both when no card waits and when it fails. A
+    /// failure read as no match gives the user a false all-clear, and no
+    /// match read as a failure shows an error whenever nothing waits.
+    #[test]
+    fn list_needs_you_tells_failure_from_none() {
+        let cases = [
+            ("no-match", "0 matches in 0 cards\n", "", Ok(0)),
+            (
+                "failure",
+                "",
+                "card: no default vault\n",
+                Err("card: no default vault"),
+            ),
+        ];
+        for (name, stdout, stderr, expected) in cases {
+            let folder = TempFolder::new();
+            let script = folder.write_script("card", stdout, stderr, 1);
+
+            let result = CardCli::new(script).list_needs_you();
+
+            let result = result
+                .map(|keys| keys.len())
+                .map_err(|error| error.to_string());
+            assert_eq!(result, expected.map_err(str::to_owned), "{name}");
+        }
+    }
+
     /// `run_brief` shows `card`'s own reason on its board line, such as a
     /// vault it cannot find, so the user can fix it.
     #[test]

@@ -126,7 +126,7 @@ Checks:
    plan that changes the hub's `rules.md` waits for the user's plan
    review. When the tier is T2 or T3, it also says a plan that
    changes what the user sees daily, or adds a name, stops as a
-   question in `decisions.md`.
+   question on its card.
 4. It says requests made while the user is away wait in
    `requests.sh`, and gives the command to run them,
    `bash auto/requests.sh`.

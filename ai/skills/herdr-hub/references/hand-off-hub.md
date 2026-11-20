@@ -5,7 +5,7 @@ Read this when you hand the hub to a new session.
 When you hand the hub to a new session, write its handoff with
 `herdr-handoff`, holding only the run's state and the output of
 `hub brief --run "<run folder>"`, word for word. The new hub shows it
-in its first reply, each entry in the short form. Start it with:
+in its first reply, each question in the short form. Start it with:
 
     hub handoff --run "<run folder>" <name> <handoff file>
 

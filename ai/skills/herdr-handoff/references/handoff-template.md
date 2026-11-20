@@ -53,11 +53,13 @@ waiting on the user.>
 
 ## Questions for the user
 
-<Each open question word for word, with its choices, the choice this
-session recommends and why. The new session asks these first, in the
-short form of the `status-updates` skill. When the handoff names a
-report file, the new session writes them there in full instead, as
-Coordination says.>
+<Each open question word for word, with its Q number, its choices, the
+choice this session recommends and why. The new session asks these
+first, with the same Q numbers, since the user's replies name
+questions by these numbers. It asks in the short form of the
+`status-updates` skill, which says what a Q number is. When the
+handoff names a report file, the new session writes them there in
+full instead, as Coordination says.>
 
 ## Coordination
 

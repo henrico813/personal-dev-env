@@ -316,10 +316,23 @@ fn run_auto_approve_keeps_existing_approval() {
 /// "nothing new" while four cards were finished and a question
 /// waited.
 /// Each run card's line comes from the files instead, not from the
-/// hub's memory. A card under another heading gets no line.
+/// hub's memory. A card under another heading gets no line, and its
+/// open question belongs to no run card, so it is left out.
 #[test]
 fn run_auto_now_writes_brief_from_files() {
-    let test_tools = TestTools::new();
+    let mut test_tools = TestTools::new();
+    for (key, title) in [
+        ("DEMO-KB-002", "Which command name?"),
+        ("DEMO-KB-004", "Which disk?"),
+    ] {
+        test_tools.cards.card_notes.insert(
+            key.to_owned(),
+            CardNote {
+                needs_you: Some(title.to_owned()),
+                ..CardNote::default()
+            },
+        );
+    }
     let run_path = test_tools.run_path();
     fs::write(
         run_path.join("approved.md"),
@@ -336,13 +349,6 @@ fn run_auto_now_writes_brief_from_files() {
         "\nPR #12 opened; waiting for the user's review.\nMore.\n",
     )
     .unwrap();
-    fs::write(
-        run_path.join("decisions.md"),
-        "## DEMO-KB-002 command name\n\nWhich name?\n\n\
-         - A. resize\n- B. scale\n\n\
-         Recommended: A.\nIf no reply: A.\n",
-    )
-    .unwrap();
 
     let outcome = run_auto_now(&test_tools.tools(), &test_tools.run()).unwrap();
 
@@ -351,7 +357,7 @@ fn run_auto_now_writes_brief_from_files() {
                     DEMO-KB-002 (needs you): not started\n\
                     DEMO-KB-003: not started\n\
                     Questions for you: 1\n\
-                    - DEMO-KB-002 command name\n";
+                    - DEMO-KB-002 Which command name?\n";
     assert_eq!(outcome.lines.join("\n") + "\n", expected);
     assert_eq!(
         fs::read_to_string(run_path.join("brief-now.md")).unwrap(),

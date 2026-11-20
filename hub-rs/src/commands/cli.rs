@@ -59,6 +59,8 @@ one used last.
   wait*    Wake me after a job (workers)
   note*    Add a timed line to notes.md
   brief*   What waits on the user
+  ask      Put a question on a card
+  answer   Save the user's answer
   handoff* Start the next hub
   launch*  Start a worker from a handoff
   adopt*   Take over an older open hub
@@ -293,15 +295,39 @@ pub enum Command {
     },
     /// What waits on the user
     ///
-    /// Prints the board line, reviews.md and each entry of decisions.md
+    /// Prints the board line, reviews.md and each card's open question
     /// in full, so the user can answer without asking what a question
-    /// was. Run it when the user asks what waits on them. A problem in
-    /// decisions.md, such as an entry with a part missing, stops it
-    /// with an error.
+    /// was. Run it when the user asks what waits on them.
     #[command(after_help = "Example: hub brief")]
     Brief {
         #[command(flatten)]
         run: RunArg,
+    },
+    /// Put a question on a card
+    ///
+    /// Adds the question in FILE to the card's Open Questions and marks
+    /// the card needs-you, so hub brief and hub board show it. FILE
+    /// starts with a ## title, then the question, two or more choices
+    /// that each start with -, a Recommended line and an If no reply
+    /// line. It refuses a card that already waits on the user.
+    #[command(after_help = "Example: hub ask DEMO-KB-007 question.md")]
+    Ask {
+        /// The card's key, such as DEMO-KB-007
+        key: CardKey,
+        /// The question file
+        file: PathBuf,
+    },
+    /// Save the user's answer
+    ///
+    /// Moves the card's open question to its Decisions, with ANSWER as
+    /// the last line, and marks the card answered. Run it when the user
+    /// answers.
+    #[command(after_help = "Example: hub answer DEMO-KB-007 \\\n  \"A, deploy tonight\"")]
+    Answer {
+        /// The card's key
+        key: CardKey,
+        /// What the user chose, such as "A, deploy tonight"
+        answer: String,
     },
     /// Start the next hub
     ///
@@ -324,6 +350,7 @@ pub enum Command {
     /// file, and records the start on its card and in notes.md. A card
     /// key at the start of NAME makes it that card's worker, and a
     /// todo card moves to active first. Run it to start each worker.
+    /// A worker passes --successor to start its own next session.
     #[command(
         after_help = "Example: hub launch demo-kb-007-impl \\\n  /tmp/impl.md \\\n  --model anthropic/claude-sonnet-5#high"
     )]
@@ -335,11 +362,14 @@ pub enum Command {
         /// The handoff file the worker reads first
         handoff: PathBuf,
         /// The worker's OpenCode model and effort
-        #[arg(long)]
-        model: String,
+        #[arg(long, required_unless_present = "successor")]
+        model: Option<String>,
         /// Open in the workspace with this label, made when missing
         #[arg(long, value_name = "LABEL")]
         workspace: Option<String>,
+        /// Start this session's successor beside it, on its model
+        #[arg(long, conflicts_with_all = ["model", "workspace"])]
+        successor: bool,
     },
     /// Take over an older open hub
     ///
@@ -473,7 +503,7 @@ pub enum Command {
     #[command(after_help = "Example: hub board --listen")]
     #[command(group(ArgGroup::new("output").args(["print", "dump", "control"])))]
     Board {
-        /// Show only one run's questions and sessions
+        /// Show only one run's sessions
         #[arg(long = "run", value_name = "DIR", hide = true)]
         only_run: Option<PathBuf>,
         /// One screen as text
@@ -595,6 +625,8 @@ impl Command {
             Command::Wait { .. } => "wait",
             Command::Note { .. } => "note",
             Command::Brief { .. } => "brief",
+            Command::Ask { .. } => "ask",
+            Command::Answer { .. } => "answer",
             Command::Handoff { .. } => "handoff",
             Command::Launch { .. } => "launch",
             Command::Adopt { .. } => "adopt",
@@ -810,6 +842,8 @@ pub fn takes_machine(command: &Command) -> bool {
         | Command::Inbox { .. }
         | Command::Note { .. }
         | Command::Brief { .. }
+        | Command::Ask { .. }
+        | Command::Answer { .. }
         | Command::Handoff { .. }
         | Command::Launch { .. }
         | Command::Adopt { .. }
