@@ -57,11 +57,11 @@ The user's rules for every run:
   user is away, its request waits in `requests.sh`. In a T2 or T3
   run, a plan that changes what the user sees daily, or adds a name
   the user types or reads, also stops. That stop is a question to
-  the hub. `decisions.md` keeps the question for the user. It is not
-  the user's plan review.
+  the hub, which puts it on the card for the user with `hub ask`. It
+  is not the user's plan review.
 - The user reviews every other plan's pull request before it merges.
-- Cards in the run may go past herdr-hub's limit on cards in
-  `active` and `review`.
+- Cards in the run may go past herdr-hub's limits on cards in
+  `active` and `in-review`.
 - The run ends when every card on the list has stopped.
 - Nothing merges without the user's explicit yes.
 
@@ -72,21 +72,21 @@ The user's rules for every run:
    `notes.md`. N is one more than the last auto run your notes or an
    `approved.md` in `~/.local/state/herdr-hub.*/` name; ask the user
    when unsure.
-2. Pick the cards and roadmaps. Write the ready cards to `ready.md`
-   and print them:
+2. Pick the cards and roadmaps. Write the cards in the `todo` stage
+   to `todo.md` and print them:
 
-       hub auto ready --run "<run folder>"
+       hub auto todo --run "<run folder>"
 
-   A roadmap the user wants built runs as a ready card that links its
+   A roadmap the user wants built runs as a todo card that links its
    design and its roadmap page. Read both. When either is not
    approved, the card goes under `## Left out` with that reason.
-3. Sort every ready card into one of three groups yourself, even
+3. Sort every todo card into one of three groups yourself, even
    when there is only one card: other-pc (the work runs on the other PC
    or uses its data), hands (it needs the user at a device, a login,
    a purchase or a choice before work can start) or alone (the rest).
    Read each card before you sort it.
 4. Write `<run folder>/run.md`. Put under `## Run` the `alone` cards
-   you pick, and every other ready card under `## Needs your hands`,
+   you pick, and every other todo card under `## Needs your hands`,
    `## Other PC` or `## Left out`, with a reason. Each line is the key,
    the project and the problem it solves, in plain words. Under the
    title, before the first `## ` heading, write the run tier you
@@ -110,9 +110,9 @@ The user's rules for every run:
 
    It exits 3, with one problem per line, when the list fails its
    check.
-   A card the user picks may be ready, active or review. A card the
+   A card the user picks may be todo, active or in-review. A card the
    user wants that is still a draft stays out until the
-   user moves it to ready, or tells you to.
+   user moves it to todo, or tells you to.
 6. Find out when the user is away, and each of the user's rules that
    ends at a set time, such as a model limit until a quota resets.
    Ask the user when you do not know. Then send the briefing, by
@@ -142,7 +142,7 @@ The user's rules for every run:
 
    For a T2 or T3 run, also say that a plan that changes what the
    user sees daily, or adds a name the user types or reads, stops as
-   a question for the user in `decisions.md`. That is not a plan
+   a question for the user on its card. That is not a plan
    review. The user reviews each other pull request before it
    merges, as pr-loop.md's Plans that wait says.
 
@@ -187,9 +187,9 @@ word for word, then your own news:
 
     hub auto now --run "<auto run folder>"
 
-When the user answers a queued question before the end brief, write
-the answer under its entry in the auto run's `decisions.md` and send
-it to the auto hub with `hub send`. When a pull request that
+When the user answers a queued question before the end brief, run
+`hub answer <card key> "<answer>"` and send the answer to the auto hub
+with `hub send`. When a pull request that
 changes a skill merges during the run, send the auto hub its name
 the same way, since running sessions keep the old text. When the
 user says they are back, send the auto hub that the away window
@@ -312,16 +312,15 @@ hub has sent its end brief; wait for that brief, then run it again.
    stopped without a report, ask it with `hub send` for its report.
 8. Handle reports as `herdr-hub` says, except: never message the
    user. Each question that pr-loop.md's Plans that wait sends to
-   the user, and each blocking question you cannot answer, goes into
-   `<run folder>/decisions.md`, with a title that starts with the
-   card's key; run `hub brief --run "<run folder>"` to check the
-   entry's form. Answer every other question from the user's rules;
+   the user, and each blocking question you cannot answer, goes on
+   its card with `hub ask`, as `herdr-hub`'s Questions for the user
+   says. Answer every other question from the user's rules;
    when none applies, pick the simplest choice and have the worker
    record what it loses as a known limit in the plan's notes.
-   - A plan that changes the front hub's `rules.md` goes into
-     `decisions.md` in any run, with the plan's path. The user reads
-     the plan and answers through the front hub; only a yes lets it
-     build.
+   - A plan that changes the front hub's `rules.md` goes on its card
+     with `hub ask` in any run, and the question names the plan's
+     path. The user reads the plan and answers through the front
+     hub; only a yes lets it build.
    - The worker parks the pull request of each such question: it
      stops that pull request and its children until the answer
      comes, and keeps building other stacks. When the front hub

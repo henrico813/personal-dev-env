@@ -14,7 +14,7 @@ use super::panels::Panel;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub(crate) struct Element {
     /// Stays the same across reads, such as `card:DEMO-KB-007` or
-    /// `group:ready`.
+    /// `group:todo`.
     pub id: String,
     pub kind: Kind,
     /// The words as drawn, or as they would be drawn, with the end
@@ -52,7 +52,7 @@ pub(crate) struct Place {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub(crate) struct Hiding {
     pub hidden_by: HiddenBy,
-    /// A step to send as it is, such as `tap group:ready`. One step
+    /// A step to send as it is, such as `tap group:todo`. One step
     /// may only bring the element closer, such as one page of scroll.
     pub show: String,
 }

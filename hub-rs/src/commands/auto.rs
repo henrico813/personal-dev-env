@@ -1,9 +1,11 @@
-//! Runs `hub auto`, the steps of an auto run, in the order `ready`,
-//! `check`, `approve`, `now`. An auto run works a list of cards the
-//! user approved, without the user, until each card stops at a pull
-//! request or a question. That list, `run.md`, names every ready card
-//! once, and may name active or review cards the user picked. Only the
-//! cards under `## Run` are worked.
+//! Runs the steps of an auto run, in `AutoStep` order. They write the
+//! cards ready to start to `todo.md`, check `run.md`, save the user's
+//! approval, and write the run's status brief. An auto run works a
+//! list of cards the user approved, without the user, until each card
+//! stops at a pull request or a question. That list, `run.md`, names
+//! every card ready to start once, and may name cards in progress or
+//! needing the user's review that the user picked. Only the cards
+//! under `## Run` are worked.
 //!
 //! ```text
 //! # Auto run 2
@@ -23,7 +25,7 @@ use regex::Regex;
 
 use super::{Outcome, sidebar};
 use crate::external::cards::{CardKey, CardNote, ListedCard, Stage};
-use crate::shared::decisions;
+use crate::shared::questions::read_open_questions;
 use crate::shared::run_folder::{self, RunFolder};
 use crate::shared::{HubError, Tools};
 
@@ -33,7 +35,7 @@ static RUN_TITLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^# Auto run ([
 static LISTED_CARD: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^- ([A-Z][A-Z0-9]*-KB-[0-9]{3,})\b").unwrap());
 
-/// The user's approval, as `hub auto approve` takes it.
+/// The user's approval, as `run_auto_approve` takes it.
 pub struct AutoApproval {
     pub number: u32,
     /// The user's reply, word for word.
@@ -58,24 +60,25 @@ impl RunList {
     }
 }
 
-/// Writes every ready card's title, project and criteria to
-/// `ready.md`, and prints it.
+/// Writes the title, project and criteria of every card ready to
+/// start to `todo.md`, and prints it.
 ///
 /// # Errors
 ///
-/// `HubError::Card` when `card` fails, before `ready.md` changes.
-pub fn run_auto_ready(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubError> {
+/// `HubError::Card` when a `Cards` call fails, before `todo.md`
+/// changes.
+pub fn run_auto_todo(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubError> {
     let mut descriptions = Vec::new();
-    for key in tools.cards.list_ready()? {
+    for key in tools.cards.list_todo()? {
         let note = tools.cards.read_card(&key)?;
         descriptions.push(describe_card(&key, &note));
     }
     let text = if descriptions.is_empty() {
-        "No ready cards.\n".to_owned()
+        format!("No {} cards.\n", Stage::Todo.as_str())
     } else {
         descriptions.join("\n\n") + "\n"
     };
-    run_folder::write_file_whole(&run.path().join("ready.md"), &text)?;
+    run_folder::write_file_whole(&run.path().join("todo.md"), &text)?;
     Ok(Outcome {
         lines: text.lines().map(str::to_owned).collect(),
     })
@@ -167,16 +170,17 @@ pub fn run_auto_approve(
 
 /// Writes `brief-now.md`, one line per card of the run, and prints it.
 /// A card's line is the first non-empty line of its worker's status
-/// file. It says `(needs you)` while `decisions.md` holds a question
-/// whose title starts with the card's key. A `Questions for you: N`
-/// line follows, then one line per question title. It then puts the
-/// hubs at the top of the sidebar, and a failure there adds a warning
-/// line to the output, never to the file.
+/// file. It says `(needs you)` while the card holds an open question.
+/// A `Questions for you: N` line follows, then one line per open
+/// question of the run's cards, such as `- DEMO-KB-002 Deploy
+/// tonight?`. It then puts the hubs at the top of the sidebar, and a
+/// failure there adds a warning line to the output, never to the file.
 ///
 /// # Errors
 ///
 /// `HubError::NotDone` when the run has no `approved.md`, so a run the
-/// user never approved starts nothing.
+/// user never approved starts nothing. `HubError::Card` when the open
+/// questions cannot be read.
 pub fn run_auto_now(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubError> {
     let Some(approved) = run.read_file_if_exists("approved.md")? else {
         return Err(HubError::NotDone(
@@ -184,11 +188,8 @@ pub fn run_auto_now(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubEr
         ));
     };
     let list = read_run_list(&approved);
-    let questions = decisions::read_decisions(&run.read_optional_file("decisions.md")?);
-    let asking: BTreeSet<&str> = questions
-        .iter()
-        .filter_map(|question| question.title.split_whitespace().next())
-        .collect();
+    let mut questions = read_open_questions(tools.cards)?;
+    questions.retain(|question| list.run_keys().contains(&question.key));
     let mut lines = vec![match list.number {
         Some(number) => format!("Auto run {number}"),
         None => "Auto run".to_owned(),
@@ -201,7 +202,7 @@ pub fn run_auto_now(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubEr
             .map(str::trim)
             .find(|line| !line.is_empty())
             .unwrap_or("not started");
-        let mark = if asking.contains(key.as_str()) {
+        let mark = if questions.iter().any(|question| question.key == *key) {
             " (needs you)"
         } else {
             ""
@@ -212,7 +213,7 @@ pub fn run_auto_now(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubEr
     lines.extend(
         questions
             .iter()
-            .map(|question| format!("- {}", question.title)),
+            .map(|question| format!("- {} {}", question.key.as_str(), question.title)),
     );
     let text = lines.join("\n") + "\n";
     run_folder::write_file_whole(&run.path().join("brief-now.md"), &text)?;
@@ -223,10 +224,12 @@ pub fn run_auto_now(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubEr
 }
 
 /// Returns the run's number when `run.md` can go to the user, else
-/// every problem. A listed card must be ready, active or review and
-/// listed only once, and every ready card must be listed, so the
-/// briefing accounts for each one. The user's `approve run N`, not the
-/// stage, is what lets the run work a card.
+/// every problem. A listed card must be ready to start, in progress
+/// or needing the user's review, and listed only once. Every card
+/// ready to start must be listed, so the briefing accounts for each
+/// one.
+/// The user's `approve run N`, not the stage, is what lets the run
+/// work a card.
 fn check_run_list(cards: &[ListedCard], list: &RunList) -> Result<u32, Vec<String>> {
     let listed: Vec<&CardKey> = list.sections.values().flatten().collect();
     let mut problems = Vec::new();
@@ -242,22 +245,26 @@ fn check_run_list(cards: &[ListedCard], list: &RunList) -> Result<u32, Vec<Strin
         }
         match cards.iter().find(|card| card.key == *key) {
             None => problems.push(format!("{} is not on the board", key.as_str())),
-            Some(card) if matches!(card.stage, Stage::Ready | Stage::Active | Stage::Review) => {}
+            Some(card) if matches!(card.stage, Stage::Todo | Stage::Active | Stage::InReview) => {}
             Some(card) => problems.push(format!(
-                "{} is a {} card; a run takes ready, active or review cards",
+                "{} is a {} card; a run takes {}, {} or {} cards",
                 key.as_str(),
-                card.stage.as_str()
+                card.stage.as_str(),
+                Stage::Todo.as_str(),
+                Stage::Active.as_str(),
+                Stage::InReview.as_str()
             )),
         }
     }
     for key in cards
         .iter()
-        .filter(|card| card.stage == Stage::Ready)
+        .filter(|card| card.stage == Stage::Todo)
         .map(|card| &card.key)
     {
         if !listed.contains(&key) {
             problems.push(format!(
-                "ready card {} is missing from run.md",
+                "{} card {} is missing from run.md",
+                Stage::Todo.as_str(),
                 key.as_str()
             ));
         }
@@ -322,13 +329,13 @@ mod tests {
     use super::*;
 
     /// A list the user cannot run as approved must not reach the user.
-    /// A draft card waits for the user's refinement, while an active or
-    /// review card the user picked runs without moving back to ready. A
-    /// card listed twice
-    /// gets two workers. An empty Run starts nothing. A ready card left
-    /// out never reaches the briefing. A list with no number cannot be
-    /// approved by `approve run N`. A card under another heading counts
-    /// as listed.
+    /// A card the user has not refined waits for the user, while a
+    /// picked card in progress or needing the user's review runs
+    /// without first moving back to ready to start. A card listed
+    /// twice gets two workers. An empty Run starts nothing. A card
+    /// ready to start that is left out never reaches the briefing. A
+    /// list with no number cannot be approved by `approve run N`. A
+    /// card under another heading counts as listed.
     #[test]
     fn check_run_list_names_each_problem() {
         struct Case {
@@ -356,7 +363,7 @@ mod tests {
                          - DEMO-KB-002 demo: resume\n- DEMO-KB-003 demo: draft\n\
                          - DEMO-KB-099 demo: typo\n",
                 expected: Err(vec![
-                    "DEMO-KB-003 is a draft card; a run takes ready, active or review cards",
+                    "DEMO-KB-003 is a draft card; a run takes todo, active or in-review cards",
                     "DEMO-KB-099 is not on the board",
                 ]),
             },
@@ -373,9 +380,9 @@ mod tests {
                 expected: Err(vec!["run.md lists no card under '## Run'"]),
             },
             Case {
-                name: "missing-ready",
+                name: "missing-todo",
                 run_md: "# Auto run 2\n\n## Run\n- DEMO-KB-001 demo: retry\n",
-                expected: Err(vec!["ready card DEMO-KB-002 is missing from run.md"]),
+                expected: Err(vec!["todo card DEMO-KB-002 is missing from run.md"]),
             },
             Case {
                 name: "no-title",
@@ -384,11 +391,11 @@ mod tests {
             },
         ];
         let cards: Vec<ListedCard> = [
-            ("DEMO-KB-001", Stage::Ready),
-            ("DEMO-KB-002", Stage::Ready),
+            ("DEMO-KB-001", Stage::Todo),
+            ("DEMO-KB-002", Stage::Todo),
             ("DEMO-KB-003", Stage::Draft),
             ("DEMO-KB-004", Stage::Active),
-            ("DEMO-KB-005", Stage::Review),
+            ("DEMO-KB-005", Stage::InReview),
         ]
         .into_iter()
         .map(|(key, stage)| ListedCard {

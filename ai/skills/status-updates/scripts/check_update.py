@@ -28,8 +28,9 @@ SENTENCE_CHECKS = (
     / "plain-direct-english/scripts/check_sentences.py"
 )
 LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s")
-# The short question form of references/waiting-on-you.md.
-QUESTION_TITLE = re.compile(r"^\*\*\d+\.\s+(.*?)\*\*\s*$")
+# The short question form of references/waiting-on-you.md. The Q is
+# optional here, so a title without it gets a finding instead of a pass.
+QUESTION_TITLE = re.compile(r"^\*\*(Q?)\d+\.\s+(.*?)\*\*\s*$")
 CHOICE = re.compile(r"^\s*[-*+]\s+(?:[A-Z]|\d+):\s")
 CARD_KEY = re.compile(r"^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+\b")
 REPLY_LINE = re.compile(r"^Reply like\b")
@@ -170,14 +171,17 @@ def find_question_problems(lines: list) -> list[tuple[int, str]]:
         title = QUESTION_TITLE.match(line.text)
         if title:
             last_title = line.number
+            if not title.group(1):
+                message = "question number has no Q, such as **Q7. ...**"
+                problems.append((line.number, message))
             rest = prose[index + 1 :]
             problems += find_problems_in_question(
-                title.group(1), line.number, rest
+                title.group(2), line.number, rest
             )
         elif last_title and REPLY_LINE.match(line.text.strip()):
             last_title = None
     if last_title:
-        message = "questions have no reply line, such as Reply like `1A`"
+        message = "questions have no reply line, such as Reply like `Q7A`"
         problems.append((last_title, message))
     return problems
 

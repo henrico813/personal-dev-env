@@ -3,61 +3,69 @@ mod common;
 use std::fs;
 
 use hub::commands::brief::run_brief;
-use hub::external::cards::{BoardCounts, WaitingCard};
-use hub::shared::HubError;
+use hub::external::cards::{BlockedCard, BoardCounts, CardNote};
 use jiff::{SignedDuration, Timestamp};
 use serde_json::json;
 
 use common::TestTools;
 
-/// A whole `decisions.md` entry, as the hub writes one.
-const DECISION: &str = "## New model overnight\n\
-                        \n\
-                        Deploy the new model tonight so you can test it in the morning?\n\
-                        \n\
-                        - A. Deploy from the branch, with the undo path ready.\n\
-                        - B. Wait until you return.\n\
-                        \n\
-                        Recommended: A, since you want to test it in the morning.\n\
-                        If no reply: A.\n";
-
 /// The user decides from this one message, often away from the
 /// desk. Hubs once named questions by number alone and the user
-/// had to ask what they were, so every line of each entry prints,
-/// after the board line and the pull requests.
+/// had to ask what they were, so every line of each card's open
+/// question prints, after the board line and the pull requests.
+/// `hub ask` adds its item last, so an older item with the same title
+/// must not hide the question's lines.
 #[test]
-fn run_brief_prints_board_reviews_then_decisions() {
+fn run_brief_prints_board_reviews_then_questions() {
     let mut test_tools = TestTools::new();
     test_tools.cards.board = Some(BoardCounts {
         active: 5,
-        review: 19,
+        in_review: 19,
         active_limit: 8,
-        review_limit: 6,
+        in_review_limit: 6,
     });
+    test_tools.cards.card_notes.insert(
+        "DEMO-KB-007".to_owned(),
+        CardNote {
+            project: "Demo".to_owned(),
+            needs_you: Some("New model overnight".to_owned()),
+            open_questions: vec![
+                vec!["New model overnight".to_owned()],
+                vec![
+                    "New model overnight".to_owned(),
+                    "Deploy the new model tonight?".to_owned(),
+                    "- A. Deploy from the branch.".to_owned(),
+                    "- B. Wait until you return.".to_owned(),
+                    "Recommended: A, since you test in the morning.".to_owned(),
+                    "If no reply: B.".to_owned(),
+                ],
+            ],
+            ..CardNote::default()
+        },
+    );
     fs::write(
         test_tools.run_path().join("reviews.md"),
         "# PRs\n\n| #1 | Fix |\n",
     )
     .unwrap();
-    fs::write(test_tools.run_path().join("decisions.md"), DECISION).unwrap();
 
     let outcome = run_brief(&test_tools.tools(), &test_tools.run(), Timestamp::now()).unwrap();
 
     assert_eq!(
         outcome.lines,
         [
-            "board active 5 of 8, review 19 of 6; 1 decision",
+            "board active 5 of 8, in-review 19 of 6; 1 question",
             "",
             "# PRs",
             "",
             "| #1 | Fix |",
             "",
-            "Decision: New model overnight",
-            "Deploy the new model tonight so you can test it in the morning?",
-            "- A. Deploy from the branch, with the undo path ready.",
+            "Question DEMO-KB-007: New model overnight",
+            "Deploy the new model tonight?",
+            "- A. Deploy from the branch.",
             "- B. Wait until you return.",
-            "Recommended: A, since you want to test it in the morning.",
-            "If no reply: A.",
+            "Recommended: A, since you test in the morning.",
+            "If no reply: B.",
         ]
     );
 }
@@ -70,9 +78,9 @@ fn run_brief_says_when_nothing_waits() {
     let mut test_tools = TestTools::new();
     test_tools.cards.board = Some(BoardCounts {
         active: 3,
-        review: 0,
+        in_review: 0,
         active_limit: 8,
-        review_limit: 6,
+        in_review_limit: 6,
     });
 
     let outcome = run_brief(&test_tools.tools(), &test_tools.run(), Timestamp::now()).unwrap();
@@ -80,7 +88,7 @@ fn run_brief_says_when_nothing_waits() {
     assert_eq!(
         outcome.lines,
         [
-            "board active 3 of 8, review 0 of 6; 0 decisions",
+            "board active 3 of 8, in-review 0 of 6; 0 questions",
             "",
             "Nothing waits on the user.",
         ]
@@ -92,22 +100,22 @@ fn run_brief_says_when_nothing_waits() {
 /// all-clear would vanish and the user would hunt for a step that is
 /// not theirs.
 #[test]
-fn run_brief_lists_waiting_cards_as_information_only() {
+fn run_brief_shows_blocked_cards_without_action() {
     let mut test_tools = TestTools::new();
     test_tools.cards.board = Some(BoardCounts {
         active: 3,
-        review: 0,
+        in_review: 0,
         active_limit: 8,
-        review_limit: 6,
+        in_review_limit: 6,
     });
-    test_tools.cards.waiting = vec![
-        WaitingCard {
+    test_tools.cards.blocked = vec![
+        BlockedCard {
             key: "DEMO-KB-003".parse().unwrap(),
             days: 8,
             title: "Retry failed uploads".to_owned(),
             reason: "platform team's review".to_owned(),
         },
-        WaitingCard {
+        BlockedCard {
             key: "DEMO-KB-009".parse().unwrap(),
             days: 1,
             title: "Add a cache".to_owned(),
@@ -120,12 +128,12 @@ fn run_brief_lists_waiting_cards_as_information_only() {
     assert_eq!(
         outcome.lines,
         [
-            "board active 3 of 8, review 0 of 6; 0 decisions",
-            "waiting-on-others 2, oldest 8 days",
+            "board active 3 of 8, in-review 0 of 6; 0 questions",
+            "blocked 2, oldest 8 days",
             "",
             "Nothing waits on the user.",
             "",
-            "Waiting on others (no action needed)",
+            "Blocked (no action needed)",
             "- DEMO-KB-003, 8 days",
             "  Retry failed uploads",
             "  platform team's review",
@@ -135,27 +143,55 @@ fn run_brief_lists_waiting_cards_as_information_only() {
     );
 }
 
-/// An entry without a recommendation or a no-reply default cannot
-/// go to a user who decides from the message alone. The command
-/// names each missing part, so the hub can fix the entry.
+/// The user reads `Nothing waits on the user.` as the all-clear. When
+/// `card` cannot list the open questions, one may still wait, so the
+/// brief names the failure and never gives the all-clear.
 #[test]
-fn run_brief_stops_on_entry_missing_parts() {
-    let test_tools = TestTools::new();
-    fs::write(
-        test_tools.run_path().join("decisions.md"),
-        "## Pause cards\n\nPause stale cards?\n\n- A. Yes\n- B. No\n",
-    )
-    .unwrap();
+fn run_brief_reports_failed_question_read() {
+    let mut test_tools = TestTools::new();
+    test_tools.cards.board = Some(BoardCounts {
+        active: 3,
+        in_review: 0,
+        active_limit: 8,
+        in_review_limit: 6,
+    });
+    test_tools.cards.read_error = Some("card: grep failed".to_owned());
 
-    let error = run_brief(&test_tools.tools(), &test_tools.run(), Timestamp::now()).unwrap_err();
+    let outcome = run_brief(&test_tools.tools(), &test_tools.run(), Timestamp::now()).unwrap();
 
-    let HubError::NotDone(message) = error else {
-        panic!("expected NotDone, got {error:?}");
-    };
     assert_eq!(
-        message,
-        "decisions.md entry 'Pause cards' lacks the Recommended: line, \
-         the If no reply: line"
+        outcome.lines,
+        [
+            "board active 3 of 8, in-review 0 of 6; questions unread",
+            "",
+            "questions: card: grep failed",
+        ]
+    );
+}
+
+/// The search finds a marked card that `card show` then cannot read.
+/// Its question still waits, so skipping the card would give the user
+/// a false all-clear; the brief names the failure instead.
+#[test]
+fn run_brief_reports_unreadable_marked_card() {
+    let mut test_tools = TestTools::new();
+    test_tools.cards.board = Some(BoardCounts {
+        active: 3,
+        in_review: 0,
+        active_limit: 8,
+        in_review_limit: 6,
+    });
+    test_tools.cards.unreadable_needs_you = vec!["DEMO-KB-008".to_owned()];
+
+    let outcome = run_brief(&test_tools.tools(), &test_tools.run(), Timestamp::now()).unwrap();
+
+    assert_eq!(
+        outcome.lines,
+        [
+            "board active 3 of 8, in-review 0 of 6; questions unread",
+            "",
+            "questions: card: no card DEMO-KB-008",
+        ]
     );
 }
 
@@ -168,9 +204,9 @@ fn run_brief_lists_only_live_pending_approvals() {
     let mut test_tools = TestTools::new();
     test_tools.cards.board = Some(BoardCounts {
         active: 3,
-        review: 0,
+        in_review: 0,
         active_limit: 8,
-        review_limit: 6,
+        in_review_limit: 6,
     });
     let requests = test_tools.state_folder().join("pr-write");
     fs::create_dir(&requests).unwrap();
@@ -209,7 +245,7 @@ fn run_brief_lists_only_live_pending_approvals() {
     assert_eq!(
         outcome.lines,
         [
-            "board active 3 of 8, review 0 of 6; 0 decisions",
+            "board active 3 of 8, in-review 0 of 6; 0 questions",
             "",
             "approval A0016cd 1h12m left app #515 merge",
         ]

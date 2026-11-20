@@ -16,7 +16,7 @@ use crate::external::cards::{CardKey, Stage};
 use crate::external::herdr::{Herdr, Pane};
 use crate::external::processes;
 
-/// The problem lines that leave facts out. A failed `card show` can
+/// The problem lines that leave facts out. A failed card read can
 /// hide a session's card. A request file that does not parse can hide
 /// a waiting approval. The pass changes nothing while either problem
 /// shows.
@@ -40,15 +40,15 @@ pub(crate) enum TidyAction<'a> {
         sessions: Vec<&'a SessionFacts>,
         why: String,
     },
-    /// Deletes a parked record whose card is done or whose session is
-    /// live again.
+    /// Deletes a parked record whose card's work is over or whose
+    /// session is live again.
     Forget { name: String },
     /// Leaves a `to-close` or `to-park` session open because closing
     /// its tab would close another pane's work too.
     Keep { facts: &'a SessionFacts },
 }
 
-/// What one action did, worded as `hub clean` prints it.
+/// What one action did, worded as `run_clean` prints it.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum TidyOutcome {
     Closed {
@@ -73,7 +73,7 @@ pub(crate) enum TidyOutcome {
 }
 
 impl TidyOutcome {
-    /// Returns the line `hub clean` prints, such as
+    /// Returns the line `run_clean` prints, such as
     /// `parked demo-kb-007-impl: DEMO-KB-007 review`. A dry run says
     /// `would close`, `would park` and `would forget`.
     pub(crate) fn line(&self, dry_run: bool) -> String {
@@ -198,8 +198,8 @@ pub(crate) fn find_unsafe_problem(collected: &CollectedFacts) -> Option<&str> {
 /// an agent that is not finished or has no name, or a shell that runs
 /// something. A tab of `to-close` agents closes. A tab whose one agent
 /// is `to-park` parks. Each finished session in a tab that stays is
-/// kept, so `hub clean` says why. A parked record whose state is
-/// `to-close` is forgotten, since its card is done.
+/// kept, so `run_clean` says why. A parked record whose state is
+/// `to-close` is forgotten, since its card's work is over.
 pub(crate) fn plan_tidy_actions<'a>(
     judged: &[(&'a SessionFacts, Verdict)],
     panes: &[Pane],
@@ -477,11 +477,12 @@ fn describe_planned_action(action: &TidyAction<'_>) -> TidyOutcome {
     }
 }
 
-/// Returns why a session's tab closes, such as `DEMO-KB-007 accepted`
-/// for a done card, else the verdict's why, such as `report read`.
+/// Returns why a session's tab closes, such as `DEMO-KB-007 done`
+/// for a card whose work is over, else the verdict's why, such as
+/// `report read`.
 pub(crate) fn describe_close_why(facts: &SessionFacts, verdict: &Verdict) -> String {
     match &facts.card {
-        Some(card) if matches!(card.stage, Stage::Accepted | Stage::Dropped) => {
+        Some(card) if matches!(card.stage, Stage::Done | Stage::Dropped) => {
             format!("{} {}", card.key.as_str(), card.stage.as_str())
         }
         _ => verdict.why.clone(),
@@ -518,7 +519,7 @@ mod tests {
     }
 
     /// A finished worker in tab `tab_id` whose card DEMO-KB-001 is
-    /// accepted, with its `to-close` verdict.
+    /// closed, with its `to-close` verdict.
     fn make_closing_worker(name: &str, tab_id: &str) -> (SessionFacts, Verdict) {
         let mut facts = make_facts(name);
         if let Some(agent) = facts.agent.as_mut() {
@@ -526,7 +527,7 @@ mod tests {
         }
         facts.card = Some(CardFacts {
             key: "DEMO-KB-001".parse().unwrap(),
-            stage: Stage::Accepted,
+            stage: Stage::Done,
             needs_you_open: false,
             newer_session_live: false,
             from_report: false,
@@ -585,7 +586,7 @@ mod tests {
     /// shell tab is the user's own, so it stays too. A `to-park` worker
     /// beside a `to-close` one stays, or the close would end the parked
     /// session without its record. Each finished
-    /// session in a kept tab is kept, so `hub clean` can say why. Each
+    /// session in a kept tab is kept, so `run_clean` can say why. Each
     /// row below checks one such case.
     #[test]
     fn plan_tidy_actions_keeps_tab_losing_something() {
@@ -680,11 +681,12 @@ mod tests {
         }
     }
 
-    /// A review worker must park, so its session can reopen when review
-    /// comments come. A done card's worker must close instead. Swapping the
-    /// two closes reviewed work with no way back.
+    /// A worker whose card needs the user's review must park, so its
+    /// session can reopen when review comments come. A worker whose
+    /// card's work is over must close instead. Swapping the two closes
+    /// reviewed work with no way back.
     #[test]
-    fn plan_tidy_actions_parks_review_closes_accepted() {
+    fn plan_tidy_actions_parks_review_closes_done() {
         let review = (
             make_facts("demo-kb-007-impl"),
             Verdict {
@@ -692,25 +694,25 @@ mod tests {
                 why: String::new(),
             },
         );
-        let accepted = make_closing_worker("demo-kb-001-impl", "w1:t1");
+        let done = make_closing_worker("demo-kb-001-impl", "w1:t1");
         let panes = [
             make_pane("w1:demo-kb-007-impl", "w1:t-demo-kb-007-impl", true),
             make_pane("w1:demo-kb-001-impl", "w1:t1", true),
         ];
 
-        let actions = plan_for(&[review, accepted], &panes, None, &[]);
+        let actions = plan_for(&[review, done], &panes, None, &[]);
 
         assert_eq!(
             actions,
             [
                 "park demo-kb-007-impl DEMO-KB-007",
-                "close w1:t1 demo-kb-001-impl: DEMO-KB-001 accepted",
+                "close w1:t1 demo-kb-001-impl: DEMO-KB-001 done",
             ]
         );
     }
 
-    /// A parked record whose card is done must go, or the parked folder
-    /// keeps a record no card can use again.
+    /// A parked record whose card's work is over must go, or the
+    /// parked folder keeps a record no card can use again.
     #[test]
     fn plan_tidy_actions_forgets_parked_done_record() {
         let (mut facts, verdict) = make_closing_worker("demo-kb-003-auto", "w1:t3");
@@ -735,9 +737,6 @@ mod tests {
 
         let actions = plan_for(&[worker], &panes, None, &["w1:p8"]);
 
-        assert_eq!(
-            actions,
-            ["close w1:t1 demo-kb-001-impl: DEMO-KB-001 accepted"]
-        );
+        assert_eq!(actions, ["close w1:t1 demo-kb-001-impl: DEMO-KB-001 done"]);
     }
 }

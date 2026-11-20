@@ -1,7 +1,7 @@
 //! Works out one session's lifecycle state from its facts, with no
 //! external calls. Read `decide_lifecycle` first. Its rules apply in
 //! order and the first match wins, so a blocked session is `you` even
-//! when its card is accepted. The later tidy pass closes or parks a
+//! when its card's work is over. The later tidy pass closes or parks a
 //! session only in the `to-close` or `to-park` state, so each rule
 //! that gives one of those decides what the hub may close.
 
@@ -13,7 +13,7 @@ use crate::external::cards::{CardKey, Stage};
 use crate::external::git::Unsaved;
 use crate::external::herdr::{Agent, AgentKind, AgentStatus};
 
-/// The review session that `hub handoff` creates for the old hub gets
+/// The review session that `run_handoff` creates for the old hub gets
 /// a name starting with this, so `review-kanban-hub-16` is not a hub.
 const REVIEW_PREFIX: &str = "review-";
 /// The word before `-hub-` in an auto run's hub, as in `auto-hub-13`.
@@ -34,7 +34,7 @@ pub(crate) enum Lifecycle {
 }
 
 impl Lifecycle {
-    /// Returns the word `hub status` shows, such as `hub` or `to-park`.
+    /// Returns the word `run_status` shows, such as `hub` or `to-park`.
     pub(crate) fn word(self) -> &'static str {
         match self {
             Lifecycle::Working => "working",
@@ -80,7 +80,7 @@ pub(crate) enum KeptReason {
 }
 
 impl KeptReason {
-    /// Returns the short words `hub status` shows, such as
+    /// Returns the short words `run_status` shows, such as
     /// `unsaved files`.
     pub(crate) fn label(self) -> &'static str {
         match self {
@@ -128,23 +128,23 @@ pub(crate) struct SessionFacts {
     pub agent: Option<Agent>,
     pub parked: Option<ParkedRecord>,
     pub card: Option<CardFacts>,
-    /// The card cannot be read, because `card` failed or the board
-    /// has no stage for the key in the session's name.
+    /// The card cannot be read, because a `Cards` call failed or the
+    /// board has no stage for the key in the session's name.
     pub card_unknown: bool,
     pub reports: ReportFacts,
     pub messages: MessageCounts,
     pub unsaved: Unsaved,
-    /// True when a pending, approved or running pde-gh-write request
-    /// came from this session's pane or session ID. Such a request
+    /// True when a pending, approved or running approval request came
+    /// from this session's pane or session ID. Such a request
     /// asks the user to approve a pull request change. A request file
     /// that does not parse sets it for every live session.
     pub approval_pending: bool,
     /// True when this session's pane or session ID filed a
-    /// pde-gh-write request that is no longer open and changed in the
+    /// approval request that is no longer open and changed in the
     /// last hour. A worker that just merged one pull request may still
     /// have more to do.
     pub filed_request_recently: bool,
-    /// The run folder holds a `hub wait` of this session that the watch
+    /// The run folder holds a wait record of this session that the watch
     /// has not ended, as while the worker waits on CI before a merge.
     pub wait_open: bool,
     /// A `handoff` event of this run named the session as the old hub.
@@ -179,10 +179,10 @@ pub(crate) struct ReportFacts {
 pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
     let stage = facts.card.as_ref().map(|card| card.stage);
     // Rule 1. Facts give a session with no live agent only for a
-    // parked record. Its record goes once its card is done.
+    // parked record. Its record goes once its card's work is over.
     let Some(agent) = &facts.agent else {
         return match stage {
-            Some(Stage::Accepted | Stage::Dropped) => make_verdict(Lifecycle::ToClose, "card done"),
+            Some(Stage::Done | Stage::Dropped) => make_verdict(Lifecycle::ToClose, "card done"),
             _ => make_verdict(Lifecycle::Parked, ""),
         };
     };
@@ -219,7 +219,7 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
     if facts.messages.any() {
         return make_verdict(Lifecycle::WaitsOnHub, "");
     }
-    // Rule 6. An old hub closes only once `hub handoff` or `hub adopt`
+    // Rule 6. An old hub closes only once `run_handoff` or `run_adopt`
     // named it, and not while the user types in it or its approval
     // waits.
     if is_hub_name(&facts.name) {
@@ -236,11 +236,11 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
     }
     match (&facts.card, stage) {
         // Rule 7. The card's work goes on. A newer session owns the
-        // worktree, so closing this tab changes no file. A card in
-        // review that the newest report names counts too, since its
-        // worker may still have merges to run.
-        (Some(card), Some(Stage::Draft | Stage::Ready | Stage::Active | Stage::Review))
-            if card.stage != Stage::Review || card.from_report =>
+        // worktree, so closing this tab changes no file. A card needing
+        // the user's review that the newest report names counts too,
+        // since its worker may still have merges to run.
+        (Some(card), Some(Stage::Draft | Stage::Todo | Stage::Active | Stage::InReview))
+            if card.stage != Stage::InReview || card.from_report =>
         {
             if card.newer_session_live {
                 make_close_unless_user_waits(facts, agent, "newer session")
@@ -254,11 +254,10 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
         }
         // Rule 8. A finished worker waits for the user's review or for
         // people outside the team, and parking keeps a way back to it.
-        (Some(_), Some(Stage::Review | Stage::WaitingOnOthers)) => {
-            find_kept_reason(facts, agent, true)
-                .unwrap_or_else(|| make_verdict(Lifecycle::ToPark, ""))
-        }
-        // Rule 9. Nothing waits on a done card's session.
+        (Some(_), Some(Stage::InReview | Stage::Blocked)) => find_kept_reason(facts, agent, true)
+            .unwrap_or_else(|| make_verdict(Lifecycle::ToPark, "")),
+        // Rule 9. Nothing waits on the session of a card whose work
+        // is over.
         (Some(_), _) => find_kept_reason(facts, agent, false)
             .unwrap_or_else(|| make_verdict(Lifecycle::ToClose, "card done")),
         // Rule 10. A session with no card that never reported is the
@@ -291,7 +290,7 @@ pub(crate) fn is_unadopted_hub(own: &str, name: &str, handed_off: &BTreeSet<Stri
     word == own_word && number < own_number && !handed_off.contains(name)
 }
 
-/// Tells whether `hub adopt`, run by `own`, may take over `name`, an
+/// Tells whether `run_adopt`, run by `own`, may take over `name`, an
 /// unadopted hub, or an auto run's hub, such as `auto-hub-13`, that no
 /// `handoff` event named. An auto hub hands off to no one, so the front
 /// hub adopts it once its run is over, and Rule 6 can close it.
@@ -316,7 +315,7 @@ fn split_hub_name(name: &str) -> Option<(&str, u64)> {
 
 /// Returns the first check that keeps a finished session open. The
 /// checks look for unsaved work, then the user in its pane, then a
-/// waiting or recent approval request, then an open `hub wait`. A
+/// waiting or recent approval request, then an open wait record. A
 /// session that would be parked also needs a way to reopen it.
 fn find_kept_reason(facts: &SessionFacts, agent: &Agent, needs_reopen: bool) -> Option<Verdict> {
     match &facts.unsaved {
@@ -462,12 +461,12 @@ mod tests {
         vec![
             Row {
                 id: "parked",
-                facts: parked(Stage::Review),
+                facts: parked(Stage::InReview),
                 expected: Lifecycle::Parked,
             },
             Row {
                 id: "parked-card-done",
-                facts: parked(Stage::Accepted),
+                facts: parked(Stage::Done),
                 expected: Lifecycle::ToClose,
             },
             Row {
@@ -476,10 +475,10 @@ mod tests {
                 expected: Lifecycle::Kept(KeptReason::OtherMachine),
             },
             Row {
-                id: "blocked-card-accepted",
+                id: "blocked-card-done",
                 facts: SessionFacts {
                     agent: Some(make_agent(worker, AgentStatus::Blocked)),
-                    ..with_stage(Stage::Accepted)
+                    ..with_stage(Stage::Done)
                 },
                 expected: Lifecycle::WaitsOnUser,
             },
@@ -596,8 +595,8 @@ mod tests {
                 expected: Lifecycle::ToPark,
             },
             Row {
-                id: "waiting-on-others-clean",
-                facts: with_stage(Stage::WaitingOnOthers),
+                id: "blocked-clean",
+                facts: with_stage(Stage::Blocked),
                 expected: Lifecycle::ToPark,
             },
             Row {
@@ -646,10 +645,10 @@ mod tests {
                 expected: Lifecycle::Kept(KeptReason::WaitsOnJob),
             },
             Row {
-                id: "accepted-recent-request",
+                id: "done-recent-request",
                 facts: SessionFacts {
                     filed_request_recently: true,
-                    ..with_stage(Stage::Accepted)
+                    ..with_stage(Stage::Done)
                 },
                 expected: Lifecycle::Kept(KeptReason::RecentRequest),
             },
@@ -664,32 +663,32 @@ mod tests {
                 expected: Lifecycle::Kept(KeptReason::CannotReopen),
             },
             Row {
-                id: "accepted-clean",
-                facts: with_stage(Stage::Accepted),
+                id: "done-clean",
+                facts: with_stage(Stage::Done),
                 expected: Lifecycle::ToClose,
             },
             Row {
-                id: "accepted-files",
+                id: "done-files",
                 facts: SessionFacts {
                     unsaved: Unsaved::Files(PathBuf::from("/home/u/wt/demo-kb-007")),
-                    ..with_stage(Stage::Accepted)
+                    ..with_stage(Stage::Done)
                 },
                 expected: Lifecycle::Kept(KeptReason::UnsavedFiles),
             },
             Row {
-                id: "accepted-focused",
+                id: "done-focused",
                 facts: {
-                    let mut facts = with_stage(Stage::Accepted);
+                    let mut facts = with_stage(Stage::Done);
                     facts.agent.as_mut().unwrap().focused = true;
                     facts
                 },
                 expected: Lifecycle::Kept(KeptReason::UserInPane),
             },
             Row {
-                id: "accepted-not-checked",
+                id: "done-not-checked",
                 facts: SessionFacts {
                     unsaved: Unsaved::NotChecked,
-                    ..with_stage(Stage::Accepted)
+                    ..with_stage(Stage::Done)
                 },
                 expected: Lifecycle::Kept(KeptReason::GitFailed),
             },
@@ -714,8 +713,8 @@ mod tests {
     /// The tidy pass will close every `to-close` session and park
     /// every `to-park` one. A rule out of order, or a check left out,
     /// can close a tab that holds unsaved work, a pending approval, or
-    /// the user's own typing. A blocked session whose card was accepted must still
-    /// reach the user.
+    /// the user's own typing. A blocked session whose card's work is
+    /// over must still reach the user.
     #[test]
     fn decide_lifecycle_matches_state_table() {
         for row in make_lifecycle_rows() {
@@ -789,7 +788,7 @@ mod tests {
     /// Hubs are found by name alone, with hand-written matching in place
     /// of a regex. A worker whose name only contains `-hub-`, if mistaken
     /// for a hub, would be moved to the top by `gather`, shown by `go`
-    /// and kept open by `hub status` as another hub.
+    /// and kept open by `run_status` as another hub.
     #[test]
     fn is_hub_name_rejects_workers_and_reviews() {
         let cases = [
@@ -805,7 +804,7 @@ mod tests {
         }
     }
 
-    /// `hub next` and `hub status` tell the hub to adopt each hub this
+    /// `run_next` and `run_status` tell the hub to adopt each hub this
     /// returns, and an adopted hub gets closed and reviewed. A wrong
     /// match would close the hub that properly handed off, a newer hub,
     /// another run's hub or a running review.

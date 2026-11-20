@@ -262,6 +262,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".agents/skills/roadmap-run",
 		".agents/skills/promote-memory",
 		".agents/skills/plain-direct-english/reference",
+		".agents/skills/herdr-hub/references/waiting-on-others.md",
 	}
 	developmentTools := []string{
 		".local/bin/gh",

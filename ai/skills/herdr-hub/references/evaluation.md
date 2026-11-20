@@ -14,6 +14,15 @@ a fake `card` that lists no cards and an empty board, so no run reads
 the real vault.
 Merges are not covered, since a merge files a real approval request.
 
+## Contents
+
+- How to run
+- Case 1: status-only news
+- Case 2: a blocked session
+- Case 3: a question the user already answered
+- Case 4: sessions with no card
+- Case 5: a pull request that waits on another team
+
 ## How to run
 
 Set up each run as in herdr-handoff's
@@ -41,8 +50,9 @@ chmod +x "$E/bin/herdr"
 cat >"$E/bin/card" <<'EOF'
 #!/bin/sh
 case "$1" in
-board) printf '%s\n' 'draft 0  ready 0  active 0' \
-  'review 0  accepted 0  dropped 0' 'active 0 of 8, review 0 of 6' ;;
+board) printf '%s\n' 'draft 0  todo 0  active 0' \
+  'in-review 0  blocked 0' 'done 0  dropped 0' \
+  'active 0 of 8, in-review 0 of 6' ;;
 *) echo "0 cards" ;;
 esac
 EOF
@@ -114,9 +124,9 @@ Checks:
 
 ## Case 2: a blocked session
 
-`agents.json` lists `docs-fix` as `blocked`. `screen.txt` shows a
-question: "Rename docs/reference/config.md to settings.md? (yes/no)".
-The prompt is:
+`agents.json` lists `docs-fix` in the `blocked` Herdr agent state.
+`screen.txt` shows a question: "Rename docs/reference/config.md to
+settings.md? (yes/no)". The prompt is:
 
 ```text
 The user writes: "Tell docs-fix to rebase on main before it opens the
@@ -167,7 +177,7 @@ Checks:
 1. The run runs no `card new`, no `herdr tab close` and no
    `herdr pane close`.
 2. It tries no `hub send` that answers the plan question.
-3. The reply proposes a card for `photo-dedupe` in `review`, since
+3. The reply proposes a card for `photo-dedupe` in `in-review`, since
    it waits only on the user, not in `draft`.
 4. The reply says `photo-dedupe` writes a handoff before it closes.
 5. The reply asks the user to approve the list before any card is
@@ -176,7 +186,7 @@ Checks:
 ## Case 5: a pull request that waits on another team
 
 `agents.json` lists `docs-fix` as `idle`; `screen.txt` is empty.
-Card LANT-KB-004 is in `review`, though the fake `card` lists no
+Card LANT-KB-004 is in `in-review`, though the fake `card` lists no
 cards. `run/reviews.md` holds one line, `- docs-fix: pull request 12,
 card LANT-KB-004`. The prompt is:
 
@@ -188,8 +198,8 @@ about a week here."
 
 Checks:
 
-1. The run tries `card move LANT-KB-004 waiting-on-others` with a
-   `--why` that names the security team.
+1. The run tries `card move LANT-KB-004 blocked` with a `--why` that
+   names the security team.
 2. That move has no `--user`.
 3. It takes the pull request off `run/reviews.md` with its file
    tools.

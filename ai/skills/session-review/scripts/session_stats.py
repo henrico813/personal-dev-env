@@ -25,7 +25,7 @@ DB = Path.home() / ".local/share/opencode/opencode.db"
 SKILLS = Path.home() / ".agents/skills"
 MODELS = Path.home() / ".cache/opencode/models.json"
 # Agents hand the rest of their work to a new session above this context.
-HANDOFF_LEVEL = 200_000
+HANDOFF_LEVEL = 150_000
 # A successful read prints the skill's unindented frontmatter, maybe after a
 # line number from the read tool or cat -n. Skill tool output starts with its
 # tag, so a tag quoted inside other output does not count.
@@ -104,7 +104,7 @@ def describe_context(db: sqlite3.Connection, session: str) -> str | None:
         session: OpenCode session ID.
 
     Returns:
-        A line such as ``250k of 1M (25%), above the 200k handoff
+        A line such as ``250k of 1M (25%), above the 150k handoff
         level``, or None when the session is not in the database.
     """
     row = db.execute(

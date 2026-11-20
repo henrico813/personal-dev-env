@@ -1,15 +1,23 @@
 """Tests for the card command, run against a made-up Projects folder."""
 
+import json
 import os
+import re
 import subprocess
+import tomllib
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import card
 import pytest
 
 KEY = "PDEV-KB-001"
 TODAY = "2026-11-07"
+REPO = Path(__file__).resolve().parents[1]
+RULES_FILE = REPO / "chezmoi/dot_config/pde/names.toml"
+# Names every reader of the rules file must make and read alike.
+CASES = tomllib.loads((REPO / "testdata/names/cases.toml").read_text())
 # A card as the user might leave it after editing in Obsidian. The
 # fields are reordered and quoted, plans is an inline list, and an
 # extra field was added.
@@ -84,6 +92,16 @@ def projects(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path / "Projects"
 
 
+@pytest.fixture(autouse=True)
+def rules_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point card at the repository's rules file, which chezmoi installs.
+
+    Tests then check the rules users get, and never read a rules file
+    installed on the computer running them.
+    """
+    monkeypatch.setenv("PDE_NAMES_FILE", str(RULES_FILE))
+
+
 def run_card(projects: Path, *argv: str) -> int:
     """Run the card command and return its exit code."""
     return card.main(list(argv), projects)
@@ -142,9 +160,9 @@ class TestNew:
         """Adopted work starts in its stage with an adoption Log line.
 
         Sessions already building for days come onto the board without
-        walking through draft and ready. The Log must show it was an
+        walking through draft and todo. The Log must show it was an
         adoption the user asked for, and stage_date must date it so
-        the review queue sorts it.
+        the in-review queue sorts it.
         """
         code = run_card(
             projects,
@@ -152,7 +170,7 @@ class TestNew:
             "DevEnv",
             "Old work",
             "--adopt",
-            "review",
+            "in-review",
             "--user",
             "--why",
             "PR #450 open",
@@ -162,16 +180,16 @@ class TestNew:
 
         assert code == 0
         text = (projects / "DevEnv" / f"{KEY} Old work.md").read_text()
-        assert f"stage: review\nstage_date: {TODAY}\n" in text
+        assert f"stage: in-review\nstage_date: {TODAY}\n" in text
         assert text.endswith(
-            f"- {TODAY} review: adopted by general-staff for the user."
+            f"- {TODAY} in-review: adopted by general-staff for the user."
             " PR #450 open\n"
         )
 
     def test_new_adopt_refuses_without_user(self, projects: Path) -> None:
         """Adopting work fails, and writes no card, without --user.
 
-        Adoption skips the user's release to ready. If an agent could
+        Adoption skips the user's release to todo. If an agent could
         adopt on its own, work would reach active that the user never
         agreed to.
         """
@@ -292,24 +310,24 @@ class TestMove:
             ),
             pytest.param(
                 "draft",
-                "ready",
+                "todo",
                 ["--user"],
                 "- Done.",
-                id="ready-without-checkbox",
+                id="todo-without-checkbox",
             ),
             pytest.param(
-                "accepted",
+                "done",
                 "dropped",
                 ["--user"],
                 "- [ ] Done.",
-                id="accepted-final",
+                id="done-final",
             ),
             pytest.param(
-                "review",
-                "waiting-on-others",
+                "in-review",
+                "blocked",
                 [],
                 "- [ ] Done.",
-                id="waiting-without-why",
+                id="blocked-without-why",
             ),
         ],
     )
@@ -325,9 +343,9 @@ class TestMove:
 
         A card released with no acceptance checkbox would take the
         release decision away from the user, also when the release is
-        the first move of a chain. Reopening an accepted card would let
-        follow-up work skip the user's release. A card waiting on others
-        with no reason would leave the user not knowing whom to chase.
+        the first move of a chain. Reopening a done card would let
+        follow-up work skip the user's release. A blocked card with no
+        reason would leave the user not knowing whom to chase.
         """
         path = write_card(projects, KEY, stage, criteria)
         before = path.read_text()
@@ -353,7 +371,7 @@ class TestMove:
             projects,
             "move",
             KEY,
-            "ready",
+            "todo",
             "--user",
             "--why",
             "Clear enough",
@@ -363,18 +381,16 @@ class TestMove:
 
         assert code == 0
         text = path.read_text()
-        assert f"stage: ready\nstage_date: {TODAY}\n" in text
+        assert f"stage: todo\nstage_date: {TODAY}\n" in text
         assert text.endswith(
-            f"- {TODAY} ready: by user for the user. Clear enough\n"
+            f"- {TODAY} todo: by user for the user. Clear enough\n"
         )
 
     @pytest.mark.parametrize(
         ("source", "target", "steps"),
         [
-            pytest.param(
-                "active", "accepted", ["review", "accepted"], id="accept"
-            ),
-            pytest.param("review", "ready", ["active", "ready"], id="reopen"),
+            pytest.param("active", "done", ["in-review", "done"], id="accept"),
+            pytest.param("in-review", "todo", ["active", "todo"], id="reopen"),
         ],
     )
     def test_move_logs_each_move_of_chain(
@@ -388,7 +404,7 @@ class TestMove:
         """The user's move with no single step makes each step and logs it.
 
         A hub told to accept active work, or to send reviewed work back
-        to ready, used to be refused and had to retry one stage at a
+        to todo, used to be refused and had to retry one stage at a
         time. The Log must still show every stage the card passed, and
         the reason belongs to the stage the user asked for.
         """
@@ -420,24 +436,24 @@ class TestMove:
         [
             pytest.param(
                 "active",
-                "accepted",
-                "only the user moves review -> accepted."
-                f" You can move to review: card move {KEY} review",
+                "done",
+                "only the user moves in-review -> done."
+                f" You can move to in-review: card move {KEY} in-review",
                 id="accept-from-active",
             ),
             pytest.param(
-                "review",
-                "ready",
-                "only the user moves review -> active, on the way to ready."
+                "in-review",
+                "todo",
+                "only the user moves in-review -> active, on the way to todo."
                 " Pass --user only when the user said so.",
-                id="reopen-review",
+                id="reopen-in-review",
             ),
             pytest.param(
-                "review",
-                "accepted",
-                "only the user moves review -> accepted."
+                "in-review",
+                "done",
+                "only the user moves in-review -> done."
                 " Pass --user only when the user said so.",
-                id="accept-from-review",
+                id="accept-from-in-review",
             ),
         ],
     )
@@ -469,7 +485,7 @@ class TestMove:
     ) -> None:
         """The staff agent can pause active work, even with no criteria.
 
-        Paused work goes back to ready to wait for a free slot, and
+        Paused work goes back to todo to wait for a free slot, and
         adopted work may have no criteria yet. A refusal would leave
         paused work counted against the active limit.
         """
@@ -479,7 +495,7 @@ class TestMove:
             projects,
             "move",
             KEY,
-            "ready",
+            "todo",
             "--why",
             "paused, handoff kb-1.md",
             "--by",
@@ -487,7 +503,7 @@ class TestMove:
         )
 
         assert code == 0
-        assert "stage: ready\n" in path.read_text()
+        assert "stage: todo\n" in path.read_text()
 
     def test_move_refuses_without_author(self, projects: Path) -> None:
         """A move with no --by and no Herdr agent name fails.
@@ -498,7 +514,7 @@ class TestMove:
         path = write_card(projects, KEY, "active")
         before = path.read_text()
 
-        code = run_card(projects, "move", KEY, "review")
+        code = run_card(projects, "move", KEY, "in-review")
 
         assert code == 1
         assert path.read_text() == before
@@ -506,9 +522,11 @@ class TestMove:
     @pytest.mark.parametrize(
         ("source", "target", "limit"),
         [
-            pytest.param("ready", "active", card.ACTIVE_LIMIT, id="start"),
-            pytest.param("active", "review", card.REVIEW_LIMIT, id="review"),
-            pytest.param("ready", "review", card.REVIEW_LIMIT, id="chain"),
+            pytest.param("todo", "active", card.ACTIVE_LIMIT, id="start"),
+            pytest.param(
+                "active", "in-review", card.REVIEW_LIMIT, id="in-review"
+            ),
+            pytest.param("todo", "in-review", card.REVIEW_LIMIT, id="chain"),
         ],
     )
     @pytest.mark.parametrize(
@@ -527,7 +545,7 @@ class TestMove:
         flags: list[str],
         moved: bool,
     ) -> None:
-        """A full active or review stage takes a card only from the user.
+        """A full active or in-review stage takes a card only from the user.
 
         The limits keep the user's review queue short enough to clear.
         Without them the staff agent would keep starting workers and
@@ -547,26 +565,23 @@ class TestMove:
         stage = target if moved else source
         assert f"stage: {stage}\n" in path.read_text()
 
-    def test_review_limit_skips_waiting_cards(
-        self, projects: Path
-    ) -> None:
-        """Cards waiting on others leave the review places free.
+    def test_review_limit_skips_blocked_cards(self, projects: Path) -> None:
+        """Blocked cards leave the in-review places free.
 
         Pull requests that wait on another team's reviewers used to
         fill review, so the user's own plans and questions could not
-        reach them. Counting waiting-on-others cards would bring that
-        back.
+        reach them. Counting blocked cards would bring that back.
         """
         for number in range(2, 2 + card.REVIEW_LIMIT):
-            write_card(projects, f"PDEV-KB-{number:03d}", "waiting-on-others")
+            write_card(projects, f"PDEV-KB-{number:03d}", "blocked")
         path = write_card(projects, KEY, "active")
 
         code = run_card(
-            projects, "move", KEY, "review", "--by", "general-staff"
+            projects, "move", KEY, "in-review", "--by", "general-staff"
         )
 
         assert code == 0
-        assert "stage: review\n" in path.read_text()
+        assert "stage: in-review\n" in path.read_text()
 
 
 @pytest.fixture
@@ -615,7 +630,7 @@ class TestSessions:
         ("stage", "argv", "stage_line"),
         [
             pytest.param(
-                "ready",
+                "todo",
                 ["move", KEY, "active"],
                 "active: by user",
                 id="start",
@@ -651,6 +666,79 @@ class TestSessions:
             f"- {TODAY} session: worker-1 (opencode ses_abc)\n"
         )
 
+    def test_link_refuses_session_on_other_card(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A session another card holds is refused, naming that card.
+
+        The hub shows a worker's state on the card that holds its
+        session, so a session on two cards would show one worker on the
+        wrong card. A worker that serves a second card is told to log it
+        with card note instead.
+        """
+        write_card(projects, "PDEV-KB-001", "active")
+        run_card(projects, "link", "PDEV-KB-001", "--session")
+        other = write_card(projects, "PDEV-KB-002", "active")
+        before = other.read_text()
+        capsys.readouterr()
+
+        code = run_card(projects, "link", "PDEV-KB-002", "--session")
+
+        assert code == 1
+        err = capsys.readouterr().err
+        assert "session ID already on PDEV-KB-001" in err
+        assert "run card note PDEV-KB-002 TEXT" in err
+        assert other.read_text() == before
+
+    def test_link_allows_session_card_already_holds(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Relinking a session this card holds passes, even if another has it.
+
+        The hub relinks a worker's own card when it parks the worker. A
+        refusal would fail every park of a worker whose session another
+        card also holds.
+        """
+        for key in ("PDEV-KB-001", "PDEV-KB-002"):
+            path = write_card(projects, key, "active")
+            text = card.set_field(
+                path.read_text(), "sessions", ["opencode ses_abc"]
+            )
+            path.write_text(text)
+        before = path.read_text()
+
+        code = run_card(projects, "link", "PDEV-KB-002", "--session")
+
+        assert code == 0
+        assert capsys.readouterr().out == (
+            "PDEV-KB-002 sessions: opencode ses_abc (already)\n"
+        )
+        assert path.read_text() == before
+
+    def test_check_reports_session_on_two_cards(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """card check names both cards that hold one session.
+
+        Hand edits, card move --session and card new --adopt --session
+        can put a session on two cards. card check is where the user
+        finds it.
+        """
+        for key in ("PDEV-KB-001", "PDEV-KB-002"):
+            path = write_card(projects, key, "active")
+            text = card.set_field(
+                path.read_text(), "sessions", ["opencode ses_abc"]
+            )
+            path.write_text(text)
+
+        code = run_card(projects, "check")
+
+        assert code == 1
+        assert capsys.readouterr().out == (
+            "PDEV-KB-002 session also on PDEV-KB-001: opencode ses_abc\n"
+            "1 problems in 2 cards\n"
+        )
+
 
 class TestEdit:
     """One numbered item of a section can be replaced or removed."""
@@ -679,10 +767,10 @@ class TestEdit:
 
         Agents fix vague criteria by the numbers card show prints. An
         off-by-one would rewrite the wrong criterion, a lost checkbox
-        would hide it from the ready check, and the Log line is the only
+        would hide it from the todo check, and the Log line is the only
         record of the old words.
         """
-        path = write_card(projects, KEY, "ready", "- [ ] First.")
+        path = write_card(projects, KEY, "todo", "- [ ] First.")
         path.write_text(
             path.read_text().replace(
                 "- [ ] First.\n", "- [x] First.\n- [ ] Second.\n- [ ] Third.\n"
@@ -714,7 +802,7 @@ class TestEdit:
         If the two counted differently, an agent would rewrite the
         wrong criterion on a real card.
         """
-        path = write_card(projects, KEY, "ready", "- [ ] First.")
+        path = write_card(projects, KEY, "todo", "- [ ] First.")
         path.write_text(
             path.read_text().replace(
                 "- [ ] First.\n", "- [ ] First.\n  more words\n- [ ] Second.\n"
@@ -858,16 +946,20 @@ class TestList:
 class TestBoard:
     """The board shows what waits on the user, oldest first."""
 
-    def test_board_lists_review_by_stage_date(
+    def test_board_lists_in_review_oldest_first(
         self, projects: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Review cards are listed by the day they entered review.
+        """In-review cards are listed by the day they entered in-review.
 
         The user clears the review queue from the top. Sorting by key
         or creation date would bury work that has waited longest.
         """
-        write_card(projects, "PDEV-KB-001", "review", stage_date="2026-11-05")
-        write_card(projects, "PDEV-KB-002", "review", stage_date="2026-11-01")
+        write_card(
+            projects, "PDEV-KB-001", "in-review", stage_date="2026-11-05"
+        )
+        write_card(
+            projects, "PDEV-KB-002", "in-review", stage_date="2026-11-01"
+        )
 
         code = run_card(projects, "board")
 
@@ -881,36 +973,38 @@ class TestBoard:
     def test_board_prints_each_stage_limit(
         self, projects: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """The board counts active and review against their own limits.
+        """The board counts active and in-review against their own limits.
 
         The hub reads this line to tell the user a stage is over its
         limit. A combined count would hide a long review queue.
         """
         write_card(projects, "PDEV-KB-001", "active")
-        write_card(projects, "PDEV-KB-002", "review")
-        write_card(projects, "PDEV-KB-003", "review")
+        write_card(projects, "PDEV-KB-002", "in-review")
+        write_card(projects, "PDEV-KB-003", "in-review")
 
         code = run_card(projects, "board")
 
         assert code == 0
-        assert "active 1 of 8, review 2 of 6\n" in capsys.readouterr().out
+        assert "active 1 of 8, in-review 2 of 6\n" in capsys.readouterr().out
 
-    def test_board_prints_waiting_lines_hub_reads(
+    def test_board_prints_blocked_lines_hub_reads(
         self, projects: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """The board prints the waiting-on-others lines the hub parses.
+        """The board prints the blocked lines the hub parses.
 
         hub brief reads the count line and the list, longest wait first
         with days and the newest reason, and the user may read it out in
         a standup. Changed words drop the cards from the brief, and an
         old reason sends the user to chase the wrong team.
         """
-        write_card(projects, "PDEV-KB-001", "review", stage_date="2026-11-02")
-        path = write_card(projects, "PDEV-KB-003", "review")
+        write_card(
+            projects, "PDEV-KB-001", "in-review", stage_date="2026-11-02"
+        )
+        path = write_card(projects, "PDEV-KB-003", "in-review")
         for target, why in [
-            ("waiting-on-others", ["--why", "docs team's review"]),
-            ("review", []),
-            ("waiting-on-others", ["--why", "platform team's review"]),
+            ("blocked", ["--why", "docs team's review"]),
+            ("in-review", []),
+            ("blocked", ["--why", "platform team's review"]),
         ]:
             run_card(
                 projects, "move", "PDEV-KB-003", target, *why, "--by", "hub"
@@ -918,24 +1012,24 @@ class TestBoard:
         path.write_text(
             card.set_field(path.read_text(), "stage_date", "2026-10-30")
         )
-        write_card(projects, "PDEV-KB-009", "waiting-on-others")
+        write_card(projects, "PDEV-KB-009", "blocked")
         capsys.readouterr()
 
         code = run_card(projects, "board")
 
         assert code == 0
         assert capsys.readouterr().out == (
-            "draft 0  ready 0  active 0\n"
-            "review 1  waiting-on-others 2\n"
-            "accepted 0  dropped 0\n"
-            "active 0 of 8, review 1 of 6\n"
-            "waiting-on-others 2, oldest 8 days\n"
+            "draft 0  todo 0  active 0\n"
+            "in-review 1  blocked 2\n"
+            "done 0  dropped 0\n"
+            "active 0 of 8, in-review 1 of 6\n"
+            "blocked 2, oldest 8 days\n"
             "\n"
-            "REVIEW, oldest first (1)\n"
+            "IN-REVIEW, oldest first (1)\n"
             "- PDEV-KB-001 2026-11-02\n"
             "  Some work\n"
             "\n"
-            "WAITING-ON-OTHERS, oldest first (2)\n"
+            "BLOCKED, oldest first (2)\n"
             "- PDEV-KB-003 8 days\n"
             "  Some work\n"
             "  platform team's review\n"
@@ -976,11 +1070,11 @@ class TestHandEditedCard:
         path.write_text(HAND_EDITED)
 
         code = run_card(
-            projects, "move", KEY, "review", "--by", "general-staff"
+            projects, "move", KEY, "in-review", "--by", "general-staff"
         )
 
         assert code == 0
-        assert "stage: review\n" in path.read_text()
+        assert "stage: in-review\n" in path.read_text()
 
     def test_update_card_keeps_concurrent_hand_edit(
         self, projects: Path
@@ -1013,3 +1107,122 @@ class TestHandEditedCard:
         text = path.read_text()
         assert "Hand edit." in text
         assert text.endswith("- added by card\n")
+
+
+class TestNamingRules:
+    """card makes and reads names with the rules in the rules file."""
+
+    @pytest.mark.parametrize(
+        "case",
+        [
+            pytest.param(case, id=f"{case['rule']}-{case['name']}")
+            for case in CASES["make"]
+        ],
+    )
+    def test_make_name_round_trips_shared_cases(
+        self, case: dict[str, Any]
+    ) -> None:
+        """Each rule makes the name the shared cases list and reads it back.
+
+        The shared cases let each program that names plans, branches and
+        agents check that its names match card's. card name refuses a
+        made name its rule cannot read, so a rule that fails the round
+        trip makes card name refuse every use of it.
+        """
+        rule = card.find_rule(case["rule"])
+
+        name = card.make_name(rule, case["fields"])
+
+        assert name == case["name"]
+        assert card.parse_name(rule, name) is not None
+
+    @pytest.mark.parametrize(
+        "case",
+        [
+            pytest.param(case, id=f"{case['rule']}-{case['name']}")
+            for case in CASES["parse"]
+        ],
+    )
+    def test_parse_name_reads_shared_cases(self, case: dict[str, Any]) -> None:
+        """Each rule reads the fields the shared cases list, or nothing.
+
+        card finds cards by reading their file names. Reading a plan or
+        research note as a card, or missing a card, would change the
+        list, the board and the next key.
+        """
+        rule = card.find_rule(case["rule"])
+
+        assert card.parse_name(rule, case["name"]) == case.get("fields")
+
+    def test_rules_file_defaults_to_checkout_copy(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """card reads its checkout's rules when PDE_NAMES_FILE is unset.
+
+        card changes with git pull, before the installer copies the
+        rules file. Reading the checkout's copy keeps card and the hub
+        board working in between, with rules that match card's code.
+        """
+        monkeypatch.delenv("PDE_NAMES_FILE")
+        monkeypatch.setenv("HOME", str(tmp_path))
+
+        code = card.main(["name", "agent", "PDEV-KB-012", "build"])
+
+        assert code == 0
+        assert capsys.readouterr().out == "pdev-kb-012-build\n"
+
+    def test_name_prints_branch_from_values(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """card name fills fields in order, and the last takes the rest.
+
+        A branch made from this output must hold every VALUE in its
+        field. A VALUE dropped or put in the wrong field could still
+        print a branch the rule reads, so the fit check would not catch
+        it.
+        """
+        code = card.main(["name", "branch", "feat", "retry", "uploads"])
+
+        assert code == 0
+        assert capsys.readouterr().out == "feat/retry-uploads\n"
+
+    def test_name_refuses_value_rule_cannot_read(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """card name refuses a name its own rule would not read back.
+
+        A name made from card's output is used as a branch or agent
+        name. A wrong branch type that still printed a name would make a
+        branch pde-check-branch refuses, with no error from card.
+        """
+        code = card.main(["name", "branch", "nope", "retry"])
+
+        assert code == 1
+        assert capsys.readouterr().err.startswith(
+            "card: nope/retry does not fit the branch rule"
+        )
+
+    def test_template_embeds_rule_patterns(self) -> None:
+        """The Obsidian template reads names with the rules file's patterns.
+
+        Cards made in Obsidian and by card share one number series. A
+        template with its own copy of a pattern could take a number a
+        card already holds. JavaScript rejects a ``(?P<name>`` group, so
+        a template that kept one could not make a card at all. An
+        unfilled ``_JSON`` placeholder would also fail only in Obsidian.
+        """
+        text = card.render_template()
+
+        assert "_JSON" not in text
+        literals = re.findall(r'new RegExp\(("(?:[^"\\]|\\.)*")\)', text)
+        patterns = [json.loads(literal) for literal in literals]
+        assert not any("(?P<" in pattern for pattern in patterns)
+        assert [
+            re.compile(pattern.replace("(?<", "(?P<")) for pattern in patterns
+        ] == [
+            card.find_rule("card_file").parse,
+            card.find_rule("card_key").parse,
+        ]

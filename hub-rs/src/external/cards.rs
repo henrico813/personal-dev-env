@@ -2,10 +2,11 @@
 //! and parses its text. Read the `Cards` trait first. `card` has no
 //! JSON output, so this is the only file that reads card text.
 
+use std::collections::BTreeSet;
 use std::fmt;
 use std::io;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Output};
 use std::str::FromStr;
 use std::sync::LazyLock;
 use std::thread;
@@ -24,9 +25,12 @@ static KEY_IN_NAME: LazyLock<Regex> =
 static KEY_IN_TEXT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\b[A-Z][A-Z0-9]*-KB-[0-9]{3,}\b").unwrap());
 
-/// The card sections whose bullets tell the AI model that sorts ready
-/// cards what the work needs.
+/// The card sections whose bullets tell the AI model that sorts
+/// cards ready to start what the work needs.
 const CRITERIA_SECTIONS: [&str; 2] = ["Context", "Acceptance Criteria"];
+
+/// The card section that holds the questions waiting on the user.
+pub(crate) const OPEN_QUESTIONS: &str = "Open Questions";
 
 /// The most `card show` calls `CardCli::read_cards` runs at once. Each
 /// call starts Python and runs `nobs vault path`, and nobody has checked
@@ -38,27 +42,47 @@ const MAX_PARALLEL_SHOWS: usize = 8;
 pub trait Cards {
     /// Returns every card from one `card list` call, in its order.
     fn list_cards(&self) -> Result<Vec<ListedCard>, CardError>;
-    /// Returns the keys of ready cards in `card list` order.
-    fn list_ready(&self) -> Result<Vec<CardKey>, CardError>;
-    /// Returns a card's title, project, session IDs, open needs-you note
-    /// and criteria.
+    /// Returns the keys of cards ready to start, in `card list` order.
+    fn list_todo(&self) -> Result<Vec<CardKey>, CardError>;
+    /// Returns a card's title, project, session IDs, open needs-you note,
+    /// open questions and criteria.
     fn read_card(&self, key: &CardKey) -> Result<CardNote, CardError>;
     /// Reads each card in `keys` and returns the results in the same
     /// order. This default reads one card at a time.
     fn read_cards(&self, keys: &[CardKey]) -> Vec<Result<CardNote, CardError>> {
         keys.iter().map(|key| self.read_card(key)).collect()
     }
-    /// Returns the board's counts, their limits and the cards that wait
-    /// on others.
+    /// Returns the board's counts, their limits, and the cards waiting
+    /// on people outside the team.
     fn read_board(&self) -> Result<Board, CardError>;
     /// Adds one line to the card's Log.
     fn add_note(&self, key: &CardKey, text: &str) -> Result<(), CardError>;
     /// Adds a live agent's session ID to the card's sessions list.
     /// `card` reads the ID from Herdr, so the agent must still run.
     fn link_session(&self, key: &CardKey, agent_name: &str) -> Result<(), CardError>;
-    /// Moves a ready card to active. `card` refuses a start past the
-    /// active limit, with its reason.
+    /// Moves a card ready to start into progress. `card` refuses a
+    /// start past the work limit, with its reason.
     fn move_to_active(&self, key: &CardKey) -> Result<(), CardError>;
+    /// Returns the keys of the cards whose newest needs-you Log line
+    /// has no answered line after it, in key order.
+    fn list_needs_you(&self) -> Result<Vec<CardKey>, CardError>;
+    /// Adds `text` as a new item at the end of a section, such as
+    /// `Open Questions`. Each later line of `text` must start with two
+    /// spaces, or `card` reads it as an item of its own.
+    fn add_item(&self, key: &CardKey, section: &str, text: &str) -> Result<(), CardError>;
+    /// Removes item `number`, counted from 1 as `card show --section`
+    /// numbers them. `card` logs the removal by `hub`, so no Herdr pane
+    /// is needed.
+    fn remove_item(&self, key: &CardKey, section: &str, number: usize) -> Result<(), CardError>;
+    /// Adds a needs-you or answered line to the card's Log.
+    fn add_mark(&self, key: &CardKey, mark: Mark, text: &str) -> Result<(), CardError>;
+}
+
+/// A Log line that opens or closes the card's wait on the user.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mark {
+    NeedsYou,
+    Answered,
 }
 
 /// Runs the `card` command.
@@ -76,24 +100,33 @@ impl CardCli {
 
     /// Runs `card` with `args` and returns what it printed.
     fn run_card(&self, args: &[&str]) -> Result<String, CardError> {
-        let output =
-            Command::new(&self.program)
-                .args(args)
-                .output()
-                .map_err(|error| match error.kind() {
-                    io::ErrorKind::NotFound => CardError::NotInstalled,
-                    _ => CardError::Failed(format!("cannot run card: {error}")),
-                })?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-            return Err(CardError::Failed(if stderr.is_empty() {
-                format!("card ended with {}", output.status)
-            } else {
-                stderr
-            }));
-        }
-        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+        read_card_output(self.run_card_unchecked(args)?)
     }
+
+    /// Runs `card` with `args` and returns its output, whatever its
+    /// exit code.
+    fn run_card_unchecked(&self, args: &[&str]) -> Result<Output, CardError> {
+        Command::new(&self.program)
+            .args(args)
+            .output()
+            .map_err(|error| match error.kind() {
+                io::ErrorKind::NotFound => CardError::NotInstalled,
+                _ => CardError::Failed(format!("cannot run card: {error}")),
+            })
+    }
+}
+
+/// Returns what `card` printed, or its standard error as the failure.
+fn read_card_output(output: Output) -> Result<String, CardError> {
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        return Err(CardError::Failed(if stderr.is_empty() {
+            format!("card ended with {}", output.status)
+        } else {
+            stderr
+        }));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 impl Cards for CardCli {
@@ -102,8 +135,8 @@ impl Cards for CardCli {
         Ok(parse_card_list(&printed))
     }
 
-    fn list_ready(&self) -> Result<Vec<CardKey>, CardError> {
-        let printed = self.run_card(&["list", "--tabs", "--stage", "ready"])?;
+    fn list_todo(&self) -> Result<Vec<CardKey>, CardError> {
+        let printed = self.run_card(&["list", "--tabs", "--stage", Stage::Todo.as_str()])?;
         Ok(parse_card_list(&printed)
             .into_iter()
             .map(|card| card.key)
@@ -145,7 +178,7 @@ impl Cards for CardCli {
             .ok_or_else(|| CardError::Failed("card board printed no counts".to_owned()))?;
         Ok(Board {
             counts,
-            waiting: parse_waiting_cards(&printed),
+            blocked: parse_blocked_cards(&printed),
         })
     }
 
@@ -160,7 +193,50 @@ impl Cards for CardCli {
     }
 
     fn move_to_active(&self, key: &CardKey) -> Result<(), CardError> {
-        self.run_card(&["move", key.as_str(), "active"]).map(drop)
+        self.run_card(&["move", key.as_str(), Stage::Active.as_str()])
+            .map(drop)
+    }
+
+    /// Reads every card's marks with one `card grep`, where a `card show`
+    /// per card would start Python once per card.
+    fn list_needs_you(&self) -> Result<Vec<CardKey>, CardError> {
+        let pattern = r"^- \d{4}-\d\d-\d\d (needs-you|answered): ";
+        let output = self.run_card_unchecked(&["grep", "--section", "Log", pattern])?;
+        // `card grep` exits 1 with nothing on standard error when no line
+        // matches, and with its reason there on any other failure.
+        if output.status.code() == Some(1) && output.stderr.trim_ascii().is_empty() {
+            return Ok(Vec::new());
+        }
+        Ok(parse_needs_you(&read_card_output(output)?))
+    }
+
+    fn add_item(&self, key: &CardKey, section: &str, text: &str) -> Result<(), CardError> {
+        self.run_card(&["add", "--", key.as_str(), section, text])
+            .map(drop)
+    }
+
+    fn remove_item(&self, key: &CardKey, section: &str, number: usize) -> Result<(), CardError> {
+        let number = number.to_string();
+        self.run_card(&[
+            "edit",
+            "--remove",
+            "--by",
+            "hub",
+            "--",
+            key.as_str(),
+            section,
+            &number,
+        ])
+        .map(drop)
+    }
+
+    fn add_mark(&self, key: &CardKey, mark: Mark, text: &str) -> Result<(), CardError> {
+        let flag = match mark {
+            Mark::NeedsYou => "--needs-you",
+            Mark::Answered => "--answered",
+        };
+        self.run_card(&["note", flag, "--", key.as_str(), text])
+            .map(drop)
     }
 }
 
@@ -199,7 +275,8 @@ impl CardKey {
     }
 }
 
-/// Reads a key in any case, as `hub read --card demo-kb-007` gives it.
+/// Reads a key in any case, as a user may type it, such as
+/// `demo-kb-007`.
 impl FromStr for CardKey {
     type Err = String;
 
@@ -226,26 +303,29 @@ impl TryFrom<String> for CardKey {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Stage {
     Draft,
-    Ready,
+    Todo,
     Active,
-    Review,
+    InReview,
     /// Waits only on people outside the team, such as another team's
     /// reviewers. No limit counts it.
-    WaitingOnOthers,
-    Accepted,
+    Blocked,
+    Done,
     Dropped,
 }
 
 impl Stage {
-    /// Returns `card`'s word for the stage, such as `review`.
+    /// Returns `card`'s word for the stage, such as `in-review`. The hub
+    /// passes stage words to `card` and reads them from it only through
+    /// this table. Board titles, briefing headings and JSON keys keep
+    /// their own spelling.
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Stage::Draft => "draft",
-            Stage::Ready => "ready",
+            Stage::Todo => "todo",
             Stage::Active => "active",
-            Stage::Review => "review",
-            Stage::WaitingOnOthers => "waiting-on-others",
-            Stage::Accepted => "accepted",
+            Stage::InReview => "in-review",
+            Stage::Blocked => "blocked",
+            Stage::Done => "done",
             Stage::Dropped => "dropped",
         }
     }
@@ -255,11 +335,11 @@ impl Stage {
     fn from_word(word: &str) -> Option<Stage> {
         [
             Stage::Draft,
-            Stage::Ready,
+            Stage::Todo,
             Stage::Active,
-            Stage::Review,
-            Stage::WaitingOnOthers,
-            Stage::Accepted,
+            Stage::InReview,
+            Stage::Blocked,
+            Stage::Done,
             Stage::Dropped,
         ]
         .into_iter()
@@ -287,9 +367,13 @@ pub struct CardNote {
     pub project: String,
     /// Session IDs, oldest first.
     pub sessions: Vec<String>,
-    /// A `needs-you` Log line comes after the last `answered` line, so
-    /// the card waits on the user.
-    pub needs_you_open: bool,
+    /// The text of the newest `needs-you` Log line, while no `answered`
+    /// line follows it, so the card waits on the user.
+    pub needs_you: Option<String>,
+    /// Each item of the Open Questions section, as its lines with the
+    /// `- ` bullet and the two-space indent taken off. Item `N` in
+    /// `card show --section` is at index `N - 1`.
+    pub open_questions: Vec<Vec<String>>,
     /// The bullets of Context and Acceptance Criteria, in note order.
     pub criteria: Vec<String>,
     /// The front matter's plan notes, such as `DEMO-12 Retry uploads`.
@@ -297,7 +381,8 @@ pub struct CardNote {
     /// The front matter's pull request links.
     pub prs: Vec<String>,
     /// The newest Log line that starts `next: `, such as `review PR
-    /// #498`, which the hub writes when it moves the card to review.
+    /// #498`, which the hub writes when it hands the card to the user
+    /// for review.
     pub next_step: Option<String>,
 }
 
@@ -306,27 +391,32 @@ pub struct CardNote {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BoardCounts {
     pub active: u32,
-    pub review: u32,
+    pub in_review: u32,
     pub active_limit: u32,
-    pub review_limit: u32,
+    pub in_review_limit: u32,
 }
 
 impl BoardCounts {
-    /// Returns true when active or review holds more cards than its
+    /// Returns true when a limited stage holds more cards than its
     /// limit.
     pub fn is_over(&self) -> bool {
-        self.active > self.active_limit || self.review > self.review_limit
+        self.active > self.active_limit || self.in_review > self.in_review_limit
     }
 }
 
 /// Writes the counts as `card board` prints them, such as
-/// `active 10 of 8, review 18 of 6`.
+/// `active 10 of 8, in-review 18 of 6`.
 impl fmt::Display for BoardCounts {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "active {} of {}, review {} of {}",
-            self.active, self.active_limit, self.review, self.review_limit
+            "{} {} of {}, {} {} of {}",
+            Stage::Active.as_str(),
+            self.active,
+            self.active_limit,
+            Stage::InReview.as_str(),
+            self.in_review,
+            self.in_review_limit
         )
     }
 }
@@ -335,26 +425,28 @@ impl fmt::Display for BoardCounts {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Board {
     pub counts: BoardCounts,
-    /// The waiting-on-others cards, oldest first.
-    pub waiting: Vec<WaitingCard>,
+    /// The cards waiting on people outside the team, oldest first.
+    pub blocked: Vec<BlockedCard>,
 }
 
 impl Board {
-    /// Returns a line such as `waiting-on-others 2, oldest 8 days`, or
-    /// `None` when no card waits on others.
-    pub fn waiting_line(&self) -> Option<String> {
-        let oldest = self.waiting.iter().map(|card| card.days).max()?;
+    /// Returns a line such as `blocked 2, oldest 8 days`, or `None`
+    /// when the list is empty.
+    pub fn blocked_line(&self) -> Option<String> {
+        let oldest = self.blocked.iter().map(|card| card.days).max()?;
         Some(format!(
-            "waiting-on-others {}, oldest {}",
-            self.waiting.len(),
+            "{} {}, oldest {}",
+            Stage::Blocked.as_str(),
+            self.blocked.len(),
             format_days(oldest)
         ))
     }
 }
 
-/// A card in the waiting-on-others stage, from `card board`.
+/// A card from the `card board` list that waits on people outside
+/// the team.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WaitingCard {
+pub struct BlockedCard {
     pub key: CardKey,
     /// Whole days since the card moved to the stage.
     pub days: u32,
@@ -449,7 +541,14 @@ fn parse_card_note(key: &CardKey, text: &str) -> CardNote {
     let heading = format!("# {}", key.as_str());
     let mut found_heading = false;
     let mut section = "";
+    // The line before, so an Open Questions item can tell a `---` line
+    // under the heading and a line that carries on the item.
+    let mut previous = "";
     for line in lines {
+        if section == OPEN_QUESTIONS && !line.starts_with("## ") {
+            read_question_line(&mut note.open_questions, previous, line);
+        }
+        previous = line;
         if let Some(name) = line.strip_prefix("## ") {
             section = name.trim();
         } else if let Some(words) = line.strip_prefix(&heading)
@@ -465,10 +564,10 @@ fn parse_card_note(key: &CardKey, text: &str) -> CardNote {
             .and_then(|entry| entry.split_once(' '))
             .map(|(_, words)| words);
         if let Some(words) = log_entry {
-            if words.starts_with("needs-you: ") {
-                note.needs_you_open = true;
+            if let Some(question) = words.strip_prefix("needs-you: ") {
+                note.needs_you = Some(question.trim().to_owned());
             } else if words.starts_with("answered: ") {
-                note.needs_you_open = false;
+                note.needs_you = None;
             }
             // A `card note` line reads `note (who): next: ...`.
             let text = words.split_once("): ").map_or(words, |(_, text)| text);
@@ -482,40 +581,98 @@ fn parse_card_note(key: &CardKey, text: &str) -> CardNote {
     note
 }
 
+/// Adds one Open Questions line to `items`, as `card` counts items. A
+/// line at the margin starts an item, and an indented line right after
+/// one carries it on. `card` skips the `---` line under the heading.
+fn read_question_line(items: &mut Vec<Vec<String>>, previous: &str, line: &str) {
+    if line.trim().is_empty() || (previous.starts_with("## ") && line.trim() == "---") {
+        return;
+    }
+    if line.starts_with(char::is_whitespace) {
+        if let Some(item) = items.last_mut()
+            && !previous.trim().is_empty()
+        {
+            let carried = line.strip_prefix("  ").unwrap_or(line.trim_start());
+            item.push(carried.trim_end().to_owned());
+        }
+    } else {
+        let first = line.strip_prefix("- ").unwrap_or(line);
+        items.push(vec![first.trim_end().to_owned()]);
+    }
+}
+
+/// Returns the keys whose last mark in `card grep` output is needs-you,
+/// in key order. Lines read like
+/// `DEMO-KB-007 Log: - 2026-11-10 needs-you: which bucket?`, in file
+/// order within each card. `card` cuts long lines, but the key and the
+/// mark always fit. The last line, `N matches in M cards`, holds no
+/// key.
+fn parse_needs_you(text: &str) -> Vec<CardKey> {
+    let mut open = BTreeSet::new();
+    for line in text.lines() {
+        let Some((key, rest)) = line.split_once(' ') else {
+            continue;
+        };
+        let Ok(key) = key.parse::<CardKey>() else {
+            continue;
+        };
+        let mark = rest
+            .strip_prefix("Log: - ")
+            .and_then(|entry| entry.split_once(' '))
+            .map(|(_, words)| words);
+        match mark {
+            Some(words) if words.starts_with("needs-you:") => {
+                open.insert(key);
+            }
+            Some(words) if words.starts_with("answered:") => {
+                open.remove(&key);
+            }
+            _ => {}
+        }
+    }
+    open.into_iter().collect()
+}
+
 /// Reads `card board` text. Returns `None` when the text lacks its
-/// `active N of M, review N of M` line.
+/// `active N of M, in-review N of M` line.
 fn parse_board_counts(text: &str) -> Option<BoardCounts> {
     text.lines().find_map(|line| {
         let words: Vec<&str> = line.split_whitespace().collect();
         let [
-            "active",
+            active_word,
             active,
             "of",
             active_limit,
-            "review",
-            review,
+            in_review_word,
+            in_review,
             "of",
-            review_limit,
+            in_review_limit,
         ] = words[..]
         else {
             return None;
         };
+        if Stage::from_word(active_word) != Some(Stage::Active)
+            || Stage::from_word(in_review_word) != Some(Stage::InReview)
+        {
+            return None;
+        }
         Some(BoardCounts {
             active: active.parse().ok()?,
-            review: review.parse().ok()?,
+            in_review: in_review.parse().ok()?,
             active_limit: active_limit.trim_end_matches(',').parse().ok()?,
-            review_limit: review_limit.parse().ok()?,
+            in_review_limit: in_review_limit.parse().ok()?,
         })
     })
 }
 
-/// Reads the `WAITING-ON-OTHERS` list of `card board` text. Each card
-/// is a `- KEY N days` line, then its title and its reason, each
-/// indented two spaces. A board without the list gives none.
-fn parse_waiting_cards(text: &str) -> Vec<WaitingCard> {
+/// Reads the `card board` list for the stage that waits on people
+/// outside the team. Each card is a `- KEY N days` line, then its
+/// title and its reason, each indented two spaces. A board without
+/// the list gives none.
+fn parse_blocked_cards(text: &str) -> Vec<BlockedCard> {
     let mut lines = text
         .lines()
-        .skip_while(|line| !line.starts_with("WAITING-ON-OTHERS"))
+        .skip_while(|line| !is_list_heading(line, Stage::Blocked))
         .skip(1)
         .take_while(|line| !line.trim().is_empty())
         .peekable();
@@ -535,7 +692,7 @@ fn parse_waiting_cards(text: &str) -> Vec<WaitingCard> {
             continue;
         };
         let mut details = details.into_iter();
-        cards.push(WaitingCard {
+        cards.push(BlockedCard {
             key,
             days,
             title: details.next().unwrap_or_default(),
@@ -545,46 +702,54 @@ fn parse_waiting_cards(text: &str) -> Vec<WaitingCard> {
     cards
 }
 
+/// Returns true for the line that heads a `card board` list of cards
+/// in `stage`, such as `IN-REVIEW, oldest first (2)`.
+fn is_list_heading(line: &str, stage: Stage) -> bool {
+    let heading = line.split(',').next().unwrap_or_default();
+    Stage::from_word(&heading.to_lowercase()) == Some(stage)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// `hub status` and `hub brief` show each waiting card's days and
-    /// reason from this list, and a `card` from before the stage prints
-    /// none. A card read wrong tells the user the wrong team to chase.
+    /// `run_status` and `run_brief` show the days and reason of each
+    /// card waiting on people outside the team from this list, and an
+    /// empty list prints none. A card read wrong tells the user the
+    /// wrong team to chase.
     #[test]
-    fn parse_waiting_cards_reads_list_or_none() {
-        let board = "active 3 of 8, review 2 of 6\n\
-                     waiting-on-others 2, oldest 8 days\n\
+    fn parse_blocked_cards_reads_list_or_none() {
+        let board = "active 3 of 8, in-review 2 of 6\n\
+                     blocked 2, oldest 8 days\n\
                      \n\
-                     REVIEW, oldest first (2)\n\
+                     IN-REVIEW, oldest first (2)\n\
                      - DEMO-KB-001 2026-11-02\n  \
                        Fix the docs\n\
                      \n\
-                     WAITING-ON-OTHERS, oldest first (2)\n\
+                     BLOCKED, oldest first (2)\n\
                      - DEMO-KB-003 8 days\n  \
                        Retry failed uploads\n  \
                        platform team's review\n\
                      - DEMO-KB-009 1 day\n  \
                        Add a cache\n";
-        let old_board = "active 3 of 8, review 2 of 6\n\
-                         \n\
-                         REVIEW, oldest first (2)\n\
-                         - DEMO-KB-001 2026-11-02\n  \
-                           Fix the docs\n";
+        let no_blocked = "active 3 of 8, in-review 2 of 6\n\
+                          \n\
+                          IN-REVIEW, oldest first (2)\n\
+                          - DEMO-KB-001 2026-11-02\n  \
+                            Fix the docs\n";
 
-        let waiting = parse_waiting_cards(board);
+        let blocked = parse_blocked_cards(board);
 
         assert_eq!(
-            waiting,
+            blocked,
             [
-                WaitingCard {
+                BlockedCard {
                     key: "DEMO-KB-003".parse().unwrap(),
                     days: 8,
                     title: "Retry failed uploads".to_owned(),
                     reason: "platform team's review".to_owned(),
                 },
-                WaitingCard {
+                BlockedCard {
                     key: "DEMO-KB-009".parse().unwrap(),
                     days: 1,
                     title: "Add a cache".to_owned(),
@@ -592,21 +757,22 @@ mod tests {
                 },
             ]
         );
-        assert_eq!(parse_waiting_cards(old_board), []);
+        assert_eq!(parse_blocked_cards(no_blocked), []);
     }
 
-    /// `hub brief` and `hub status` print the board line from these
+    /// `run_brief` and `run_status` print the board line from these
     /// counts, and the user decides from it whether to review before
-    /// starting more. A limit or review count read from the wrong word
-    /// misleads the user, and `hub status --json` also gives the active
-    /// count to scripts.
+    /// starting more. A limit or count read from the wrong word
+    /// misleads the user, and the status JSON also gives these counts
+    /// to scripts.
     #[test]
     fn parse_board_counts_reads_counts_or_none() {
-        let board = "draft 79  ready 7  active 9\n\
-                     review 24  accepted 43  dropped 4\n\
-                     active 9 of 8, review 24 of 6\n\
+        let board = "draft 79  todo 7  active 9\n\
+                     in-review 24  blocked 0\n\
+                     done 43  dropped 4\n\
+                     active 9 of 8, in-review 24 of 6\n\
                      \n\
-                     REVIEW, oldest first (24)\n\
+                     IN-REVIEW, oldest first (24)\n\
                      - DEMO-KB-001 2026-11-02\n  \
                        Fix the docs\n";
         let cases = [
@@ -615,9 +781,9 @@ mod tests {
                 board,
                 Some(BoardCounts {
                     active: 9,
-                    review: 24,
+                    in_review: 24,
                     active_limit: 8,
-                    review_limit: 6,
+                    in_review_limit: 6,
                 }),
             ),
             ("no-counts", "card: no default vault\n", None),
@@ -628,13 +794,13 @@ mod tests {
         }
     }
 
-    /// The AI model sorts ready cards from `hub auto ready`'s text
-    /// alone. A title, project or criterion read wrong, or a Log line
-    /// read as a criterion, sorts the card on wrong facts.
+    /// The AI model sorts cards ready to start from `run_auto_todo`'s
+    /// text alone. A title, project or criterion read wrong, or a Log
+    /// line read as a criterion, sorts the card on wrong facts.
     #[test]
     fn parse_card_note_reads_title_project_criteria() {
         let card_show = "---\n\
-                         stage: ready\n\
+                         stage: todo\n\
                          project: Demo\n\
                          topics: []\n\
                          ---\n\
@@ -655,7 +821,7 @@ mod tests {
                          ## Log\n\
                          ---\n\
                          \n\
-                         - 2026-11-10 ready: by the user\n";
+                         - 2026-11-10 todo: by the user\n";
 
         let note = parse_card_note(&"DEMO-KB-001".parse().unwrap(), card_show);
 
@@ -665,7 +831,6 @@ mod tests {
                 title: "Retry failed uploads".to_owned(),
                 project: "Demo".to_owned(),
                 sessions: Vec::new(),
-                needs_you_open: false,
                 criteria: vec![
                     "- Uploads fail on a slow link.".to_owned(),
                     "- [ ] A failed upload retries.".to_owned(),
@@ -675,10 +840,10 @@ mod tests {
         );
     }
 
-    /// `hub board` tells the user what to do next on each card in
-    /// review from these links and Log lines. A link read from the
-    /// wrong list, or an older `next:` line winning, sends the user to
-    /// the wrong plan or PR.
+    /// The board tells the user what to do next on each card needing
+    /// the user's review, from these links and Log lines. A link read
+    /// from the wrong list, or an older `next:` line winning, sends the
+    /// user to the wrong plan or PR.
     #[test]
     fn parse_card_note_reads_plans_prs_next() {
         let card_show = "---\n\
@@ -707,15 +872,16 @@ mod tests {
     }
 
     /// Every session's lifecycle starts from its card's stage, read
-    /// from one `card list` line, and `hub board` shows the title and
+    /// from one `card list` line, and the board shows the title and
     /// project on the card's row. A stage read from the wrong field, or
     /// the count line read as a card, gives sessions the wrong state,
-    /// such as `to-close` for a worker whose card is still active. A
-    /// card with no kind must not shift its project into the title.
+    /// such as `to-close` for a worker whose card is still in
+    /// progress. A card with no kind must not shift its project into
+    /// the title.
     #[test]
     fn parse_card_list_reads_tab_separated_fields() {
         let listing = "DEMO-KB-004\tactive\t\tDemo\tFix the docs\n\
-                       DEMO-KB-007\taccepted\ttask\tOps\tRetry failed uploads, then warn\n\
+                       DEMO-KB-007\tdone\ttask\tOps\tRetry failed uploads, then warn\n\
                        2 cards\n";
 
         let cards = parse_card_list(listing);
@@ -732,7 +898,7 @@ mod tests {
                 card("DEMO-KB-004", Stage::Active, "Demo", "Fix the docs"),
                 card(
                     "DEMO-KB-007",
-                    Stage::Accepted,
+                    Stage::Done,
                     "Ops",
                     "Retry failed uploads, then warn"
                 ),
@@ -741,40 +907,41 @@ mod tests {
     }
 
     /// A card whose last needs-you line has no answer after it waits
-    /// on the user, so `hub status` shows its session as `you`. Reading
-    /// an answered question as open hides a finished worker behind
-    /// `you`, and missing a new question after an answer leaves the
-    /// user's question unseen.
+    /// on the user, so `run_status` shows its session as `you`, and
+    /// `hub answer` finds the question by the line's text. Reading an
+    /// answered question as open hides a finished worker behind `you`,
+    /// and missing a new question after an answer leaves the user's
+    /// question unseen.
     #[test]
     fn parse_card_note_finds_open_question() {
         struct Case {
             name: &'static str,
             log: &'static str,
-            open: bool,
+            open: Option<&'static str>,
         }
         let cases = [
             Case {
                 name: "asked",
                 log: "- 2026-11-10 needs-you: which bucket?\n",
-                open: true,
+                open: Some("which bucket?"),
             },
             Case {
                 name: "answered",
                 log: "- 2026-11-10 needs-you: which bucket?\n\
                       - 2026-11-10 answered: the cold one\n",
-                open: false,
+                open: None,
             },
             Case {
                 name: "asked-again",
                 log: "- 2026-11-10 needs-you: which bucket?\n\
                       - 2026-11-10 answered: the cold one\n\
                       - 2026-11-11 needs-you: which region?\n",
-                open: true,
+                open: Some("which region?"),
             },
             Case {
                 name: "no-question",
                 log: "- 2026-11-10 active: by the hub\n",
-                open: false,
+                open: None,
             },
         ];
 
@@ -783,7 +950,50 @@ mod tests {
 
             let note = parse_card_note(&"DEMO-KB-007".parse().unwrap(), &card_show);
 
-            assert_eq!(note.needs_you_open, case.open, "{}", case.name);
+            assert_eq!(note.needs_you.as_deref(), case.open, "{}", case.name);
         }
+    }
+
+    /// `hub answer` removes a question by its place in Open Questions,
+    /// as `card show --section` numbers it, and `hub brief` shows its
+    /// lines. Counting the `---` line under the heading, or a line that
+    /// carries on an item, as an item of its own removes the wrong
+    /// question, and a choice cut off its question hides it from the
+    /// user.
+    #[test]
+    fn parse_card_note_numbers_questions_like_card() {
+        let card_show = "---\n\
+                         stage: active\n\
+                         ---\n\
+                         \n\
+                         ## Open Questions\n\
+                         ---\n\
+                         \n\
+                         - Which bucket?\n\
+                         \n\
+                         - Deploy tonight?\n  \
+                           Deploy the new model tonight?\n  \
+                           - A. Deploy from the branch.\n  \
+                           - B. Wait.\n\
+                         \n\
+                         ## Decisions\n\
+                         ---\n\
+                         \n\
+                         - Keep the cold bucket.\n";
+
+        let note = parse_card_note(&"DEMO-KB-007".parse().unwrap(), card_show);
+
+        assert_eq!(
+            note.open_questions,
+            [
+                vec!["Which bucket?"],
+                vec![
+                    "Deploy tonight?",
+                    "Deploy the new model tonight?",
+                    "- A. Deploy from the branch.",
+                    "- B. Wait.",
+                ],
+            ]
+        );
     }
 }

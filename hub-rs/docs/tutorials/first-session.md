@@ -43,16 +43,16 @@ prints the time, such as `noted 0856`.
 ## 3. Look before you wait
 
 `hub` looks at every session in Herdr on this machine, not only the
-ones this run folder knows. The first `hub next` in step 6 asks each
-card's worker at 150k tokens or more to hand off to a new session.
-It closes nothing; only `hub clean` closes tabs. Check first:
+ones this run folder knows. It closes nothing; only `hub clean`
+closes tabs. Check first:
 
 ```sh
 hub status
 ```
 
-In the table, if any row's WHY ends in `hand off`, stop here:
-`hub next` would ask that session to hand off.
+In the table, a row whose WHY ends in `hand off` is at 150k tokens
+or more. When `hub watch` runs, it asks that session to hand off to
+a new session, so leave it be.
 
 ## 4. Start a worker
 
@@ -80,7 +80,7 @@ row per session. Your numbers and other rows differ:
 
 ```text
 hub - -, watch stopped, hub next stopped
-board active 5 of 8, review 19 of 6
+board active 5 of 8, in-review 19 of 6
 open 1: 0 working, 0 hub, 0 you,
   1 kept, 0 to-close, 0 to-park; 0 parked
 unread 0

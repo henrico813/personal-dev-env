@@ -9,19 +9,20 @@ use hub::commands::send::{SendRequest, run_send};
 use hub::external::cards::{BoardCounts, CardNote, Stage};
 use hub::external::herdr::{Agent, AgentStatus, HerdrCode};
 use hub::watch::wait::{WaitRequest, run_wait};
-use serde_json::{Value, json};
+use serde_json::json;
 
 use common::{
     OpenCodeRow, TestTools, make_agent, make_refusal, make_time, read_events, write_opencode_db,
     write_opencode_session,
 };
 
-/// Runs one `hub next` check and returns its line.
+/// Runs one `run_next` check and returns its line.
 fn check_once(test_tools: &TestTools) -> String {
     run_one_check(test_tools, false)
 }
 
-/// Runs one `hub next --start-reviews` check and returns its line.
+/// Runs one `run_next` check that also starts reviews, and returns
+/// its line.
 fn check_once_starting_reviews(test_tools: &TestTools) -> String {
     run_one_check(test_tools, true)
 }
@@ -41,7 +42,7 @@ fn run_one_check(test_tools: &TestTools, start_reviews: bool) -> String {
 }
 
 /// Writes `report-NAME.md` with a modification time a minute ago, old
-/// enough for `hub next` to announce it.
+/// enough for `run_next` to announce it.
 fn write_old_report(test_tools: &TestTools, name: &str) {
     let path = test_tools.run_path().join(format!("report-{name}.md"));
     fs::write(&path, "PR opened.\n").unwrap();
@@ -126,7 +127,7 @@ fn add_due_review(test_tools: &mut TestTools) -> PathBuf {
     review
 }
 
-/// The hub runs `hub read` and a new `hub next` in one reply, so a
+/// The hub runs `run_read` and a new `run_next` in one reply, so a
 /// report line must be recorded when it prints. Wiring that prints it
 /// but never records it wakes the hub for the same report on every
 /// restart.
@@ -146,7 +147,7 @@ fn run_next_records_report_it_prints() {
     assert_eq!(events[0]["name"], "docs-fix");
 }
 
-/// A report `hub watch` found missed tells the hub that no `hub next`
+/// A report the watch found missed tells the hub that no `run_next`
 /// ran for 10 minutes. It prints once as `missed report`, in place of
 /// the plain report line, and counts as announced, so the hub is not
 /// woken twice for it.
@@ -212,7 +213,7 @@ fn run_next_tells_hub_hand_off_once() {
 
 /// A crash can cut the log's last line short, and a newer hub can
 /// write events this one does not know. Either must be skipped while
-/// the lines after it still count, or `hub next` stops for the rest of
+/// the lines after it still count, or `run_next` stops for the rest of
 /// the run or announces a report again.
 #[test]
 fn run_next_reads_log_past_broken_lines() {
@@ -234,7 +235,7 @@ fn run_next_reads_log_past_broken_lines() {
     assert_eq!(line, "timeout (hub -)");
 }
 
-/// A newer `hub next` can take over while an older one is still in its
+/// A newer `run_next` can take over while an older one is still in its
 /// check. The older one must then record nothing, or the newer one
 /// never prints that report and the hub never reads it.
 #[test]
@@ -262,42 +263,6 @@ fn run_next_records_nothing_once_replaced() {
     assert_eq!(next_check, "report notes-fix (hub -)");
 }
 
-/// A worker past 150k must be asked once to write its handoff, or it
-/// runs out of context mid-task. Asking on every minute pass interrupts
-/// the handoff it is writing.
-#[test]
-fn run_next_asks_worker_handoff_once() {
-    let mut test_tools = TestTools::new();
-    test_tools.herdr.agents = vec![Agent {
-        session_id: Some("ses_007".to_owned()),
-        ..make_agent("demo-kb-007-impl", AgentStatus::Working)
-    }];
-    let step = OpenCodeRow {
-        session: "ses_007",
-        kind: "assistant",
-        updated_ms: 0,
-        data: json!({"tokens": {"input": 152_000, "cache": {"read": 0, "write": 0}}}),
-    };
-    write_opencode_db(&test_tools.opencode_path(), &[step]);
-
-    check_once(&test_tools);
-    forget_minute_pass(&test_tools);
-    check_once(&test_tools);
-
-    let ask = "Your context is about 152k. Write your handoff with herdr-handoff now, \
-               put its path in your report, and end your turn.";
-    assert_eq!(
-        *test_tools.herdr.prompts.borrow(),
-        [("demo-kb-007-impl".to_owned(), ask.to_owned())]
-    );
-    let asked: Vec<Value> = read_events(&test_tools.run_path())
-        .into_iter()
-        .filter(|event| event["event"] == "handoff_asked")
-        .collect();
-    assert_eq!(asked.len(), 1);
-    assert_eq!(asked[0]["session"], "ses_007");
-}
-
 /// The hub must hear once when the board goes over its limit, so it
 /// starts no new work, and again after it fell back and rose again.
 /// Telling it on every check costs a hub turn each time, and never
@@ -307,12 +272,13 @@ fn run_next_asks_worker_handoff_once() {
 #[test]
 fn run_next_wakes_once_per_board_crossing() {
     let mut test_tools = TestTools::new();
-    // Review alone passes its limit; a combined count once hid this.
-    let board = |review| BoardCounts {
+    // The review count alone passes its limit; a combined count once
+    // hid this.
+    let board = |in_review| BoardCounts {
         active: 2,
-        review,
+        in_review,
         active_limit: 8,
-        review_limit: 6,
+        in_review_limit: 6,
     };
     test_tools.cards.board = Some(board(9));
 
@@ -331,7 +297,7 @@ fn run_next_wakes_once_per_board_crossing() {
     assert_eq!(under, "timeout (hub -)");
     assert_eq!(
         over_again,
-        "board over its limit: active 2 of 8, review 9 of 6 (hub -)"
+        "board over its limit: active 2 of 8, in-review 9 of 6 (hub -)"
     );
 }
 
@@ -351,8 +317,8 @@ fn run_next_prints_old_send_file_once() {
     assert_eq!(second, "timeout (hub -)");
 }
 
-/// `hub next` must name finished sessions and leave them open, so the
-/// hub decides when to run `hub clean`. A minute pass that closed them
+/// `run_next` must name finished sessions and leave them open, so the
+/// hub decides when to run `run_clean`. A minute pass that closed them
 /// itself once closed a worker that had moved to another card and asked
 /// for a pull request approval, and the user waited on a request that
 /// no longer existed.
@@ -363,13 +329,13 @@ fn run_next_only_lists_finished_sessions() {
         &mut test_tools,
         "demo-kb-001-impl",
         "DEMO-KB-001",
-        Stage::Accepted,
+        Stage::Done,
     );
     add_finished_worker(
         &mut test_tools,
         "demo-kb-007-impl",
         "DEMO-KB-007",
-        Stage::Review,
+        Stage::InReview,
     );
 
     let first = check_once(&test_tools);
@@ -377,7 +343,7 @@ fn run_next_only_lists_finished_sessions() {
 
     assert_eq!(
         first,
-        "to-close demo-kb-001-impl: DEMO-KB-001 accepted; run hub clean"
+        "to-close demo-kb-001-impl: DEMO-KB-001 done; run hub clean"
     );
     assert_eq!(
         second,
@@ -388,7 +354,7 @@ fn run_next_only_lists_finished_sessions() {
     assert!(!test_tools.state_folder().join("hub/parked").exists());
 }
 
-/// A worker that ran `hub wait` still has a job to finish, such as a
+/// A worker that started a wait still has a job to finish, such as a
 /// merge once CI passes. Listed `to-park`, a hub that trusts the line
 /// parks it in the middle of that job.
 #[test]
@@ -398,7 +364,7 @@ fn run_next_keeps_worker_waiting_on_job() {
         &mut test_tools,
         "demo-kb-007-impl",
         "DEMO-KB-007",
-        Stage::Review,
+        Stage::InReview,
     );
     let wait = WaitRequest {
         name: "demo-kb-007-impl".parse().unwrap(),
@@ -416,7 +382,7 @@ fn run_next_keeps_worker_waiting_on_job() {
 
 /// The hub must hear about a finished session once. Listing it again on
 /// every minute pass costs the hub a turn each minute until it runs
-/// `hub clean`. A session that leaves that state and comes back must be
+/// `run_clean`. A session that leaves that state and comes back must be
 /// listed again, or a reopened worker that finishes a second time stays
 /// hidden.
 #[test]
@@ -426,7 +392,7 @@ fn run_next_lists_each_finished_session_once() {
         &mut test_tools,
         "demo-kb-001-impl",
         "DEMO-KB-001",
-        Stage::Accepted,
+        Stage::Done,
     );
 
     let listed = check_once(&test_tools);
@@ -439,29 +405,29 @@ fn run_next_lists_each_finished_session_once() {
         .insert("DEMO-KB-001".to_owned(), Stage::Active);
     forget_minute_pass(&test_tools);
     let working_pass = check_once(&test_tools);
-    // The card is done again.
+    // The card's work is over again.
     test_tools
         .cards
         .stages
-        .insert("DEMO-KB-001".to_owned(), Stage::Accepted);
+        .insert("DEMO-KB-001".to_owned(), Stage::Done);
     forget_minute_pass(&test_tools);
     let finished_again = check_once(&test_tools);
 
     assert_eq!(
         listed,
-        "to-close demo-kb-001-impl: DEMO-KB-001 accepted; run hub clean"
+        "to-close demo-kb-001-impl: DEMO-KB-001 done; run hub clean"
     );
     assert_eq!(next_pass, "timeout (hub -)");
     assert_eq!(working_pass, "timeout (hub -)");
     assert_eq!(
         finished_again,
-        "to-close demo-kb-001-impl: DEMO-KB-001 accepted; run hub clean"
+        "to-close demo-kb-001-impl: DEMO-KB-001 done; run hub clean"
     );
 }
 
 /// A finished worker over the handoff limit gets no handoff ask. The
 /// ask makes a worker the user is reviewing write a handoff nobody
-/// needs, and once `hub clean` parks it, the held ask reopens it.
+/// needs, and once `run_clean` parks it, the held ask reopens it.
 #[test]
 fn run_next_skips_handoff_of_finished_worker() {
     let mut test_tools = TestTools::new();
@@ -469,7 +435,7 @@ fn run_next_skips_handoff_of_finished_worker() {
         &mut test_tools,
         "demo-kb-007-impl",
         "DEMO-KB-007",
-        Stage::Review,
+        Stage::InReview,
     );
     let folder = test_tools.path().to_owned();
     let step = OpenCodeRow {
@@ -570,7 +536,7 @@ fn run_next_reports_failed_review_start_once() {
     assert_eq!(next_check, "timeout (hub -)");
 }
 
-/// The review may already run, started by hand or by a `hub next`
+/// The review may already run, started by hand or by a `run_next`
 /// whose line was never recorded because a newer one replaced it.
 /// Starting it again would review the same hub twice, so a running
 /// review must be recorded even though it prints no line.
@@ -597,7 +563,7 @@ fn run_next_skips_review_already_running() {
     assert!(test_tools.herdr.created_tabs.borrow().is_empty());
 }
 
-/// A hub started without `hub handoff` leaves the older hub open, and
+/// A hub started without `run_handoff` leaves the older hub open, and
 /// nothing closes it or starts its review. The new hub must hear once
 /// which command repairs that, not on every check.
 #[test]

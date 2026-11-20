@@ -4,20 +4,21 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use hub::commands::launch::{LaunchRequest, run_launch};
+use hub::commands::launch::{LaunchMode, LaunchRequest, run_launch};
 use hub::external::cards::Stage;
-use hub::external::herdr::{AgentStatus, HerdrCode, Workspace};
+use hub::external::herdr::{Agent, AgentStatus, HerdrCode, Workspace};
 use hub::shared::HubError;
+use serde_json::json;
 
-use common::{TestTools, make_agent, make_refusal, make_time};
+use common::{OpenCodeRow, TestTools, make_agent, make_refusal, make_time, write_opencode_db};
 
 /// The model a hub passes for its workers.
 const MODEL: &str = "github-copilot/claude-sonnet-5#high";
 
 /// A hub `kanban-hub` in workspace `w1`, labelled `kanban`, a workspace
-/// `w2` labelled `DEMO-KB-007 approvals`, the ready card DEMO-KB-007,
-/// the active card DEMO-KB-009 and a handoff file, whose path it
-/// returns.
+/// `w2` labelled `DEMO-KB-007 approvals`, the card DEMO-KB-007 ready
+/// to start, the card DEMO-KB-009 in progress and a handoff file,
+/// whose path it returns.
 fn make_launch_tools() -> (TestTools, PathBuf) {
     let mut test_tools = TestTools::new();
     test_tools.herdr.agents = vec![make_agent("kanban-hub", AgentStatus::Working)];
@@ -33,7 +34,7 @@ fn make_launch_tools() -> (TestTools, PathBuf) {
         },
     ];
     test_tools.cards.stages = BTreeMap::from([
-        ("DEMO-KB-007".to_owned(), Stage::Ready),
+        ("DEMO-KB-007".to_owned(), Stage::Todo),
         ("DEMO-KB-009".to_owned(), Stage::Active),
     ]);
     let handoff = test_tools.path().join("impl.md");
@@ -41,8 +42,8 @@ fn make_launch_tools() -> (TestTools, PathBuf) {
     (test_tools, handoff)
 }
 
-/// Runs `hub launch WORKER HANDOFF --model MODEL`, with
-/// `--workspace LABEL` when one is given.
+/// Runs `run_launch` for WORKER with HANDOFF and `MODEL`, and in the
+/// workspace LABEL when one is given.
 fn launch_worker(
     test_tools: &TestTools,
     worker: &str,
@@ -52,8 +53,10 @@ fn launch_worker(
     let request = LaunchRequest {
         name: worker.parse().unwrap(),
         handoff: handoff.to_owned(),
-        model: MODEL.to_owned(),
-        workspace: workspace.map(str::to_owned),
+        mode: LaunchMode::Worker {
+            model: MODEL.to_owned(),
+            workspace: workspace.map(str::to_owned),
+        },
         cwd: test_tools.path().to_owned(),
     };
     run_launch(
@@ -67,7 +70,7 @@ fn launch_worker(
 
 /// A card's worker opens in its card's workspace, else in a new one
 /// named after the card, and work with no card in the hub's own, as the
-/// herdr-hub skill's sidebar rule says. A worker in the wrong place is
+/// hub skill's sidebar rule says. A worker in the wrong place is
 /// lost in the user's sidebar.
 #[test]
 fn run_launch_opens_worker_by_sidebar_rule() {
@@ -134,13 +137,14 @@ fn run_launch_opens_worker_by_sidebar_rule() {
     }
 }
 
-/// A ready card moves to active before its worker starts, so the board
-/// counts the work. An active card stays, since `card` refuses active
-/// to active and every second worker on a card would fail.
+/// A card ready to start moves into progress before its worker
+/// starts, so the board counts the work. A card already in progress
+/// is not moved again, since the card program refuses that move and
+/// a second worker on the card would fail to start.
 #[test]
-fn run_launch_activates_only_ready_cards() {
+fn run_launch_activates_only_todo_cards() {
     let cases = [
-        ("ready", "demo-kb-007-impl", vec!["DEMO-KB-007"]),
+        ("todo", "demo-kb-007-impl", vec!["DEMO-KB-007"]),
         ("active", "demo-kb-009-impl", vec![]),
     ];
 
@@ -176,6 +180,52 @@ fn run_launch_prompts_worker_and_records_handoff() {
     );
     let notes = fs::read_to_string(test_tools.run_path().join("notes.md")).unwrap();
     assert!(notes.contains("started demo-kb-007-impl ("));
+}
+
+/// A worker near its context limit starts its own successor. The
+/// successor opens in a new tab beside the worker, not by the sidebar
+/// rule, on the worker's model and effort, so the work goes on as it
+/// was. The worker's "needs you" mark goes, or `hub clean` keeps it
+/// open as waiting on the user after the successor took over, and the
+/// watch saves it as never to be asked or marked again.
+#[test]
+fn run_launch_successor_takes_over_from_caller() {
+    let (mut test_tools, handoff) = make_launch_tools();
+    test_tools.herdr.agents.push(Agent {
+        session_id: Some("ses_007".to_owned()),
+        workspace_id: "w3".to_owned(),
+        pane_id: "w3:demo-kb-007-impl".to_owned(),
+        marked: true,
+        ..make_agent("demo-kb-007-impl", AgentStatus::Idle)
+    });
+    let reply = OpenCodeRow {
+        session: "ses_007",
+        kind: "assistant",
+        updated_ms: 0,
+        data: json!({"model": {"providerID": "claude-code", "id": "claude-opus-5-5[1m]", "variant": "high"}}),
+    };
+    write_opencode_db(&test_tools.opencode_path(), &[reply]);
+    let request = LaunchRequest {
+        name: "demo-kb-007-impl-2".parse().unwrap(),
+        handoff,
+        mode: LaunchMode::Successor {
+            session_id: Some("ses_007".to_owned()),
+        },
+        cwd: test_tools.path().to_owned(),
+    };
+    let now = make_time("2026-11-11T22:14:00+00:00[UTC]");
+
+    run_launch(&test_tools.tools(), &test_tools.run(), &request, &now).unwrap();
+
+    assert_eq!(test_tools.herdr.created_tabs.borrow()[0].0, "w3");
+    assert_eq!(
+        test_tools.herdr.started.borrow()[0].args,
+        ["--model", "claude-code/claude-opus-5-5[1m]#high", "--auto"]
+    );
+    assert_eq!(*test_tools.herdr.cleared.borrow(), ["w3:demo-kb-007-impl"]);
+    let asks = fs::read_to_string(test_tools.state_folder().join("hub/handoff-asks.json")).unwrap();
+    let asks: BTreeMap<String, u64> = serde_json::from_str(&asks).unwrap();
+    assert_eq!(asks.get("ses_007"), Some(&u64::MAX));
 }
 
 /// Each refusal comes before any tab, workspace, agent, card change or

@@ -131,7 +131,9 @@ Each line says which jobs a kind covers. The table gives the models.
 - `eval-scorer`: the scorer of the skill trials.
 
 A session the user started, such as an auto run's front hub, keeps
-the model and level the user started it on.
+the model and level the user started it on. A successor that
+`hub launch --successor` starts keeps its caller's model and level,
+since it goes on with the same job.
 
 ## When a model fails to start
 

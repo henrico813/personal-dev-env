@@ -59,6 +59,8 @@ one used last.
   wait*    Wake me after a job (workers)
   note*    Add a timed line to notes.md
   brief*   What waits on the user
+  ask      Put a question on a card
+  answer   Save the user's answer
   handoff* Start the next hub
   launch*  Start a worker from a handoff
   adopt*   Take over an older open hub
@@ -98,8 +100,8 @@ pub struct RunArg {
     pub run: Option<PathBuf>,
 }
 
-// The folder of an auto run, for each `hub auto` step. The user's
-// usual hub runs these steps while its own `hub next` holds its own
+// The folder of an auto run, for each `AutoStep`. The user's usual
+// hub runs these steps while its own `run_next` holds its own
 // folder's lock, so a search would find the wrong folder. `None` falls
 // back to `HUB_RUN` only, and in that hub's pane `HUB_RUN` names the
 // same wrong folder, so the steps need `--run`.
@@ -293,15 +295,39 @@ pub enum Command {
     },
     /// What waits on the user
     ///
-    /// Prints the board line, reviews.md and each entry of decisions.md
+    /// Prints the board line, reviews.md and each card's open question
     /// in full, so the user can answer without asking what a question
-    /// was. Run it when the user asks what waits on them. A problem in
-    /// decisions.md, such as an entry with a part missing, stops it
-    /// with an error.
+    /// was. Run it when the user asks what waits on them.
     #[command(after_help = "Example: hub brief")]
     Brief {
         #[command(flatten)]
         run: RunArg,
+    },
+    /// Put a question on a card
+    ///
+    /// Adds the question in FILE to the card's Open Questions and marks
+    /// the card needs-you, so hub brief and hub board show it. FILE
+    /// starts with a ## title, then the question, two or more choices
+    /// that each start with -, a Recommended line and an If no reply
+    /// line. It refuses a card that already waits on the user.
+    #[command(after_help = "Example: hub ask DEMO-KB-007 question.md")]
+    Ask {
+        /// The card's key, such as DEMO-KB-007
+        key: CardKey,
+        /// The question file
+        file: PathBuf,
+    },
+    /// Save the user's answer
+    ///
+    /// Moves the card's open question to its Decisions, with ANSWER as
+    /// the last line, and marks the card answered. Run it when the user
+    /// answers.
+    #[command(after_help = "Example: hub answer DEMO-KB-007 \\\n  \"A, deploy tonight\"")]
+    Answer {
+        /// The card's key
+        key: CardKey,
+        /// What the user chose, such as "A, deploy tonight"
+        answer: String,
     },
     /// Start the next hub
     ///
@@ -323,7 +349,8 @@ pub enum Command {
     /// Starts a worker in a new tab or workspace, gives it the handoff
     /// file, and records the start on its card and in notes.md. A card
     /// key at the start of NAME makes it that card's worker, and a
-    /// ready card moves to active first. Run it to start each worker.
+    /// todo card moves to active first. Run it to start each worker.
+    /// A worker passes --successor to start its own next session.
     #[command(
         after_help = "Example: hub launch demo-kb-007-impl \\\n  /tmp/impl.md \\\n  --model anthropic/claude-sonnet-5#high"
     )]
@@ -335,11 +362,14 @@ pub enum Command {
         /// The handoff file the worker reads first
         handoff: PathBuf,
         /// The worker's OpenCode model and effort
-        #[arg(long)]
-        model: String,
+        #[arg(long, required_unless_present = "successor")]
+        model: Option<String>,
         /// Open in the workspace with this label, made when missing
         #[arg(long, value_name = "LABEL")]
         workspace: Option<String>,
+        /// Start this session's successor beside it, on its model
+        #[arg(long, conflicts_with_all = ["model", "workspace"])]
+        successor: bool,
     },
     /// Take over an older open hub
     ///
@@ -386,7 +416,7 @@ pub enum Command {
     ///
     /// An auto run works a list of cards the user approved, without the
     /// user, until each stops at a pull request or a question. Run its
-    /// steps in the order ready, check, approve, now. Each step needs
+    /// steps in the order todo, check, approve, now. Each step needs
     /// --run DIR, the auto run's folder. In a hub's pane, $HUB_RUN is
     /// that hub's own folder.
     #[command(after_help = "Example: hub auto check --run /tmp/run2")]
@@ -473,7 +503,7 @@ pub enum Command {
     #[command(after_help = "Example: hub board --listen")]
     #[command(group(ArgGroup::new("output").args(["print", "dump", "control"])))]
     Board {
-        /// Show only one run's questions and sessions
+        /// Show only one run's sessions
         #[arg(long = "run", value_name = "DIR", hide = true)]
         only_run: Option<PathBuf>,
         /// One screen as text
@@ -519,7 +549,7 @@ pub enum WatchStep {
         #[command(flatten)]
         run: RunArg,
     },
-    // The loop that systemd and `hub watch start` run, never typed by
+    // The loop that systemd and `run_watch_start` run, never typed by
     // hand.
     #[command(hide = true)]
     Run,
@@ -528,19 +558,19 @@ pub enum WatchStep {
 // The steps run in the order the `auto-run` skill gives.
 #[derive(clap::Subcommand)]
 pub enum AutoStep {
-    /// Write the ready cards to ready.md
+    /// Write the todo cards to todo.md
     ///
-    /// Writes each ready card's title, project and criteria to ready.md
+    /// Writes each todo card's title, project and criteria to todo.md
     /// in the run folder, and prints it. Run it first, then write
     /// run.md from it.
-    #[command(after_help = "Example: hub auto ready --run /tmp/run2")]
-    Ready {
+    #[command(after_help = "Example: hub auto todo --run /tmp/run2")]
+    Todo {
         #[command(flatten)]
         run: AutoRunArg,
     },
-    /// Compare run.md against the ready cards
+    /// Compare run.md against the todo cards
     ///
-    /// Checks that run.md names every ready card once, and prints how
+    /// Checks that run.md names every todo card once, and prints how
     /// many cards the run works, or one line per problem. Run it after
     /// each change to run.md.
     #[command(after_help = "Example: hub auto check --run /tmp/run2")]
@@ -595,6 +625,8 @@ impl Command {
             Command::Wait { .. } => "wait",
             Command::Note { .. } => "note",
             Command::Brief { .. } => "brief",
+            Command::Ask { .. } => "ask",
+            Command::Answer { .. } => "answer",
             Command::Handoff { .. } => "handoff",
             Command::Launch { .. } => "launch",
             Command::Adopt { .. } => "adopt",
@@ -633,7 +665,7 @@ pub fn parse_command() -> Result<Cli, HubError> {
 }
 
 /// Returns the run folder from `--run`, else from `HUB_RUN`, else the
-/// hub's folder in `local_state`, which is `~/.local/state`. `hub auto`
+/// hub's folder in `local_state`, which is `~/.local/state`. `AutoStep`
 /// steps pass `None` as `local_state`, since the user's usual hub runs
 /// them and a search would find that hub's own folder. That hub's
 /// `HUB_RUN` names the same folder, so those steps need `--run`.
@@ -665,13 +697,13 @@ pub fn find_run_folder(
 }
 
 /// Returns the one `herdr-hub.*` folder in `local_state` whose watcher
-/// lock a `hub next` holds now. The herdr-hub skill makes each run
+/// lock a `run_next` holds now. The hub's skill makes each run
 /// folder there with `mktemp`, and old ones stay after their hub ends,
 /// so only a held lock tells the running hub apart.
 ///
-/// A hub has no `hub next` running while it handles a line. With no
+/// A hub has no `run_next` running while it handles a line. With no
 /// lock held, the search takes the folder whose `events.jsonl` changed
-/// last, since `hub next` writes there, and names it on stderr.
+/// last, since `run_next` writes there, and names it on stderr.
 ///
 /// During an auto run the user's hub and the auto hub both run. The
 /// search then skips folders with an `approved.md`, which only auto
@@ -698,7 +730,8 @@ fn find_hub_folder(local_state: &Path) -> Result<RunFolder, HubError> {
     };
 
     let mut running = Vec::new();
-    // Folders with no `hub next` running, and when `events.jsonl` changed.
+    // Folders with no `run_next` running, and when `events.jsonl`
+    // changed.
     let mut resting = Vec::new();
     for path in paths {
         let is_hub_name = path
@@ -809,6 +842,8 @@ pub fn takes_machine(command: &Command) -> bool {
         | Command::Inbox { .. }
         | Command::Note { .. }
         | Command::Brief { .. }
+        | Command::Ask { .. }
+        | Command::Answer { .. }
         | Command::Handoff { .. }
         | Command::Launch { .. }
         | Command::Adopt { .. }

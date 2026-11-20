@@ -53,10 +53,11 @@ pub(crate) enum Step {
     Refresh,
     /// Read this card's note for the open details page.
     ReadCard(CardKey),
-    /// Show this session in Herdr, through `herdr agent focus`.
+    /// Show this session in Herdr, through `Herdr::focus_agent`.
     Jump(String),
     /// Close and park these sessions, the ones the clean dialog
-    /// listed, in the run they were read from, as `hub clean` does.
+    /// listed, in the run they were read from, through
+    /// `run_clean_listed`.
     Clean {
         run: PathBuf,
         names: Vec<String>,
@@ -173,9 +174,9 @@ impl Board {
         Board {
             queue: None,
             groups: Vec::new(),
-            // Ready and Draft hold most cards, and Waiting on others holds
-            // nothing for the user to do, so they start folded.
-            open: BTreeSet::from([Group::InProgress, Group::InReview, Group::NeedsYou]),
+            // Todo and Draft hold most cards, and Blocked holds nothing
+            // for the user to do, so they start folded.
+            open: BTreeSet::from([Group::Active, Group::InReview, Group::NeedsYou]),
             shown_in_full: BTreeSet::new(),
             lines: Vec::new(),
             list: ListState::default(),
@@ -678,8 +679,9 @@ impl Board {
         }
     }
 
-    /// Opens an item's details page. A card the read did not get from
-    /// `card show` shows what `card list` gave, and asks for its note.
+    /// Opens an item's details page. A card whose note the read did
+    /// not get shows what `Cards::list_cards` gave, and asks for its
+    /// note.
     fn open_details(&mut self, group: Group, index: usize) -> Step {
         let (Some(queue), Some(item)) = (&self.queue, self.item(group, index)) else {
             return Step::Stay;
@@ -980,14 +982,16 @@ pub(super) mod tests {
 
     use crate::board::away::AwayEvent;
     use crate::board::machine::{FeedLine, Gauges, Usage};
-    use crate::board::queue::{CardLine, Question, SessionLine, SessionRow};
+    use crate::board::queue::{CardLine, SessionLine, SessionRow};
     use crate::external::cards::Stage;
     use crate::shared::lifecycle::{KeptReason, Lifecycle};
+    use crate::shared::questions::OpenQuestion;
 
-    /// A queue with five cards in work, one in review, a question, a
-    /// session that waits on the user as the worker of DEMO-KB-003, and
-    /// one ready and one draft card. Its sessions fill every session
-    /// group, one waiting on the hub and one to park. Its watch gauge is
+    /// A queue with five cards in progress, one needing the user's
+    /// review, a question, a session that waits on the user as the
+    /// worker of DEMO-KB-003, one card ready to start and one the user
+    /// has not refined. Its sessions fill every session group, one
+    /// waiting on the hub and one to park. Its watch gauge is
     /// past 90%, its feed holds two reports, and AWAY has those and a
     /// `notes.md` line, the newest at `10:40`.
     pub(crate) fn sample_queue() -> Queue {
@@ -1051,15 +1055,16 @@ pub(super) mod tests {
                 card("DEMO-KB-005", Stage::Active, "Rotate the backup keys", &[]),
                 card(
                     "DEMO-KB-010",
-                    Stage::Review,
+                    Stage::InReview,
                     "Retry a failed upload twice, then show the error",
                     &["docs-fix"],
                 ),
-                card("DEMO-KB-020", Stage::Ready, "Sort ready cards", &[]),
+                card("DEMO-KB-020", Stage::Todo, "Sort ready cards", &[]),
                 card("OPS-KB-001", Stage::Draft, "Watch the disks", &[]),
             ],
-            questions: vec![Question {
-                hub: "kanban-hub-1".to_owned(),
+            questions: vec![OpenQuestion {
+                key: "DEMO-KB-001".parse().unwrap(),
+                project: "Demo".to_owned(),
                 title: "Deploy tonight?".to_owned(),
                 lines: vec![
                     "Deploy the new model tonight?".to_owned(),
@@ -1099,28 +1104,28 @@ pub(super) mod tests {
                     "docs-fix",
                     Lifecycle::Kept(KeptReason::RecentRequest),
                     "request in the last hour",
-                    Some(Stage::Review),
+                    Some(Stage::InReview),
                     Some(90_000),
                 ),
                 session(
                     "old-search",
                     Lifecycle::ToClose,
                     "card done",
-                    Some(Stage::Accepted),
+                    Some(Stage::Done),
                     None,
                 ),
                 session(
                     "ship-docs",
                     Lifecycle::ToPark,
                     "-",
-                    Some(Stage::Review),
+                    Some(Stage::InReview),
                     Some(30_000),
                 ),
                 session(
                     "upload-retry",
                     Lifecycle::Parked,
                     "-",
-                    Some(Stage::Review),
+                    Some(Stage::InReview),
                     None,
                 ),
             ],
@@ -1204,7 +1209,7 @@ pub(super) mod tests {
             " 10:31 launched card-sync on DEMO-KB-002",
             " 10:12 docs-fix reported",
             "QUEUE  1 run · 2 you · 1 idle        [2]",
-            " you  Deploy tonight?             kanban",
+            " you  Deploy tonight?             Demo",
             " you  blocked-fix  needs you      worker",
             " run  Faster search               Demo",
             " idle Board for the phone         Demo",
@@ -1212,7 +1217,7 @@ pub(super) mod tests {
             "NEXT                                 [3]",
             " you: answer Deploy tonight?",
             " then: review 1 card",
-            " hub: ready Sort ready cards",
+            " hub: start Sort ready cards",
             "? help  4 sessions  5 machine  q quit",
         ];
         assert_eq!(lines, expected);
@@ -1251,7 +1256,7 @@ pub(super) mod tests {
             "AWAY  newest                         [1]",
             "   + 3 more",
             "QUEUE  1 run · 2 you · 1 idle        [2]",
-            " you  Deploy tonight?             kanban",
+            " you  Deploy tonight?             Demo",
             " you  blocked-fix  needs you      worker",
             "   + 3 more",
             "NEXT                                 [3]",
@@ -1301,10 +1306,7 @@ pub(super) mod tests {
             })
             .collect();
         let expected = [
-            (
-                " you  Question 4?                 kanban",
-                "tap block:queue",
-            ),
+            (" you  Question 4?                 Demo", "tap block:queue"),
             (
                 " you  blocked-fix  needs you      worker",
                 "tap block:queue",
@@ -1317,11 +1319,11 @@ pub(super) mod tests {
     }
 
     /// The user reads the board on a phone, 40 by 16. What needs the
-    /// user comes first, then cards in work and in review, a few rows
-    /// each, while Ready and Draft stay folded. Each row's status word
-    /// tells whether a worker runs on it now or waits on the user. A row
-    /// cut without `~`, a wrong word, or a group out of order hides what
-    /// the user looks for.
+    /// user comes first, then cards in progress or needing the user's
+    /// review, a few rows each, while cards not yet started stay
+    /// folded. Each row's status word tells whether a worker runs on
+    /// it now or waits on the user. A row cut without `~`, a wrong
+    /// word, or a group out of order hides what the user looks for.
     #[test]
     fn render_lines_groups_folds_and_cuts_rows() {
         let mut board = queue_board();
@@ -1331,9 +1333,9 @@ pub(super) mod tests {
         let expected = [
             "< queue  1 run · 2 you · 1 idle",
             "v Needs you 2",
-            " you  Deploy tonight?             kanban",
+            " you  Deploy tonight?             Demo",
             " you  blocked-fix  needs you      worker",
-            "v In progress 5",
+            "v Active 5",
             " run  Faster search               Demo",
             " idle Board for the phone         Demo",
             " you  Trim the build cache        Demo",
@@ -1341,7 +1343,7 @@ pub(super) mod tests {
             "   + 1 more",
             "v In review 1",
             " rev  Retry a failed upload twic~ Demo",
-            "> Ready 1",
+            "> Todo 1",
             "> Draft 1",
             "",
             "esc back  ? help  read 10:42 0.6s",
@@ -1357,14 +1359,14 @@ pub(super) mod tests {
         let mut board = queue_board();
         let lines = board.render_lines(40, 16);
 
-        board.handle_input(&tap_on(&lines, "v In progress"));
+        board.handle_input(&tap_on(&lines, "v Active"));
         let folded = board.render_lines(40, 16);
-        board.handle_input(&tap_on(&folded, "> In progress"));
+        board.handle_input(&tap_on(&folded, "> Active"));
         let opened = board.render_lines(40, 16);
         board.handle_input(&tap_on(&opened, "+ 1 more"));
         let in_full = board.render_lines(40, 16);
 
-        assert_eq!(folded[4..6], ["> In progress 5", "v In review 1"]);
+        assert_eq!(folded[4..6], ["> Active 5", "v In review 1"]);
         assert_eq!(opened, lines);
         assert_eq!(in_full[9], " none Rotate the backup keys      Demo");
         assert_eq!(in_full[10], "v In review 1");
@@ -1375,8 +1377,9 @@ pub(super) mod tests {
     /// page's QUEUE block at 40x16 cuts five rows.
     fn many_questions_queue() -> Queue {
         let mut queue = sample_queue();
-        queue.questions.extend((1..=4).map(|number| Question {
-            hub: "kanban-hub-1".to_owned(),
+        queue.questions.extend((1..=4).map(|number| OpenQuestion {
+            key: "DEMO-KB-001".parse().unwrap(),
+            project: "Demo".to_owned(),
             title: format!("Question {number}?"),
             lines: Vec::new(),
         }));
@@ -1405,8 +1408,8 @@ pub(super) mod tests {
         board.handle_input(&tap_on(&lines, "1 run"));
         let jumped = board.render_lines(40, 8);
 
-        assert!(!lines.iter().any(|line| line.contains("In progress")));
-        assert!(jumped.iter().any(|line| line == "v In progress 5"));
+        assert!(!lines.iter().any(|line| line.contains("Active")));
+        assert!(jumped.iter().any(|line| line == "v Active 5"));
         assert!(jumped.iter().any(|line| line.contains("Faster search")));
     }
 
@@ -1428,7 +1431,7 @@ pub(super) mod tests {
     /// The row cuts a card to one line, so its details page is where
     /// the user sees who works on it, what to do next and its pull
     /// request. The read already holds this card's note, so opening the
-    /// page must not run `card show` again and make the user wait.
+    /// page must not read the note again and make the user wait.
     #[test]
     fn handle_input_tap_shows_details_without_reading() {
         let mut board = queue_board();
@@ -1443,7 +1446,7 @@ pub(super) mod tests {
             "Retry a failed upload twice, then show",
             "the error",
             "",
-            "DEMO-KB-010  review  Demo",
+            "DEMO-KB-010  in-review  Demo",
             "by docs-fix",
             "next: merge after the checks pass",
             "https://github.com/demo/app/pull/301",
@@ -1453,10 +1456,10 @@ pub(super) mod tests {
         assert_eq!(details[..10], expected);
     }
 
-    /// The read runs `card show` only for cards a session, a parked
+    /// The read gets the note only of cards a session, a parked
     /// record or a report names, to stay fast. Any other card's page
-    /// must ask for its note and then show it, or ready and draft cards
-    /// never show their criteria.
+    /// must ask for its note and then show it, or cards not yet
+    /// started never show their criteria.
     #[test]
     fn handle_input_unread_card_loads_its_note() {
         let mut board = queue_board();
@@ -1482,7 +1485,7 @@ pub(super) mod tests {
         );
     }
 
-    /// `hub board --dump` and `--control` show agents the elements, not
+    /// The board's dump and control modes show agents the elements, not
     /// the screen, and a tap finds its element by place. An element
     /// whose id, place or words differ from the drawn row sends an
     /// agent's tap to another row, or shows it words the user never
@@ -1510,15 +1513,15 @@ pub(super) mod tests {
             "group:needs-you",
             "question:Deploy tonight?",
             "session:blocked-fix",
-            "group:in-progress",
+            "group:active",
             "card:DEMO-KB-001",
             "card:DEMO-KB-002",
             "card:DEMO-KB-003",
             "card:DEMO-KB-004",
-            "more:in-progress",
+            "more:active",
             "group:in-review",
             "card:DEMO-KB-010",
-            "group:ready",
+            "group:todo",
             "group:draft",
             "hint",
         ];
@@ -1563,13 +1566,8 @@ pub(super) mod tests {
             })
             .collect();
         let expected = [
-            [
-                "more:in-progress",
-                "card:DEMO-KB-005",
-                "more",
-                "tap more:in-progress",
-            ],
-            ["group:ready", "card:DEMO-KB-020", "fold", "tap group:ready"],
+            ["more:active", "card:DEMO-KB-005", "more", "tap more:active"],
+            ["group:todo", "card:DEMO-KB-020", "fold", "tap group:todo"],
             ["group:draft", "card:OPS-KB-001", "fold", "tap group:draft"],
         ];
         assert_eq!(hidden, expected);
@@ -1896,7 +1894,7 @@ pub(super) mod tests {
             name: format!("old-{number:02}"),
             state: Lifecycle::ToClose,
             why: "card done".to_owned(),
-            stage: Some(Stage::Accepted),
+            stage: Some(Stage::Done),
             context_tokens: None,
         }));
         let mut board = Board::new(false);
@@ -1996,7 +1994,7 @@ pub(super) mod tests {
             name: "late-close".to_owned(),
             state: Lifecycle::ToClose,
             why: "card done".to_owned(),
-            stage: Some(Stage::Accepted),
+            stage: Some(Stage::Done),
             context_tokens: None,
         });
 
