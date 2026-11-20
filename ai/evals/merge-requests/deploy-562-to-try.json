@@ -3,6 +3,7 @@
   "source": "2026-11-13, personal-dev-env #562: the user asked to deploy to try it; a merge request reached the popup",
   "rules": [
     "ai/AGENTS.md",
+    "AGENTS.md",
     "ai/skills/herdr-hub/SKILL.md",
     "ai/skills/pull-request/SKILL.md"
   ],

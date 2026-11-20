@@ -278,11 +278,7 @@ pattern over the whole file.
 - Before sending a request to open or merge a PR, follow Guardrail 4
   of the `pull-request` skill.
 - "Deploy" means install a change on a device so someone can use or
-  try it. It never means merge. To deploy a personal-dev-env branch on
-  a PC, run `pde-installer install --repo-root <branch worktree>`. To
-  restore, run `pde-installer install --repo-root <main checkout>`.
-  Until you restore, the hourly `pde-installer update` skips that PC,
-  since it updates only an install from main.
+  try it. It never means merge.
 - Send a merge request only when the user's message says merge and
   names the pull request, or answers a question that asks only about
   merging. A worker sends a merge request when its hub says the user

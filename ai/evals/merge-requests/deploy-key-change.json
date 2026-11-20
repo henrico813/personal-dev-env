@@ -3,6 +3,7 @@
   "source": "2026-11-15, personal-dev-env #9: the user wrote \"deploy the key change now\"; the hub sent a merge request",
   "rules": [
     "ai/AGENTS.md",
+    "AGENTS.md",
     "ai/skills/herdr-hub/SKILL.md",
     "ai/skills/pull-request/SKILL.md"
   ],
