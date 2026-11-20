@@ -34,7 +34,7 @@ Follow the repository's documented style first. Otherwise use these defaults.
    with and without the change, and its limits. Add one line on what
    was not done, if anything. End Testing with a checks list in a
    fenced code block. A try runs the changed behavior on an installed
-   or deployed copy. The block's first line reads `Checks`. Each line
+   copy. The block's first line reads `Checks`. Each line
    after it covers one review, test or try, and starts with `pass`,
    `fail` or `not run`. A `not run` line gives the reason. Mark a
    check `pass` or `fail` only when it ran. Never refer to commits
