@@ -21,8 +21,9 @@ merged. That command updates the checkout at `install_path` in
 `~/.config/pde/config.json` to the newest main and installs it, so
 the hub starts no separate session to install the merge.
 
-Start a merge worker only for a pull request whose Testing records that
-the change was deployed and tried, as `pull-request` Guardrail 4 asks.
+Start a merge worker only for a pull request the user asked to merge,
+as `ai/AGENTS.md` says, and whose Testing records that the change was
+installed and tried, as `pull-request` Guardrail 4 asks.
 Otherwise hand the merge on as that skill's Merge says. When `rules.md`
 names an environment setting that `git push` needs, such as an SSH
 agent socket, put it just before `bash` in the brief's command.

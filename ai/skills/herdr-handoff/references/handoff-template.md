@@ -90,8 +90,10 @@ full instead, as Coordination says.>
   file in one step at its end. The hub's watch prods the new session
   when that file changes or the deadline passes. The new session never
   uses an interactive question tool, since Herdr then rejects every
-  message to it. It sends a merge or pull request edit request only
-  after the hub tells it the user reviewed that pull request. When its
+  message to it. It sends a pull request edit request only after the
+  hub tells it the user reviewed that pull request, and a merge request
+  only after the hub tells it the user asked to merge it, as
+  `ai/AGENTS.md` says. When its
   card reaches the `done` or `dropped` stage, or once it has written a
   handoff that pauses the card, it checks that it holds nothing unsaved,
   such as uncommitted files or an unpushed branch, or, for a pause, that

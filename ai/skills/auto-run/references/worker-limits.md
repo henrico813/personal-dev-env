@@ -90,8 +90,10 @@ goes to the hub through your report file.
   applying config to a live system, deleting user data, anything
   public beyond pushing your branches and filing their pull request
   requests.
-- Send a merge or pull request edit request only after the hub tells
-  you the user reviewed that pull request. Never run
+- Send a pull request edit request only after the hub tells you the
+  user reviewed that pull request. Send a merge request only after the
+  hub tells you the user asked to merge it, as `ai/AGENTS.md` says.
+  Never run
   `pde-pr-approve` or set `PDE_GH_WRITE`. Never answer an approval
   shown in another pane.
 - Two sessions never edit the same file, branch or worktree.
