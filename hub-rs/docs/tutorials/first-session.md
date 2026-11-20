@@ -43,16 +43,16 @@ prints the time, such as `noted 0856`.
 ## 3. Look before you wait
 
 `hub` looks at every session in Herdr on this machine, not only the
-ones this run folder knows. The first `hub next` in step 6 asks each
-card's worker at 150k tokens or more to hand off to a new session.
-It closes nothing; only `hub clean` closes tabs. Check first:
+ones this run folder knows. It closes nothing; only `hub clean`
+closes tabs. Check first:
 
 ```sh
 hub status
 ```
 
-In the table, if any row's WHY ends in `hand off`, stop here:
-`hub next` would ask that session to hand off.
+In the table, a row whose WHY ends in `hand off` is at 150k tokens
+or more. When `hub watch` runs, it asks that session to hand off to
+a new session, so leave it be.
 
 ## 4. Start a worker
 
@@ -79,8 +79,8 @@ The top lines describe the hub and the board, then a table has one
 row per session. Your numbers and other rows differ:
 
 ```text
-hub - -, watcher stopped
-board active 5 of 8, review 19 of 6
+hub - -, watch stopped, hub next stopped
+board active 5 of 8, in-review 19 of 6
 open 1: 0 working, 0 hub, 0 you,
   1 kept, 0 to-close, 0 to-park; 0 parked
 unread 0
@@ -90,7 +90,8 @@ demo-docs  kept   -    yours
 ```
 
 `hub - -` means this pane runs no agent, so it has no name or context
-size. `watcher stopped` means no `hub next` runs for this folder. The
+size. `watch stopped` means no `hub watch` runs on this machine, and
+`hub next stopped` means no `hub next` waits for this folder. The
 board line reads `board: REASON` when `card` is not set up. STATE
 `kept` with WHY `yours` means the session never reported, so `hub`
 treats it as yours and leaves it open.

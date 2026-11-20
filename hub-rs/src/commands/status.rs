@@ -1,6 +1,7 @@
-//! Runs `hub status`. Read `run_status` first. `build_status_rows` and
-//! the two format functions are pure and hold every rule of the
-//! output, so tests check them without Herdr.
+//! Prints the hub's status, with each session and its state. Read
+//! `run_status` first. `build_status_rows` and the two format
+//! functions are pure and hold every rule of the output, so tests
+//! check them without Herdr.
 
 use jiff::Zoned;
 use jiff::tz::TimeZone;
@@ -15,6 +16,7 @@ use crate::shared::lifecycle::{self, Lifecycle, SessionFacts, Verdict};
 use crate::shared::messages::MessageCounts;
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{HubError, Tools};
+use crate::watch;
 
 /// Prints the hub line, the board line, the counts, the unread reports
 /// and one row per session with its lifecycle state.
@@ -23,7 +25,7 @@ use crate::shared::{HubError, Tools};
 ///
 /// `HubError::Herdr` when Herdr cannot list the agents, since no row
 /// is left to print. A failed read of the run, parked or request
-/// folder also stops it. A failed `card` or OpenCode database read
+/// folder also stops it. A failed `Cards` or OpenCode database read
 /// becomes a problem line instead.
 pub fn run_status(
     tools: &Tools<'_>,
@@ -60,7 +62,8 @@ pub fn run_status(
     let (counts, rows) = build_status_rows(verdicts, now.time_zone());
     let view = StatusView {
         hub,
-        watcher_running: run.is_watcher_running()?,
+        watch_running: watch::is_watch_running(tools.state_folder)?,
+        hub_next_running: run.is_watcher_running()?,
         board: tools.cards.read_board().map_err(|error| error.to_string()),
         counts,
         unread: collected.unread,
@@ -76,12 +79,18 @@ pub fn run_status(
     Ok(Outcome { lines })
 }
 
-/// Everything `hub status` shows, in the order it shows it.
+/// Everything `run_status` shows, in the order it shows it.
 #[derive(Debug)]
 struct StatusView {
     hub: HubLine,
-    watcher_running: bool,
-    /// The board counts and waiting cards, or why `card board` failed.
+    /// The machine's watch loop, which `run_watch` runs, holds its
+    /// lock.
+    watch_running: bool,
+    /// A running `run_next` holds this run folder's `.watcher.lock`. It ends
+    /// after each line, so the hub starts it again.
+    hub_next_running: bool,
+    /// The board counts and the cards waiting on people outside the
+    /// team, or why `Cards::read_board` failed.
     board: Result<Board, String>,
     counts: StateCounts,
     unread: Vec<String>,
@@ -169,16 +178,13 @@ fn format_status_text(view: &StatusView) -> Vec<String> {
     } else {
         ""
     };
-    let watcher = if view.watcher_running {
-        "watcher running"
-    } else {
-        "watcher stopped"
-    };
+    let watch = describe_running(view.watch_running);
+    let hub_next = describe_running(view.hub_next_running);
     let board = match &view.board {
         Ok(board) => format!("board {}", board.counts),
         Err(reason) => format!("board: {reason}"),
     };
-    let waiting = view.board.as_ref().ok().and_then(Board::waiting_line);
+    let blocked = view.board.as_ref().ok().and_then(Board::blocked_line);
     let counts = &view.counts;
     let open = view.rows.len() - counts.parked;
     let unread = if view.unread.is_empty() {
@@ -187,10 +193,10 @@ fn format_status_text(view: &StatusView) -> Vec<String> {
         format!("unread {}: {}", view.unread.len(), view.unread.join(" "))
     };
     let mut lines = vec![
-        format!("hub {hub_name} {tokens}{hand_off}, {watcher}"),
+        format!("hub {hub_name} {tokens}{hand_off}, watch {watch}, hub next {hub_next}"),
         board,
     ];
-    lines.extend(waiting);
+    lines.extend(blocked);
     lines.extend([
         format!(
             "open {open}: {} working, {} hub, {} you,",
@@ -233,8 +239,8 @@ fn format_status_text(view: &StatusView) -> Vec<String> {
 fn format_status_json(view: &StatusView) -> String {
     let board = match &view.board {
         Ok(board) => {
-            let waiting: Vec<Value> = board
-                .waiting
+            let blocked: Vec<Value> = board
+                .blocked
                 .iter()
                 .map(|card| {
                     json!({
@@ -248,10 +254,10 @@ fn format_status_json(view: &StatusView) -> String {
             let counts = &board.counts;
             json!({
                 "active": counts.active,
-                "review": counts.review,
+                "in_review": counts.in_review,
                 "active_limit": counts.active_limit,
-                "review_limit": counts.review_limit,
-                "waiting_on_others": waiting,
+                "in_review_limit": counts.in_review_limit,
+                "blocked": blocked,
             })
         }
         Err(reason) => json!({"error": reason}),
@@ -286,7 +292,8 @@ fn format_status_json(view: &StatusView) -> String {
         .collect();
     json!({
         "hub": {"name": view.hub.name, "context_tokens": view.hub.context_tokens},
-        "watcher": if view.watcher_running { "running" } else { "stopped" },
+        "watch": describe_running(view.watch_running),
+        "watcher": describe_running(view.hub_next_running),
         "board": board,
         "counts": {
             "working": counts.working,
@@ -303,6 +310,10 @@ fn format_status_json(view: &StatusView) -> String {
         "problems": view.problems,
     })
     .to_string()
+}
+
+fn describe_running(running: bool) -> &'static str {
+    if running { "running" } else { "stopped" }
 }
 
 /// Returns the short WHY cell, such as `unread report` or `1 held`,
@@ -365,7 +376,7 @@ pub(crate) fn format_columns<const N: usize>(table: &[[String; N]]) -> Vec<Strin
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::external::cards::{BoardCounts, WaitingCard};
+    use crate::external::cards::{BlockedCard, BoardCounts};
     use crate::external::git::Unsaved;
     use crate::shared::lifecycle::KeptReason;
     use crate::shared::test_values::{make_facts, make_parked_record};
@@ -395,14 +406,14 @@ mod tests {
     fn make_example_view() -> StatusView {
         let mut docs_fix = make_row_facts("docs-fix", Some(152_000), None);
         docs_fix.messages.held = 1;
-        let mut parked = make_row_facts("demo-kb-081-auto", None, Some(Stage::Review));
+        let mut parked = make_row_facts("demo-kb-081-auto", None, Some(Stage::InReview));
         parked.agent = None;
         parked.parked = Some(make_parked_record("demo-kb-081-auto"));
         parked.unsaved = Unsaved::NotChecked;
         let verdicts = vec![
             (parked, make_verdict(Lifecycle::Parked, "")),
             (
-                make_row_facts("demo-kb-090-auto", Some(104_000), Some(Stage::Review)),
+                make_row_facts("demo-kb-090-auto", Some(104_000), Some(Stage::InReview)),
                 make_verdict(Lifecycle::ToPark, ""),
             ),
             (
@@ -410,7 +421,7 @@ mod tests {
                 make_verdict(Lifecycle::ToClose, "report read"),
             ),
             (
-                make_row_facts("demo-kb-012-auto", Some(77_310), Some(Stage::Review)),
+                make_row_facts("demo-kb-012-auto", Some(77_310), Some(Stage::InReview)),
                 make_verdict(
                     Lifecycle::Kept(KeptReason::UnsavedFiles),
                     "unsaved files in /home/u/wt/demo-kb-012",
@@ -433,15 +444,16 @@ mod tests {
                 session_id: Some("ses_hub".to_owned()),
                 context_tokens: Some(131_204),
             },
-            watcher_running: true,
+            watch_running: true,
+            hub_next_running: false,
             board: Ok(Board {
                 counts: BoardCounts {
                     active: 5,
-                    review: 19,
+                    in_review: 19,
                     active_limit: 8,
-                    review_limit: 6,
+                    in_review_limit: 6,
                 },
-                waiting: vec![WaitingCard {
+                blocked: vec![BlockedCard {
                     key: "DEMO-KB-003".parse().unwrap(),
                     days: 8,
                     title: "Retry failed uploads".to_owned(),
@@ -469,9 +481,9 @@ mod tests {
         assert_eq!(
             lines,
             [
-                "hub kanban-hub-18 131k, watcher running",
-                "board active 5 of 8, review 19 of 6",
-                "waiting-on-others 1, oldest 8 days",
+                "hub kanban-hub-18 131k, watch running, hub next stopped",
+                "board active 5 of 8, in-review 19 of 6",
+                "blocked 1, oldest 8 days",
                 "open 6: 1 working, 1 hub, 1 you,",
                 "  1 kept, 1 to-close, 1 to-park; 1 parked",
                 "unread 2: demo-kb-007-impl docs-fix",
@@ -493,6 +505,8 @@ mod tests {
     /// Scripts and the later board view read `--json`, so a renamed or
     /// missing field breaks them. It must hold the same facts as the
     /// text, including the kept reason apart from the WHY cell.
+    /// `watcher` keeps its old meaning, a running `run_next`, beside
+    /// the new `watch`.
     #[test]
     fn format_status_json_matches_example_object() {
         let view = make_example_view();
@@ -530,20 +544,21 @@ mod tests {
             "kept",
             "unsaved files in /home/u/wt/demo-kb-012",
             Some(77_310),
-            Some(("DEMO-KB-012", "review")),
+            Some(("DEMO-KB-012", "in-review")),
         );
         home["reason"] = json!("unsaved files");
         assert_eq!(
             printed,
             json!({
                 "hub": {"name": "kanban-hub-18", "context_tokens": 131_204},
-                "watcher": "running",
+                "watch": "running",
+                "watcher": "stopped",
                 "board": {
                     "active": 5,
-                    "review": 19,
+                    "in_review": 19,
                     "active_limit": 8,
-                    "review_limit": 6,
-                    "waiting_on_others": [{
+                    "in_review_limit": 6,
+                    "blocked": [{
                         "card": "DEMO-KB-003",
                         "days": 8,
                         "title": "Retry failed uploads",
@@ -583,14 +598,14 @@ mod tests {
                         "to-park",
                         "-",
                         Some(104_000),
-                        Some(("DEMO-KB-090", "review")),
+                        Some(("DEMO-KB-090", "in-review")),
                     ),
                     session(
                         "demo-kb-081-auto",
                         "parked",
                         "since 11-10 22:41",
                         None,
-                        Some(("DEMO-KB-081", "review")),
+                        Some(("DEMO-KB-081", "in-review")),
                     ),
                 ],
                 "no_session": [{"card": "DEMO-KB-004", "stage": "active"}],

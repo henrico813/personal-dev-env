@@ -239,6 +239,27 @@ fn run_handoff_says_started_when_prompt_fails() {
     assert_eq!(message, "started kanban-hub-2, but Herdr said no");
 }
 
+/// Herdr once called a slow first prompt a failure, and the next hub
+/// stayed out of the phone's "go to" list until someone ran
+/// `hub gather`. The new hub is tagged even when its prompt fails.
+#[test]
+fn run_handoff_tags_hub_when_prompt_fails() {
+    let (test_tools, handoff) = make_handoff_tools();
+    test_tools
+        .herdr
+        .fail_next("prompt", make_refusal(HerdrCode::Other(String::new())));
+
+    run_next_hub(&test_tools, &handoff).unwrap_err();
+
+    let tagged_hubs = test_tools.herdr.tagged_hubs.borrow();
+    assert!(
+        tagged_hubs
+            .iter()
+            .any(|(pane_id, _)| pane_id == "w1:kanban-hub-2")
+    );
+    assert_eq!(test_tools.herdr.agent_filters.get(), 1);
+}
+
 /// A hub once said its next hub ran at medium effort when it ran at
 /// the default. The hub must not report a handoff it did not check,
 /// and the message names both efforts for the user.

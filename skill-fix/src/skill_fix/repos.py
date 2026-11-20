@@ -12,6 +12,7 @@ import os
 import re
 import subprocess
 import tempfile
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -48,6 +49,20 @@ class ToolError(Exception):
 
 
 @dataclass(frozen=True)
+class ForgeRepo:
+    """The forge repo that holds the extra repo's fix PRs.
+
+    Attributes:
+        api_url: The repo's API address, such as
+            ``https://forge.example.com/api/v1/repos/owner/skills``.
+        token_file: The file that holds the API token.
+    """
+
+    api_url: str
+    token_file: Path
+
+
+@dataclass(frozen=True)
 class Settings:
     """Per-PC settings read from ``~/.config/pde/config.json``.
 
@@ -57,12 +72,15 @@ class Settings:
             names and PR titles, or None until it is set.
         extra_skills_repo: The extra repo's checkout, or None.
         extra_terms_file: The extra-term list, or None.
+        forge: The extra repo's forge repo, or None when its fix PRs
+            are on GitHub.
     """
 
     install_path: Path | None
     label: str | None
     extra_skills_repo: Path | None
     extra_terms_file: Path | None
+    forge: ForgeRepo | None
 
 
 @dataclass(frozen=True)
@@ -76,6 +94,7 @@ class Repo:
         worktree: The fix worktree.
         remote: The remote that ``main`` tracks, else ``origin``.
         term_check: Whether fixes are checked against the extra terms.
+        forge: The forge repo for the fix PR, or None for GitHub.
     """
 
     name: RepoName
@@ -84,6 +103,7 @@ class Repo:
     worktree: Path
     remote: str
     term_check: bool
+    forge: ForgeRepo | None
 
     def find_skill_dir(self, skill: str) -> str:
         """Return the repo-relative folder of ``skill``."""
@@ -99,8 +119,9 @@ def load_settings() -> Settings:
         The settings.
 
     Raises:
-        ToolError: The file is not a JSON object, or the label is not
-            lowercase letters and digits.
+        ToolError: The file is not a JSON object, the label is not
+            lowercase letters and digits, or a forge setting is
+            missing or not a repo address.
     """
     path = Path.home() / ".config/pde/config.json"
     try:
@@ -121,7 +142,40 @@ def load_settings() -> Settings:
         label=label,
         extra_skills_repo=to_path(data.get("extra_skills_repo")),
         extra_terms_file=to_path(data.get("extra_terms_file")),
+        forge=read_forge_settings(data),
     )
+
+
+def read_forge_settings(data: dict) -> ForgeRepo | None:
+    """Return the extra repo's forge repo, or None when it has none.
+
+    ``extra_forge_repo_url`` is the repo's web address, such as
+    ``https://forge.example.com/owner/skills``, and
+    ``extra_forge_token_file`` names the file with the API token.
+
+    Raises:
+        ToolError: Only one of the two is set, or the address names
+            no owner and repo.
+    """
+    url = data.get("extra_forge_repo_url") or None
+    token_file = to_path(data.get("extra_forge_token_file"))
+    if url is None and token_file is None:
+        return None
+    if not isinstance(url, str) or token_file is None:
+        raise ToolError(
+            "set both extra_forge_repo_url and extra_forge_token_file"
+        )
+    parts = urllib.parse.urlsplit(url.rstrip("/"))
+    path = parts.path.strip("/").removesuffix(".git").split("/")
+    if not parts.scheme or len(path) < 2 or "" in path:
+        raise ToolError(
+            "extra_forge_repo_url must be a repo address, such as "
+            "https://forge.example.com/owner/repo"
+        )
+    # The forge serves its API under the same path prefix as its pages.
+    *prefix, owner, name = path
+    root = "/".join(["", *prefix, "api/v1/repos", owner, name])
+    return ForgeRepo(f"{parts.scheme}://{parts.netloc}{root}", token_file)
 
 
 def to_path(value: object) -> Path | None:
@@ -230,6 +284,7 @@ def pick_repo(scope: RepoName, settings: Settings) -> Repo:
         remote=find_remote(checkout),
         term_check=scope == "personal"
         and settings.extra_terms_file is not None,
+        forge=settings.forge if scope == "extra" else None,
     )
 
 

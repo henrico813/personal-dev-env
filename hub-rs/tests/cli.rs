@@ -134,10 +134,10 @@ fn hub_exit_code_follows_failure_kind() {
             says: "hub: no run folder; pass --run DIR or set HUB_RUN\n",
         },
         Case {
-            name: "auto-ready-card",
+            name: "auto-todo-card",
             herdr_stdout: "",
             herdr_exit_code: 0,
-            args: &["auto", "ready"],
+            args: &["auto", "todo"],
             hub_run: true,
             exit_code: 1,
             says: "hub: card: no default vault\n",

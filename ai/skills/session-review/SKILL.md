@@ -115,11 +115,12 @@ each case's pass rate, with the model, effort and rules hash, in a
 Trials section. If you ran none, say so there and why.
 
 When the user corrected a mistake in a hub run folder's `rules.md`,
-`notes.md` or `decisions.md`, add a trial case for it: the situation
-before the mistake, with the correction as its answer key. A case is
-review data, like the review file, so add it without waiting for the
-user's pick, and run it with the others. When no skill's text holds
-that correction yet, also list it in step 3's pick list.
+`notes.md` or older `decisions.md`, or in a card's Decisions section,
+add a trial case for it: the situation before the mistake, with the
+correction as its answer key. A case is review data, like the review
+file, so add it without waiting for the user's pick, and run it with
+the others. When no skill's text holds that correction yet, also
+list it in step 3's pick list.
 
 At least one of step 2's proposals, or one fix, helps a local
 model take over a workflow. It may use cloud and local models

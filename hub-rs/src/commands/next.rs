@@ -2,11 +2,10 @@
 //! prints one line. Read `run_next`, then `check_for_news`.
 //! `choose_news` is pure and holds the order of the news lines.
 //! `run_minute_pass` is the slow part, at most once a minute, which
-//! reads the board, finds finished sessions and asks workers to hand
-//! off. It never closes or parks a session, which only `hub clean`
-//! and `hub park` do. The one session it starts is an old hub's
-//! session review, once that hub's tab has closed, and only with
-//! `--start-reviews`.
+//! reads the board and finds finished sessions. It never closes or
+//! parks a session, which only `hub clean` and `hub park` do. The one
+//! session it starts is an old hub's session review, once that hub's
+//! tab has closed, and only with `--start-reviews`.
 
 use std::path::PathBuf;
 use std::thread;
@@ -18,7 +17,7 @@ use serde_json::json;
 use super::Outcome;
 use super::at;
 use super::handoff::{self, ReviewStart};
-use crate::external::cards::{BoardCounts, CardKey};
+use crate::external::cards::BoardCounts;
 use crate::external::herdr::{Agent, AgentStatus};
 use crate::shared::context::{HANDOFF_TOKENS, format_tokens};
 use crate::shared::events::{self, Event, EventKind, Memory};
@@ -244,12 +243,11 @@ fn is_minute_pass_due(
     state_changed || memory.read_count != last.read_count
 }
 
-/// Reads the board, finds the finished sessions and holds the handoff
-/// asks on one collection of facts. Records the board's state on the
-/// run's first pass, and `board_under` when the board fell back within
-/// its limit. Saves the minute mark with the finished sessions. Returns
-/// the board counts when `card board` answered and the run's memory
-/// already held the board's state.
+/// Reads the board and finds the finished sessions. Records the
+/// board's state on the run's first pass, and `board_under` when the
+/// board fell back within its limit. Saves the minute mark with the
+/// finished sessions. Returns the board counts when `card board`
+/// answered and the run's memory already held the board's state.
 fn run_minute_pass(
     tools: &Tools<'_>,
     run: &RunFolder,
@@ -273,7 +271,6 @@ fn run_minute_pass(
     let collected = facts::collect_session_facts(tools, run, memory)?;
     let finished = find_finished_sessions(&collected);
     forget_left_sessions(run, &finished, memory, now)?;
-    ask_for_worker_handoffs(run, &collected, memory, now)?;
     run.write_minute_mark(&MinuteMark {
         at: now.timestamp(),
         state_seqs: agents
@@ -354,60 +351,6 @@ fn forget_left_sessions(
         kind: EventKind::Unlisted { names },
     };
     events::append_event(run, &left)
-}
-
-/// Holds one handoff ask for each worker on a card that is working,
-/// idle or done, has `HANDOFF_TOKENS` tokens or more, and never got
-/// one, then records the ask. Delivery sends it by the usual rules.
-/// A `to-close` or `to-park` session gets no ask. `hub clean` may
-/// close or park it, and delivering the ask would reopen finished work.
-fn ask_for_worker_handoffs(
-    run: &RunFolder,
-    collected: &CollectedFacts,
-    memory: &Memory,
-    now: &Zoned,
-) -> Result<(), HubError> {
-    for facts in &collected.sessions {
-        let Some(agent) = &facts.agent else {
-            continue;
-        };
-        let Some(session) = &agent.session_id else {
-            continue;
-        };
-        let tokens = facts.context_tokens.unwrap_or_default();
-        let is_worker = facts.card.is_some() || CardKey::find_in_name(&facts.name).is_some();
-        let is_free = matches!(
-            agent.status,
-            AgentStatus::Working | AgentStatus::Idle | AgentStatus::Done
-        );
-        let is_finished = matches!(
-            decide_lifecycle(facts).state,
-            Lifecycle::ToClose | Lifecycle::ToPark
-        );
-        if !is_worker
-            || !is_free
-            || tokens < HANDOFF_TOKENS
-            || memory.handoff_asked.contains(session)
-            || is_finished
-        {
-            continue;
-        }
-        let ask = format!(
-            "Your context is about {}. Write your handoff with herdr-handoff now, \
-             put its path in your report, and end your turn.",
-            format_tokens(Some(tokens))
-        );
-        messages::hold_message(run, &facts.name, None, &ask, now)?;
-        let asked = Event {
-            at: now.timestamp(),
-            kind: EventKind::HandoffAsked {
-                name: facts.name.clone(),
-                session: session.clone(),
-            },
-        };
-        events::append_event(run, &asked)?;
-    }
-    Ok(())
 }
 
 /// Picks the most urgent news in a fixed order, or `None` when nothing
@@ -592,7 +535,7 @@ fn make_outcome(news: &News, hub_tokens: Option<u64>, json: bool) -> Outcome {
 /// Writes news as one line. Most lines end with the hub's own context,
 /// such as `report docs-fix (hub 131k)`. A finished line ends with what
 /// the hub should do, such as
-/// `to-close demo-kb-001-impl: DEMO-KB-001 accepted; run hub clean`.
+/// `to-close demo-kb-001-impl: DEMO-KB-001 done; run hub clean`.
 fn format_news_line(news: &News, hub_tokens: Option<u64>) -> String {
     let hub = format!("(hub {})", format_tokens(hub_tokens));
     match news {
@@ -722,9 +665,8 @@ mod tests {
     /// The minute pass reads the board on the network drive, runs git
     /// in many worktrees and asks the database about every worker. Run
     /// on every check, it slows each check down. Skipped after a state
-    /// change or a read, it leaves finished tabs open and misses a
-    /// worker past 150k. With no mark, as after the first start, it
-    /// runs.
+    /// change or a read, it leaves finished tabs open. With no mark, as
+    /// after the first start, it runs.
     #[test]
     fn is_minute_pass_due_follows_mark() {
         struct Case {
@@ -854,12 +796,12 @@ mod tests {
                 "board-over",
                 News::BoardOver(BoardCounts {
                     active: 10,
-                    review: 18,
+                    in_review: 18,
                     active_limit: 8,
-                    review_limit: 6,
+                    in_review_limit: 6,
                 }),
                 Some(131_204),
-                r#"{"news":"board_over","name":null,"detail":"active 10 of 8, review 18 of 6","hub_context_tokens":131204}"#,
+                r#"{"news":"board_over","name":null,"detail":"active 10 of 8, in-review 18 of 6","hub_context_tokens":131204}"#,
             ),
         ];
 

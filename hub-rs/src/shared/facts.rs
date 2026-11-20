@@ -15,6 +15,7 @@ use crate::external::cards::{CardError, CardKey, CardNote, ListedCard, Stage};
 use crate::external::git::{self, Unsaved};
 use crate::external::herdr::{Agent, AgentKind, AgentStatus};
 use crate::external::requests::PrRequest;
+use crate::watch::wait;
 
 /// The facts of every session, and what the status view needs beside
 /// them.
@@ -23,16 +24,18 @@ pub(crate) struct CollectedFacts {
     pub sessions: Vec<SessionFacts>,
     /// The names with an unread report, a gone session's included.
     pub unread: Vec<String>,
-    /// Active and review cards with no live or parked session.
+    /// Cards in progress or needing the user's review, with no live
+    /// or parked session.
     pub no_session: Vec<(CardKey, Stage)>,
     /// The names of parked records whose session is live again, left by
     /// a failed close or a reopen. The tidy pass deletes them.
     pub live_records: Vec<String>,
-    /// Every card in `card list` order, or none when `card list`
-    /// failed.
+    /// Every card in the order `Cards::list_cards` gives, or none when
+    /// that call failed.
     pub cards: Vec<ListedCard>,
-    /// What `card show` gave for each open card a session, a parked
-    /// record or a report names. A card that failed to read is left out.
+    /// What `Cards::read_cards` gave for each open card a session, a
+    /// parked record or a report names. A card that failed to read is
+    /// left out.
     pub notes: BTreeMap<CardKey, CardNote>,
     /// One line per failed source, such as `cards: ...`.
     pub problems: Vec<String>,
@@ -51,10 +54,10 @@ pub(crate) struct HubLine {
 /// every parked session that is not live again. A card, database,
 /// report or request file failure becomes a problem line, not an
 /// error. A request file that does not parse also keeps every live
-/// session. A worker keeps its own card while that card is draft, ready
-/// or active and no newer live session took it over. Otherwise it takes
-/// the first other draft, ready, active or in-review card its newest
-/// report names, if any.
+/// session. A worker keeps its own card while `is_work_open` holds
+/// for it and no newer live session took it over. Otherwise it takes
+/// the first other card its newest report names that has not gone
+/// past the user's review in `Stage` order, if any.
 pub(crate) fn collect_session_facts(
     tools: &Tools<'_>,
     run: &RunFolder,
@@ -103,13 +106,7 @@ pub(crate) fn collect_session_facts(
         .filter(|key| {
             matches!(
                 stages.get(key),
-                Some(
-                    Stage::Draft
-                        | Stage::Ready
-                        | Stage::Active
-                        | Stage::Review
-                        | Stage::WaitingOnOthers
-                )
+                Some(Stage::Draft | Stage::Todo | Stage::Active | Stage::InReview | Stage::Blocked)
             )
         })
         .collect::<BTreeSet<_>>()
@@ -145,6 +142,10 @@ pub(crate) fn collect_session_facts(
         ));
     }
     let counts = messages::count_messages(run)?;
+    let open_waits: BTreeSet<String> = wait::list_waits(run)?
+        .into_iter()
+        .map(|wait| wait.name)
+        .collect();
     let live_ids: BTreeSet<String> = agents
         .iter()
         .filter_map(|agent| agent.session_id.clone())
@@ -158,7 +159,7 @@ pub(crate) fn collect_session_facts(
             Some(CardFacts {
                 key: key.clone(),
                 stage: *stages.get(key)?,
-                needs_you_open: note.is_some_and(|note| note.needs_you_open),
+                needs_you_open: note.is_some_and(|note| note.needs_you.is_some()),
                 newer_session_live: note
                     .is_some_and(|note| has_newer_live_session(note, session_id, &live_ids)),
                 from_report: false,
@@ -173,9 +174,9 @@ pub(crate) fn collect_session_facts(
             .flatten()
             .filter(|reported| Some(*reported) != key.as_ref())
             .filter_map(&read_card_facts)
-            // A worker that reported a card in review may still have
-            // merges to run for it.
-            .find(|card| is_work_open(card.stage) || card.stage == Stage::Review)
+            // A worker that reported a card needing the user's review
+            // may still have merges to run for it.
+            .find(|card| is_work_open(card.stage) || card.stage == Stage::InReview)
             .map(|card| CardFacts {
                 from_report: true,
                 ..card
@@ -186,8 +187,8 @@ pub(crate) fn collect_session_facts(
             Some(own) if is_work_open(own.stage) && !own.newer_session_live => Some(own),
             own => reported_card.or(own),
         };
-        // A report that cannot be read, or a card it names that `card
-        // show` failed on, may hide work the worker still has.
+        // A report that cannot be read, or a card it names whose note
+        // failed to read, may hide work the worker still has.
         let report_unknown = match reported_keys {
             Some(Some(keys)) => keys.iter().any(|key| failed_keys.contains(key)),
             Some(None) => true,
@@ -221,6 +222,7 @@ pub(crate) fn collect_session_facts(
             approval_pending: has_bad_request
                 || match_open_request(&agent, &open_requests.requests),
             filed_request_recently: match_open_request(&agent, &open_requests.recent),
+            wait_open: open_waits.contains(&agent.name),
             handed_off: memory.handed_off.contains(&agent.name),
             messages: counts.get(&agent.name).copied().unwrap_or_default(),
             agent: Some(agent),
@@ -238,7 +240,7 @@ pub(crate) fn collect_session_facts(
             stage: *stage,
             needs_you_open: notes
                 .get(&record.card)
-                .is_some_and(|note| note.needs_you_open),
+                .is_some_and(|note| note.needs_you.is_some()),
             newer_session_live: false,
             from_report: false,
         });
@@ -252,6 +254,7 @@ pub(crate) fn collect_session_facts(
             unsaved: Unsaved::NotChecked,
             approval_pending: false,
             filed_request_recently: false,
+            wait_open: false,
             handed_off: false,
             context_tokens: None,
             parked: Some(record),
@@ -265,7 +268,7 @@ pub(crate) fn collect_session_facts(
     let no_session = stages
         .iter()
         .filter(|(key, stage)| {
-            matches!(stage, Stage::Active | Stage::Review) && !worked_on.contains(key)
+            matches!(stage, Stage::Active | Stage::InReview) && !worked_on.contains(key)
         })
         .map(|(key, stage)| (key.clone(), *stage))
         .collect();
@@ -335,11 +338,11 @@ fn read_reported_keys(
 
 /// Tells whether a card in this stage still has work to do.
 fn is_work_open(stage: Stage) -> bool {
-    matches!(stage, Stage::Draft | Stage::Ready | Stage::Active)
+    matches!(stage, Stage::Draft | Stage::Todo | Stage::Active)
 }
 
 /// Reads the session's reports from the run folder and the hub's
-/// memory. A message delivered after the last `hub read` counts as a
+/// memory. A message delivered after the last `run_read` counts as a
 /// reply.
 fn read_report_facts(name: &str, reported: &ReportedNames, memory: &Memory) -> ReportFacts {
     let last_read = memory.last_read.get(name);
@@ -353,13 +356,13 @@ fn read_report_facts(name: &str, reported: &ReportedNames, memory: &Memory) -> R
 
 /// Tells whether a session could be parked or closed, so git must
 /// look first. Only an idle or done session on this machine needs it,
-/// and only when its card is in review, waiting on others, accepted or
-/// dropped, or when it has no card and a read report.
+/// and only when its card has reached the user's review or a later
+/// stage in `Stage` order, or when it has no card and a read report.
 fn needs_git_check(agent: &Agent, stage: Option<Stage>, report_read: bool) -> bool {
     let is_free = matches!(agent.status, AgentStatus::Idle | AgentStatus::Done);
     let could_finish = match stage {
-        Some(Stage::Review | Stage::WaitingOnOthers | Stage::Accepted | Stage::Dropped) => true,
-        Some(Stage::Draft | Stage::Ready | Stage::Active) => false,
+        Some(Stage::InReview | Stage::Blocked | Stage::Done | Stage::Dropped) => true,
+        Some(Stage::Draft | Stage::Todo | Stage::Active) => false,
         None => report_read,
     };
     agent.machine.is_none() && is_free && could_finish

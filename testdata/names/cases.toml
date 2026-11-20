@@ -1,0 +1,93 @@
+# Names that the rules in chezmoi/dot_config/pde/names.toml must make
+# and read. Every program that reads the rules file runs these cases,
+# so a rule change that one reader takes differently fails its tests.
+#
+# [[make]]: the rule, the value of each field, and the name it makes.
+# [[parse]]: the rule, a name, and the fields the rule reads from it.
+# A [[parse]] case with no fields is a name the rule must not read.
+
+[[make]]
+rule = "card_key"
+fields = { code = "PDEV", n = "12" }
+name = "PDEV-KB-012"
+
+[[make]]
+rule = "card_key"
+fields = { code = "HOME", n = "1000" }
+name = "HOME-KB-1000"
+
+[[make]]
+rule = "card_file"
+fields = { key = "PDEV-KB-012", title = "Retry uploads" }
+name = "PDEV-KB-012 Retry uploads.md"
+
+[[make]]
+rule = "plan_file"
+fields = { key = "PDEV-412", title = "Retry uploads" }
+name = "PDEV-412 Retry uploads.md"
+
+[[make]]
+rule = "branch"
+fields = { type = "feat", words = "pdev-412 Retry uploads" }
+name = "feat/pdev-412-retry-uploads"
+
+[[make]]
+rule = "commit_title"
+fields = { type = "feat", scope = "hub", summary = "add requests" }
+name = "feat(hub): add requests"
+
+[[make]]
+rule = "agent"
+fields = { key = "PDEV-KB-012", role = "build" }
+name = "pdev-kb-012-build"
+
+[[make]]
+rule = "hub"
+fields = { run = "kanban", n = "7" }
+name = "kanban-hub-7"
+
+[[make]]
+rule = "review_agent"
+fields = { hub = "kanban-hub-7" }
+name = "review-kanban-hub-7"
+
+[[parse]]
+rule = "card_key"
+name = "PDEV-KB-012"
+fields = { code = "PDEV", n = "012" }
+
+[[parse]]
+rule = "card_file"
+name = "PDEV-KB-012 Retry uploads.md"
+fields = { key = "PDEV-KB-012", title = "Retry uploads" }
+
+[[parse]]
+rule = "card_file"
+name = "PDEV-KB-012.md"
+fields = { key = "PDEV-KB-012" }
+
+[[parse]]
+rule = "card_file"
+name = "PDEV-KB-012A Retry uploads.md"
+
+[[parse]]
+rule = "card_file"
+name = "RESEARCH-PDEV-KB-012 Notes.md"
+
+[[parse]]
+rule = "card_file"
+name = "PDEV-412 Retry uploads.md"
+
+[[parse]]
+rule = "branch"
+name = "fix/abc-12-login-timeout"
+fields = { type = "fix", words = "abc-12-login-timeout" }
+
+[[parse]]
+rule = "branch"
+name = "Feat/Bad_Name"
+
+[[parse]]
+rule = "agent"
+name = "pdev-kb-012-plan-3"
+fields = { key = "pdev-kb-012", role = "plan-3" }

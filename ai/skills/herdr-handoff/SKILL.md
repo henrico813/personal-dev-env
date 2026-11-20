@@ -31,13 +31,48 @@ rather than trusting the examples here.
 ## When to hand off
 
 - The user asks for it.
+- `hub watch` asks for it. Follow Hand off when hub watch asks.
 - Part of the work is independent of yours and can run alongside it.
-- Your context is above the 200k handoff level. Run `pde-context` at
-  each milestone, such as a merged PR, to check.
+- `pde-context`, which prints your session's context size, says you
+  are above the handoff level. Context Size in `ai/AGENTS.md` says
+  when to run it.
 
-When the user has not asked, propose the handoff and wait for a yes.
-Herdr's skill says to create a workspace or tab only when the user
-asks.
+When neither the user nor `hub watch` asked, propose the handoff and
+wait for a yes. Herdr's skill says to create a workspace or tab only
+on request; here that means when the user or `hub watch` asks.
+
+## Hand off when hub watch asks
+
+`hub watch`, run on each PC outside every chat, types an ask into
+your idle pane once your context passes 150k tokens, if you run in
+OpenCode and are not a hub. It asks again at each 20k more, in case
+you missed one, and marks your pane "needs you" from 190k. Hand off
+at once with no yes, as each turn past the limit costs more and the
+user may not be watching:
+
+1. Write the handoff file as Write the handoff file says.
+2. Name the new session after yours: raise the last number of your
+   name by one when it ends in a number, or add `-2` when it ends
+   with no number, so `demo-kb-007-impl` becomes `demo-kb-007-impl-2`
+   and `demo-kb-007-impl-2` becomes `demo-kb-007-impl-3`.
+3. Start it in a new tab beside yours, on your model and reasoning
+   effort, as `model-routing` says for a successor. `<folder>` is the
+   run folder your handoff names, else `~/.local/state/pde/handoffs`.
+   Always pass `--run`, since without it `hub launch` may take the
+   folder of a hub you do not work for:
+
+       hub launch <new name> <handoff path> --successor --run <folder>
+
+4. When a hub runs, report the new name and the handoff path with
+   `hub report`, as the handoff you were started from says.
+5. End your turn with one line that names the new session and its
+   handoff. On a card, `hub clean` closes your tab once the new
+   session works on the card.
+
+Just end your turn instead when you already started a successor,
+your work is done, or your card is done or dropped. When your
+brief or a skill you follow says what to do near your context limit,
+as an auto run's worker brief does, do that instead.
 
 ## Prepare the work for a cheaper model
 
@@ -268,13 +303,14 @@ the `card` command:
       card link <KEY> --session <name>
 
 - When the work pauses with a handoff and no session takes it now,
-  move the card from active back to ready with a note that names the
+  move the card from active back to todo with a note that names the
   handoff:
 
-      card move <KEY> ready --why "Paused; handoff <handoff path>"
+      card move <KEY> todo --why "Paused; handoff <handoff path>"
 
-  A card in review cannot move back to ready. It stays in review,
-  with only the note:
+  Only the user takes an `in-review` card back to `todo`, with
+  `card move --user`, which goes through `active`. Leave it in
+  `in-review`, with only a note that names the handoff:
 
       card note <KEY> "Paused; handoff <handoff path>"
 
@@ -314,7 +350,8 @@ or revising this skill.
 - The new agent was seen `working`, or `idle` or `done` after
   finishing.
 - The message to the user names the workspace or tab, the agent, the
-  handoff file and the model.
+  handoff file and the model, or is the one line that Hand off when
+  hub watch asks gives.
 - Without a hub, when this session keeps nothing, the new session is
   in a tab of this workspace, unless the user asked for a new one or
   it runs on another machine.
@@ -322,7 +359,9 @@ or revising this skill.
   pull request edit request only after the hub says the user reviewed
   that pull request.
 - When the work has a card, the card has the handoff's Log note and
-  the new session, or is back in ready with a note naming the handoff.
+  the new session, or is back in todo with a note naming the handoff.
+- When `hub watch` asked, you passed `--run` to `hub launch` and,
+  when a hub runs, reported the new name.
 
 ## Rules
 

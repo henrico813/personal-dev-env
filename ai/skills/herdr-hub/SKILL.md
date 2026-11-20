@@ -31,28 +31,29 @@ its step comes, such as `herdr-handoff` when you start a session.
 The hub's run folder is the one its handoff names. Without one, make
 it at the start with `mktemp -d ~/.local/state/herdr-hub.XXXXXX`.
 Record the user's standing decisions in its `rules.md`, the pull
-requests that wait for the user's review in `reviews.md`, each
-question that waits on the user in `decisions.md`, as Questions for
-the user says, and detail the user need not read in `notes.md`.
+requests that wait for the user's review in `reviews.md`, and detail
+the user need not read in `notes.md`. Each question that waits on the
+user goes on its card, as Questions for the user says.
 Add a rule to `rules.md` only when the user gave it. When you think
 of a rule yourself, such as a pattern in the user's answers, ask the
 user before you add it, since the hub follows every line there.
 
 Keep no list of sessions of your own. Herdr's session names and the
 kanban cards are the record: a card's worker is named after the card,
-such as `demo-kb-007-impl`, and the card logs its sessions. See every
-session with the `hub` command, instead of `ls`, `cat` or
-`herdr agent list`:
+such as `demo-kb-007-impl`, and the card logs its sessions. Card stages
+never set Herdr agent states, even `blocked` and `done`, which come from
+`herdr agent wait`, not `hub status`. See every session with the `hub`
+command, instead of `ls`, `cat` or `herdr agent list`:
 
     hub status --run "<run folder>"
 
-It prints the hub's own line, the board, a waiting-on-others line
-when a card is in that stage, one count per state, the unread
-reports, then one row per session:
+It prints the hub's own line, the board, a `blocked` line when a card is
+in that stage, one count per state, the unread reports, then one row per
+session:
 
-    hub kanban-hub-18 131k, watcher running
-    board active 5 of 8, review 19 of 6
-    waiting-on-others 2, oldest 8 days
+    hub kanban-hub-18 131k, watch running, hub next running
+    board active 5 of 8, in-review 19 of 6
+    blocked 2, oldest 8 days
     open 24: 4 working, 2 hub, 3 you,
       5 kept, 1 to-close, 2 to-park; 12 parked
     unread 2: demo-kb-007-impl docs-fix
@@ -63,13 +64,12 @@ reports, then one row per session:
 STATE says who must act: `working` needs nothing, `hub` waits on you,
 `you` waits on the user, `kept` is finished but holds something (WHY
 says what), `to-close` and `to-park` are finished and `hub clean` will
-close or park them, and `parked` has no tab but can reopen. CTX is
-the session's context size, `-` when it cannot be read. A last
-`no session:` line names the active and review cards no session works
-on. After the switch from the Python hub, it also prints an
-`old send file: <path>` line for each Python send file left in the
-run folder. Send again any message in it that still matters, with
-`hub send`, then delete the file.
+close or park them, and `parked` has no tab but can reopen. CTX is the
+session's context size, `-` when it cannot be read. A last `no session:`
+line names the active and in-review cards no session works on. After the
+switch from the Python hub, it also prints an `old send file: <path>`
+line for each Python send file left in the run folder. Send again any
+message in it that still matters, with `hub send`, then delete the file.
 
 Run `hub status` at the start and on each turn. Read its counts line
 and its `unread` line each time; never list the run folder. Tell the
@@ -79,10 +79,10 @@ message until the session no longer waits on the user, as
 you, bring it under the hub at once: send it the new rules that Rules
 gives for a worker the user hands you.
 
-Before you send a worker new build work, check its CTX in
-`hub status`. A worker near 150k writes its handoff first, and the
-new session it hands off to gets the work. `hub next` asks each
-worker past 150k to hand off by itself, so send no second ask.
+Before you send a worker new build work, check its CTX in `hub status`.
+Past 150k it hands off by `herdr-handoff` and reports its successor,
+who gets the work; send no ask. An auto run's worker reports its
+handoff instead: start its successor from that handoff yourself.
 
 Before you tell the user that a worker or subagent died, run
 `hub alive <session ID>` with its OpenCode session ID. Its line ends in
@@ -120,7 +120,8 @@ once the first session works:
 
 The timeout ends it within 45 minutes, before OpenCode drops an idle
 folder's background commands, and its `timeout` line wakes you to
-start it again.
+start it again. If `hub status` says `watch stopped`, run
+`hub watch start` again; if it says `hub next stopped`, start one.
 
 It waits until a session has news, prints one line and ends, so its
 end starts your turn. While it waits it sends held messages. It never
@@ -141,8 +142,8 @@ are off by default. Most lines end with your own context, such as
   acts on this one, with a note on what you did.
 - `missed report <name>`: handle it as a `report` line. No
   `hub next` ran for 10 minutes before it, so keep one running.
-- `blocked <name>`: the session waits at an approval or question in
-  its pane. Handle it as Waiting on the user says.
+- `blocked <name>`: the session is in the `blocked` Herdr agent state,
+  at an approval or question. Handle it as Waiting on the user says.
 - Any other line, such as `not sent`, `unsure` or
   `no hub handoff`: handle it as
   [references/hub-next-lines.md](references/hub-next-lines.md) says.
@@ -184,7 +185,7 @@ tools, so you never read half a report.
   it to the review list, as Merges says.
 - A merged pull request: check the merge. For a personal-dev-env pull
   request, also check that `pde-installer update` ran. Then accept the
-  work yourself, such as by moving its card to accepted. Do not ask
+  work yourself, such as by moving its card to `done`. Do not ask
   the user, who already approved the merge. A merge worker's summary
   shows the merge, and the update when it ran with `--update`, so
   start no other session to check either.
@@ -242,10 +243,10 @@ When a session waits on the user, flag it, so the sidebar shows
 
 A session waits on the user when it is `blocked` at an approval or a
 question in its pane, or when you bring the user a question from its
-report. A question from a report also gets its entry and card note,
-as Questions for the user says. A blocked session's mark goes away by
-itself once it works again. Unflag any other session when you send it
-the user's answer:
+report. A question from a report is also asked on its card with
+`hub ask`, as Questions for the user says. A blocked session's mark
+goes away by itself once it works again. Unflag any other session when
+you send it the user's answer:
 
     hub unflag <name>
 
@@ -274,30 +275,30 @@ vault. A hub never reports to a hub on another machine.
   sessions on the same work share one card, and its `sessions` list
   keeps each of them.
 - Two limits, each across every project: 8 cards in `active` and 6
-  in `review`, as `card board` shows. `card` refuses a move into a
+  in `in-review`, as `card board` shows. `card` refuses a move into a
   full stage unless the move has `--user`. While active has room,
-  start the oldest ready card, or the one the user names. Pass
-  `--user` past a limit only when the user says so. When review is
+  start the oldest todo card, or the one the user names. Pass
+  `--user` past a limit only when the user says so. When in-review is
   full, leave a finished card in `active` and tell the user its work
   waits on them. When work is over a limit, propose which cards to
   pause, and let the user decide. If `card` refuses a move that the
   limits allow, pass `--user` and say so in `--why`.
-- Move a card to `review` as soon as its work waits only on the user,
+- Move a card to `in-review` as soon as its work waits only on the user,
   such as an open pull request or a plan or question for the user,
   even when more work follows. When the user has answered or
   reviewed and more work follows, move it back to `active` with
   `--user`, since the user's review is the go-ahead.
-  When you move a card to `review`, add the user's one next step with
+  When you move a card to `in-review`, add the user's one next step with
   `card note KEY "next: <step>"`, such as `next: review PR #498`.
   `hub board` shows it on the card's details page.
-- Move a card to or from `waiting-on-others`, the stage for work
+- Move a card to or from `blocked`, the stage for work
   that waits only on people outside the user's team, as
-  [references/waiting-on-others.md](references/waiting-on-others.md)
+  [references/blocked.md](references/blocked.md)
   says. These cards count against neither limit.
 - When one wake needs several card commands, such as `card note`,
   `card move` and `card add`, put them in one shell script and run it
   in one tool call.
-- Only the user moves a card from `draft` to `ready`, adopts work
+- Only the user moves a card from `draft` to `todo`, adopts work
   already under way, or drops a card. Never release a card the user
   described in a sentence: it stays in `draft` until the user has
   refined it. Refining can take time and happen in any session; the
@@ -311,7 +312,7 @@ vault. A hub never reports to a hub on another machine.
   user lets one skip it, case by case.
 - Work data stays on the machine that holds it. Never send it to
   another machine or put it in public text.
-- To sort a pile of cards, such as every card in `review`, follow
+- To sort a pile of cards, such as every card in `in-review`, follow
   [references/sort-card-pile.md](references/sort-card-pile.md).
 
 When sessions run with no card, such as on a machine where the hub
@@ -362,17 +363,17 @@ message sent to it with `hub send` reopens it in a new tab. Run
 `hub park <name>` to park one `to-park` session now.
 Never close a `kept` session; its WHY says what closing would lose.
 `hub clean` never closes a worker whose handoff paused its card, since
-its card is back in ready. Close its tab yourself once you have read
+its card is back in todo. Close its tab yourself once you have read
 that report. Never ask the user to close a worker.
 
 ## Questions for the user
 
-Keep each question that waits on the user as one entry in
-`<run folder>/decisions.md`, in full, so no message names it by
-number alone. Start its title with the key of the card it blocks,
-when it blocks one:
+Put each question that waits on the user on the card it blocks with
+`hub ask`, so the question and the needs-you mark in the card's Log
+agree. Write the whole question to a file, so no message names it by
+number alone, and run `hub ask <key> <question file>`:
 
-    ## DEMO-KB-007: New model overnight
+    ## New model overnight
 
     Deploy the new model tonight so you can test it in the morning?
 
@@ -383,29 +384,27 @@ when it blocks one:
     If no reply: nothing deploys; the worker goes on with its tests.
     Depends on: your rule of 2026-11-09 to test it in the morning.
 
-The `If no reply:` line, which `hub brief` requires, says what stays
-blocked and what the worker does meanwhile. The work the entry asks
-about never goes ahead without the user's answer, and no agent
-answers an entry for the user.
+The `If no reply:` line says what stays blocked and what the worker
+does meanwhile. The work the question asks about never goes ahead
+without the user's answer, and no agent answers a question for the
+user. Add `Depends on:` when the question rests on an earlier
+decision, and name who made it. A question that blocks no card, such
+as which changes a session review makes, goes on a new draft card
+made with `card new <project> "<title>"`, so every reader finds it.
 
-No `hub` command keeps these entries yet, so also mark the entry's
-card. `hub status` then shows the card's sessions as `you`:
+`hub ask` refuses a question with a part missing. It also refuses a
+card that already waits on the user, since a card shows one open
+question. Keep the next question for that card in `notes.md`, and ask
+it with `hub ask` right after `hub answer`. `hub ask` marks the card
+needs-you, so `hub status` shows the card's sessions as `you`. While
+the mark is open, a session that handed off that card also shows
+`you`: that session waits on the same question, not a new one. Close
+its tab yourself once the session that took over runs.
 
-    card note <key> "<entry title>" --needs-you
-
-An entry that blocks no card, such as a session review's question
-about which changes to make, has no key and no card note.
-
-While the note is open, a session that handed off that card also
-shows `you`. It waits on the same entry, not a new one. Close its tab
-yourself once the session that took over is running.
-
-Add `Depends on:` when the question rests on an earlier decision, and
-name who made it. When the user answers, delete the entry. Record an
-answer that sets a rule for later work in `rules.md`. Run
-`card note <key> "<the answer>" --answered` only when no other entry
-title starts with that key. Bring the user everything that waits on
-them with:
+When the user answers, run `hub answer <key> "<answer>"`. It moves
+the question to the card's Decisions with the answer and marks the
+card answered. Record an answer that sets a rule for later work in
+`rules.md`. Bring the user everything that waits on them with:
 
     hub brief --run "<run folder>"
 

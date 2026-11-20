@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 
 use common::{TestTools, make_agent, make_card_repo, make_time};
 
-/// Runs `hub status --json` and returns what it printed.
+/// Runs `run_status` for JSON and returns what it printed.
 fn read_status_json(test_tools: &TestTools) -> Value {
     let now = make_time("2026-11-11T22:14:00+00:00[UTC]");
     let outcome = run_status(&test_tools.tools(), &test_tools.run(), true, &now).unwrap();
@@ -48,16 +48,17 @@ fn write_parked_record(test_tools: &TestTools, name: &str, card: &str) {
     fs::write(parked.join(format!("{name}.json")), record.to_string()).unwrap();
 }
 
-/// `hub status` is the one place the hub sees every session and what
+/// `run_status` is the one place the hub sees every session and what
 /// waits on whom. The hub's own pane as a row could later close the
 /// hub itself, and a session left out is one nobody watches. Each
 /// source must reach its row. A pending approval from a worker's pane
 /// keeps it open. A message a killed process left half sent shows as
 /// unsure. A hub a handoff named closes. A parked record
 /// shows with its time. A worker whose card is not on the board stays
-/// kept, since no rule can tell whether its work is done. A review
-/// card's open needs-you note shows its worker as `you`, or the tidy
-/// pass parks a worker whose question the user has not answered.
+/// kept, since no rule can tell whether its work is finished. A card
+/// needing the user's review, with an open needs-you note, shows its
+/// worker as `you`, or the tidy pass parks a worker whose question
+/// the user has not answered.
 #[test]
 fn run_status_rows_cover_sessions_not_hub() {
     // The hub's own pane, the old hub it took over from, a working
@@ -88,10 +89,10 @@ fn run_status_rows_cover_sessions_not_hub() {
         },
     ];
     test_tools.cards.stages = [
-        ("DEMO-KB-005".to_owned(), Stage::Review),
-        ("DEMO-KB-007".to_owned(), Stage::Review),
+        ("DEMO-KB-005".to_owned(), Stage::InReview),
+        ("DEMO-KB-007".to_owned(), Stage::InReview),
         ("DEMO-KB-009".to_owned(), Stage::Active),
-        ("DEMO-KB-081".to_owned(), Stage::Review),
+        ("DEMO-KB-081".to_owned(), Stage::InReview),
     ]
     .into();
     for key in ["DEMO-KB-007", "DEMO-KB-009", "DEMO-KB-081"] {
@@ -103,7 +104,7 @@ fn run_status_rows_cover_sessions_not_hub() {
     test_tools.cards.card_notes.insert(
         "DEMO-KB-005".to_owned(),
         CardNote {
-            needs_you_open: true,
+            needs_you: Some("Which bucket?".to_owned()),
             ..CardNote::default()
         },
     );
@@ -203,11 +204,11 @@ fn run_status_lists_only_unread_reports() {
     assert_eq!(status["unread"], json!(["demo-kb-007-impl", "docs-fix"]));
 }
 
-/// A `card` that fails, such as without a vault, must not hide the
+/// A `Cards` call that fails, such as without a vault, must not hide the
 /// sessions. The hub still sees every row, and one line says why the
 /// card facts are missing. An idle worker whose report was read must
 /// stay `kept`, since the tidy pass would close a `to-close` row while
-/// its card may still be active.
+/// its card may still be in progress.
 #[test]
 fn run_status_keeps_rows_when_card_fails() {
     let mut test_tools = TestTools::new();
@@ -266,7 +267,7 @@ fn run_status_bad_request_file_keeps_sessions() {
         folders: vec![plain_folder],
         ..make_agent("demo-kb-007-impl", AgentStatus::Idle)
     }];
-    test_tools.cards.stages = [("DEMO-KB-007".to_owned(), Stage::Accepted)].into();
+    test_tools.cards.stages = [("DEMO-KB-007".to_owned(), Stage::Done)].into();
     let requests = test_tools.state_folder().join("pr-write");
     fs::create_dir(&requests).unwrap();
     fs::write(requests.join("req1.json"), r#"{"state": "pend"#).unwrap();
@@ -287,10 +288,10 @@ fn run_status_bad_request_file_keeps_sessions() {
     );
 }
 
-/// A hub started without `hub handoff` leaves the older hub open, and
-/// nothing closes it or starts its review. `hub status` is where the
+/// A hub started without `run_handoff` leaves the older hub open, and
+/// nothing closes it or starts its review. `run_status` is where the
 /// hub looks after a restart, so the repair command must show there
-/// too, not only in a `hub next` line printed once.
+/// too, not only in a `run_next` line printed once.
 #[test]
 fn run_status_names_hub_left_without_handoff() {
     let mut test_tools = TestTools::new();
@@ -352,11 +353,12 @@ fn run_status_closes_every_handed_off_hub() {
 
 /// A worker can finish its own card and go on to another, such as a
 /// second pull request to merge. Its newest report names that card,
-/// here one in review whose pull request waits on the user. While that
-/// card is draft, ready, active or in review, the session must not be
-/// `to-close` or `to-park`, or the tidy pass closes a worker in the
-/// middle of its task. An older report names only the done card, so
-/// reading the wrong report closes the worker.
+/// here one needing the user's review, whose pull request waits on
+/// the user. While that card has not gone past the user's review in
+/// `Stage` order, the session must not be `to-close` or `to-park`, or
+/// the tidy pass closes a worker in the middle of its task. An older
+/// report names only the card whose work is over, so reading the
+/// wrong report closes the worker.
 #[test]
 fn run_status_follows_card_in_newest_report() {
     let mut test_tools = TestTools::new();
@@ -367,8 +369,8 @@ fn run_status_follows_card_in_newest_report() {
         ..make_agent("demo-kb-082-rebase", AgentStatus::Idle)
     }];
     test_tools.cards.stages = [
-        ("DEMO-KB-082".to_owned(), Stage::Accepted),
-        ("DEMO-KB-007".to_owned(), Stage::Review),
+        ("DEMO-KB-082".to_owned(), Stage::Done),
+        ("DEMO-KB-007".to_owned(), Stage::InReview),
     ]
     .into();
     test_tools
@@ -404,7 +406,7 @@ fn run_status_follows_card_in_newest_report() {
     assert_eq!(status["sessions"][0]["card"], "DEMO-KB-007");
 }
 
-/// pde-gh-write marks a merge request `ran` seconds after the user
+/// The approval tool marks a merge request `ran` seconds after the user
 /// approves it, and the worker often files its next request soon
 /// after. A session whose request changed in the last hour must stay
 /// `kept`, or the tidy pass closes it between two requests and the
@@ -428,8 +430,8 @@ fn run_status_keeps_session_with_recent_request() {
         },
     ];
     test_tools.cards.stages = [
-        ("DEMO-KB-007".to_owned(), Stage::Accepted),
-        ("DEMO-KB-008".to_owned(), Stage::Accepted),
+        ("DEMO-KB-007".to_owned(), Stage::Done),
+        ("DEMO-KB-008".to_owned(), Stage::Done),
     ]
     .into();
     let requests = test_tools.state_folder().join("pr-write");
@@ -475,10 +477,10 @@ fn run_status_keeps_session_with_recent_request() {
     );
 }
 
-/// An active or review card with no live or parked session is work
-/// nobody is doing, and the hub must list it as unworked. A card that
-/// already has a live or parked session must not appear there, since
-/// the work is already under way.
+/// A card in progress or needing the user's review, with no live or
+/// parked session, is work nobody is doing, and the hub must list it
+/// as unworked. A card that already has a live or parked session
+/// must not appear there, since the work is already under way.
 #[test]
 fn run_status_names_cards_with_no_session() {
     let mut test_tools = TestTools::new();
@@ -486,8 +488,8 @@ fn run_status_names_cards_with_no_session() {
     test_tools.cards.stages = [
         ("DEMO-KB-004".to_owned(), Stage::Active),
         ("DEMO-KB-007".to_owned(), Stage::Active),
-        ("DEMO-KB-010".to_owned(), Stage::Review),
-        ("DEMO-KB-011".to_owned(), Stage::Accepted),
+        ("DEMO-KB-010".to_owned(), Stage::InReview),
+        ("DEMO-KB-011".to_owned(), Stage::Done),
     ]
     .into();
     for key in ["DEMO-KB-007", "DEMO-KB-010"] {
@@ -554,9 +556,9 @@ fn run_status_keeps_sessions_git_cannot_clear() {
         },
     ];
     test_tools.cards.stages = [
-        ("DEMO-KB-001".to_owned(), Stage::Review),
-        ("DEMO-KB-002".to_owned(), Stage::Review),
-        ("DEMO-KB-003".to_owned(), Stage::Review),
+        ("DEMO-KB-001".to_owned(), Stage::InReview),
+        ("DEMO-KB-002".to_owned(), Stage::InReview),
+        ("DEMO-KB-003".to_owned(), Stage::InReview),
     ]
     .into();
     for key in ["DEMO-KB-001", "DEMO-KB-002", "DEMO-KB-003"] {
@@ -593,7 +595,7 @@ fn run_status_keeps_sessions_git_cannot_clear() {
     );
 }
 
-/// pde-gh-write never runs a pending request four hours after its last
+/// The approval tool never runs a pending request four hours after its last
 /// change. Counting such a file as open kept its session at "approval
 /// waits" for good, so the hub told the user an approval waited that
 /// could no longer be given.
@@ -606,7 +608,7 @@ fn run_status_ignores_expired_pending_request() {
         folders: vec![plain_folder],
         ..make_agent("demo-kb-007-impl", AgentStatus::Idle)
     }];
-    test_tools.cards.stages = [("DEMO-KB-007".to_owned(), Stage::Accepted)].into();
+    test_tools.cards.stages = [("DEMO-KB-007".to_owned(), Stage::Done)].into();
     let requests = test_tools.state_folder().join("pr-write");
     fs::create_dir(&requests).unwrap();
     let request = json!({
@@ -626,4 +628,22 @@ fn run_status_ignores_expired_pending_request() {
             "card done".to_owned(),
         )]
     );
+}
+
+/// The hub restarts the watch when status says `watch stopped`, and
+/// starts `run_next` when it says `hub next stopped`. Reading one lock
+/// for both once showed a running watch as stopped whenever no
+/// `run_next` waited, so neither could be trusted.
+#[test]
+fn run_status_tells_watch_from_hub_next() {
+    let test_tools = TestTools::new();
+    let watch_folder = test_tools.state_folder().join("hub");
+    fs::create_dir_all(&watch_folder).unwrap();
+    let watch_lock = File::create(watch_folder.join("watch.lock")).unwrap();
+    watch_lock.lock().unwrap();
+
+    let status = read_status_json(&test_tools);
+
+    assert_eq!(status["watch"], "running");
+    assert_eq!(status["watcher"], "stopped");
 }

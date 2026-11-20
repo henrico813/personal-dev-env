@@ -30,7 +30,7 @@ mod herdr_cli {
     }
 
     /// Herdr refuses the pane ID after `--source`, so a wrong order
-    /// leaves the sidebar without the mark while `hub flag` says it is
+    /// leaves the sidebar without the mark while `run_flag` says it is
     /// there. The agent filter finds hubs and flagged idle sessions
     /// only by these tokens, so a wrong token hides them from the user.
     /// The hub token's value sets the row's place in the list.
@@ -109,9 +109,10 @@ mod herdr_cli {
     /// A remote hub's `hub --machine laptop flag NAME` must look the
     /// session up on that machine. Herdr reads `--machine` only before
     /// the command, and without it a local session with the same name
-    /// gets the mark. A wrong command word breaks `go`, `gather` or
-    /// `flag` outright. Each agent must carry the machine, since
-    /// `hub status` keeps a remote session open only by it.
+    /// gets the mark. A wrong command word breaks `run_go`,
+    /// `run_gather` or `run_flag` outright. Each agent must carry the
+    /// machine, since `run_status` keeps a remote session open only by
+    /// it.
     #[test]
     fn herdr_cli_sends_machine_and_tags_agents() {
         let folder = TempFolder::new();
@@ -152,7 +153,7 @@ mod herdr_cli {
     }
 
     /// A message with spaces, quotes and a newline must reach the agent
-    /// word for word. The wait flags make `hub handoff` wait until the
+    /// word for word. The wait flags make `run_handoff` wait until the
     /// next hub has taken the message.
     #[test]
     fn herdr_cli_passes_prompt_as_one_argument() {
@@ -181,7 +182,7 @@ mod herdr_cli {
         );
     }
 
-    /// `hub handoff` makes a tab with `HUB_RUN` set and starts the next
+    /// `run_handoff` makes a tab with `HUB_RUN` set and starts the next
     /// hub in that tab's pane. A pane ID read from the wrong field, or
     /// the model passed before `--`, starts nothing or the wrong model.
     #[test]
@@ -279,7 +280,7 @@ mod herdr_cli {
         );
     }
 
-    /// `hub desk` starts the board by typing `hub board` into the desk's
+    /// `run_desk` starts the board by typing `hub board` into the desk's
     /// first pane. Herdr takes the pane before the command, so a swapped
     /// order leaves the desk without its board.
     #[test]
@@ -366,7 +367,7 @@ mod herdr_cli {
         }
     }
 
-    /// `hub next` sends a message held with `--machine` through that
+    /// `run_next` sends a message held with `--machine` through that
     /// machine's Herdr, including the screen read, Enter press and wait
     /// after a stall. A call without `--machine LABEL` first reaches a
     /// session on this machine instead.
@@ -420,7 +421,7 @@ mod herdr_cli {
         );
     }
 
-    /// `hub gather` reorders the sidebar through Herdr's socket, which
+    /// `run_gather` reorders the sidebar through Herdr's socket, which
     /// refuses a request whose method or field names are wrong.
     #[test]
     fn move_workspaces_sends_move_block_request() {
@@ -530,7 +531,7 @@ mod herdr_cli {
         );
     }
 
-    /// Hubs act on `hub gather`'s exit code, so a refused move must come
+    /// Hubs act on `run_gather`'s exit code, so a refused move must come
     /// back as an error with Herdr's own words, never as success.
     #[test]
     fn move_workspaces_keeps_herdr_refusal_message() {
@@ -558,9 +559,9 @@ mod card_cli {
 
     use super::common::{TempFolder, read_script_calls};
 
-    /// `hub read --card` adds the note to the card named first. Key and
-    /// text swapped would put the note on no card, or fail. The `--`
-    /// keeps a note such as `-h` from being read as an option of `card`.
+    /// `run_read` with a card adds the note to the card named first.
+    /// Key and text swapped would put the note on no card, or fail. The
+    /// `--` keeps a note such as `-h` from being read as an option of `card`.
     #[test]
     fn card_cli_passes_note_key_then_text() {
         let folder = TempFolder::new();
@@ -641,25 +642,26 @@ mod card_cli {
         assert_eq!(titles, expected);
     }
 
-    /// `hub auto ready` and `hub auto check` work from this list. A
-    /// draft card in it could be run without the user's say, and a
-    /// ready card left out never reaches the user's briefing.
+    /// `run_auto_todo` and `run_auto_check` work from this list. A card
+    /// in it that the user has not refined could run without the
+    /// user's say, and a card ready to start that is left out never
+    /// reaches the user's briefing.
     #[test]
-    fn card_cli_lists_ready_keys_in_order() {
+    fn card_cli_lists_todo_keys_in_order() {
         let folder = TempFolder::new();
-        let card_list = "DEMO-KB-007\tready\ttask\tDemo\tRetry failed uploads\n\
-                         DEMO-KB-003\tready\ttask\tDemo\tFix the docs\n\
+        let card_list = "DEMO-KB-007\ttodo\ttask\tDemo\tRetry failed uploads\n\
+                         DEMO-KB-003\ttodo\ttask\tDemo\tFix the docs\n\
                          2 cards\n";
         let script = folder.write_script("card", card_list, "", 0);
         let cards = CardCli::new(script.clone());
 
-        let keys = cards.list_ready().unwrap();
+        let keys = cards.list_todo().unwrap();
 
         let keys: Vec<&str> = keys.iter().map(CardKey::as_str).collect();
         assert_eq!(keys, ["DEMO-KB-007", "DEMO-KB-003"]);
         assert_eq!(
             read_script_calls(&script),
-            [["list", "--tabs", "--stage", "ready"]]
+            [["list", "--tabs", "--stage", "todo"]]
         );
     }
 
@@ -682,7 +684,55 @@ mod card_cli {
         );
     }
 
-    /// `hub brief` shows card's own reason on its board line, such as a
+    /// `hub brief` and `hub board` list a question only while its card's
+    /// newest mark is needs-you. A card answered since would show as
+    /// waiting, and one missed would hide a question from the user.
+    /// `card grep` cuts long lines with `…`, so a cut line must still
+    /// count.
+    #[test]
+    fn card_cli_lists_needs_you_from_grep() {
+        let folder = TempFolder::new();
+        let card_grep = "DEMO-KB-003 Log: - 2026-11-17 needs-you: Which bucket?\n\
+                         DEMO-KB-003 Log: - 2026-11-18 answered: B\n\
+                         DEMO-KB-007 Log: - 2026-11-18 needs-you: Deploy the new mo…\n\
+                         3 matches in 2 cards\n";
+        let script = folder.write_script("card", card_grep, "", 0);
+        let cards = CardCli::new(script);
+
+        let keys = cards.list_needs_you().unwrap();
+
+        let keys: Vec<&str> = keys.iter().map(CardKey::as_str).collect();
+        assert_eq!(keys, ["DEMO-KB-007"]);
+    }
+
+    /// `card grep` exits 1 both when no card waits and when it fails. A
+    /// failure read as no match gives the user a false all-clear, and no
+    /// match read as a failure shows an error whenever nothing waits.
+    #[test]
+    fn list_needs_you_tells_failure_from_none() {
+        let cases = [
+            ("no-match", "0 matches in 0 cards\n", "", Ok(0)),
+            (
+                "failure",
+                "",
+                "card: no default vault\n",
+                Err("card: no default vault"),
+            ),
+        ];
+        for (name, stdout, stderr, expected) in cases {
+            let folder = TempFolder::new();
+            let script = folder.write_script("card", stdout, stderr, 1);
+
+            let result = CardCli::new(script).list_needs_you();
+
+            let result = result
+                .map(|keys| keys.len())
+                .map_err(|error| error.to_string());
+            assert_eq!(result, expected.map_err(str::to_owned), "{name}");
+        }
+    }
+
+    /// `run_brief` shows `card`'s own reason on its board line, such as a
     /// vault it cannot find, so the user can fix it.
     #[test]
     fn card_cli_error_keeps_card_stderr() {
@@ -768,7 +818,7 @@ mod requests {
 
     /// A request that already ran must not keep a session open forever.
     /// An approved one has not run `gh` yet, so its session must stay.
-    /// One file that is not JSON must not break `hub status`; it is
+    /// One file that is not JSON must not break `run_status`; it is
     /// counted for one problem line instead.
     #[test]
     fn list_open_requests_skips_ran_and_unreadable() {

@@ -33,7 +33,9 @@
   Say what you chose in one line and continue. Ask only when a wrong
   guess would cause rework.
 - When a short message can mean more than one thing, ask before you
-  answer, and offer two or three readings to pick from.
+  answer, and offer two or three readings to pick from. A reply key,
+  such as `1A`, can too; match it to a question as `status-updates`
+  says.
 - Ask the user questions as plain text in your reply, in the short
   form of the `status-updates` skill. Never use a tool that shows the
   user a question with clickable choices, such as `question`; the
@@ -259,7 +261,7 @@ pattern over the whole file.
 
 - At each milestone, such as a merged PR, an approved plan or a
   delegated step's report, run `pde-context` where it is installed.
-  When it says the context is above the 200k handoff level, propose
+  When it says the context is above the 150k handoff level, propose
   handing the remaining work to a new session with `herdr-handoff`
   instead of waiting for compaction.
 
@@ -273,6 +275,10 @@ pattern over the whole file.
   to an `AGENTS.md` file only where `skill-development` sends it, as
   a routing line or a rule for one repository.
 
-- Agents change pull requests only through `pde-gh-write`; a human supplies approval through Herdr, Moshi, or `pde-pr-approve`. Never answer approval requests, run `pde-pr-approve`, or set `PDE_GH_WRITE`.
+- Agents change pull requests only through pde-gh-write. The only
+  exception to this is skill-fix changes on non-github vcs forges. A
+  human supplies approval through Herdr, Moshi, or `pde-pr-approve`.
+  Never answer approval requests, run `pde-pr-approve`, or set
+  `PDE_GH_WRITE`.
 - Before sending a request to open or merge a PR, follow Guardrail 4
   of the `pull-request` skill.

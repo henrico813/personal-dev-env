@@ -1,0 +1,70 @@
+# Naming rules for cards, plans, branches, commit titles and Herdr
+# agents. card reads these rules, and copies card_key and card_file
+# into the Obsidian template that `card template` prints. The hub,
+# planner, msg and pde-check-branch still hold their own copies until
+# they read this file.
+#
+# Each [rule] table has:
+#   make   a template, such as "{key|lower}-{role}". The filters are
+#          lower, slug (lower-case letters and digits joined by single
+#          hyphens) and pad3 (a number padded to 3 digits).
+#   parse  a pattern with named groups that reads a name back.
+#
+# Python, Go, Rust and JavaScript must read every pattern the same
+# way. Start every pattern with ^ and end it with $, since Go, Rust
+# and JavaScript find a match anywhere in the name. Use ASCII classes
+# such as [0-9], never \d, \w or \b, and no lookaround or
+# backreferences. Write named groups as (?P<name>...).
+#
+# After changing card_key or card_file, save the output of
+# `card template` over the vault's 001.09 Zettel-Kanban.md again,
+# since the template keeps its own copy of both.
+#
+# testdata/names/cases.toml in personal-dev-env lists names each rule
+# must make and read. Run every reader's tests after a change here.
+version = 1
+
+# A card's key, such as PDEV-KB-012. {code} comes from the "Project
+# code:" line in the project folder's AGENTS.md.
+[card_key]
+make = "{code}-KB-{n|pad3}"
+parse = '^(?P<code>[A-Z][A-Z0-9]*)-KB-(?P<n>[0-9]{3,})$'
+
+# A card note's file name, such as "PDEV-KB-012 Retry uploads.md".
+[card_file]
+make = "{key} {title}.md"
+parse = '^(?P<key>[A-Z][A-Z0-9]*-KB-[0-9]{3,})(?: (?P<title>.*))?\.md$'
+
+# A plan note's file name, such as "PDEV-412 Retry uploads.md".
+[plan_file]
+make = "{key} {title}.md"
+parse = '^(?P<key>[A-Za-z]+-[0-9]+[A-Za-z]*)(?: (?P<title>.*))?\.md$'
+
+# A branch, such as feat/pdev-412-retry-uploads. pde-check-branch also
+# limits the words after the type to 48 characters.
+[branch]
+make = "{type}/{words|slug}"
+parse = '^(?P<type>feat|fix|docs|test|refactor|perf|build|ci|chore|style|revert|vibe)/(?P<words>[a-z0-9]+(?:-[a-z0-9]+)*)$'
+
+# A commit or pull request title, such as "feat(hub): add requests".
+# The scope is optional when reading. msg also limits titles to 50
+# characters.
+[commit_title]
+make = "{type}({scope}): {summary}"
+parse = '^(?P<type>feat|fix|docs|test|refactor|perf|build|ci|chore|style|revert)(?:\((?P<scope>[^)]+)\))?!?: (?P<summary>.+)$'
+
+# The Herdr agent working on a card, such as pdev-kb-012-build.
+[agent]
+make = "{key|lower}-{role}"
+parse = '^(?P<key>[a-z][a-z0-9]*-kb-[0-9]{3,})-(?P<role>[a-z0-9-]+)$'
+
+# A hub's Herdr agent, such as kanban-hub-7. A review agent's name
+# can fit this pattern too, so readers check review_agent first.
+[hub]
+make = "{run}-hub-{n}"
+parse = '^(?P<run>.*)-hub-(?P<n>[0-9]+)$'
+
+# The agent that reviews a hub's work, such as review-kanban-hub-7.
+[review_agent]
+make = "review-{hub}"
+parse = '^review-(?P<hub>.+)$'

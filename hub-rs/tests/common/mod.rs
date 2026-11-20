@@ -11,7 +11,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use hub::external::cards::{
-    Board, BoardCounts, CardError, CardKey, CardNote, Cards, ListedCard, Stage, WaitingCard,
+    BlockedCard, Board, BoardCounts, CardError, CardKey, CardNote, Cards, ListedCard, Mark, Stage,
 };
 use hub::external::herdr::{
     Agent, AgentKind, AgentStart, AgentStatus, Herdr, HerdrCode, HerdrError, HubKind, NewPlace,
@@ -428,23 +428,30 @@ impl Herdr for &InMemoryHerdr {
     }
 }
 
-/// The `card` command, as the `Cards` trait, with the board, the
-/// stages, the ready cards and what `card show` gives in memory. It
-/// records each note it is asked to add, each session it links and
-/// each card it moves to active.
+/// The `Cards` trait in memory, with the board, the stages, the cards
+/// ready to start and each card's note. It records each note it is
+/// asked to add, each session it links, each card it moves into
+/// progress, and each item and mark it is asked to write. A write
+/// does not change `card_notes`.
 #[derive(Default)]
 pub struct InMemoryCards {
-    /// Each card's stage, as `card list` gives it.
+    /// Each card's stage, as `Cards::list_cards` gives it.
     pub stages: BTreeMap<String, Stage>,
-    /// The keys of ready cards, in `card list` order.
-    pub ready: Vec<String>,
-    /// What `card show` gives, by card key. Any other card fails as
-    /// `card show` does for a missing card.
+    /// The keys of cards ready to start, in the order
+    /// `Cards::list_todo` gives.
+    pub todo: Vec<String>,
+    /// What `Cards::read_card` gives, by card key. Any other card fails
+    /// as `CardCli` does for a missing card. A card whose `needs_you` is
+    /// set is one `list_needs_you` finds.
     pub card_notes: BTreeMap<String, CardNote>,
-    /// `None` answers as `card` does without a vault.
+    /// Keys `list_needs_you` also gives with no card in `card_notes`, so
+    /// reading them fails, as when a marked card's file breaks.
+    pub unreadable_needs_you: Vec<String>,
+    /// `None` answers as `CardCli` does without a vault.
     pub board: Option<BoardCounts>,
-    /// The waiting-on-others list `read_board` gives with `board`.
-    pub waiting: Vec<WaitingCard>,
+    /// The cards waiting on people outside the team that `read_board`
+    /// gives with `board`.
+    pub blocked: Vec<BlockedCard>,
     /// Each `add_note` call, as the card key and the text.
     pub notes: RefCell<Vec<(String, String)>>,
     /// When set, `add_note` fails with this message and records nothing.
@@ -457,14 +464,19 @@ pub struct InMemoryCards {
     /// Runs inside each `link_session` call that succeeds, as another
     /// process acting while the card is linked.
     pub on_link: Option<Box<dyn Fn()>>,
-    /// When set, `list_cards` and `read_card` fail with this message,
-    /// as `card` does without a vault.
+    /// When set, `list_cards`, `read_card` and `list_needs_you` fail
+    /// with this message, as `CardCli` does without a vault.
     pub read_error: Option<String>,
     /// The key of each `move_to_active` call.
     pub moves: RefCell<Vec<String>>,
     /// When set, `move_to_active` fails with this message and records
-    /// nothing, as `card` does past the work limit.
+    /// nothing, as `CardCli` does past the work limit.
     pub move_error: Option<String>,
+    /// Each item and mark write, in call order, such as
+    /// `add DEMO-KB-007 Open Questions: TEXT`,
+    /// `remove DEMO-KB-007 Open Questions 2` or
+    /// `needs-you DEMO-KB-007: TEXT`.
+    pub writes: RefCell<Vec<String>>,
 }
 
 impl InMemoryCards {
@@ -492,8 +504,8 @@ impl Cards for InMemoryCards {
             .collect())
     }
 
-    fn list_ready(&self) -> Result<Vec<CardKey>, CardError> {
-        Ok(self.ready.iter().map(|key| key.parse().unwrap()).collect())
+    fn list_todo(&self) -> Result<Vec<CardKey>, CardError> {
+        Ok(self.todo.iter().map(|key| key.parse().unwrap()).collect())
     }
 
     fn read_card(&self, key: &CardKey) -> Result<CardNote, CardError> {
@@ -511,7 +523,7 @@ impl Cards for InMemoryCards {
             .ok_or_else(|| CardError::Failed("card: no default vault".to_owned()))?;
         Ok(Board {
             counts,
-            waiting: self.waiting.clone(),
+            blocked: self.blocked.clone(),
         })
     }
 
@@ -543,6 +555,44 @@ impl Cards for InMemoryCards {
             return Err(CardError::Failed(message.clone()));
         }
         self.moves.borrow_mut().push(key.as_str().to_owned());
+        Ok(())
+    }
+
+    fn list_needs_you(&self) -> Result<Vec<CardKey>, CardError> {
+        self.check_read_error()?;
+        let marked = self
+            .card_notes
+            .iter()
+            .filter(|(_, note)| note.needs_you.is_some())
+            .map(|(key, _)| key);
+        Ok(marked
+            .chain(&self.unreadable_needs_you)
+            .map(|key| key.parse().unwrap())
+            .collect())
+    }
+
+    fn add_item(&self, key: &CardKey, section: &str, text: &str) -> Result<(), CardError> {
+        self.writes
+            .borrow_mut()
+            .push(format!("add {} {section}: {text}", key.as_str()));
+        Ok(())
+    }
+
+    fn remove_item(&self, key: &CardKey, section: &str, number: usize) -> Result<(), CardError> {
+        self.writes
+            .borrow_mut()
+            .push(format!("remove {} {section} {number}", key.as_str()));
+        Ok(())
+    }
+
+    fn add_mark(&self, key: &CardKey, mark: Mark, text: &str) -> Result<(), CardError> {
+        let mark = match mark {
+            Mark::NeedsYou => "needs-you",
+            Mark::Answered => "answered",
+        };
+        self.writes
+            .borrow_mut()
+            .push(format!("{mark} {}: {text}", key.as_str()));
         Ok(())
     }
 }
@@ -667,19 +717,19 @@ pub fn write_opencode_db(path: &Path, rows: &[OpenCodeRow<'_>]) {
     }
 }
 
-/// Adds a row to the OpenCode database's `session` table at `path`,
-/// making the table first when it is missing.
+/// Adds a row to the OpenCode database's `session_v2` table at
+/// `path`, making the table first when it is missing.
 pub fn write_opencode_session(path: &Path, session: &str, directory: &Path) {
     let database = Connection::open(path).unwrap();
     database
         .execute(
-            "create table if not exists session (id text primary key, directory text)",
+            "create table if not exists session_v2 (id text primary key, directory text)",
             [],
         )
         .unwrap();
     database
         .execute(
-            "insert into session values (?1, ?2)",
+            "insert into session_v2 values (?1, ?2)",
             rusqlite::params![session, directory.to_string_lossy()],
         )
         .unwrap();

@@ -57,7 +57,7 @@ pub(crate) struct FinishedSession {
     pub name: String,
     /// `to-close` or `to-park`.
     pub state: String,
-    /// Why, as `hub clean` prints it, such as `DEMO-KB-007 accepted`.
+    /// Why, as `hub clean` prints it, such as `DEMO-KB-007 done`.
     pub why: String,
 }
 

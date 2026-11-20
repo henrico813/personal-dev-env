@@ -16,9 +16,9 @@ or several. Plans keep their strict checks, and cards stay loose
 enough for the user to edit by hand in Obsidian.
 
 The **staff agent** will be one Herdr session, named `general-staff`,
-that runs the board. It starts a worker for the oldest `ready` card
+that runs the board. It starts a worker for the oldest `todo` card
 when a slot is free and checks a worker's pull request and tests
-before it moves the card to `review`. It brings the user one item at
+before it moves the card to `in-review`. It brings the user one item at
 a time: a card to accept, a question a worker asked, or a pull request
 write waiting for approval. It keeps no memory of its own. Each time
 it wakes, it reads the cards, Herdr's session list and the pending

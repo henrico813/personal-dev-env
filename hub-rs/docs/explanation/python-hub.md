@@ -44,7 +44,7 @@ for people and skills that used the Python one.
   `archived report-NAME.HHMM.read, but`. The exit code is that failed
   step's own code.
 - `brief`'s first line is
-  `board active 5 of 8, review 19 of 6; 4 decisions`, or
+  `board active 5 of 8, in-review 19 of 6; 2 questions`, or
   `board: REASON` when `card` fails. When nothing else waits, the
   board line is followed by `Nothing waits on the user.`, the same
   line the Python hub printed.
@@ -88,24 +88,22 @@ for people and skills that used the Python one.
   every other line but `no hub handoff`.
 - `next` runs a minute pass at most once a minute, and only after a
   session's state changed or a report was read. It reads
-  `card board`. Each time active or review goes over its limit, it
+  `card board`. Each time active or in-review goes over its limit, it
   wakes the hub once with
-  `board over its limit: active 10 of 8, review 18 of 6 (hub 131k)`.
+  `board over its limit: active 10 of 8, in-review 18 of 6 (hub 131k)`.
   A board already over a limit at the run's first pass prints nothing.
 - The minute pass never closes or parks a session. It lists each
   session that becomes `to-close` or `to-park` once, in one line per
   state and why, such as
-  `to-close demo-kb-001-impl: DEMO-KB-001 accepted; run hub clean`.
-  For each worker past 150k that is not `to-close` or `to-park`, it
-  holds one handoff ask. It keeps its time and the finished sessions
-  in `.minute-pass.json`.
+  `to-close demo-kb-001-impl: DEMO-KB-001 done; run hub clean`.
+  It keeps its time and the finished sessions in `.minute-pass.json`.
 
 ## Closing and parking
 
 - `clean` takes a run folder and runs the tidy pass. It closes the
   tab of each `to-close` session and parks each `to-park` session.
   Each change prints one line, such as
-  `closed demo-kb-001-impl: DEMO-KB-001 accepted`.
+  `closed demo-kb-001-impl: DEMO-KB-001 done`.
 - `clean` deletes the parked record of a session that is live again,
   and prints `forgot NAME`. Then it prints one `kept` line per kept
   session, and `nothing to close` when nothing changed. `--dry-run`
@@ -143,7 +141,7 @@ for people and skills that used the Python one.
   `next --start-reviews` then starts its review.
 - `launch NAME HANDOFF --model MODEL` is new. It starts a worker
   from its handoff file in the tab or workspace the sidebar rules
-  pick, moves a ready card to active first, and records the handoff
+  pick, moves a todo card to active first, and records the handoff
   on the card and in `notes.md`.
 
 ## The sidebar and the screen
@@ -166,7 +164,7 @@ for people and skills that used the Python one.
   reason. It replaces the CARD, REPORT, SEND and LABEL columns.
 - Above the table it prints the hub's own line, the board line, one
   count per state and the unread reports. Below it, one `no session:`
-  line names active and review cards that no session works on. This
+  line names active and in-review cards that no session works on. This
   line replaces the second table. `--json` prints the same facts as
   JSON.
 - `status` looks for unsaved work only in linked worktrees. An agent

@@ -13,13 +13,13 @@ use hub::board::{self, Hubs};
 use hub::commands::at::{AtRequest, Recipients};
 use hub::commands::auto::AutoApproval;
 use hub::commands::cli::{self, AutoRunArg, AutoStep, Cli, Command, RunArg, WatchStep};
-use hub::commands::launch::LaunchRequest;
+use hub::commands::launch::{LaunchMode, LaunchRequest};
 use hub::commands::next::NextOptions;
 use hub::commands::reports::{CardChoice, ReadRequest};
 use hub::commands::send::SendRequest;
 use hub::commands::{
-    Outcome, alive, at, auto, brief, clean, flag, handoff, launch, next, reports, requests, send,
-    sidebar, status,
+    Outcome, alive, ask, at, auto, brief, clean, flag, handoff, launch, next, reports, requests,
+    send, sidebar, status,
 };
 use hub::external::cards::CardCli;
 use hub::external::herdr::HerdrCli;
@@ -251,6 +251,14 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         }
         Command::Note { run, text } => reports::run_note(&find_run(run)?, text, &now),
         Command::Brief { run } => brief::run_brief(&tools, &find_run(run)?, now.timestamp()),
+        Command::Ask { key, file } => {
+            let text = fs::read_to_string(file).map_err(|source| HubError::File {
+                path: file.clone(),
+                source,
+            })?;
+            ask::run_ask(&tools, key, &text)
+        }
+        Command::Answer { key, answer } => ask::run_answer(&tools, key, answer),
         Command::Handoff { run, name, handoff } => {
             let run = find_run(run)?;
             let poll = read_poll_interval()?;
@@ -263,13 +271,23 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
             handoff,
             model,
             workspace,
+            successor: _,
         } => {
             let run = find_run(run)?;
+            // Clap takes either `--model` or `--successor`, never both.
+            let mode = match model {
+                Some(model) => LaunchMode::Worker {
+                    model: model.clone(),
+                    workspace: workspace.clone(),
+                },
+                None => LaunchMode::Successor {
+                    session_id: env::var("OPENCODE_SESSION_ID").ok(),
+                },
+            };
             let request = LaunchRequest {
                 name: name.clone(),
                 handoff: handoff.clone(),
-                model: model.clone(),
-                workspace: workspace.clone(),
+                mode,
                 cwd: read_current_folder()?,
             };
             launch::run_launch(&tools, &run, &request, &now)
@@ -280,7 +298,7 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         }
         Command::Park { run, name } => clean::run_park(&tools, &find_run(run)?, name, &now),
         Command::Auto { step } => match step {
-            AutoStep::Ready { run } => auto::run_auto_ready(&tools, &find_auto_run(run)?),
+            AutoStep::Todo { run } => auto::run_auto_todo(&tools, &find_auto_run(run)?),
             AutoStep::Check { run } => auto::run_auto_check(&tools, &find_auto_run(run)?),
             AutoStep::Approve {
                 run,

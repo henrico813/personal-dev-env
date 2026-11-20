@@ -1,6 +1,7 @@
-//! Sorts a `Queue` into the board's groups, such as In review, and
-//! writes each row's words, its details page and the NEXT lines.
-//! Nothing here draws. Read `build_groups` and `describe_item` first.
+//! Sorts a `Queue` into the board's groups, such as one for cards
+//! needing the user's review, and writes each row's words, its
+//! details page and the NEXT lines. Nothing here draws. Read
+//! `build_groups` and `describe_item` first.
 
 use ratatui::style::Color;
 
@@ -11,13 +12,14 @@ use crate::shared::lifecycle::Lifecycle;
 /// The board's groups, in screen order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum Group {
-    /// What the read could not get, such as a failed `card list`.
+    /// What the read could not get, such as a failed
+    /// `Cards::list_cards` call.
     Problems,
     NeedsYou,
-    InProgress,
+    Active,
     InReview,
-    WaitingOnOthers,
-    Ready,
+    Blocked,
+    Todo,
     Draft,
 }
 
@@ -31,7 +33,7 @@ pub(super) enum Status {
     Run,
     /// Its card has a worker session, and none of them is working.
     Idle,
-    /// Its card is in review, and no worker runs on it.
+    /// Its card needs the user's review, and no worker runs on it.
     Rev,
     /// Its card has no worker session.
     None,
@@ -43,11 +45,11 @@ impl Group {
     pub(super) fn title(self) -> &'static str {
         match self {
             Group::Problems => "Could not read",
-            Group::InProgress => "In progress",
+            Group::Active => "Active",
             Group::InReview => "In review",
-            Group::WaitingOnOthers => "Waiting on others",
+            Group::Blocked => "Blocked",
             Group::NeedsYou => "Needs you",
-            Group::Ready => "Ready",
+            Group::Todo => "Todo",
             Group::Draft => "Draft",
         }
     }
@@ -57,11 +59,11 @@ impl Group {
     pub(super) fn slug(self) -> &'static str {
         match self {
             Group::Problems => "could-not-read",
-            Group::InProgress => "in-progress",
+            Group::Active => "active",
             Group::InReview => "in-review",
-            Group::WaitingOnOthers => "waiting-on-others",
+            Group::Blocked => "blocked",
             Group::NeedsYou => "needs-you",
-            Group::Ready => "ready",
+            Group::Todo => "todo",
             Group::Draft => "draft",
         }
     }
@@ -72,11 +74,11 @@ impl Group {
     pub(super) fn color(self) -> Color {
         match self {
             Group::Problems => Color::Red,
-            Group::InProgress => Color::Yellow,
+            Group::Active => Color::Yellow,
             Group::InReview => Color::Green,
-            Group::WaitingOnOthers => Color::Cyan,
+            Group::Blocked => Color::Cyan,
             Group::NeedsYou => Color::Magenta,
-            Group::Ready => Color::Blue,
+            Group::Todo => Color::Blue,
             Group::Draft => Color::Reset,
         }
     }
@@ -102,7 +104,7 @@ impl Status {
     pub(super) fn color(self) -> Color {
         match self {
             Status::You => Group::NeedsYou.color(),
-            Status::Run => Group::InProgress.color(),
+            Status::Run => Group::Active.color(),
             Status::Rev => Group::InReview.color(),
             Status::Problem => Group::Problems.color(),
             Status::Idle | Status::None => Color::Reset,
@@ -118,8 +120,8 @@ pub(super) struct Item {
     /// problem.
     pub id: String,
     pub text: String,
-    /// A short word for the row's right end, such as `DevEnv` for a
-    /// card's project folder or `kanban-hub-3` for a hub's question.
+    /// A short word for the row's right end, such as `DevEnv` for the
+    /// project folder of a card or of a question's card.
     pub tag: String,
     pub status: Status,
     pub target: Target,
@@ -147,9 +149,10 @@ impl Target {
     }
 }
 
-/// Returns every group with its items, in screen order. The Could not
-/// read group shows only when a read failed, and Waiting on others
-/// only when it holds a card.
+/// Returns every group with its items, in screen order. The
+/// `Could not read` group shows only when a read failed, and the
+/// group of cards waiting on people outside the team only when it
+/// holds a card.
 pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
     let cards_at = |stage: Stage| -> Vec<Item> {
         queue
@@ -167,7 +170,7 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
         .map(|(index, question)| Item {
             id: question.title.clone(),
             text: question.title.clone(),
-            tag: question.hub.clone(),
+            tag: question.project.clone(),
             status: Status::You,
             target: Target::Question(index),
         })
@@ -204,14 +207,15 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
     }
     groups.extend([
         (Group::NeedsYou, needs_you),
-        (Group::InProgress, cards_at(Stage::Active)),
-        (Group::InReview, cards_at(Stage::Review)),
-        (Group::WaitingOnOthers, cards_at(Stage::WaitingOnOthers)),
-        (Group::Ready, cards_at(Stage::Ready)),
+        (Group::Active, cards_at(Stage::Active)),
+        (Group::InReview, cards_at(Stage::InReview)),
+        (Group::Blocked, cards_at(Stage::Blocked)),
+        (Group::Todo, cards_at(Stage::Todo)),
         (Group::Draft, cards_at(Stage::Draft)),
     ]);
-    // Most boards have no waiting card, and a phone has few rows.
-    groups.retain(|(group, items)| *group != Group::WaitingOnOthers || !items.is_empty());
+    // Most boards have no card waiting on people outside the team,
+    // and a phone has few rows.
+    groups.retain(|(group, items)| *group != Group::Blocked || !items.is_empty());
     groups
 }
 
@@ -223,17 +227,20 @@ const COUNTED: [Status; 3] = [Status::Run, Status::You, Status::Idle];
 pub(super) struct NextLines {
     /// One `you:` line per row of Needs you, or one that says none.
     pub you: Vec<String>,
-    /// The `then:` line, which counts the cards in review.
+    /// The `then:` line, which counts the cards needing the user's
+    /// review.
     pub then: String,
-    /// One `hub:` line per Ready card, in `card list` order, or one
-    /// that says none. The hub may start another card first.
+    /// One `hub:` line per card ready to start, in the order
+    /// `Cards::list_cards` gives, or one that says none. The hub may
+    /// start another card first.
     pub hub: Vec<String>,
 }
 
-/// Returns the rows of the glance page's QUEUE block. They are what
-/// could not be read, what waits on the user, then cards that run, idle
-/// cards and cards in review. A card whose worker waits on the user is left
-/// out, since that worker is already a row of Needs you.
+/// Returns the rows of the glance page's QUEUE block, which are what
+/// could not be read, what waits on the user, then cards that run,
+/// idle cards and cards needing the user's review. A card whose worker
+/// waits on the user is left out, since that worker is already a row
+/// of the `Needs you` group.
 pub(super) fn glance_items(groups: &[(Group, Vec<Item>)]) -> Vec<(Group, &Item)> {
     let order = [
         Status::Problem,
@@ -271,7 +278,7 @@ pub(super) fn count_statuses(groups: &[(Group, Vec<Item>)]) -> Vec<(Status, usiz
 }
 
 /// Returns the NEXT lines from the groups. `no_hub` is true when no hub
-/// ran at the read, so nothing could wait on the user.
+/// ran at the read.
 pub(super) fn write_next_lines(groups: &[(Group, Vec<Item>)], no_hub: bool) -> NextLines {
     let items = |wanted: Group| {
         groups
@@ -299,12 +306,12 @@ pub(super) fn write_next_lines(groups: &[(Group, Vec<Item>)], no_hub: bool) -> N
         1 => "then: review 1 card".to_owned(),
         count => format!("then: review {count} cards"),
     };
-    let mut hub: Vec<String> = items(Group::Ready)
+    let mut hub: Vec<String> = items(Group::Todo)
         .iter()
-        .map(|item| format!("hub: ready {}", item.text))
+        .map(|item| format!("hub: start {}", item.text))
         .collect();
     if hub.is_empty() {
-        hub.push("hub: no ready card".to_owned());
+        hub.push(format!("hub: no {} card", Stage::Todo.as_str()));
     }
     NextLines { you, then, hub }
 }
@@ -319,7 +326,7 @@ pub(super) fn describe_item(queue: &Queue, target: Target, note: Option<&CardNot
             let question = &queue.questions[index];
             let mut lines = vec![
                 question.title.clone(),
-                format!("from {}", question.hub),
+                format!("card {}", question.key.as_str()),
                 String::new(),
             ];
             lines.extend(question.lines.iter().cloned());
@@ -336,7 +343,7 @@ pub(super) fn describe_item(queue: &Queue, target: Target, note: Option<&CardNot
 }
 
 /// Returns a card's details page lines, such as its title, then
-/// `DEMO-KB-001  review  Demo`, its workers, next step, PR links and
+/// `DEMO-KB-001  in-review  Demo`, its workers, next step, PR links and
 /// criteria.
 pub(super) fn describe_card(card: &CardLine, note: Option<&CardNote>) -> Vec<String> {
     let mut lines = vec![
@@ -385,7 +392,7 @@ fn card_item(index: usize, card: &CardLine, sessions: &[SessionRow]) -> Item {
 
 /// Returns a card's status from its workers' states. A worker that
 /// waits on the user wins over one at work, and one at work wins over
-/// the card being in review.
+/// the card needing the user's review.
 fn card_status(card: &CardLine, sessions: &[SessionRow]) -> Status {
     let states: Vec<Lifecycle> = card
         .workers
@@ -397,7 +404,7 @@ fn card_status(card: &CardLine, sessions: &[SessionRow]) -> Status {
         Status::You
     } else if states.contains(&Lifecycle::Working) {
         Status::Run
-    } else if card.stage == Stage::Review {
+    } else if card.stage == Stage::InReview {
         Status::Rev
     } else if states.is_empty() {
         Status::None
@@ -429,9 +436,9 @@ mod tests {
 
     use crate::board::view::tests::sample_queue;
 
-    /// A worker that runs on a card in review, such as one fixing review
-    /// comments, means the card is in work now. Shown as `rev`, it would
-    /// look like it waits for the user's review.
+    /// A worker that runs on a card needing the user's review, such as
+    /// one fixing review comments, means the card is in work now. Shown
+    /// as `rev`, it would look like it waits for the user's review.
     #[test]
     fn build_groups_marks_working_review_card_run() {
         let mut queue = sample_queue();
