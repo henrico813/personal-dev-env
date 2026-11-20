@@ -434,6 +434,38 @@ fn check_once_skips_busy_hub_desk_sessions() {
     assert!(test_tools.herdr.marks.borrow().is_empty());
 }
 
+/// An ask that cannot go now, while the user is in the pane or after a
+/// prod in the session's present Herdr state, must go at a later check.
+/// Saved as sent, it would not come again until 20k more tokens, which
+/// an idle session never gains.
+#[test]
+fn check_once_sends_held_ask_later() {
+    let mut test_tools = TestTools::new();
+    let run = make_watched_run(&mut test_tools);
+    test_tools.herdr.agents.push(Agent {
+        session_id: Some("ses_007".to_owned()),
+        ..make_agent(WORKER, AgentStatus::Idle)
+    });
+    let prod = json!({"at": "2026-11-12T08:05:00Z", "event": "worker_prodded",
+        "name": WORKER, "state_seq": 1, "why": "stalled"});
+    append_event_line(run.path(), &prod);
+    write_context(&test_tools, &[("ses_007", 152_000)]);
+    // The user is in the pane, then leaves it in the prodded state 1,
+    // then the session moves on to state 2.
+    let cases = [(true, 0, 0), (false, 1, 0), (false, 2, 1)];
+
+    for (focused, state_seq, asks) in cases {
+        let worker = test_tools.herdr.agents.last_mut().unwrap();
+        worker.focused = focused;
+        worker.state_seq = state_seq;
+
+        check_at(&test_tools, &Zoned::now(), &[0]);
+
+        let prompts = read_prompts(&test_tools, WORKER);
+        assert_eq!(prompts.len(), asks, "state {state_seq}: {prompts:?}");
+    }
+}
+
 /// A report the hub was never told about means no `hub next` ran for
 /// 10 minutes, as when reports sat unread until the user asked. The
 /// hub hears of it from its next `hub next`, which reads the
