@@ -435,10 +435,13 @@ note says each of these:
 - For a new skill or tool, why no existing one can hold it.
 - Your recommendation.
 
-Never read a research note in full. Have a `local-read` job quote it,
-check the quotes with `check_quotes.py`, and read only the quotes and
-the sections `check_sections.py` lists as having none, as
-[references/research-notes.md](references/research-notes.md) says.
+Never read a research note in full, such as with `cat` or
+`nobs read`. Have a `local-read` job quote it, and check the quotes
+with `check_quotes.py`. Read only the table of quotes that passed. For
+each section `check_sections.py` lists as having no quote, read only
+its lines, such as with `sed -n`. Follow
+[references/research-notes.md](references/research-notes.md) for
+these steps.
 
 When a pull request has a script for the user to try it, its worker
 writes it as `~/test-pr-<n>.sh`, where `<n>` is the pull request's
