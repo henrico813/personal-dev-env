@@ -435,5 +435,5 @@ class TestContextLine:
         result = run_stats(tmp_path, "--context")
 
         assert result.stdout == (
-            "250k, window unknown, above the 200k handoff level\n"
+            "250k, window unknown, above the 150k handoff level\n"
         )

@@ -33,8 +33,9 @@ rather than trusting the examples here.
 - The user asks for it.
 - `hub watch` asks for it. Follow Hand off when hub watch asks.
 - Part of the work is independent of yours and can run alongside it.
-- Your context is above the 200k handoff level. Run `pde-context` at
-  each milestone, such as a merged PR, to check.
+- `pde-context`, which prints your session's context size, says you
+  are above the handoff level. Context Size in `ai/AGENTS.md` says
+  when to run it.
 
 When neither the user nor `hub watch` asked, propose the handoff and
 wait for a yes. Herdr's skill says to create a workspace or tab only
