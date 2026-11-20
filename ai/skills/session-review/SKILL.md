@@ -76,10 +76,11 @@ Drop any proposal on the Do not propose list below.
 ### 3. Fixes
 
 List the corrections the user made in this session as a pick list.
-Number them after step 2's proposals: after three proposals, the
+Number them on from step 2's proposals: after three proposals, the
 first fix is 4. Each number in a reply such as "1, 4" then names
-exactly one item. Use bullets in the review's other lists, such as
-step 4's two maps and Trials, so only items to pick carry numbers.
+exactly one item. In the review's other lists, such as the Fallback
+map, the Efficiency map and Trials from step 4, use bullets. Then
+only the items to pick carry numbers.
 Keep only the corrections that pass "Check the correction" in
 [skill-fix](../skill-fix/SKILL.md), and name the skill each would go
 to. In the review file, give each a `Passes:` line on why it passes,

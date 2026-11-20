@@ -79,8 +79,9 @@ Reply like `Q7A Q8-1`.
   name or number alone. When the questions push an update past 20
   screen lines, keep them whole and move other detail to a file.
   When the questions alone fill more than 20 screen lines, still send
-  them whole. The checker then reports the update's length, and that
-  one finding may stay.
+  them whole. The checker then prints `update fills N lines`. Send
+  the update anyway; this is the one checker line you may leave
+  unfixed.
 - A list where the user picks any number of items, such as a list of
   lessons to save, keeps the form its own skill gives. Give it no
   bold numbered titles, so the checker leaves it alone.

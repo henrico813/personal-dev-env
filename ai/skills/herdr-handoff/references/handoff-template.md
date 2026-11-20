@@ -5,7 +5,9 @@ fill each part. Leave out a part with nothing in it. Keep the reader
 in mind: a new session that knows nothing of this one, and may reread
 the file after compaction. In the outline, text in `<...>` speaks to
 you, the writer, and calls the reader "the new session". Text outside
-it speaks to the new session as "you".
+it speaks to the new session as "you". One exception: leave `<file>`
+in the `hub report` bullet as it is. The new session puts its report
+file there each time.
 
 ## Contents
 
@@ -85,11 +87,10 @@ full instead, as Coordination says.>
   above. Put the hub's agent name in place of "<this session's agent
   name>". Put the hub's run folder in place of <run folder>. Put a
   file in that folder in place of <report file>. Then add the bullet
-  "You report only to the hub." to the handoff. Below it, rewrite
-  each sentence that follows this one, to the end of this
-  placeholder, as bullets that speak to the new session as "you". To
-  wait on a long job, such as a test run, the new session first runs
-  `hub wait` with
+  "You report only to the hub." to the handoff. Below it, turn the
+  rest of this placeholder into bullets. Each bullet speaks to the
+  new session as "you". To wait on a long job, such as a test run,
+  the new session first runs `hub wait` with
   `--run "<run folder>"`, its agent name, `--file <summary file>` and
   `--deadline <minutes>`. Then it starts the job with
   `setsid nohup bash <script> > <log> 2>&1 &`, so the job outlives

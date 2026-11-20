@@ -90,10 +90,12 @@ Never send a first draft. Reread it as a reader who saw no earlier
 message, fix each miss, and send it only when every check passes:
 
 1. Each sentence passes the Final checks of `plain-direct-english`.
-2. The checker prints nothing, except the one length finding that
+2. The checker prints nothing. One line may stay: `update fills N
+   lines`, when the waiting questions alone fill more than 20 screen
+   lines, as
    [references/waiting-on-you.md](references/waiting-on-you.md)
-   allows for long questions. The checker adds the question form in
-   that file and the limits in
+   says. The checker adds the question form in that file and the
+   limits in
    [references/phone-limits.md](references/phone-limits.md) to the
    `plain-direct-english` checks. Without `draft.md`, it reads stdin:
 
