@@ -24,7 +24,8 @@ counts as one step, as Restraint says.
 
 Every question to the user, in an update or on its own, takes the
 short form in
-[references/waiting-on-you.md](references/waiting-on-you.md). A
+[references/waiting-on-you.md](references/waiting-on-you.md), and
+each reply to one is matched to its question as that file says. A
 question on its own also passes the checker in Review before sending.
 It names the project only when the user may not know which work it
 is about.

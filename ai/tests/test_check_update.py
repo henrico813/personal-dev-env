@@ -127,17 +127,17 @@ class TestCheckUpdate:
 
 
 SHORT_QUESTIONS = (
-    "**1. Lessons rework: how the repeat search survives squash merges**\n"
+    "**Q7. Lessons rework: how the repeat search survives squash merges**\n"
     "- A: the merge step copies the fix lines into the squash message"
     " **(rec)**\n"
     "- B: merge fix PRs by rebase\n"
     "- C: search merged PRs on GitHub\n"
     "\n"
-    "**2. Model routing: do you want a routing table (DEMO-KB-7)?**\n"
+    "**Q8. Model routing: do you want a routing table (DEMO-KB-7)?**\n"
     "- 1: yes, redesign around them **(rec)**\n"
     "- 2: no\n"
     "\n"
-    "Reply like `1A 2-1`.\n"
+    "Reply like `Q7A Q8-1`.\n"
 )
 
 
@@ -156,13 +156,33 @@ class TestCheckUpdateQuestions:
         assert result.returncode == 0
         assert result.stdout == ""
 
+    def test_passes_numbered_actions_above_questions(
+        self, tmp_path: Path
+    ) -> None:
+        """A numbered list of actions above the questions needs no Q.
+
+        The Q sets question numbers apart from the actions the user does
+        first. A finding on each action would push agents to put a Q on
+        steps that are not questions.
+        """
+        draft = (
+            "1. Approve #9, which texts you when a valve sticks.\n"
+            "2. Merge #8 once its tests pass.\n"
+            "\n" + SHORT_QUESTIONS.replace("Q7", "Q3")
+        )
+
+        result = check(tmp_path, draft)
+
+        assert result.returncode == 0
+        assert result.stdout == ""
+
     @pytest.mark.parametrize(
         ("draft", "finding"),
         [
             pytest.param(
-                SHORT_QUESTIONS.replace("Reply like `1A 2-1`.\n", ""),
+                SHORT_QUESTIONS.replace("Reply like `Q7A Q8-1`.\n", ""),
                 "line 6: questions have no reply line,"
-                " such as Reply like `1A`",
+                " such as Reply like `Q7A`",
                 id="no-reply-line",
             ),
             pytest.param(
@@ -171,9 +191,16 @@ class TestCheckUpdateQuestions:
                 id="no-recommended",
             ),
             pytest.param(
-                SHORT_QUESTIONS.replace("**2. Model", "**2. DEMO-KB-7: Model"),
+                SHORT_QUESTIONS.replace(
+                    "**Q8. Model", "**Q8. DEMO-KB-7: Model"
+                ),
                 "line 6: question title starts with a key",
                 id="key-first",
+            ),
+            pytest.param(
+                SHORT_QUESTIONS.replace("**Q8. Model", "**8. Model"),
+                "line 6: question number has no Q, such as **Q7. ...**",
+                id="no-q",
             ),
             pytest.param(
                 SHORT_QUESTIONS.replace("- 2: no\n", "Or no.\n"),
@@ -196,7 +223,8 @@ class TestCheckUpdateQuestions:
         The user answers questions on a phone. Without one reply line,
         one recommendation, two choices, the work named first and short
         choices, the user has to read the whole message to know what to
-        type.
+        type. A title without the Q is the old per-message numbering,
+        under which a reply such as 1A can reach the wrong message.
         """
         result = check(tmp_path, draft)
 

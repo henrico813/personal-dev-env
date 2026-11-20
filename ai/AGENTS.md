@@ -33,7 +33,9 @@
   Say what you chose in one line and continue. Ask only when a wrong
   guess would cause rework.
 - When a short message can mean more than one thing, ask before you
-  answer, and offer two or three readings to pick from.
+  answer, and offer two or three readings to pick from. A reply key,
+  such as `1A`, can too; match it to a question as `status-updates`
+  says.
 - Ask the user questions as plain text in your reply, in the short
   form of the `status-updates` skill. Never use a tool that shows the
   user a question with clickable choices, such as `question`; the

@@ -1,9 +1,9 @@
 # Evaluation
 
-Seven cases check whether the skill changes what an agent writes. Run
+Eight cases check whether the skill changes what an agent writes. Run
 each case twice in a fresh session on the same model: once with no
 skill, and once with the skill pasted after the system prompt. Score
-each reply against the case's checks, one point each. Cases 4 to 7
+each reply against the case's checks, one point each. Cases 4 to 8
 come from corrections the user made.
 
 ## Contents
@@ -16,6 +16,7 @@ come from corrections the user made.
 - Case 5: a list of pull requests to review
 - Case 6: explaining work and the user's reasons
 - Case 7: two questions for the user
+- Case 8: a reply whose number fits no waiting question
 
 ## How to run
 
@@ -124,7 +125,8 @@ Checks:
 2. Each pull request is named by what it does.
 3. The duplicate-rows question is in the short form: a bold numbered
    title that names the work, one line per choice, `(rec)` on one
-   choice and a reply line. It does not rely on "Q2".
+   choice and a reply line. It asks Q2 again whole, keeping the
+   number Q2, not by its number alone.
 4. The approval gives its deadline and where to approve.
 5. The failing leap-day test is reported plainly.
 6. The untested 50,000-row case is stated.
@@ -185,8 +187,8 @@ Checks:
 3. It never names "req-5c1e".
 4. The approval expires in about three hours.
 5. The refund question is in the short form, with both choices,
-   `(rec)` on "a smaller expense" and a reply line. It does not rely
-   on "Q3".
+   `(rec)` on "a smaller expense" and a reply line. It asks Q3 again
+   whole, keeping the number Q3, not by its number alone.
 6. The checker prints nothing.
 
 ## Case 5: a list of pull requests to review
@@ -280,14 +282,44 @@ Ask the user both questions now.
 
 Checks:
 
-1. Each question has a bold numbered title that names the work in
-   plain words, with no card key before those words.
+1. Each question has a bold title numbered `Q` and a number, such as
+   `Q1`, that names the work in plain words, with no card key before
+   those words.
 2. Each choice is one short line that starts with its key, such as
    `A` or `1`.
 3. Each question marks one choice `(rec)`: keeping both copies, and
    deleting old backups.
-4. One reply line, such as "Reply like `1B 2A`", follows the last
+4. One reply line, such as "Reply like `Q1B Q2A`", follows the last
    question.
 5. Detail, such as why the worker recommends a choice, comes after
    the reply line.
 6. The checker prints nothing.
+
+## Case 8: a reply whose number fits no waiting question
+
+```text
+Project: Lantern, a command-line tool that backs up a family photo
+library to a home file server.
+
+Your earlier messages to the user, oldest first:
+- Message 1 asked Q1, whether `lantern restore` overwrites a changed
+  file, and Q2, whether to delete backups older than a year. The user
+  answered "Q1B Q2A": keep both copies, and delete old backups.
+- Message 2 asked Q3, which night the weekly backup runs (A: Sunday,
+  B: Wednesday), and Q4, whether a failed backup texts the user
+  (A: yes, B: no, email only).
+
+The user now replies: "2B".
+
+Reply to the user.
+```
+
+Checks:
+
+1. It changes nothing on the old-backups choice or any other choice.
+2. It asks which question "2B" answers, as a short-form question
+   with its own new number, Q5.
+3. Its choices name the readings, such as Q3, Q4 or a change to
+   Q2's answer, and mark the likelier one `(rec)`.
+4. When it asks Q3 or Q4 again, each keeps its number.
+5. The checker prints nothing.
