@@ -44,7 +44,7 @@ for people and skills that used the Python one.
   `archived report-NAME.HHMM.read, but`. The exit code is that failed
   step's own code.
 - `brief`'s first line is
-  `board active 5 of 8, in-review 19 of 6; 4 decisions`, or
+  `board active 5 of 8, in-review 19 of 6; 2 questions`, or
   `board: REASON` when `card` fails. When nothing else waits, the
   board line is followed by `Nothing waits on the user.`, the same
   line the Python hub printed.
@@ -96,9 +96,7 @@ for people and skills that used the Python one.
   session that becomes `to-close` or `to-park` once, in one line per
   state and why, such as
   `to-close demo-kb-001-impl: DEMO-KB-001 done; run hub clean`.
-  For each worker past 150k that is not `to-close` or `to-park`, it
-  holds one handoff ask. It keeps its time and the finished sessions
-  in `.minute-pass.json`.
+  It keeps its time and the finished sessions in `.minute-pass.json`.
 
 ## Closing and parking
 

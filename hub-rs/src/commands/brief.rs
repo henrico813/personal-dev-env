@@ -1,52 +1,30 @@
 //! Prints the briefing, everything that waits on the user.
-//! An entry in `decisions.md` holds a `## <title>`, the question, two
-//! or more `- ` choices, `Recommended:` and `If no reply:`.
 
 use jiff::Timestamp;
 
 use super::Outcome;
 use crate::external::cards::{Board, format_days};
-use crate::shared::decisions::{self, DecisionEntry};
+use crate::shared::questions::read_open_questions;
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{HubError, Tools, format_span};
 
 /// Prints the board line, one line per pending approval request,
-/// read fresh at `now`, `reviews.md`, then every decision entry in
-/// full, so the user never has to ask what a numbered question was.
-/// A failed `Cards::read_board` becomes a `board: REASON` line.
-/// Cards waiting on people outside the team come last, as news the
-/// user may chase but need not act on.
-///
-/// # Errors
-///
-/// `HubError::NotDone`, printing nothing, when an entry lacks a part
-/// the user needs to decide.
+/// read fresh at `now`, `reviews.md`, then each card's open question in
+/// full, so the user never has to ask what a question was. A failed
+/// `Cards::read_board` becomes a `board: REASON` line, and a failed
+/// question read a `questions: REASON` line. Cards waiting on people
+/// outside the team come last, as news the user may chase but need not
+/// act on.
 pub fn run_brief(tools: &Tools<'_>, run: &RunFolder, now: Timestamp) -> Result<Outcome, HubError> {
-    let entries = decisions::read_decisions(&run.read_optional_file("decisions.md")?);
-    let problems: Vec<String> = entries
-        .iter()
-        .filter_map(|entry| {
-            let missing = find_missing_parts(entry);
-            (!missing.is_empty()).then(|| {
-                format!(
-                    "decisions.md entry '{}' lacks {}",
-                    entry.title,
-                    missing.join(", ")
-                )
-            })
-        })
-        .collect();
-    if !problems.is_empty() {
-        return Err(HubError::NotDone(problems.join("\n")));
-    }
-
-    let decision_count = match entries.len() {
-        1 => "1 decision".to_owned(),
-        count => format!("{count} decisions"),
+    let questions = read_open_questions(tools.cards);
+    let question_count = match &questions {
+        Ok(questions) if questions.len() == 1 => "1 question".to_owned(),
+        Ok(questions) => format!("{} questions", questions.len()),
+        Err(_) => "questions unread".to_owned(),
     };
     let board = tools.cards.read_board();
     let mut board_lines = vec![match &board {
-        Ok(board) => format!("board {}; {decision_count}", board.counts),
+        Ok(board) => format!("board {}; {question_count}", board.counts),
         Err(error) => format!("board: {error}"),
     }];
     board_lines.extend(board.as_ref().ok().and_then(Board::blocked_line));
@@ -60,12 +38,25 @@ pub fn run_brief(tools: &Tools<'_>, run: &RunFolder, now: Timestamp) -> Result<O
     if !pull_requests.trim().is_empty() {
         sections.push(pull_requests.trim().to_owned());
     }
-    for entry in &entries {
-        let mut section = vec![format!("Decision: {}", entry.title)];
-        section.extend(entry.lines.iter().cloned());
-        sections.push(section.join("\n"));
+    match &questions {
+        Ok(questions) => {
+            for question in questions {
+                let mut section = vec![format!(
+                    "Question {}: {}",
+                    question.key.as_str(),
+                    question.title
+                )];
+                section.extend(question.lines.iter().cloned());
+                sections.push(section.join("\n"));
+            }
+        }
+        Err(error) => sections.push(format!("questions: {error}")),
     }
-    if approvals.is_empty() && pull_requests.trim().is_empty() && entries.is_empty() {
+    // An unread question list may hide one, so it is never all clear.
+    if approvals.is_empty()
+        && pull_requests.trim().is_empty()
+        && questions.is_ok_and(|questions| questions.is_empty())
+    {
         sections.push("Nothing waits on the user.".to_owned());
     }
     if !blocked.is_empty() {
@@ -126,34 +117,4 @@ fn list_pending_approvals(tools: &Tools<'_>, now: Timestamp) -> Result<Vec<Strin
         lines.push(format!("requests: {} files did not parse", saved.bad_files));
     }
     Ok(lines)
-}
-
-/// Lists the parts an entry lacks, such as `two choices`. Lines that
-/// start with a space carry on the line above, so they are not parts.
-fn find_missing_parts(entry: &DecisionEntry) -> Vec<&'static str> {
-    const FIELDS: [&str; 3] = ["Recommended:", "If no reply:", "Depends on:"];
-    let starts: Vec<&str> = entry
-        .lines
-        .iter()
-        .map(String::as_str)
-        .filter(|line| !line.starts_with(' '))
-        .collect();
-    let choice_count = starts.iter().filter(|line| line.starts_with("- ")).count();
-    let has_question = starts
-        .iter()
-        .any(|line| !line.starts_with("- ") && !FIELDS.iter().any(|field| line.starts_with(field)));
-    let mut missing = Vec::new();
-    if !has_question {
-        missing.push("the question");
-    }
-    if choice_count < 2 {
-        missing.push("two choices");
-    }
-    if !starts.iter().any(|line| line.starts_with("Recommended:")) {
-        missing.push("the Recommended: line");
-    }
-    if !starts.iter().any(|line| line.starts_with("If no reply:")) {
-        missing.push("the If no reply: line");
-    }
-    missing
 }

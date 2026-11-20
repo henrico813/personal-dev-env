@@ -55,34 +55,27 @@ fn print_board_shows_card_failure_on_top() {
     .unwrap();
 
     assert_eq!(outcome.lines[5], "QUEUE                                [2]");
-    assert!(outcome.lines[6].starts_with(" !    cards: card: no default"));
+    assert!(outcome.lines[6].starts_with(" !    questions: card: no"));
+    assert!(outcome.lines[7].starts_with(" !    cards: card: no default"));
 }
 
 /// The user opens the board from any shell, with no run folder named,
-/// while two hubs work. QUEUE must hold the questions of every hub
-/// Herdr lists, each tagged with its hub, and none from the folder of a
-/// hub that is gone. A worker that reported to the second hub has
+/// while two hubs work. A worker that reported to the second hub has
 /// reported, so it must not wait on the user as one that never
-/// reported.
+/// reported. A card's open question shows in QUEUE, tagged with the
+/// card's project, so the user knows which work it holds up.
 #[test]
-fn print_board_gathers_and_tags_live_hubs() {
+fn print_board_gathers_live_hubs_and_questions() {
     let mut test_tools = TestTools::new();
-    let runs = [
-        ("herdr-hub.one", "kanban-hub-1", "Deploy tonight?"),
-        ("herdr-hub.two", "auto-hub-2", "Merge the docs PR?"),
-        ("herdr-hub.gone", "kanban-hub-0", "Rename the bucket?"),
-    ];
-    for (folder, hub, question) in runs {
+    for (folder, hub) in [
+        ("herdr-hub.one", "kanban-hub-1"),
+        ("herdr-hub.two", "auto-hub-2"),
+    ] {
         let run = test_tools.path().join(folder);
         fs::create_dir(&run).unwrap();
         let started =
             format!(r#"{{"at":"2026-11-12T08:00:00Z","event":"watch_started","hub":"{hub}"}}"#);
         fs::write(run.join("events.jsonl"), started + "\n").unwrap();
-        fs::write(
-            run.join("decisions.md"),
-            format!("## {question}\n\nPick one.\n"),
-        )
-        .unwrap();
     }
     let worker = "demo-kb-007-impl";
     fs::write(
@@ -106,19 +99,26 @@ fn print_board_gathers_and_tags_live_hubs() {
         .cards
         .card_notes
         .insert("DEMO-KB-007".to_owned(), CardNote::default());
+    test_tools.cards.card_notes.insert(
+        "DEMO-KB-009".to_owned(),
+        CardNote {
+            project: "Demo".to_owned(),
+            needs_you: Some("Deploy tonight?".to_owned()),
+            ..CardNote::default()
+        },
+    );
     let hubs = Hubs::Live(test_tools.path().to_owned());
 
     let outcome = board::print_board(&test_tools.tools(), &hubs, &TimeZone::UTC, PHONE).unwrap();
 
     let screen = outcome.lines.join("\n");
-    assert!(outcome.lines[5].starts_with("QUEUE  2 you"), "{screen}");
-    let row = |question: &str| {
-        let line = outcome.lines.iter().find(|line| line.contains(question));
-        line.map(|line| line.split_whitespace().last().unwrap_or_default())
-    };
-    assert_eq!(row("Deploy tonight?"), Some("kanban"), "{screen}");
-    assert_eq!(row("Merge the docs PR?"), Some("auto-h"), "{screen}");
-    assert_eq!(row("Rename the bucket?"), None, "{screen}");
+    assert!(outcome.lines[5].starts_with("QUEUE  1 you"), "{screen}");
+    let question = outcome
+        .lines
+        .iter()
+        .find(|line| line.contains("Deploy tonight?"));
+    let tag = question.map(|line| line.split_whitespace().last().unwrap_or_default());
+    assert_eq!(tag, Some("Demo"), "{screen}");
 }
 
 /// A `notes.md` entry from `ago` before now, under its UTC day's

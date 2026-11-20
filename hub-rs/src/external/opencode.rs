@@ -167,6 +167,38 @@ impl OpenCodeDb {
         Ok(Some(effort.to_owned()))
     }
 
+    /// Returns the newest reply's model and effort as `--model` takes
+    /// them, such as `claude-code/claude-opus-5-5[1m]#high`, or `None`
+    /// before any reply. A reply that names no effort gives no `#` part.
+    pub(crate) fn read_model(&self, session: &str) -> Result<Option<String>, OpenCodeError> {
+        let Some(connection) = self.open()? else {
+            return Ok(None);
+        };
+        let data: Option<String> = connection
+            .query_row(
+                "select data from session_message \
+                 where session_id = ?1 and type = 'assistant' order by seq desc limit 1",
+                [session],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(OpenCodeError::Database)?;
+        let Some(data) = data else {
+            return Ok(None);
+        };
+        let reply = parse_row_data(&data)?;
+        let text = |pointer| reply.pointer(pointer).and_then(Value::as_str);
+        let (Some(provider), Some(id)) = (text("/model/providerID"), text("/model/id")) else {
+            return Err(OpenCodeError::BadRow(
+                "the newest OpenCode reply names no model".to_owned(),
+            ));
+        };
+        Ok(Some(match text("/model/variant") {
+            Some(effort) => format!("{provider}/{id}#{effort}"),
+            None => format!("{provider}/{id}"),
+        }))
+    }
+
     /// Returns what `hub alive` shows, or `None` for an unknown session.
     pub(crate) fn read_activity(
         &self,

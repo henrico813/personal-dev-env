@@ -8,7 +8,7 @@ use std::process::Command;
 use std::thread;
 use std::time::{Duration, SystemTime};
 
-use hub::external::herdr::{Agent, AgentStatus, HerdrError};
+use hub::external::herdr::{Agent, AgentStatus, HerdrError, Workspace};
 use hub::shared::run_folder::RunFolder;
 use hub::watch::background::start_in_background;
 use hub::watch::wait::{WaitRequest, run_wait};
@@ -19,7 +19,10 @@ use hub::watch::{
 use jiff::{SignedDuration, Zoned};
 use serde_json::{Value, json};
 
-use common::{TempFolder, TestTools, make_agent, read_events, read_script_calls};
+use common::{
+    OpenCodeRow, TempFolder, TestTools, make_agent, read_events, read_script_calls,
+    write_opencode_db,
+};
 
 /// The worker most tests watch, named after its card as hubs name
 /// workers.
@@ -336,6 +339,131 @@ fn check_once_marks_blocked_worker() {
         *test_tools.herdr.marks.borrow(),
         [(format!("w1:{WORKER}"), vec![AgentStatus::Blocked])]
     );
+}
+
+/// Writes a new OpenCode database in which each session's newest reply
+/// holds this many tokens of context.
+fn write_context(test_tools: &TestTools, sessions: &[(&str, u64)]) {
+    let path = test_tools.opencode_path();
+    let _ = fs::remove_file(&path);
+    let rows: Vec<OpenCodeRow> = sessions
+        .iter()
+        .map(|(session, tokens)| OpenCodeRow {
+            session,
+            kind: "assistant",
+            updated_ms: 0,
+            data: json!({"tokens": {"input": tokens, "cache": {"read": 0, "write": 0}}}),
+        })
+        .collect();
+    write_opencode_db(&path, &rows);
+}
+
+/// A session past 150k runs out of context mid-task unless it hands
+/// off, and nothing else tells a session with no hub. The watch asks at
+/// 150k and again at each 20k more, and from 190k also marks it "needs
+/// you". Asked on every check, a session could never finish its
+/// handoff.
+#[test]
+fn check_once_asks_then_marks_idle_workers() {
+    let mut test_tools = TestTools::new();
+    test_tools.herdr.agents.push(Agent {
+        session_id: Some("ses_007".to_owned()),
+        ..make_agent(WORKER, AgentStatus::Idle)
+    });
+    // Each check starts a new clock, as a restarted watch does, so only
+    // the saved asks keep a step from being asked twice.
+    let cases = [
+        (152_000, 1, 0),
+        (160_000, 1, 0),
+        (171_000, 2, 0),
+        (191_000, 3, 1),
+    ];
+
+    for (tokens, asks, marks) in cases {
+        write_context(&test_tools, &[("ses_007", tokens)]);
+
+        check_at(&test_tools, &Zoned::now(), &[0]);
+
+        let prompts = read_prompts(&test_tools, WORKER);
+        assert_eq!(prompts.len(), asks, "{tokens}: {prompts:?}");
+        assert_eq!(test_tools.herdr.marks.borrow().len(), marks, "{tokens}");
+    }
+    let prompts = read_prompts(&test_tools, WORKER);
+    assert!(
+        prompts[2].starts_with("hub watch: your context is about 191k"),
+        "{prompts:?}"
+    );
+}
+
+/// The ask must never land mid-turn in a working session, or in a
+/// hub's pane, which is the user's own chat, or in the desk, where the
+/// successor would open. At 191k each would get both the ask and the
+/// "needs you" mark.
+#[test]
+fn check_once_skips_busy_hub_desk_sessions() {
+    let mut test_tools = TestTools::new();
+    for (name, session, workspace, status) in [
+        ("demo-kb-008-impl", "ses_008", "w1", AgentStatus::Working),
+        ("kanban-hub-1", "ses_hub1", "w1", AgentStatus::Idle),
+        ("notes", "ses_desk", "w9", AgentStatus::Idle),
+    ] {
+        test_tools.herdr.agents.push(Agent {
+            session_id: Some(session.to_owned()),
+            workspace_id: workspace.to_owned(),
+            ..make_agent(name, status)
+        });
+    }
+    test_tools.herdr.workspaces.push(Workspace {
+        workspace_id: "w9".to_owned(),
+        label: "desk".to_owned(),
+    });
+    write_context(
+        &test_tools,
+        &[
+            ("ses_008", 191_000),
+            ("ses_hub1", 191_000),
+            ("ses_desk", 191_000),
+        ],
+    );
+
+    check_at(&test_tools, &Zoned::now(), &[0]);
+
+    for name in ["demo-kb-008-impl", "kanban-hub-1", "notes"] {
+        assert!(read_prompts(&test_tools, name).is_empty(), "{name}");
+    }
+    assert!(test_tools.herdr.marks.borrow().is_empty());
+}
+
+/// An ask that cannot go now, while the user is in the pane or after a
+/// prod in the session's present Herdr state, must go at a later check.
+/// Saved as sent, it would not come again until 20k more tokens, which
+/// an idle session never gains.
+#[test]
+fn check_once_sends_held_ask_later() {
+    let mut test_tools = TestTools::new();
+    let run = make_watched_run(&mut test_tools);
+    test_tools.herdr.agents.push(Agent {
+        session_id: Some("ses_007".to_owned()),
+        ..make_agent(WORKER, AgentStatus::Idle)
+    });
+    let prod = json!({"at": "2026-11-12T08:05:00Z", "event": "worker_prodded",
+        "name": WORKER, "state_seq": 1, "why": "stalled"});
+    append_event_line(run.path(), &prod);
+    write_context(&test_tools, &[("ses_007", 152_000)]);
+    // The user is in the pane, then leaves it in the prodded state 1,
+    // then the session moves on to state 2.
+    let cases = [(true, 0, 0), (false, 1, 0), (false, 2, 1)];
+
+    for (focused, state_seq, asks) in cases {
+        let worker = test_tools.herdr.agents.last_mut().unwrap();
+        worker.focused = focused;
+        worker.state_seq = state_seq;
+
+        check_at(&test_tools, &Zoned::now(), &[0]);
+
+        let prompts = read_prompts(&test_tools, WORKER);
+        assert_eq!(prompts.len(), asks, "state {state_seq}: {prompts:?}");
+    }
 }
 
 /// A report the hub was never told about means no `hub next` ran for

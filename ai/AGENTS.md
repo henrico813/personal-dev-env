@@ -258,7 +258,7 @@ pattern over the whole file.
 
 - At each milestone, such as a merged PR, an approved plan or a
   delegated step's report, run `pde-context` where it is installed.
-  When it says the context is above the 200k handoff level, propose
+  When it says the context is above the 150k handoff level, propose
   handing the remaining work to a new session with `herdr-handoff`
   instead of waiting for compaction.
 

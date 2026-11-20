@@ -4,12 +4,13 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use hub::commands::launch::{LaunchRequest, run_launch};
+use hub::commands::launch::{LaunchMode, LaunchRequest, run_launch};
 use hub::external::cards::Stage;
-use hub::external::herdr::{AgentStatus, HerdrCode, Workspace};
+use hub::external::herdr::{Agent, AgentStatus, HerdrCode, Workspace};
 use hub::shared::HubError;
+use serde_json::json;
 
-use common::{TestTools, make_agent, make_refusal, make_time};
+use common::{OpenCodeRow, TestTools, make_agent, make_refusal, make_time, write_opencode_db};
 
 /// The model a hub passes for its workers.
 const MODEL: &str = "github-copilot/claude-sonnet-5#high";
@@ -52,8 +53,10 @@ fn launch_worker(
     let request = LaunchRequest {
         name: worker.parse().unwrap(),
         handoff: handoff.to_owned(),
-        model: MODEL.to_owned(),
-        workspace: workspace.map(str::to_owned),
+        mode: LaunchMode::Worker {
+            model: MODEL.to_owned(),
+            workspace: workspace.map(str::to_owned),
+        },
         cwd: test_tools.path().to_owned(),
     };
     run_launch(
@@ -177,6 +180,52 @@ fn run_launch_prompts_worker_and_records_handoff() {
     );
     let notes = fs::read_to_string(test_tools.run_path().join("notes.md")).unwrap();
     assert!(notes.contains("started demo-kb-007-impl ("));
+}
+
+/// A worker near its context limit starts its own successor. The
+/// successor opens in a new tab beside the worker, not by the sidebar
+/// rule, on the worker's model and effort, so the work goes on as it
+/// was. The worker's "needs you" mark goes, or `hub clean` keeps it
+/// open as waiting on the user after the successor took over, and the
+/// watch saves it as never to be asked or marked again.
+#[test]
+fn run_launch_successor_takes_over_from_caller() {
+    let (mut test_tools, handoff) = make_launch_tools();
+    test_tools.herdr.agents.push(Agent {
+        session_id: Some("ses_007".to_owned()),
+        workspace_id: "w3".to_owned(),
+        pane_id: "w3:demo-kb-007-impl".to_owned(),
+        marked: true,
+        ..make_agent("demo-kb-007-impl", AgentStatus::Idle)
+    });
+    let reply = OpenCodeRow {
+        session: "ses_007",
+        kind: "assistant",
+        updated_ms: 0,
+        data: json!({"model": {"providerID": "claude-code", "id": "claude-opus-5-5[1m]", "variant": "high"}}),
+    };
+    write_opencode_db(&test_tools.opencode_path(), &[reply]);
+    let request = LaunchRequest {
+        name: "demo-kb-007-impl-2".parse().unwrap(),
+        handoff,
+        mode: LaunchMode::Successor {
+            session_id: Some("ses_007".to_owned()),
+        },
+        cwd: test_tools.path().to_owned(),
+    };
+    let now = make_time("2026-11-11T22:14:00+00:00[UTC]");
+
+    run_launch(&test_tools.tools(), &test_tools.run(), &request, &now).unwrap();
+
+    assert_eq!(test_tools.herdr.created_tabs.borrow()[0].0, "w3");
+    assert_eq!(
+        test_tools.herdr.started.borrow()[0].args,
+        ["--model", "claude-code/claude-opus-5-5[1m]#high", "--auto"]
+    );
+    assert_eq!(*test_tools.herdr.cleared.borrow(), ["w3:demo-kb-007-impl"]);
+    let asks = fs::read_to_string(test_tools.state_folder().join("hub/handoff-asks.json")).unwrap();
+    let asks: BTreeMap<String, u64> = serde_json::from_str(&asks).unwrap();
+    assert_eq!(asks.get("ses_007"), Some(&u64::MAX));
 }
 
 /// Each refusal comes before any tab, workspace, agent, card change or

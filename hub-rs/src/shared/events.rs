@@ -70,8 +70,6 @@ pub(crate) enum EventKind {
     },
     /// `hub next` printed NAME's blocked state number `state_seq`.
     BlockedSeen { name: String, state_seq: u64 },
-    /// `hub next` asked worker NAME, in session `session`, to hand off.
-    HandoffAsked { name: String, session: String },
     /// `hub next` told the hub with this session ID to hand off.
     HubContextTold { session: String },
     /// `hub next` printed that the board went over its limit, or the
@@ -172,8 +170,6 @@ pub(crate) struct Memory {
     pub blocked_seen: BTreeMap<String, u64>,
     /// Hub session IDs told to hand off.
     pub hub_context_told: BTreeSet<String>,
-    /// Worker session IDs that got a handoff ask.
-    pub handoff_asked: BTreeSet<String>,
     /// The board was over its limit at the last crossing.
     pub board_over: bool,
     /// A minute pass saw the board, so a later pass can tell a
@@ -269,9 +265,6 @@ fn fold_events(events: impl IntoIterator<Item = Event>) -> Memory {
             EventKind::Read { name, .. } => {
                 memory.last_read.insert(name, event.at);
                 memory.read_count += 1;
-            }
-            EventKind::HandoffAsked { session, .. } => {
-                memory.handoff_asked.insert(session);
             }
             EventKind::BoardOver { .. } => {
                 memory.board_over = true;

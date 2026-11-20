@@ -56,7 +56,8 @@ changed.
 
 These cases quote the user's notes, so they live in the trials folder's
 `cases/`, never in a repository. Find a correction in a hub run
-folder's `rules.md`, `notes.md` or `decisions.md`, and save it as
+folder's `rules.md` or `notes.md`, an older run folder's
+`decisions.md`, or a card's Decisions section, and save it as
 `cases/<id>.json`:
 
 ```json
