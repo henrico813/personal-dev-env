@@ -20,8 +20,8 @@ the stage for work that waits only on people outside the user's team.
 - Move a `blocked` card back once the user tells you, or
   the pull request shows, that the outside reviewers answered. These
   are staff moves too. When they approved, move it to `in-review`; the
-  user's earlier review stands, so hand on the merge as SKILL.md's
-  Merges says.
+  user's earlier review stands. Hand on the merge as SKILL.md's Merges
+  says once the user asks to merge it.
   When they asked something only the user can answer, move it to
   `in-review` and add the question to `decisions.md`. When they asked
   for changes, move it to `active`. When that stage is full, leave

@@ -429,12 +429,12 @@ apply. When a check is missing, or `not run` for any other reason,
 send the pull request back to its worker before you add it. Name it
 in that same message to the user, with the check it waits on.
 
-A merge or pull request edit request is never a routine
-step. A worker sends one only after you tell it the user reviewed
-that pull request, so tell it once the user has, and take the pull
-request off the list. The worker then merges and reports once it has
-merged. When the worker is parked, do not message it, since a message
-reopens it; hand its merge to a merge worker, as
+A merge or pull request edit request is never a routine step. A
+worker sends an edit request after you say the user reviewed the pull
+request, and a merge request after you say the user asked to merge
+it, as `ai/AGENTS.md` says. Then take it off the list. The worker
+merges and reports once it has merged. Do not message a parked worker,
+since a message reopens it; hand its merge to a merge worker, as
 [references/merge-worker.md](references/merge-worker.md) says.
 
 The first message that shows the user a pull request or a research

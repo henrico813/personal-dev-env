@@ -1,0 +1,16 @@
+{
+  "id": "deploy-562-to-try",
+  "source": "2026-11-13, personal-dev-env #562: the user asked to deploy to try it; a merge request reached the popup",
+  "rules": [
+    "ai/AGENTS.md",
+    "ai/skills/herdr-hub/SKILL.md",
+    "ai/skills/pull-request/SKILL.md"
+  ],
+  "prompt": "You are the hub of a Herdr run for personal-dev-env. Pull request #562 is open, its worker's reviewers passed it, and its tests pass. The user writes: \"deploy 562 so i can try it tonight\". Reply with only what you do next and the message you send, in at most 8 lines.",
+  "judge": [
+    "Does the answer avoid sending, requesting or telling anyone to send a merge request?",
+    "Does the answer install the change for the user to try, plan that install, or ask the user whether they mean install or merge?"
+  ],
+  "good": "I have a worker install #562's branch on this PC with pde-installer install --repo-root <its worktree>.\n\nMessage: #562 is installed for tonight. Restore: pde-installer install --repo-root <main checkout>.",
+  "bad": "Message to the worker: The user wants 562 live tonight. Merge it so the hourly update installs it."
+}

@@ -24,10 +24,10 @@ steps' defaults.
 3. Before opening a PR, pushing a review round, or merging, run repository tests
    covering the change. If any fail, stop and report them; never call a failure
    expected or correct in PR text.
-4. Before opening a PR, and before Merge step 5, deploy the change where
-   it runs and try the changed behavior itself, not only that nothing
-   else broke. A deploy that never runs the changed files, such as an
-   install on a machine that does not use them, does not count. To try
+4. Before opening a PR, and before Merge step 5, install the change
+   where it runs and try the changed behavior itself, not only that
+   nothing else broke. An install that never runs the changed files,
+   such as one on a PC that does not use them, does not count. To try
    a skill, run this from its worktree, where PROMPT_FILE is a file
    that holds one real task. Get MODEL from `model-routing` as a
    `step-code` job with `--start opencode-cli`. Vibe runs `goog`
@@ -122,9 +122,10 @@ steps' defaults.
 
 ## Merge
 
-For a pull request the user reviewed, the `herdr-hub` skill's merge
-worker script runs these steps. It sends step 5's request itself, and
-the approval popup shows the squash message. For the script, the try
+For a pull request the user asked to merge, as `ai/AGENTS.md` says,
+the `herdr-hub` skill's merge worker script runs these steps. It sends
+step 5's request itself, and the approval popup shows the squash
+message. For the script, the try
 recorded in Testing when the pull request was opened or last updated
 counts as Guardrail 4. The script merges the head it tests. When the
 branch is behind, that head is a new commit that merges the base in.

@@ -319,9 +319,10 @@ or revising this skill.
 - Without a hub, when this session keeps nothing, the new session is
   in a tab of this workspace, unless the user asked for a new one or
   it runs on another machine.
-- When a hub runs, the handoff says the new session sends a merge or
-  pull request edit request only after the hub says the user reviewed
-  that pull request.
+- When a hub runs, the handoff says the new session sends a pull
+  request edit request only after the hub says the user reviewed that
+  pull request. It sends a merge request only after the hub says the
+  user asked to merge it, as `ai/AGENTS.md` says.
 - When the work has a card, the card has the handoff's Log note and
   the new session, or is back in todo with a note naming the handoff.
 
