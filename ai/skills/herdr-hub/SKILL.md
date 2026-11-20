@@ -36,7 +36,9 @@ the user need not read in `notes.md`. Each question that waits on the
 user goes on its card, as Questions for the user says.
 Add a rule to `rules.md` only when the user gave it. When you think
 of a rule yourself, such as a pattern in the user's answers, ask the
-user before you add it, since the hub follows every line there.
+user before you add it, since the hub follows every line there. Ask
+it plainly, such as "Should I add this to rules.md?", and leave
+`rules.md` unchanged until the user says yes.
 
 Keep no list of sessions of your own. Herdr's session names and the
 kanban cards are the record: a card's worker is named after the card,
