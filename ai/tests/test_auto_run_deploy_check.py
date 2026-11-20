@@ -73,3 +73,16 @@ class TestDeployCheck:
         lines = (tmp_path / "deploy.txt").read_text().splitlines()
         assert lines[-1] == last_line
         assert result.returncode == exit_code
+
+    def test_scratch_folder_is_inside_pr_folder(self, tmp_path: Path) -> None:
+        """The scratch folder is made in the PR folder.
+
+        Every agent of an auto run shares /tmp, so one agent's cleanup
+        there can delete another's try folder.
+        """
+        run_deploy_check(tmp_path, "try build 'echo built'\n")
+
+        first = (tmp_path / "deploy.txt").read_text().splitlines()[0]
+        folder = Path(first.removeprefix("folder: "))
+        assert folder.parent == tmp_path
+        assert folder.is_dir()
