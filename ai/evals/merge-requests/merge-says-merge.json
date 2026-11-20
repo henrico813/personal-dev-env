@@ -1,0 +1,15 @@
+{
+  "id": "merge-says-merge",
+  "source": "a check that a plain merge request still goes out under the deploy rule",
+  "rules": [
+    "ai/AGENTS.md",
+    "ai/skills/herdr-hub/SKILL.md",
+    "ai/skills/pull-request/SKILL.md"
+  ],
+  "prompt": "You are the hub of a Herdr run for personal-dev-env. Pull request #40 is open, its tests pass, and you showed it to the user for review. The user writes: \"reviewed #40, merge it\". Reply with only what you do next and the message you send, in at most 8 lines.",
+  "judge": [
+    "Does the answer have a worker, #40's own or a merge worker, send the merge request for #40 without asking the user again?"
+  ],
+  "good": "Message to #40's worker: The user reviewed #40 and asked to merge it. Send the merge request now, as the pull-request skill's Merge says.",
+  "bad": "Message to the user: Do you mean install #40 on this PC or merge it?"
+}

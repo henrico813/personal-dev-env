@@ -78,7 +78,7 @@ To build without the user's plan review, use `auto-run` instead.
 - The subagent does the task itself. Do not tell it to use `delegate`.
 - The agent that did the work never reviews it; you or a new agent do.
 - Stop for the user before anything public or hard to undo, such as a
-  push, merge, deploy or delete.
+  push, merge, deploy to a live system or delete.
 - If the agent hits something unexpected, have it stop and report
   rather than improvise a fix.
 - Check a count a second way, such as `ls` and `git worktree list`,

@@ -36,7 +36,9 @@ the user need not read in `notes.md`. Each question that waits on the
 user goes on its card, as Questions for the user says.
 Add a rule to `rules.md` only when the user gave it. When you think
 of a rule yourself, such as a pattern in the user's answers, ask the
-user before you add it, since the hub follows every line there.
+user before you add it, since the hub follows every line there. Ask
+it plainly, such as "Should I add this to rules.md?", and leave
+`rules.md` unchanged until the user says yes.
 
 Keep no list of sessions of your own. Herdr's session names and the
 kanban cards are the record: a card's worker is named after the card,
@@ -72,12 +74,15 @@ line for each Python send file left in the run folder. Send again any
 message in it that still matters, with `hub send`, then delete the file.
 
 Run `hub status` at the start and on each turn. Read its counts line
-and its `unread` line each time; never list the run folder. Tell the
-user what each `you` session waits on, and keep that in every later
-message until the session no longer waits on the user, as
-`status-updates` says. When such a session has never reported to
-you, bring it under the hub at once: send it the new rules that Rules
-gives for a worker the user hands you.
+and its `unread` line each time; never list the run folder. When you
+need a count or summary of a folder's contents that `hub status`
+does not cover, hand it to a worker as a `model-routing`
+`local-script` job, per Rules, instead of running `ls` directly.
+Tell the user what each `you` session waits on, and keep that in
+every later message until the session no longer waits on the user,
+as `status-updates` says. When such a session has never reported to
+you, bring it under the hub at once: send it the new rules that
+Rules gives for a worker the user hands you.
 
 Before you send a worker new build work, check its CTX in `hub status`.
 Past 150k it hands off by `herdr-handoff` and reports its successor,
@@ -325,8 +330,9 @@ you make any card.
 - At the start, check that your agent's name ends in `-hub-<n>`,
   such as `kanban-hub-13`: a word for the run, then a number, 1 for
   the run's first hub. `hub go` and `hub gather` find hubs by this
-  name. If yours does not, rename your agent and its tab as the bullet
-  on adopted sessions below shows.
+  name. Follow
+  [references/sidebar-names.md](references/sidebar-names.md) when
+  the name is wrong, or to place or rename a card's worker.
 - `hub handoff`, `hub adopt` and `hub auto now` move every hub's
   workspace on this machine into one block at the top of the sidebar.
   `hub gather` makes the same move when the user runs it.
@@ -334,21 +340,6 @@ you make any card.
   next hub in sidebar order, wrapping to the first.
 - The workspace labelled `desk` is the user's. Never open a tab or pane
   in it or start an agent there.
-- A card's worker gets its own workspace, named
-  `<card key> <one word>`, such as `demo-kb-007 approvals`. Cards that
-  belong together share one workspace, named `<project> <topic>`, such
-  as `demo review-tools`. When you start a card's worker with
-  `herdr-handoff`, make its place by this rule, not as a tab in your
-  workspace. Work with no card gets a tab in your workspace.
-- Name each tab after its agent. Name a card's agent
-  `<card key>-<role>`, such as `demo-kb-007-impl`, so `hub status`
-  maps it to its card. This holds for every worker, adopted sessions
-  included. When you adopt a session whose name lacks its card key,
-  rename the agent and its tab to `<card key>-<role>`. The tab ID is
-  `.result.agent.tab_id` of `herdr agent get <old name>`:
-
-      herdr agent rename <old name> <card key>-<role>
-      herdr tab rename <tab ID> <card key>-<role>
 - No name holds a status word, such as done, paused or waiting.
   Herdr's state and the "needs you" mark show status.
 
@@ -424,12 +415,12 @@ apply. When a check is missing, or `not run` for any other reason,
 send the pull request back to its worker before you add it. Name it
 in that same message to the user, with the check it waits on.
 
-A merge or pull request edit request is never a routine
-step. A worker sends one only after you tell it the user reviewed
-that pull request, so tell it once the user has, and take the pull
-request off the list. The worker then merges and reports once it has
-merged. When the worker is parked, do not message it, since a message
-reopens it; hand its merge to a merge worker, as
+A merge or pull request edit request is never a routine step. A
+worker sends an edit request after you say the user reviewed the pull
+request, and a merge request after you say the user asked to merge
+it, as `ai/AGENTS.md` says. Then take it off the list. The worker
+merges and reports once it has merged. Do not message a parked worker,
+since a message reopens it; hand its merge to a merge worker, as
 [references/merge-worker.md](references/merge-worker.md) says.
 
 The first message that shows the user a pull request or a research
