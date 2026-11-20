@@ -18,7 +18,7 @@ pub struct OpenCodeDb {
     path: PathBuf,
 }
 
-/// What `hub alive` shows about a session.
+/// What `run_alive` shows about a session.
 pub(crate) struct Activity {
     pub message_count: usize,
     pub newest: Timestamp,
@@ -36,7 +36,7 @@ pub(crate) enum ActivityWord {
 }
 
 impl ActivityWord {
-    /// Returns the word `hub alive` ends its line with.
+    /// Returns the word `run_alive` ends its line with.
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             ActivityWord::Working => "working",
@@ -67,7 +67,7 @@ pub enum OpenCodeError {
     Database(rusqlite::Error),
     /// A row whose JSON does not parse.
     BadRow(String),
-    /// `hub alive` asked for a session the database lacks.
+    /// `run_alive` asked for a session the database lacks.
     NoSession(String),
 }
 
@@ -199,7 +199,7 @@ impl OpenCodeDb {
         }))
     }
 
-    /// Returns what `hub alive` shows, or `None` for an unknown session.
+    /// Returns what `run_alive` shows, or `None` for an unknown session.
     pub(crate) fn read_activity(
         &self,
         session: &str,
@@ -344,7 +344,7 @@ mod tests {
 
     use super::*;
 
-    /// The hub's context ends every `hub next` line and decides when it
+    /// The hub's context ends every `run_next` line and decides when it
     /// hands off. A step that follows a zero step holds two steps' tokens,
     /// so counting it shows about twice the real context and makes the
     /// hub hand off far too early.

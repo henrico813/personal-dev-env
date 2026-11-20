@@ -32,14 +32,14 @@ pub(crate) struct Event {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub(crate) enum EventKind {
-    /// `hub next` printed the version of NAME's report modified at
+    /// `run_next` printed the version of NAME's report modified at
     /// `mtime_ns`.
     Announced { name: String, mtime_ns: u64 },
-    /// `hub watch` found that the version of NAME's report modified at
-    /// `mtime_ns` waited 10 minutes with no `hub next` line, while the
-    /// run's hub ran. The next `hub next` prints it as a missed report.
+    /// The watch found that the version of NAME's report modified at
+    /// `mtime_ns` waited 10 minutes with no `run_next` line, while the
+    /// run's hub ran. The next `run_next` call prints it as a missed report.
     ReportMissed { name: String, mtime_ns: u64 },
-    /// `hub read` archived NAME's report as `archive`.
+    /// `run_read` archived NAME's report as `archive`.
     Read { name: String, archive: String },
     /// A message waits in `sends/` until NAME can take it.
     Held { name: String, id: MessageId },
@@ -68,11 +68,11 @@ pub(crate) enum EventKind {
         id: MessageId,
         to: String,
     },
-    /// `hub next` printed NAME's blocked state number `state_seq`.
+    /// `run_next` printed NAME's blocked state number `state_seq`.
     BlockedSeen { name: String, state_seq: u64 },
-    /// `hub next` told the hub with this session ID to hand off.
+    /// `run_next` told the hub with this session ID to hand off.
     HubContextTold { session: String },
-    /// `hub next` printed that the board went over its limit, or the
+    /// `run_next` printed that the board went over its limit, or the
     /// run's first minute pass found it over and printed nothing.
     BoardOver {
         #[serde(flatten)]
@@ -84,18 +84,18 @@ pub(crate) enum EventKind {
         #[serde(flatten)]
         counts: BoardCounts,
     },
-    /// `hub next` printed that NAMES became `state`, `to-close` or
+    /// `run_next` printed that NAMES became `state`, `to-close` or
     /// `to-park`.
     Listed { state: String, names: Vec<String> },
     /// The minute pass saw NAMES leave the state they were listed in.
     Unlisted { names: Vec<String> },
-    /// `hub next` printed that the old hub's message file `path` waits.
+    /// `run_next` printed that the old hub's message file `path` waits.
     OldSendSeen { path: PathBuf },
-    /// `hub handoff` started `new` after `old`, whose tab is `tab`, or
-    /// `hub adopt` made `new` take over `old`. `review` is the handoff
-    /// for the session review of `old`, which `hub next --start-reviews`
-    /// starts once that tab closes. Logs written before reviews started this way
-    /// have none.
+    /// `run_handoff` started `new` after `old`, whose tab is `tab`, or
+    /// `run_adopt` made `new` take over `old`. `review` is the handoff
+    /// for the session review of `old`, which `run_next` with
+    /// `start_reviews` set starts once that tab closes. Logs written
+    /// before reviews started this way have none.
     Handoff {
         old: String,
         tab: String,
@@ -103,13 +103,13 @@ pub(crate) enum EventKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         review: Option<PathBuf>,
     },
-    /// `hub next` printed that it started `reviewer` to review the old
+    /// `run_next` printed that it started `reviewer` to review the old
     /// hub `old`, or found that review already running.
     ReviewStarted { old: String, reviewer: String },
-    /// `hub next` printed that the review of the old hub `old` did not
+    /// `run_next` printed that the review of the old hub `old` did not
     /// start.
     ReviewFailed { old: String, reason: String },
-    /// `hub next`, run by the hub `hub`, printed that the older hub
+    /// `run_next`, run by the hub `hub`, printed that the older hub
     /// `old` runs with no `handoff` event. Logs written before `hub`
     /// was recorded have none.
     UnadoptedHubSeen {
@@ -131,13 +131,13 @@ pub(crate) enum EventKind {
         tab: String,
         why: String,
     },
-    /// `hub next` held the timed message `id` from `file` for NAMES.
+    /// `run_next` held the timed message `id` from `file` for NAMES.
     TimedHeld {
         id: String,
         file: PathBuf,
         names: Vec<String>,
     },
-    /// `hub next` printed the line for the timed message `id`.
+    /// `run_next` printed the line for the timed message `id`.
     TimedTold { id: String },
 }
 
@@ -150,7 +150,7 @@ pub(crate) enum Via {
     Inbox,
 }
 
-/// A held timed message whose line `hub next` has not printed.
+/// A held timed message whose line `run_next` has not printed.
 #[derive(Debug)]
 pub(crate) struct UntoldTimed {
     pub file: PathBuf,
@@ -163,7 +163,7 @@ pub(crate) struct UntoldTimed {
 pub(crate) struct Memory {
     /// The `mtime_ns` of each name's last announced report.
     pub announced: BTreeMap<String, u64>,
-    /// The `mtime_ns` of each name's last report `hub watch` found
+    /// The `mtime_ns` of each name's last report the watch found
     /// missed.
     pub missed: BTreeMap<String, u64>,
     /// The `state_seq` of each name's last printed blocked state.
@@ -177,13 +177,13 @@ pub(crate) struct Memory {
     pub board_known: bool,
     /// The state, `to-close` or `to-park`, each name was last listed in.
     pub listed: BTreeMap<String, String>,
-    /// Old hub message files `hub next` already printed.
+    /// Old hub message files `run_next` already printed.
     pub old_send_seen: BTreeSet<PathBuf>,
     /// Timed messages held but whose line has not printed, by ID.
     pub timed_untold: BTreeMap<String, UntoldTimed>,
     /// How many `read` events the log holds, for the minute pass.
     pub read_count: usize,
-    /// When `hub read` last archived each name's report.
+    /// When `run_read` last archived each name's report.
     pub last_read: BTreeMap<String, Timestamp>,
     /// When a message last reached each name.
     pub last_delivered: BTreeMap<String, Timestamp>,
@@ -193,7 +193,7 @@ pub(crate) struct Memory {
     /// The review handoff of each old hub whose review has neither
     /// started nor failed.
     pub reviews_due: BTreeMap<String, PathBuf>,
-    /// Each pair of a hub and an older hub that `hub next`, run by
+    /// Each pair of a hub and an older hub that `run_next`, run by
     /// that hub, already named as left without a handoff. Each new hub
     /// hears once of every old hub still open.
     pub unadopted_seen: BTreeSet<(String, String)>,
@@ -207,7 +207,7 @@ pub(crate) fn append_event(run: &RunFolder, event: &Event) -> Result<(), HubErro
 }
 
 /// Adds any value as one JSON line to the log, as `append_event` does.
-/// `hub watch` writes its own kinds of event with it, which
+/// The watch writes its own kinds of event with it, which
 /// `load_memory` skips.
 pub(crate) fn append_json_line(run: &RunFolder, value: &impl Serialize) -> Result<(), HubError> {
     let log = run.path().join("events.jsonl");

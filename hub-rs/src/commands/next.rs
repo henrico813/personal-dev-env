@@ -3,7 +3,7 @@
 //! `choose_news` is pure and holds the order of the news lines.
 //! `run_minute_pass` is the slow part, at most once a minute, which
 //! reads the board and finds finished sessions. It never closes or
-//! parks a session, which only `hub clean` and `hub park` do. The one
+//! parks a session, which only `run_clean` and `run_park` do. The one
 //! session it starts is an old hub's session review, once that hub's
 //! tab has closed, and only with `--start-reviews`.
 
@@ -59,7 +59,7 @@ enum News {
     Report {
         name: String,
         mtime_ns: u64,
-        /// Set when `hub watch` found this report waited 10 minutes
+        /// Set when the watch found this report waited 10 minutes
         /// with no `hub next` line.
         missed: bool,
     },
@@ -255,7 +255,7 @@ fn run_minute_pass(
     memory: &Memory,
     now: &Zoned,
 ) -> Result<Option<BoardCounts>, HubError> {
-    // A `card` failure skips the board, as `hub status` shows it.
+    // A `card` failure skips the board, as `run_status` shows it.
     let mut board = tools.cards.read_board().ok().map(|board| board.counts);
     if let Some(counts) = &board {
         let is_over = counts.is_over();
@@ -304,7 +304,7 @@ fn record_board_state(
 }
 
 /// Returns each `to-close` and `to-park` session with why, as
-/// `hub clean` prints it.
+/// `run_clean` prints it.
 fn find_finished_sessions(collected: &CollectedFacts) -> Vec<FinishedSession> {
     collected
         .sessions
@@ -313,7 +313,7 @@ fn find_finished_sessions(collected: &CollectedFacts) -> Vec<FinishedSession> {
             let verdict = decide_lifecycle(facts);
             let why = match (verdict.state, &facts.card) {
                 (Lifecycle::ToClose, _) => tidy::describe_close_why(facts, &verdict),
-                (Lifecycle::ToPark, Some(card)) => format!("{} review", card.key.as_str()),
+                (Lifecycle::ToPark, Some(card)) => format!("{} in-review", card.key.as_str()),
                 _ => return None,
             };
             Some(FinishedSession {
