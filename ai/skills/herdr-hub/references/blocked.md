@@ -23,7 +23,8 @@ the stage for work that waits only on people outside the user's team.
   user's earlier review stands, so hand on the merge as SKILL.md's
   Merges says.
   When they asked something only the user can answer, move it to
-  `in-review` and add the question to `decisions.md`. When they asked
+  `in-review` and ask the user on the card with `hub ask`, as
+  SKILL.md's Questions for the user says. When they asked
   for changes, move it to `active`. When that stage is full, leave
   the card where it is, tell the user, and move it once a place is
   free.

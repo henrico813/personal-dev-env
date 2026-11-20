@@ -120,8 +120,8 @@ pub(super) struct Item {
     /// problem.
     pub id: String,
     pub text: String,
-    /// A short word for the row's right end, such as `DevEnv` for a
-    /// card's project folder or `kanban-hub-3` for a hub's question.
+    /// A short word for the row's right end, such as `DevEnv` for the
+    /// project folder of a card or of a question's card.
     pub tag: String,
     pub status: Status,
     pub target: Target,
@@ -170,7 +170,7 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
         .map(|(index, question)| Item {
             id: question.title.clone(),
             text: question.title.clone(),
-            tag: question.hub.clone(),
+            tag: question.project.clone(),
             status: Status::You,
             target: Target::Question(index),
         })
@@ -278,7 +278,7 @@ pub(super) fn count_statuses(groups: &[(Group, Vec<Item>)]) -> Vec<(Status, usiz
 }
 
 /// Returns the NEXT lines from the groups. `no_hub` is true when no hub
-/// ran at the read, so nothing could wait on the user.
+/// ran at the read.
 pub(super) fn write_next_lines(groups: &[(Group, Vec<Item>)], no_hub: bool) -> NextLines {
     let items = |wanted: Group| {
         groups
@@ -326,7 +326,7 @@ pub(super) fn describe_item(queue: &Queue, target: Target, note: Option<&CardNot
             let question = &queue.questions[index];
             let mut lines = vec![
                 question.title.clone(),
-                format!("from {}", question.hub),
+                format!("card {}", question.key.as_str()),
                 String::new(),
             ];
             lines.extend(question.lines.iter().cloned());

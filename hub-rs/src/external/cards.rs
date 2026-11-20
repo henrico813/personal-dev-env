@@ -2,10 +2,11 @@
 //! and parses its text. Read the `Cards` trait first. `card` has no
 //! JSON output, so this is the only file that reads card text.
 
+use std::collections::BTreeSet;
 use std::fmt;
 use std::io;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Output};
 use std::str::FromStr;
 use std::sync::LazyLock;
 use std::thread;
@@ -28,6 +29,9 @@ static KEY_IN_TEXT: LazyLock<Regex> =
 /// cards ready to start what the work needs.
 const CRITERIA_SECTIONS: [&str; 2] = ["Context", "Acceptance Criteria"];
 
+/// The card section that holds the questions waiting on the user.
+pub(crate) const OPEN_QUESTIONS: &str = "Open Questions";
+
 /// The most `card show` calls `CardCli::read_cards` runs at once. Each
 /// call starts Python and runs `nobs vault path`, and nobody has checked
 /// how many of those the vault's helper takes at once.
@@ -40,8 +44,8 @@ pub trait Cards {
     fn list_cards(&self) -> Result<Vec<ListedCard>, CardError>;
     /// Returns the keys of cards ready to start, in `card list` order.
     fn list_todo(&self) -> Result<Vec<CardKey>, CardError>;
-    /// Returns a card's title, project, session IDs, open needs-you note
-    /// and criteria.
+    /// Returns a card's title, project, session IDs, open needs-you note,
+    /// open questions and criteria.
     fn read_card(&self, key: &CardKey) -> Result<CardNote, CardError>;
     /// Reads each card in `keys` and returns the results in the same
     /// order. This default reads one card at a time.
@@ -59,6 +63,26 @@ pub trait Cards {
     /// Moves a card ready to start into progress. `card` refuses a
     /// start past the work limit, with its reason.
     fn move_to_active(&self, key: &CardKey) -> Result<(), CardError>;
+    /// Returns the keys of the cards whose newest needs-you Log line
+    /// has no answered line after it, in key order.
+    fn list_needs_you(&self) -> Result<Vec<CardKey>, CardError>;
+    /// Adds `text` as a new item at the end of a section, such as
+    /// `Open Questions`. Each later line of `text` must start with two
+    /// spaces, or `card` reads it as an item of its own.
+    fn add_item(&self, key: &CardKey, section: &str, text: &str) -> Result<(), CardError>;
+    /// Removes item `number`, counted from 1 as `card show --section`
+    /// numbers them. `card` logs the removal by `hub`, so no Herdr pane
+    /// is needed.
+    fn remove_item(&self, key: &CardKey, section: &str, number: usize) -> Result<(), CardError>;
+    /// Adds a needs-you or answered line to the card's Log.
+    fn add_mark(&self, key: &CardKey, mark: Mark, text: &str) -> Result<(), CardError>;
+}
+
+/// A Log line that opens or closes the card's wait on the user.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mark {
+    NeedsYou,
+    Answered,
 }
 
 /// Runs the `card` command.
@@ -76,24 +100,33 @@ impl CardCli {
 
     /// Runs `card` with `args` and returns what it printed.
     fn run_card(&self, args: &[&str]) -> Result<String, CardError> {
-        let output =
-            Command::new(&self.program)
-                .args(args)
-                .output()
-                .map_err(|error| match error.kind() {
-                    io::ErrorKind::NotFound => CardError::NotInstalled,
-                    _ => CardError::Failed(format!("cannot run card: {error}")),
-                })?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-            return Err(CardError::Failed(if stderr.is_empty() {
-                format!("card ended with {}", output.status)
-            } else {
-                stderr
-            }));
-        }
-        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+        read_card_output(self.run_card_unchecked(args)?)
     }
+
+    /// Runs `card` with `args` and returns its output, whatever its
+    /// exit code.
+    fn run_card_unchecked(&self, args: &[&str]) -> Result<Output, CardError> {
+        Command::new(&self.program)
+            .args(args)
+            .output()
+            .map_err(|error| match error.kind() {
+                io::ErrorKind::NotFound => CardError::NotInstalled,
+                _ => CardError::Failed(format!("cannot run card: {error}")),
+            })
+    }
+}
+
+/// Returns what `card` printed, or its standard error as the failure.
+fn read_card_output(output: Output) -> Result<String, CardError> {
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        return Err(CardError::Failed(if stderr.is_empty() {
+            format!("card ended with {}", output.status)
+        } else {
+            stderr
+        }));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 impl Cards for CardCli {
@@ -161,6 +194,48 @@ impl Cards for CardCli {
 
     fn move_to_active(&self, key: &CardKey) -> Result<(), CardError> {
         self.run_card(&["move", key.as_str(), Stage::Active.as_str()])
+            .map(drop)
+    }
+
+    /// Reads every card's marks with one `card grep`, where a `card show`
+    /// per card would start Python once per card.
+    fn list_needs_you(&self) -> Result<Vec<CardKey>, CardError> {
+        let pattern = r"^- \d{4}-\d\d-\d\d (needs-you|answered): ";
+        let output = self.run_card_unchecked(&["grep", "--section", "Log", pattern])?;
+        // `card grep` exits 1 with nothing on standard error when no line
+        // matches, and with its reason there on any other failure.
+        if output.status.code() == Some(1) && output.stderr.trim_ascii().is_empty() {
+            return Ok(Vec::new());
+        }
+        Ok(parse_needs_you(&read_card_output(output)?))
+    }
+
+    fn add_item(&self, key: &CardKey, section: &str, text: &str) -> Result<(), CardError> {
+        self.run_card(&["add", "--", key.as_str(), section, text])
+            .map(drop)
+    }
+
+    fn remove_item(&self, key: &CardKey, section: &str, number: usize) -> Result<(), CardError> {
+        let number = number.to_string();
+        self.run_card(&[
+            "edit",
+            "--remove",
+            "--by",
+            "hub",
+            "--",
+            key.as_str(),
+            section,
+            &number,
+        ])
+        .map(drop)
+    }
+
+    fn add_mark(&self, key: &CardKey, mark: Mark, text: &str) -> Result<(), CardError> {
+        let flag = match mark {
+            Mark::NeedsYou => "--needs-you",
+            Mark::Answered => "--answered",
+        };
+        self.run_card(&["note", flag, "--", key.as_str(), text])
             .map(drop)
     }
 }
@@ -292,9 +367,13 @@ pub struct CardNote {
     pub project: String,
     /// Session IDs, oldest first.
     pub sessions: Vec<String>,
-    /// A `needs-you` Log line comes after the last `answered` line, so
-    /// the card waits on the user.
-    pub needs_you_open: bool,
+    /// The text of the newest `needs-you` Log line, while no `answered`
+    /// line follows it, so the card waits on the user.
+    pub needs_you: Option<String>,
+    /// Each item of the Open Questions section, as its lines with the
+    /// `- ` bullet and the two-space indent taken off. Item `N` in
+    /// `card show --section` is at index `N - 1`.
+    pub open_questions: Vec<Vec<String>>,
     /// The bullets of Context and Acceptance Criteria, in note order.
     pub criteria: Vec<String>,
     /// The front matter's plan notes, such as `DEMO-12 Retry uploads`.
@@ -462,7 +541,14 @@ fn parse_card_note(key: &CardKey, text: &str) -> CardNote {
     let heading = format!("# {}", key.as_str());
     let mut found_heading = false;
     let mut section = "";
+    // The line before, so an Open Questions item can tell a `---` line
+    // under the heading and a line that carries on the item.
+    let mut previous = "";
     for line in lines {
+        if section == OPEN_QUESTIONS && !line.starts_with("## ") {
+            read_question_line(&mut note.open_questions, previous, line);
+        }
+        previous = line;
         if let Some(name) = line.strip_prefix("## ") {
             section = name.trim();
         } else if let Some(words) = line.strip_prefix(&heading)
@@ -478,10 +564,10 @@ fn parse_card_note(key: &CardKey, text: &str) -> CardNote {
             .and_then(|entry| entry.split_once(' '))
             .map(|(_, words)| words);
         if let Some(words) = log_entry {
-            if words.starts_with("needs-you: ") {
-                note.needs_you_open = true;
+            if let Some(question) = words.strip_prefix("needs-you: ") {
+                note.needs_you = Some(question.trim().to_owned());
             } else if words.starts_with("answered: ") {
-                note.needs_you_open = false;
+                note.needs_you = None;
             }
             // A `card note` line reads `note (who): next: ...`.
             let text = words.split_once("): ").map_or(words, |(_, text)| text);
@@ -493,6 +579,58 @@ fn parse_card_note(key: &CardKey, text: &str) -> CardNote {
         }
     }
     note
+}
+
+/// Adds one Open Questions line to `items`, as `card` counts items. A
+/// line at the margin starts an item, and an indented line right after
+/// one carries it on. `card` skips the `---` line under the heading.
+fn read_question_line(items: &mut Vec<Vec<String>>, previous: &str, line: &str) {
+    if line.trim().is_empty() || (previous.starts_with("## ") && line.trim() == "---") {
+        return;
+    }
+    if line.starts_with(char::is_whitespace) {
+        if let Some(item) = items.last_mut()
+            && !previous.trim().is_empty()
+        {
+            let carried = line.strip_prefix("  ").unwrap_or(line.trim_start());
+            item.push(carried.trim_end().to_owned());
+        }
+    } else {
+        let first = line.strip_prefix("- ").unwrap_or(line);
+        items.push(vec![first.trim_end().to_owned()]);
+    }
+}
+
+/// Returns the keys whose last mark in `card grep` output is needs-you,
+/// in key order. Lines read like
+/// `DEMO-KB-007 Log: - 2026-11-10 needs-you: which bucket?`, in file
+/// order within each card. `card` cuts long lines, but the key and the
+/// mark always fit. The last line, `N matches in M cards`, holds no
+/// key.
+fn parse_needs_you(text: &str) -> Vec<CardKey> {
+    let mut open = BTreeSet::new();
+    for line in text.lines() {
+        let Some((key, rest)) = line.split_once(' ') else {
+            continue;
+        };
+        let Ok(key) = key.parse::<CardKey>() else {
+            continue;
+        };
+        let mark = rest
+            .strip_prefix("Log: - ")
+            .and_then(|entry| entry.split_once(' '))
+            .map(|(_, words)| words);
+        match mark {
+            Some(words) if words.starts_with("needs-you:") => {
+                open.insert(key);
+            }
+            Some(words) if words.starts_with("answered:") => {
+                open.remove(&key);
+            }
+            _ => {}
+        }
+    }
+    open.into_iter().collect()
 }
 
 /// Reads `card board` text. Returns `None` when the text lacks its
@@ -693,7 +831,6 @@ mod tests {
                 title: "Retry failed uploads".to_owned(),
                 project: "Demo".to_owned(),
                 sessions: Vec::new(),
-                needs_you_open: false,
                 criteria: vec![
                     "- Uploads fail on a slow link.".to_owned(),
                     "- [ ] A failed upload retries.".to_owned(),
@@ -770,40 +907,41 @@ mod tests {
     }
 
     /// A card whose last needs-you line has no answer after it waits
-    /// on the user, so `run_status` shows its session as `you`. Reading
-    /// an answered question as open hides a finished worker behind
-    /// `you`, and missing a new question after an answer leaves the
-    /// user's question unseen.
+    /// on the user, so `run_status` shows its session as `you`, and
+    /// `hub answer` finds the question by the line's text. Reading an
+    /// answered question as open hides a finished worker behind `you`,
+    /// and missing a new question after an answer leaves the user's
+    /// question unseen.
     #[test]
     fn parse_card_note_finds_open_question() {
         struct Case {
             name: &'static str,
             log: &'static str,
-            open: bool,
+            open: Option<&'static str>,
         }
         let cases = [
             Case {
                 name: "asked",
                 log: "- 2026-11-10 needs-you: which bucket?\n",
-                open: true,
+                open: Some("which bucket?"),
             },
             Case {
                 name: "answered",
                 log: "- 2026-11-10 needs-you: which bucket?\n\
                       - 2026-11-10 answered: the cold one\n",
-                open: false,
+                open: None,
             },
             Case {
                 name: "asked-again",
                 log: "- 2026-11-10 needs-you: which bucket?\n\
                       - 2026-11-10 answered: the cold one\n\
                       - 2026-11-11 needs-you: which region?\n",
-                open: true,
+                open: Some("which region?"),
             },
             Case {
                 name: "no-question",
                 log: "- 2026-11-10 active: by the hub\n",
-                open: false,
+                open: None,
             },
         ];
 
@@ -812,7 +950,50 @@ mod tests {
 
             let note = parse_card_note(&"DEMO-KB-007".parse().unwrap(), &card_show);
 
-            assert_eq!(note.needs_you_open, case.open, "{}", case.name);
+            assert_eq!(note.needs_you.as_deref(), case.open, "{}", case.name);
         }
+    }
+
+    /// `hub answer` removes a question by its place in Open Questions,
+    /// as `card show --section` numbers it, and `hub brief` shows its
+    /// lines. Counting the `---` line under the heading, or a line that
+    /// carries on an item, as an item of its own removes the wrong
+    /// question, and a choice cut off its question hides it from the
+    /// user.
+    #[test]
+    fn parse_card_note_numbers_questions_like_card() {
+        let card_show = "---\n\
+                         stage: active\n\
+                         ---\n\
+                         \n\
+                         ## Open Questions\n\
+                         ---\n\
+                         \n\
+                         - Which bucket?\n\
+                         \n\
+                         - Deploy tonight?\n  \
+                           Deploy the new model tonight?\n  \
+                           - A. Deploy from the branch.\n  \
+                           - B. Wait.\n\
+                         \n\
+                         ## Decisions\n\
+                         ---\n\
+                         \n\
+                         - Keep the cold bucket.\n";
+
+        let note = parse_card_note(&"DEMO-KB-007".parse().unwrap(), card_show);
+
+        assert_eq!(
+            note.open_questions,
+            [
+                vec!["Which bucket?"],
+                vec![
+                    "Deploy tonight?",
+                    "Deploy the new model tonight?",
+                    "- A. Deploy from the branch.",
+                    "- B. Wait.",
+                ],
+            ]
+        );
     }
 }

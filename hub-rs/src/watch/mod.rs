@@ -134,16 +134,10 @@ impl IdleClock {
     }
 }
 
-/// A run whose hub Herdr lists now, for `hub board`.
-pub(crate) struct LiveRun {
-    pub run: RunFolder,
-    /// The hub's agent name, such as `kanban-hub-3`.
-    pub hub: String,
-}
-
 /// The runs `find_hub_runs` found.
 pub(crate) struct HubRuns {
-    pub live: Vec<LiveRun>,
+    /// Runs whose hub Herdr lists now.
+    pub live: Vec<RunFolder>,
     /// Runs whose hub Herdr no longer lists, such as a hub that ended or
     /// handed off to a hub in a new run folder.
     pub gone: Vec<RunFolder>,
@@ -626,12 +620,10 @@ pub(crate) fn find_hub_runs(runs_folder: &Path, agents: &[Agent]) -> Result<HubR
     let mut live = Vec::new();
     let mut gone = Vec::new();
     for watched in find_watched_runs(runs_folder, agents, &mut failures)? {
-        match watched.hub {
-            Some(hub) => live.push(LiveRun {
-                run: watched.run,
-                hub: hub.name,
-            }),
-            None => gone.push(watched.run),
+        if watched.hub.is_some() {
+            live.push(watched.run);
+        } else {
+            gone.push(watched.run);
         }
     }
     Ok(HubRuns {
@@ -639,16 +631,6 @@ pub(crate) fn find_hub_runs(runs_folder: &Path, agents: &[Agent]) -> Result<HubR
         gone,
         failures,
     })
-}
-
-/// Returns the hub the run's log names, or `None` before
-/// `hub watch start` named one.
-///
-/// # Errors
-///
-/// `HubError::File` when the log cannot be read.
-pub(crate) fn read_hub_name(run: &RunFolder) -> Result<Option<String>, HubError> {
-    Ok(load_watch_memory(run)?.hub)
 }
 
 /// Returns each `herdr-hub.*` folder in `runs_folder` whose event log

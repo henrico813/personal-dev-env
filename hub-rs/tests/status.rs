@@ -104,7 +104,7 @@ fn run_status_rows_cover_sessions_not_hub() {
     test_tools.cards.card_notes.insert(
         "DEMO-KB-005".to_owned(),
         CardNote {
-            needs_you_open: true,
+            needs_you: Some("Which bucket?".to_owned()),
             ..CardNote::default()
         },
     );

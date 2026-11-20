@@ -11,7 +11,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use hub::external::cards::{
-    BlockedCard, Board, BoardCounts, CardError, CardKey, CardNote, Cards, ListedCard, Stage,
+    BlockedCard, Board, BoardCounts, CardError, CardKey, CardNote, Cards, ListedCard, Mark, Stage,
 };
 use hub::external::herdr::{
     Agent, AgentKind, AgentStart, AgentStatus, Herdr, HerdrCode, HerdrError, HubKind, NewPlace,
@@ -430,8 +430,9 @@ impl Herdr for &InMemoryHerdr {
 
 /// The `Cards` trait in memory, with the board, the stages, the cards
 /// ready to start and each card's note. It records each note it is
-/// asked to add, each session it links and each card it moves into
-/// progress.
+/// asked to add, each session it links, each card it moves into
+/// progress, and each item and mark it is asked to write. A write
+/// does not change `card_notes`.
 #[derive(Default)]
 pub struct InMemoryCards {
     /// Each card's stage, as `Cards::list_cards` gives it.
@@ -440,8 +441,12 @@ pub struct InMemoryCards {
     /// `Cards::list_todo` gives.
     pub todo: Vec<String>,
     /// What `Cards::read_card` gives, by card key. Any other card fails
-    /// as `CardCli` does for a missing card.
+    /// as `CardCli` does for a missing card. A card whose `needs_you` is
+    /// set is one `list_needs_you` finds.
     pub card_notes: BTreeMap<String, CardNote>,
+    /// Keys `list_needs_you` also gives with no card in `card_notes`, so
+    /// reading them fails, as when a marked card's file breaks.
+    pub unreadable_needs_you: Vec<String>,
     /// `None` answers as `CardCli` does without a vault.
     pub board: Option<BoardCounts>,
     /// The cards waiting on people outside the team that `read_board`
@@ -459,14 +464,19 @@ pub struct InMemoryCards {
     /// Runs inside each `link_session` call that succeeds, as another
     /// process acting while the card is linked.
     pub on_link: Option<Box<dyn Fn()>>,
-    /// When set, `list_cards` and `read_card` fail with this message,
-    /// as `CardCli` does without a vault.
+    /// When set, `list_cards`, `read_card` and `list_needs_you` fail
+    /// with this message, as `CardCli` does without a vault.
     pub read_error: Option<String>,
     /// The key of each `move_to_active` call.
     pub moves: RefCell<Vec<String>>,
     /// When set, `move_to_active` fails with this message and records
     /// nothing, as `CardCli` does past the work limit.
     pub move_error: Option<String>,
+    /// Each item and mark write, in call order, such as
+    /// `add DEMO-KB-007 Open Questions: TEXT`,
+    /// `remove DEMO-KB-007 Open Questions 2` or
+    /// `needs-you DEMO-KB-007: TEXT`.
+    pub writes: RefCell<Vec<String>>,
 }
 
 impl InMemoryCards {
@@ -545,6 +555,44 @@ impl Cards for InMemoryCards {
             return Err(CardError::Failed(message.clone()));
         }
         self.moves.borrow_mut().push(key.as_str().to_owned());
+        Ok(())
+    }
+
+    fn list_needs_you(&self) -> Result<Vec<CardKey>, CardError> {
+        self.check_read_error()?;
+        let marked = self
+            .card_notes
+            .iter()
+            .filter(|(_, note)| note.needs_you.is_some())
+            .map(|(key, _)| key);
+        Ok(marked
+            .chain(&self.unreadable_needs_you)
+            .map(|key| key.parse().unwrap())
+            .collect())
+    }
+
+    fn add_item(&self, key: &CardKey, section: &str, text: &str) -> Result<(), CardError> {
+        self.writes
+            .borrow_mut()
+            .push(format!("add {} {section}: {text}", key.as_str()));
+        Ok(())
+    }
+
+    fn remove_item(&self, key: &CardKey, section: &str, number: usize) -> Result<(), CardError> {
+        self.writes
+            .borrow_mut()
+            .push(format!("remove {} {section} {number}", key.as_str()));
+        Ok(())
+    }
+
+    fn add_mark(&self, key: &CardKey, mark: Mark, text: &str) -> Result<(), CardError> {
+        let mark = match mark {
+            Mark::NeedsYou => "needs-you",
+            Mark::Answered => "answered",
+        };
+        self.writes
+            .borrow_mut()
+            .push(format!("{mark} {}: {text}", key.as_str()));
         Ok(())
     }
 }

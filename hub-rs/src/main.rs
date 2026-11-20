@@ -18,8 +18,8 @@ use hub::commands::next::NextOptions;
 use hub::commands::reports::{CardChoice, ReadRequest};
 use hub::commands::send::SendRequest;
 use hub::commands::{
-    Outcome, alive, at, auto, brief, clean, flag, handoff, launch, next, reports, requests, send,
-    sidebar, status,
+    Outcome, alive, ask, at, auto, brief, clean, flag, handoff, launch, next, reports, requests,
+    send, sidebar, status,
 };
 use hub::external::cards::CardCli;
 use hub::external::herdr::HerdrCli;
@@ -251,6 +251,14 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         }
         Command::Note { run, text } => reports::run_note(&find_run(run)?, text, &now),
         Command::Brief { run } => brief::run_brief(&tools, &find_run(run)?, now.timestamp()),
+        Command::Ask { key, file } => {
+            let text = fs::read_to_string(file).map_err(|source| HubError::File {
+                path: file.clone(),
+                source,
+            })?;
+            ask::run_ask(&tools, key, &text)
+        }
+        Command::Answer { key, answer } => ask::run_answer(&tools, key, answer),
         Command::Handoff { run, name, handoff } => {
             let run = find_run(run)?;
             let poll = read_poll_interval()?;

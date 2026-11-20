@@ -281,9 +281,10 @@ In a T2 or T3 run:
   stops before build. Report the name question with 2 or 3 choices
   and your recommendation. Park only that pull request and its
   children, and keep building other stacks.
-- These two stops are questions to the hub. `decisions.md` keeps
-  them for the user. They are not the user's plan review; only a
-  plan that changes the front hub's `rules.md` waits for that.
+- These two stops are questions to the hub. The auto hub puts them on
+  the card for the user with `hub ask`. They are not the user's plan
+  review; only a plan that changes the front hub's `rules.md` waits
+  for that.
 - No other plan waits for the user's plan review, whatever its own
   tier. That includes a plan that changes a skill file,
   `ai/AGENTS.md` or `CLAUDE.md`. The user reviews its pull request
