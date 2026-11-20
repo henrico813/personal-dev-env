@@ -32,6 +32,14 @@ A new `<language>-development` skill has the same kinds of files as
 `references/evaluation.md`. Like them, it sums up or quotes its sources
 instead of only linking them.
 
+## Deploy a branch
+
+- To deploy a branch on a PC, run
+  `pde-installer install --repo-root <branch worktree>`. To restore,
+  run `pde-installer install --repo-root <main checkout>`. Until you
+  restore, the hourly `pde-installer update` skips that PC, since it
+  updates only an install from main.
+
 ## Agent tools
 
 - Build an agent tool as a command-line program, or an MCP server,
