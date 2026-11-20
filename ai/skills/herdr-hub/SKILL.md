@@ -90,9 +90,8 @@ who gets the work; send no ask. An auto run's worker reports its
 handoff instead: start its successor from that handoff yourself.
 
 Before you tell the user that a worker or subagent died, run
-`hub alive <session ID>` with its OpenCode session ID. Its line ends
-in `working`, `finished` or `stopped`. Report it dead only on
-`stopped`.
+`hub alive <session ID>` with its OpenCode session ID. Its line ends in
+`working`, `finished` or `stopped`. Report it dead only on `stopped`.
 
 When you hand work to a new session with `herdr-handoff`, its
 Coordination section names you as the one session it reports to,
@@ -222,8 +221,7 @@ handed off goes to the newest live session on its card, and prints
 
 `hub send` exits 1 with `not sent` when Herdr turned the message
 down or the session is gone, and with `unsure` when it may have
-arrived. For `unsure`, read
-the pane with
+arrived. For `unsure`, read the pane with
 `herdr agent read <name> --source recent-unwrapped --lines 40`, then
 delete the `.sending` file it names and send again only if the
 message did not arrive.
@@ -235,12 +233,11 @@ it with `hub at`:
     hub at --run "<run folder>" 20:00 --all --file <path>
 
 `--all` means every live worker found at that time. A live worker is a
-session on a card or one that has reported, and never a hub. `hub at`
-prints
-`at 20:00 to <names>: <stored file>`, and exits 2 for a time already
-past today. Delete the stored file to cancel the message. At that time,
-`hub next` holds the message for each session and sends it as it sends
-other held messages.
+session on a card or one that has reported, and never a hub.
+`hub at` prints `at 20:00 to <names>: <stored file>`, and exits 2 for
+a time already past today. Delete the stored file to cancel the
+message. At that time, `hub next` holds the message for each session
+and sends it as it sends other held messages.
 
 ## Waiting on the user
 
@@ -438,12 +435,19 @@ note says each of these:
 - For a new skill or tool, why no existing one can hold it.
 - Your recommendation.
 
+Never read a research note in full, such as with `cat` or
+`nobs read`. Have a `local-read` job quote it, and check the quotes
+with `check_quotes.py`. Read only the table of quotes that passed. For
+each section `check_sections.py` lists as having no quote, read only
+its lines, such as with `sed -n`. Follow
+[references/research-notes.md](references/research-notes.md) for
+these steps.
+
 When a pull request has a script for the user to try it, its worker
 writes it as `~/test-pr-<n>.sh`, where `<n>` is the pull request's
 number. The script prints a `You should see: ...` line before `ok`.
 It shows the before and after where it can. It never suggests a
-command that competes with the hub's own commands, such as
-`hub next`.
+command that competes with the hub's own commands, such as `hub next`.
 
 Hand any merge the card's own worker cannot run, such as one whose
 worker is parked, to a merge worker, a new Herdr session. Read

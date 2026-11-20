@@ -224,6 +224,26 @@ Avoid function names that differ by one letter, like `check_comment`
 beside `check_comments`; readers confuse them. The exception is a
 plural that only runs the singular on each item.
 
+## Tool names
+
+These rules cover each command, script, program, package and
+subcommand that the change adds or renames. A new user meets a tool
+by its name first, often in a list of other tools, and has not read
+the project's docs.
+
+- Before you pick a name, say the tool's job in one plain English
+  sentence, such as "it checks that each quote is in its file". Take
+  the name from that sentence's verb and object: `check-quotes`. When
+  the job has more than one verb, use the one a user runs the tool
+  for.
+- Use whole words a new user would say aloud. Avoid short forms only
+  the team knows, such as `kb` for kanban board.
+- Leave out the project's own name or prefix, such as `acme-` in
+  `acme-sync`. It tells a new user nothing about the job, and it ties
+  a tool to one project when the tool could serve others. Keep a
+  prefix the platform requires, such as `git-` for a Git subcommand,
+  since Git finds the subcommand by that prefix.
+
 ## Tests
 
 Make a test understandable from its name, visible inputs, and assertions first.
@@ -456,6 +476,8 @@ Before declaring source or test work complete, check:
 - the amount of documentation fits the code's complexity and risk
 - each public name you add or review says what it does when read as
   its caller writes it
+- each tool name you add says its job in whole words, without the
+  project's own name or prefix
 - for Go, Python or Rust files, `check-comments` reports no
   failures, and each `verb-first` finding is renamed or, for a real
   verb, listed in your final message
