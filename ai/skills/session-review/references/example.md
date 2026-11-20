@@ -68,7 +68,7 @@ largest carried outputs
 
 ## Fixes
 
-1. "Keep the key out of the PR title." -> pull-request. Passes: it
+4. "Keep the key out of the PR title." -> pull-request. Passes: it
    applies in any repository.
 
 ## Fallback map
@@ -89,13 +89,13 @@ largest carried outputs
 
 ## Efficiency map
 
-1. Test runs: 4 pytest runs printed about 14,000 tokens (estimate).
-   A local model runs them by a script; the check is that the
-   script writes pytest's exit code and the failing names. Saves
-   about 1.1M tokens (estimate, proposal 1).
-2. Worktree cleanup: about 2,000 tokens (estimate). Its script
-   prints `done`, so `goog/qwen3.8-flash` can run it, briefed as
-   the model-routing skill says. The saving is small.
+- Test runs: 4 pytest runs printed about 14,000 tokens (estimate).
+  A local model runs them by a script; the check is that the
+  script writes pytest's exit code and the failing names. Saves
+  about 1.1M tokens (estimate, proposal 1).
+- Worktree cleanup: about 2,000 tokens (estimate). Its script
+  prints `done`, so `goog/qwen3.8-flash` can run it, briefed as
+  the model-routing skill says. The saving is small.
 
 ## Trials
 
@@ -131,7 +131,7 @@ Proposals
    0.3M tokens (estimate).
 
 Fixes to write, pick by number
-1. Keep the key out of the PR title -> pull-request
+4. Keep the key out of the PR title -> pull-request
 
 Fallback: the planner is least ready; a brief per plan step would
 fit qwen3.8-flash's window.
