@@ -96,9 +96,7 @@ for people and skills that used the Python one.
   session that becomes `to-close` or `to-park` once, in one line per
   state and why, such as
   `to-close demo-kb-001-impl: DEMO-KB-001 done; run hub clean`.
-  For each worker past 150k that is not `to-close` or `to-park`, it
-  holds one handoff ask. It keeps its time and the finished sessions
-  in `.minute-pass.json`.
+  It keeps its time and the finished sessions in `.minute-pass.json`.
 
 ## Closing and parking
 

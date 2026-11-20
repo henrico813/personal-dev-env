@@ -350,6 +350,7 @@ pub enum Command {
     /// file, and records the start on its card and in notes.md. A card
     /// key at the start of NAME makes it that card's worker, and a
     /// todo card moves to active first. Run it to start each worker.
+    /// A worker passes --successor to start its own next session.
     #[command(
         after_help = "Example: hub launch demo-kb-007-impl \\\n  /tmp/impl.md \\\n  --model anthropic/claude-sonnet-5#high"
     )]
@@ -361,11 +362,14 @@ pub enum Command {
         /// The handoff file the worker reads first
         handoff: PathBuf,
         /// The worker's OpenCode model and effort
-        #[arg(long)]
-        model: String,
+        #[arg(long, required_unless_present = "successor")]
+        model: Option<String>,
         /// Open in the workspace with this label, made when missing
         #[arg(long, value_name = "LABEL")]
         workspace: Option<String>,
+        /// Start this session's successor beside it, on its model
+        #[arg(long, conflicts_with_all = ["model", "workspace"])]
+        successor: bool,
     },
     /// Take over an older open hub
     ///

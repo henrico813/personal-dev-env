@@ -6,18 +6,21 @@
 //! wait ended, and marks a blocked worker "needs you". A prod is a line
 //! the watch has Herdr type into a worker's pane. A report that waits 10 minutes with no
 //! `hub next` line goes back to the hub, as a line its next `hub next`
-//! prints, and to the user's phone only when the hub is gone. The watch
-//! never types into a hub's pane, so the user's own chat gets nothing
-//! from it. The phone also hears of each new failed or skipped
-//! `pde-installer update`.
+//! prints, and to the user's phone only when the hub is gone. It also
+//! asks each idle session past the handoff point to hand off, with or
+//! without a hub. The watch never types into a hub's pane, so the
+//! user's own chat gets nothing from it. The phone also hears of each
+//! new failed or skipped `pde-installer update`.
 //!
 //! Its parts that no other command uses live beside it. `events` keeps
 //! its own kinds of line in the run's log, `wait` keeps workers' waits,
-//! `update` reads the update's result, and `background`, `process` and
-//! `phone` start the watch, check a PID and alert the phone.
+//! `handoff_ask` asks for handoffs, `update` reads the update's result,
+//! and `background`, `process` and `phone` start the watch, check a PID
+//! and alert the phone.
 
 pub mod background;
 mod events;
+pub(crate) mod handoff_ask;
 mod phone;
 mod process;
 mod update;
@@ -36,6 +39,7 @@ use jiff::{SignedDuration, Timestamp, Zoned};
 use crate::commands::Outcome;
 use crate::external::cards::CardKey;
 use crate::external::herdr::{Agent, AgentStatus, HerdrCode, HerdrError};
+use crate::external::opencode::OpenCodeDb;
 use crate::shared::events::{self as hub_events, Event, EventKind, Memory};
 use crate::shared::lifecycle;
 use crate::shared::messages::{self, Delivery, MessageCounts, Target};
@@ -101,12 +105,14 @@ pub struct WatchStart {
 }
 
 /// When the watch first saw each idle worker in its present Herdr
-/// state. Herdr raises an agent's `state_seq` each time its status
-/// changes. The clock lives only in the watch's process, so a restarted watch
-/// starts each clock again and prods up to 10 minutes later.
+/// state, and the context it read then. Herdr raises an agent's
+/// `state_seq` each time its status changes. The clock lives only in
+/// the watch's process, so a restarted watch starts each clock again
+/// and prods up to 10 minutes later.
 #[derive(Default)]
 pub struct IdleClock {
     since: BTreeMap<String, (u64, Timestamp)>,
+    context: BTreeMap<String, (u64, Option<u64>)>,
 }
 
 impl IdleClock {
@@ -121,6 +127,30 @@ impl IdleClock {
             (agent.name.clone(), (agent.state_seq, since))
         });
         self.since = idle.collect();
+        let since = &self.since;
+        self.context.retain(|name, (state_seq, _)| {
+            since.get(name).is_some_and(|(seq, _)| seq == state_seq)
+        });
+    }
+
+    /// Returns the agent's context, read from OpenCode once in each idle
+    /// state. The read scans every reply of the session, too slow for
+    /// every check of every session.
+    fn read_idle_context(
+        &mut self,
+        opencode: &OpenCodeDb,
+        agent: &Agent,
+        session: &str,
+    ) -> Result<Option<u64>, HubError> {
+        if let Some((state_seq, tokens)) = self.context.get(&agent.name)
+            && *state_seq == agent.state_seq
+        {
+            return Ok(*tokens);
+        }
+        let tokens = opencode.read_context_tokens(session)?;
+        self.context
+            .insert(agent.name.clone(), (agent.state_seq, tokens));
+        Ok(tokens)
     }
 
     /// Tells whether the agent has sat in its present idle state for
@@ -236,9 +266,11 @@ pub fn run_watch(
 /// stalled one, but only for a run whose hub runs. A run whose hub is
 /// gone still claims its workers, so no other run prods them. A worker
 /// that two runs claim gets at most one prod per Herdr state, and a
-/// wait open in either run keeps it from counting as stalled. Returns
-/// each failure, most of them led by their run folder, so one broken
-/// run never stops the others.
+/// wait open in either run keeps it from counting as stalled. Last, it
+/// asks idle sessions past the handoff point to hand off, whether or
+/// not a run claims them, but only when every run log was read.
+/// Returns each failure, most of them led by their run folder, so one
+/// broken run never stops the others.
 ///
 /// # Errors
 ///
@@ -334,6 +366,23 @@ pub fn check_once(
             if let Err(error) = prod_if_stalled(tools, watched, workers, agent, &mut prodded, now) {
                 failures.push(describe_run_failure(&watched.run, &error));
             }
+        }
+    }
+    // A run that could not be read may name a hub with no `-hub-N`
+    // name, and the ask must never go to a hub's pane.
+    if every_run_read {
+        let held: Vec<_> = read_runs.iter().map(|(_, workers)| &workers.held).collect();
+        let asked = handoff_ask::ask_for_handoffs(
+            tools,
+            &agents,
+            &hubs,
+            &held,
+            clock,
+            &prodded,
+            &mut failures,
+        );
+        if let Err(error) = asked {
+            failures.push(error.to_string());
         }
     }
     Ok(failures)
