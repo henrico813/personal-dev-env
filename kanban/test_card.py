@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import shlex
 import subprocess
 import tomllib
 from datetime import date
@@ -907,6 +908,23 @@ class TestShow:
         assert code == 0
         assert "# PDEV-005 Build the retries\n" in capsys.readouterr().out
 
+    def test_show_finds_card_by_old_key(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """card show finds a rekeyed card by the key it had before.
+
+        Log lines, notes outside Projects and agents' memories still name
+        old keys after card rekey, and every card command finds its card
+        the way show does.
+        """
+        path = write_card(projects, "PDEV-411", "draft")
+        path.write_text(card.set_field(path.read_text(), "old_key", KEY))
+
+        code = run_card(projects, "show", "pdev-kb-001")
+
+        assert code == 0
+        assert "# PDEV-411 Fix some work\n" in capsys.readouterr().out
+
 
 class TestAttach:
     """Attaching copies a file into the project and embeds it in Context."""
@@ -1731,3 +1749,362 @@ class TestTitleRules:
         assert code == 1
         assert path.read_text() == before
         assert "  T3 type: no work type\n" in capsys.readouterr().err
+
+
+@pytest.fixture
+def herdr_agents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A herdr on PATH whose agent list is the returned JSON file.
+
+    The file starts with no agents. A real program, unlike a patched
+    subprocess.run, leaves undo.sh free to run with sh.
+    """
+    agents = tmp_path / "agents.json"
+    agents.write_text('{"result": {"agents": []}}')
+    herdr = tmp_path / "bin" / "herdr"
+    herdr.parent.mkdir()
+    herdr.write_text(f"#!/bin/sh\ncat {shlex.quote(str(agents))}\n")
+    herdr.chmod(0o755)
+    path = f"{herdr.parent}{os.pathsep}{os.environ['PATH']}"
+    monkeypatch.setenv("PATH", path)
+    return agents
+
+
+def write_rekey_vault(projects: Path) -> None:
+    """Open, done and dropped old-key cards, PDEV-410 with its plan, links.
+
+    PDEV-410 is the highest number, so the open cards take PDEV-411 and
+    PDEV-412. The first card has session ses_abc; the second links the
+    first.
+    """
+    first = write_card(projects, KEY, "draft")
+    first.write_text(
+        card.set_field(first.read_text(), "sessions", ["opencode ses_abc"])
+    )
+    second = write_card(
+        projects, "PDEV-KB-002", "todo", title="Retry failed uploads"
+    )
+    second.write_text(second.read_text() + "See [[PDEV-KB-001]].\n")
+    write_card(projects, "PDEV-KB-003", "done", title="Old done work")
+    write_card(projects, "PDEV-KB-004", "dropped", title="Dropped idea")
+    write_card(projects, "PDEV-410", "active", title="Build the retries")
+    (projects / "DevEnv" / "PDEV-410 Plan the retries.md").write_text(PLAN)
+    (projects / "DevEnv" / "Links.md").write_text(
+        "[[PDEV-KB-001]], [[PDEV-KB-002 Retry failed uploads|uploads]]"
+        " and [[PDEV-KB-003 Old done work]]\n"
+    )
+
+
+def read_tree(projects: Path) -> dict[str, bytes]:
+    """Every file under Projects, by its path relative to Projects."""
+    return {
+        str(path.relative_to(projects)): path.read_bytes()
+        for path in projects.rglob("*")
+        if path.is_file()
+    }
+
+
+def format_agent_list(*agents: dict[str, Any]) -> str:
+    """The JSON that herdr agent list prints while these agents run."""
+    return json.dumps({"result": {"agents": list(agents)}})
+
+
+def edit_before_write(monkeypatch: pytest.MonkeyPatch, note: Path) -> None:
+    """Make rekey find one note edited by the user on its first write.
+
+    The real write_safely then refuses that write, since the note's
+    modified time moved on. Later writes go through.
+    """
+    real = card.write_safely
+
+    def write(path: Path, *args: Any) -> bool:
+        """Append a line before the note's first write, then write it."""
+        if path == note and not path.read_text().endswith("edited\n"):
+            with path.open("a") as handle:
+                handle.write("edited\n")
+            # A write within one clock tick of the read can keep the time.
+            stat = path.stat()
+            os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
+        return real(path, *args)
+
+    monkeypatch.setattr(card, "write_safely", write)
+
+
+@pytest.mark.usefixtures("herdr_agents")
+class TestRekey:
+    """card rekey gives open cards with old keys new keys."""
+
+    def test_dry_run_prints_keys_writes_nothing(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Without --apply, rekey prints old and new keys and writes nothing.
+
+        The user reviews this list before running --apply. Done and
+        dropped cards and cards that already have new keys must not be on
+        it, and each note whose links change is named.
+        """
+        write_rekey_vault(projects)
+        before = read_tree(projects)
+
+        code = run_card(projects, "rekey")
+
+        assert code == 0
+        assert capsys.readouterr().out == (
+            "PDEV-KB-001 PDEV-411\n"
+            "PDEV-KB-002 PDEV-412\n"
+            "relink DevEnv/Links.md\n"
+            "relink DevEnv/PDEV-KB-002 Retry failed uploads.md\n"
+            "2 cards to rekey, 2 notes to relink\n"
+        )
+        assert read_tree(projects) == before
+
+    def test_apply_renames_cards_keeping_old_key(self, projects: Path) -> None:
+        """--apply renames open cards and writes old_key and the new heading.
+
+        A card without old_key cannot be found by the key in its Log and in
+        other notes.
+        """
+        write_rekey_vault(projects)
+        devenv = projects / "DevEnv"
+
+        code = run_card(projects, "rekey", "--apply", "--user")
+
+        assert code == 0
+        assert not (devenv / "PDEV-KB-001 Fix some work.md").exists()
+        text = (devenv / "PDEV-411 Fix some work.md").read_text()
+        assert "\nold_key: PDEV-KB-001\n" in text
+        assert "\n# PDEV-411 Fix some work\n" in text
+        assert (devenv / "PDEV-412 Retry failed uploads.md").exists()
+
+    def test_apply_relinks_only_open_cards(self, projects: Path) -> None:
+        """--apply points links to open cards at their new names.
+
+        A link left on the old name breaks in Obsidian, also in a card that
+        was renamed itself. Done cards keep their names, so links to them
+        stay.
+        """
+        write_rekey_vault(projects)
+        devenv = projects / "DevEnv"
+
+        code = run_card(projects, "rekey", "--apply", "--user")
+
+        assert code == 0
+        assert (devenv / "Links.md").read_text() == (
+            "[[PDEV-411]], [[PDEV-412 Retry failed uploads|uploads]]"
+            " and [[PDEV-KB-003 Old done work]]\n"
+        )
+        retry = (devenv / "PDEV-412 Retry failed uploads.md").read_text()
+        assert "See [[PDEV-411]].\n" in retry
+
+    def test_undo_script_restores_every_note(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The printed undo.sh puts every renamed and relinked note back.
+
+        It is the user's way back from a rekey they do not want, so it
+        must restore the notes that only had links changed too.
+        """
+        write_rekey_vault(projects)
+        before = read_tree(projects)
+        run_card(projects, "rekey", "--apply", "--user")
+
+        undo = shlex.split(capsys.readouterr().out.splitlines()[-1])[-1]
+        subprocess.run(["sh", undo], check=True)
+
+        assert read_tree(projects) == before
+
+    def test_undo_after_stop_keeps_later_edits(
+        self,
+        projects: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """After a stop, undo puts back only the notes rekey wrote.
+
+        The likeliest stop is the user editing a note during the run, and
+        undo must not copy the old note over that edit.
+        """
+        write_rekey_vault(projects)
+        before = read_tree(projects)
+        retry = "DevEnv/PDEV-KB-002 Retry failed uploads.md"
+        edit_before_write(monkeypatch, projects / retry)
+
+        code = run_card(projects, "rekey", "--apply", "--user")
+        undo = shlex.split(capsys.readouterr().out.splitlines()[-1])[-1]
+        subprocess.run(["sh", undo], check=True)
+
+        assert code == 1
+        edited = {**before, retry: before[retry] + b"edited\n"}
+        assert read_tree(projects) == edited
+
+    def test_second_apply_finishes_stopped_run(
+        self, projects: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A second --apply after a stop renames the rest and fixes links.
+
+        The first run renames PDEV-KB-001 and stops at PDEV-KB-002, then
+        card new takes PDEV-412, so the second run gives PDEV-KB-002 the
+        key PDEV-413. Each link must name the card it meant, never the new
+        card, and PDEV-411 must not get yet another key.
+        """
+        write_rekey_vault(projects)
+        devenv = projects / "DevEnv"
+        retry = devenv / "PDEV-KB-002 Retry failed uploads.md"
+        edit_before_write(monkeypatch, retry)
+        first = run_card(projects, "rekey", "--apply", "--user")
+        run_card(
+            projects,
+            "new",
+            "DevEnv",
+            "Add a retry button",
+            "--type",
+            "feat",
+            "--by",
+            "user",
+        )
+
+        code = run_card(projects, "rekey", "--apply", "--user")
+
+        assert (first, code) == (1, 0)
+        assert sorted(path.name for path in devenv.glob("PDEV-*")) == [
+            "PDEV-410 Build the retries.md",
+            "PDEV-410 Plan the retries.md",
+            "PDEV-411 Fix some work.md",
+            "PDEV-412 Add a retry button.md",
+            "PDEV-413 Retry failed uploads.md",
+            "PDEV-KB-003 Old done work.md",
+            "PDEV-KB-004 Dropped idea.md",
+        ]
+        assert (devenv / "Links.md").read_text() == (
+            "[[PDEV-411]], [[PDEV-413 Retry failed uploads|uploads]]"
+            " and [[PDEV-KB-003 Old done work]]\n"
+        )
+        retry = devenv / "PDEV-413 Retry failed uploads.md"
+        assert "See [[PDEV-411]].\n" in retry.read_text()
+
+    def test_second_apply_finishes_stopped_relink(
+        self, projects: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A second --apply after a stop while relinking rewrites the links.
+
+        The first run renames every card and stops at Links.md, its first
+        link write, so the second run has no card left to rename. It must
+        still rewrite the links, or they stay on old names while rekey
+        reports success.
+        """
+        write_rekey_vault(projects)
+        links = projects / "DevEnv" / "Links.md"
+        edit_before_write(monkeypatch, links)
+        first = run_card(projects, "rekey", "--apply", "--user")
+
+        code = run_card(projects, "rekey", "--apply", "--user")
+
+        assert (first, code) == (1, 0)
+        assert links.read_text() == (
+            "[[PDEV-411]], [[PDEV-412 Retry failed uploads|uploads]]"
+            " and [[PDEV-KB-003 Old done work]]\n"
+            "edited\n"
+        )
+
+    @pytest.mark.parametrize(
+        ("argv", "herdr_output", "notes", "reason"),
+        [
+            pytest.param(
+                ["--apply", "--user"],
+                format_agent_list(
+                    {
+                        "name": "pdev-kb-002-build",
+                        "agent": "opencode",
+                        "agent_session": {"value": "ses_xyz"},
+                    }
+                ),
+                {},
+                "live workers on PDEV-KB-002 (pdev-kb-002-build)",
+                id="worker-name",
+            ),
+            pytest.param(
+                ["--apply", "--user"],
+                format_agent_list(
+                    {
+                        "name": "worker-1",
+                        "agent": "opencode",
+                        "agent_session": {"value": "ses_abc"},
+                    }
+                ),
+                {},
+                "live workers on PDEV-KB-001 (worker-1)",
+                id="worker-session",
+            ),
+            pytest.param(
+                ["--apply", "--user"],
+                '{"error": "no server"}',
+                {},
+                "live workers are unknown",
+                id="herdr-failed",
+            ),
+            pytest.param(
+                ["--apply", "--user"],
+                format_agent_list(),
+                {"Other/PDEV-KB-001 Kanban demo.md": HAND_EDITED},
+                "two cards hold PDEV-KB-001",
+                id="shared-key",
+            ),
+            pytest.param(
+                ["--apply", "--user"],
+                format_agent_list(),
+                {
+                    "Other/PDEV-400 Kanban demo.md": HAND_EDITED.replace(
+                        "prs: []\n", "prs: []\nold_key: PDEV-KB-002\n"
+                    )
+                },
+                "two cards hold PDEV-KB-002",
+                id="old-key-reused",
+            ),
+            pytest.param(
+                ["--apply", "--user"],
+                format_agent_list(),
+                {
+                    "Other/PDEV-KB-005 Kanban demo.md": HAND_EDITED.replace(
+                        "prs: []\n", "prs: []\nold_key: PDEV-KB-005\n"
+                    )
+                },
+                "PDEV-KB-005 written but not renamed",
+                id="stuck-card",
+            ),
+            pytest.param(
+                ["--apply"],
+                format_agent_list(),
+                {},
+                "--apply needs --user",
+                id="no-user",
+            ),
+        ],
+    )
+    def test_refuses_and_changes_nothing(
+        self,
+        projects: Path,
+        herdr_agents: Path,
+        capsys: pytest.CaptureFixture[str],
+        argv: list[str],
+        herdr_output: str,
+        notes: dict[str, str],
+        reason: str,
+    ) -> None:
+        """Rekey refuses, with its reason, before it changes any note.
+
+        A running worker on a card must end first, Herdr without an agent
+        list may hide one, two cards with one key cannot both get the new
+        one, a card written but not renamed would give its number to
+        another card, and only the user runs --apply.
+        """
+        write_rekey_vault(projects)
+        for name, text in notes.items():
+            (projects / name).parent.mkdir(exist_ok=True)
+            (projects / name).write_text(text)
+        herdr_agents.write_text(herdr_output)
+        before = read_tree(projects)
+
+        code = run_card(projects, "rekey", *argv)
+
+        assert code == 1
+        assert reason in capsys.readouterr().err
+        assert read_tree(projects) == before
