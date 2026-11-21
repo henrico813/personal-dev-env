@@ -10,11 +10,13 @@
 //! asks each idle session past the handoff point to hand off, with or
 //! without a hub. The watch never types into a hub's pane, so the
 //! user's own chat gets nothing from it. The phone also hears of each
-//! new failed or skipped `pde-installer update`.
+//! new failed or skipped `pde-installer update`, and of each auto run
+//! that stalls.
 //!
-//! Its parts that no other command uses live beside it. `events` keeps
-//! its own kinds of line in the run's log, `wait` keeps workers' waits,
-//! `handoff_ask` asks for handoffs, `update` reads the update's result,
+//! Its parts live beside it. `events` keeps its own kinds of line in
+//! the run's log, `wait` keeps workers' waits, `handoff_ask` asks for
+//! handoffs, `stall` finds a stalled auto run for the watch and for
+//! `hub auto now`, `update` reads the update's result,
 //! and `background`, `process` and `phone` start the watch, check a PID
 //! and alert the phone.
 
@@ -23,6 +25,7 @@ mod events;
 pub(crate) mod handoff_ask;
 mod phone;
 mod process;
+pub(crate) mod stall;
 mod update;
 pub mod wait;
 
@@ -36,13 +39,14 @@ use std::time::{Duration, SystemTime};
 
 use jiff::{SignedDuration, Timestamp, Zoned};
 
-use crate::commands::Outcome;
+use crate::commands::{Outcome, auto};
 use crate::external::cards::CardKey;
 use crate::external::herdr::{Agent, AgentStatus, HerdrCode, HerdrError};
 use crate::external::opencode::OpenCodeDb;
 use crate::shared::events::{self as hub_events, Event, EventKind, Memory};
 use crate::shared::lifecycle;
 use crate::shared::messages::{self, Delivery, MessageCounts, Target};
+use crate::shared::questions::read_open_questions;
 use crate::shared::run_folder::{self, ReportedNames, RunFolder};
 use crate::shared::{HubError, Tools};
 use events::{WatchEvent, WatchMemory, append_watch_event, load_watch_memory};
@@ -59,6 +63,14 @@ const MISSED_AFTER: Duration = Duration::from_secs(10 * 60);
 /// The oldest missed report that still sends a phone notification. Old
 /// run folders keep unread reports from hubs closed long ago.
 const PHONE_ALERT_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// How often the phone hears again of a stall that lasts.
+const STALL_ALERT_EVERY: SignedDuration = SignedDuration::from_mins(60);
+
+/// The oldest approval whose run can still alert a stall. An overnight
+/// run approved late in the evening still counts the next morning, and
+/// old run folders stay quiet.
+const STALL_ALERT_MAX_AGE: SignedDuration = SignedDuration::from_hours(24);
 
 /// The start of each run folder's name. The herdr-hub and auto-run
 /// skills make run folders as `~/.local/state/herdr-hub.XXXXXX`.
@@ -305,6 +317,9 @@ pub fn check_once(
     let mut read_runs = Vec::new();
     for watched in &runs {
         if let Err(error) = pass_on_missed_reports(options, watched, now) {
+            failures.push(describe_run_failure(&watched.run, &error));
+        }
+        if let Err(error) = alert_if_run_stalled(tools, options, watched, &agents, now) {
             failures.push(describe_run_failure(&watched.run, &error));
         }
         // A run whose hub is gone prods nobody, but its claims and open
@@ -654,6 +669,72 @@ fn pass_on_missed_reports(
         append_watch_event(&watched.run, alerted, now)?;
     }
     Ok(())
+}
+
+/// Tells the phone when an auto run approved in the last 24 hours has
+/// stalled for 15 minutes, as `stall` says, with or without its hub, and again each
+/// hour while the stall lasts. The cards are read only when an alert
+/// may be due. An alert is recorded only once sent, so a refused one
+/// is tried again at the next check.
+///
+/// # Errors
+///
+/// A `card` or file failure, or the notifier's failure.
+fn alert_if_run_stalled(
+    tools: &Tools<'_>,
+    options: &WatchOptions,
+    watched: &WatchedRun,
+    agents: &[Agent],
+    now: &Zoned,
+) -> Result<(), HubError> {
+    let Some(approved_text) = watched.run.read_file_if_exists("approved.md")? else {
+        return Ok(());
+    };
+    let Some(approved) = stall::read_approval_time(&approved_text, now) else {
+        return Ok(());
+    };
+    if now.timestamp().duration_since(approved.timestamp()) > STALL_ALERT_MAX_AGE {
+        return Ok(());
+    }
+    let list = auto::read_run_list(&approved_text);
+    let Some(quiet) = stall::find_quiet_run(
+        &watched.run,
+        list.number,
+        list.run_keys(),
+        approved.timestamp(),
+        agents,
+        &watched.memory,
+        now,
+    )?
+    else {
+        return Ok(());
+    };
+    let watch = &watched.watch;
+    let alerted_lately = watch.stall_alerted.is_some_and(|(since, at)| {
+        since == quiet.since && now.timestamp().duration_since(at) < STALL_ALERT_EVERY
+    });
+    if watch.ended_since == Some(quiet.since) || alerted_lately {
+        return Ok(());
+    }
+    let mut questions = read_open_questions(tools.cards)?;
+    questions.retain(|question| list.run_keys().contains(&question.key));
+    let stages = tools.cards.list_cards()?;
+    let stall = match stall::judge_quiet_run(&quiet, &stages, &questions) {
+        stall::Verdict::Ended(_) => {
+            let ended = WatchEvent::RunEnded { since: quiet.since };
+            return append_watch_event(&watched.run, ended, now);
+        }
+        stall::Verdict::Stalled(stall) => stall,
+    };
+    let title = match list.number {
+        Some(number) => format!("Auto run {number} stalled"),
+        None => "An auto run stalled".to_owned(),
+    };
+    let message = format!("Stalled {}", stall.describe(now));
+    phone::send_phone_notification(&options.notifier, &title, &message)
+        .map_err(HubError::NotDone)?;
+    let alerted = WatchEvent::StallAlerted { since: quiet.since };
+    append_watch_event(&watched.run, alerted, now)
 }
 
 /// Returns each `herdr-hub.*` folder in `runs_folder` whose log names a

@@ -314,7 +314,7 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
                 };
                 auto::run_auto_approve(&tools, &run, &approval, &now)
             }
-            AutoStep::Now { run } => auto::run_auto_now(&tools, &find_auto_run(run)?),
+            AutoStep::Now { run } => auto::run_auto_now(&tools, &find_auto_run(run)?, &now),
         },
         Command::Flag { name } => flag::run_flag(&tools, name),
         Command::Unflag { name } => flag::run_unflag(&tools, name),

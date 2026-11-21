@@ -28,6 +28,7 @@ use crate::external::cards::{CardKey, CardNote, ListedCard, Stage};
 use crate::shared::questions::read_open_questions;
 use crate::shared::run_folder::{self, RunFolder};
 use crate::shared::{HubError, Tools};
+use crate::watch::stall;
 
 /// The title line of `run.md`, such as `# Auto run 2`.
 static RUN_TITLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^# Auto run ([0-9]+)$").unwrap());
@@ -47,15 +48,15 @@ pub struct AutoApproval {
 
 /// `run.md` read into its number and the keys under each heading.
 #[derive(Default)]
-struct RunList {
+pub(crate) struct RunList {
     /// From the `# Auto run N` line.
-    number: Option<u32>,
+    pub(crate) number: Option<u32>,
     sections: BTreeMap<String, Vec<CardKey>>,
 }
 
 impl RunList {
     /// Returns the keys under `## Run`, the cards the run works.
-    fn run_keys(&self) -> &[CardKey] {
+    pub(crate) fn run_keys(&self) -> &[CardKey] {
         self.sections.get("Run").map_or(&[], Vec::as_slice)
     }
 }
@@ -173,7 +174,10 @@ pub fn run_auto_approve(
 /// file. It says `(needs you)` while the card holds an open question.
 /// A `Questions for you: N` line follows, then one line per open
 /// question of the run's cards, such as `- DEMO-KB-002 Deploy
-/// tonight?`. It then puts the hubs at the top of the sidebar, and a
+/// tonight?`. Last comes a `STALLED since ...` line while the run has
+/// stalled, or a `Run ended` line, as `stall::describe_stall_or_end`
+/// says; a failed stall check adds a warning line to the output only.
+/// It then puts the hubs at the top of the sidebar, and a
 /// failure there adds a warning line to the output, never to the file.
 ///
 /// # Errors
@@ -181,7 +185,7 @@ pub fn run_auto_approve(
 /// `HubError::NotDone` when the run has no `approved.md`, so a run the
 /// user never approved starts nothing. `HubError::Card` when the open
 /// questions cannot be read.
-pub fn run_auto_now(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubError> {
+pub fn run_auto_now(tools: &Tools<'_>, run: &RunFolder, now: &Zoned) -> Result<Outcome, HubError> {
     let Some(approved) = run.read_file_if_exists("approved.md")? else {
         return Err(HubError::NotDone(
             "the run is not approved; start nothing".to_owned(),
@@ -215,8 +219,23 @@ pub fn run_auto_now(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, HubEr
             .iter()
             .map(|question| format!("- {} {}", question.key.as_str(), question.title)),
     );
+    let stall = stall::describe_stall_or_end(
+        tools,
+        run,
+        &approved,
+        list.number,
+        list.run_keys(),
+        &questions,
+        now,
+    );
+    let mut warnings = Vec::new();
+    match stall {
+        Ok(state) => lines.extend(state),
+        Err(error) => warnings.push(format!("could not check for a stall: {error}")),
+    }
     let text = lines.join("\n") + "\n";
     run_folder::write_file_whole(&run.path().join("brief-now.md"), &text)?;
+    lines.extend(warnings);
     if let Some(warning) = sidebar::gather_after_hub_start(tools) {
         lines.push(warning);
     }
@@ -278,7 +297,7 @@ fn check_run_list(cards: &[ListedCard], list: &RunList) -> Result<u32, Vec<Strin
 /// Reads `run.md` or `approved.md` into a `RunList`. A card line
 /// before the first `## ` heading belongs to no heading and is left
 /// out.
-fn read_run_list(text: &str) -> RunList {
+pub(crate) fn read_run_list(text: &str) -> RunList {
     let mut list = RunList::default();
     let mut heading: Option<&str> = None;
     for line in text.lines() {
