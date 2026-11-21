@@ -45,10 +45,10 @@ use crate::shared::lifecycle;
 use crate::shared::messages::{self, Delivery, MessageCounts, Target};
 use crate::shared::run_folder::{self, ReportedNames, RunFolder};
 use crate::shared::{HubError, Tools};
-pub use phone::PhoneBackoff;
-
 use events::{WatchEvent, WatchMemory, append_watch_event, load_watch_memory};
 use wait::WaitFile;
+
+pub use phone::PhoneBackoff;
 
 /// How long a worker that owes a report sits idle before its prod. An
 /// ordinary pause between tool calls is far shorter.

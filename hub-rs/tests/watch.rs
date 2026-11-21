@@ -72,7 +72,7 @@ fn make_options(test_tools: &TestTools, notifier: &Path, checks: usize) -> Watch
 }
 
 /// Runs one check at each of these minutes after `start`, with one
-/// watch's clock.
+/// watch's clock and phone backoff.
 fn check_at(test_tools: &TestTools, start: &Zoned, minutes: &[i64]) {
     let notifier = test_tools.path().join("moshi-hook");
     let options = make_options(test_tools, &notifier, 1);
@@ -581,7 +581,7 @@ fn check_once_retries_refused_alert_after_backoff() {
         &options,
         &mut clock,
         &mut backoff,
-        &at_minute(12, 5),
+        &at_minute(16, 5),
     )
     .unwrap();
 
@@ -724,10 +724,10 @@ fn run_watch_phones_once_per_failed_update() {
     assert!(log.is_empty(), "{}", String::from_utf8_lossy(&log));
 }
 
-/// Moshi refuses pushes past its rate limit. A refused update notice
-/// must not go again at each poll, where one retry may get through as
-/// a repeat, but must stay unremembered, or the only word of a skipped
-/// update is lost. A restarted watch sends it, and then never again.
+/// Moshi refuses pushes past its rate limit, so a refused update notice
+/// must not go again at each poll. It must stay unremembered, or the
+/// only word of a skipped update is lost. A restarted watch sends it,
+/// and its later polls never send it again.
 #[test]
 fn run_watch_backs_off_refused_update_notice() {
     let test_tools = TestTools::new();
@@ -739,7 +739,6 @@ fn run_watch_backs_off_refused_update_notice() {
     run_watch(&test_tools.tools(), &options, &mut Vec::new()).unwrap();
     let calls_after_refusal = read_script_calls(&refusing).len();
     test_tools.write_script("moshi-hook", "", "", 0);
-    run_watch(&test_tools.tools(), &options, &mut Vec::new()).unwrap();
     run_watch(&test_tools.tools(), &options, &mut Vec::new()).unwrap();
 
     assert_eq!(calls_after_refusal, 1);

@@ -15,18 +15,16 @@ const NOTIFY_TIMEOUT: Duration = Duration::from_secs(30);
 /// The wait between checks on whether the program ended.
 const EXIT_POLL: Duration = Duration::from_millis(100);
 
-/// The wait after the first refused notification. Each refusal in a
-/// row doubles it, up to `MAX_BACKOFF`.
-const FIRST_BACKOFF: SignedDuration = SignedDuration::from_mins(1);
-const MAX_BACKOFF: SignedDuration = SignedDuration::from_hours(1);
+/// The wait after a refused notification, about twice the length of
+/// one Moshi refusal spell seen in use.
+const BACKOFF: SignedDuration = SignedDuration::from_mins(5);
 
 /// Holds every phone notification back for a while after a refused
 /// one. Moshi's rate limit covers the whole account, so asking again
-/// at each poll only meets more refusals, and one may then get
-/// through as a repeat. `run_watch` keeps one for the watch's life.
+/// at each poll, every few seconds, only meets more refusals.
+/// `run_watch` keeps one for the watch's life.
 #[derive(Default)]
 pub struct PhoneBackoff {
-    refusals: u32,
     next_try: Option<Timestamp>,
 }
 
@@ -38,7 +36,7 @@ impl PhoneBackoff {
     ///
     /// # Errors
     ///
-    /// The program's failure, which starts or grows the wait.
+    /// The program's failure, which starts a new wait.
     pub(crate) fn send(
         &mut self,
         program: &Path,
@@ -50,14 +48,10 @@ impl PhoneBackoff {
             return Ok(false);
         }
         if let Err(error) = send_phone_notification(program, title, message) {
-            // 2^6 minutes is past the hour, so more doublings change nothing.
-            let doublings = self.refusals.min(6);
-            let wait = (FIRST_BACKOFF * 2_i32.pow(doublings)).min(MAX_BACKOFF);
-            self.refusals += 1;
-            self.next_try = Some(now + wait);
+            self.next_try = Some(now + BACKOFF);
             return Err(error);
         }
-        *self = Self::default();
+        self.next_try = None;
         Ok(true)
     }
 }
