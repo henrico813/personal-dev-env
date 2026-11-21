@@ -39,7 +39,8 @@ pub(crate) struct ReportedNames {
 }
 
 /// When the last minute pass ran, and what it saw, saved in
-/// `.minute-pass.json` so a restarted `hub next` keeps the limit.
+/// `.minute-pass.json` so a restarted `run_next` process keeps the
+/// limit.
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct MinuteMark {
     pub at: Timestamp,
@@ -57,11 +58,12 @@ pub(crate) struct FinishedSession {
     pub name: String,
     /// `to-close` or `to-park`.
     pub state: String,
-    /// Why, as `hub clean` prints it, such as `DEMO-KB-007 done`.
+    /// Why, as `run_clean` prints it, such as `DEMO-KB-007 done`.
     pub why: String,
 }
 
-/// Holds a lock file, such as `.watcher.lock` while a `hub next` runs.
+/// Holds a lock file, such as `.watcher.lock` while a `run_next`
+/// process runs.
 /// Dropping it, or the process ending, lets the next holder in.
 pub(crate) struct FileLock {
     _file: File,
@@ -301,7 +303,7 @@ impl RunFolder {
     }
 
     /// Writes this process's ID to `.watcher-pid`, which tells an
-    /// older `hub next` to stop.
+    /// older `run_next` process to stop.
     pub(crate) fn claim_watcher(&self, process_id: u32) -> Result<(), HubError> {
         write_file_whole(&self.path.join(".watcher-pid"), &format!("{process_id}\n"))
     }
@@ -311,13 +313,13 @@ impl RunFolder {
         take_file_lock(&self.path.join(".watcher.lock"))
     }
 
-    /// Tells whether a `hub next` holds the watcher lock now, by trying
-    /// it.
+    /// Tells whether a `run_next` process holds the watcher lock now,
+    /// by trying it.
     pub(crate) fn is_watcher_running(&self) -> Result<bool, HubError> {
         is_file_locked(&self.path.join(".watcher.lock"))
     }
 
-    /// Tells whether a newer `hub next` claimed the watcher.
+    /// Tells whether a newer `run_next` process claimed the watcher.
     pub(crate) fn is_replaced(&self, process_id: u32) -> Result<bool, HubError> {
         let claimed = self.read_optional_file(".watcher-pid")?;
         let claimed = claimed.trim();

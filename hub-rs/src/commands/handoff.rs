@@ -1,9 +1,10 @@
 //! Runs `hub handoff`, which starts the next hub and checks its
 //! effort, and `hub adopt`, which takes over an older hub left open
 //! without a handoff. `start_due_review` starts the old hub's session
-//! review for `hub next --start-reviews`. Read `run_handoff` first. A
-//! hub once told the user the wrong effort because nothing checked it.
-//! `start_session` also starts the workers of `hub launch`.
+//! review for `run_next` with `start_reviews` set. Read
+//! `run_handoff` first. A hub once told the user the wrong effort
+//! because nothing checked it. `start_session` also starts the workers
+//! of `run_launch`.
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -27,7 +28,7 @@ const REPLY_TIME_LIMIT: Duration = Duration::from_secs(120);
 /// The effort a session review runs at, whatever the hub's own effort.
 const REVIEW_EFFORT: &str = "high";
 
-/// What `start_due_review` did, for the line `hub next` prints.
+/// What `start_due_review` did, for the line `run_next` prints.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ReviewStart {
     Started {
@@ -161,9 +162,10 @@ pub fn run_handoff(
 }
 
 /// Makes this hub take over `old`, an older hub of the run that no
-/// `hub handoff` named, or an auto hub whose run is over. Writes the
-/// handoff for `old`'s session review and records a `handoff` event, so `hub clean` closes `old` once it
-/// is idle and `hub next --start-reviews` then starts the review.
+/// `run_handoff` named, or an auto hub whose run is over. Writes the
+/// handoff for `old`'s session review and records a `handoff` event,
+/// so `run_clean` closes `old` once it is idle and `run_next` with
+/// `start_reviews` set then starts the review.
 /// Then puts the hubs at the top of the sidebar, and a failure there
 /// adds a warning line, not an error.
 ///
@@ -242,9 +244,9 @@ pub fn run_adopt(
 /// Starts the session review of an old hub once its tab has closed,
 /// and returns what happened. Returns `None` when no review is due,
 /// outside Herdr, and when the review already runs, as when the hub
-/// started it by hand. Only that last case is recorded here. `hub next`
+/// started it by hand. Only that last case is recorded here. `run_next`
 /// records a start or a failure when it prints the line, so a lost
-/// line means one more try. `agents` are the live agents `hub next`
+/// line means one more try. `agents` are the live agents `run_next`
 /// listed.
 ///
 /// # Errors

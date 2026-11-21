@@ -26,7 +26,7 @@ const NEEDS_YOU_TOKEN: &str = "needs_you";
 const PROMPT_TIME_LIMIT_MS: &str = "30000";
 /// Long enough for OpenCode to load the folder and open the session.
 const START_TIME_LIMIT_MS: &str = "90000";
-/// Keeps a stuck Herdr from holding `hub gather` forever.
+/// Keeps a stuck Herdr from holding `run_gather` forever.
 const SOCKET_TIME_LIMIT: Duration = Duration::from_secs(10);
 
 /// Calls Herdr. `HerdrCli` runs the real command; tests use
@@ -764,9 +764,9 @@ mod tests {
 
     /// Every command reads agents through this parser. A field Herdr
     /// renamed, or one read from the wrong key, breaks every command
-    /// at once. `hub handoff` names the old hub's session and tab from
+    /// at once. `run_handoff` names the old hub's session and tab from
     /// it, so a misread one sends the session review to the wrong place.
-    /// `hub status` reads the mark, folders and machine to decide what
+    /// `run_status` reads the mark, folders and machine to decide what
     /// may close.
     #[test]
     fn parse_agent_reads_herdr_fields() {
@@ -805,8 +805,8 @@ mod tests {
     }
 
     /// Herdr lists a pane with no name when nobody started its agent by
-    /// name. Reading that pane as a session would break `hub go` and
-    /// `hub gather` whenever such a pane is open.
+    /// name. Reading that pane as a session would break `run_go` and
+    /// `run_gather` whenever such a pane is open.
     #[test]
     fn parse_agent_list_skips_unnamed_agents() {
         let answer: Value = serde_json::from_str(AGENT_LIST).unwrap();

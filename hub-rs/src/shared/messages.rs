@@ -6,7 +6,7 @@
 //! Each message is one file in the run folder's `sends/`, named
 //! `NAME.STAMP.N` and a state, such as
 //! `docs-fix.20261110-221502.1.held`. A message leaves its file only by
-//! a rename, or once Herdr or `hub inbox` took it, so a crash leaves
+//! a rename, or once Herdr or `run_inbox` took it, so a crash leaves
 //! the text on disk.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -183,12 +183,12 @@ pub(crate) fn choose_delivery(target: &Target, older_waiting: usize) -> Delivery
 /// Sends each held message whose session can take it, oldest first,
 /// reopens parked sessions that have one, and moves the messages of
 /// sessions that handed off. A reopen that fails marks its message not
-/// sent, so a session that cannot reopen never stops `hub next`. Each
+/// sent, so a session that cannot reopen never stops `run_next`. Each
 /// session gets at most one message per check. The first message may
 /// block the session, and Herdr's prompt returns as soon as it blocks.
 /// Stops at the first
 /// message that was not sent or is unsure, and returns it. A later
-/// message with the same problem waits for the next `hub next` check,
+/// message with the same problem waits for the next `run_next` check,
 /// so each one gets its own line.
 pub(crate) fn deliver_held_messages(
     tools: &Tools<'_>,
@@ -408,7 +408,7 @@ pub(crate) fn claim_message(stored: StoredMessage) -> Result<Option<StoredMessag
     }
 }
 
-/// Writes a held message and logs it, for `hub next` to send once the
+/// Writes a held message and logs it, for `run_next` to send once the
 /// session can take it. A failed log returns `HubError::PartlyDone`,
 /// since the message is already held.
 pub(crate) fn hold_message(
@@ -539,7 +539,7 @@ pub(crate) fn count_messages(run: &RunFolder) -> Result<BTreeMap<String, Message
 }
 
 /// Claims every message held for NAME, records it as delivered through
-/// `hub inbox`, then deletes its file. A failed record renames the file
+/// `run_inbox`, then deletes its file. A failed record renames the file
 /// back to held. Returns the messages oldest first.
 pub(crate) fn take_held_messages(
     run: &RunFolder,
@@ -548,7 +548,7 @@ pub(crate) fn take_held_messages(
 ) -> Result<Vec<Message>, HubError> {
     let mut taken = Vec::new();
     for stored in list_messages(run, Some(name))? {
-        // A message `hub next` claimed meanwhile has nothing left here to take.
+        // A message `run_next` claimed meanwhile has nothing left here to take.
         let Some(claimed) = claim_message(stored)? else {
             continue;
         };
@@ -825,7 +825,7 @@ mod tests {
         }
     }
 
-    /// `hub status` holds a session at `hub` while a message to it is
+    /// `run_status` holds a session at `hub` while a message to it is
     /// held, unsure or not sent, so the tidy pass never closes a tab a
     /// message still waits for. A suffix counted as another state shows
     /// the wrong word. A file whose name starts with a dot is not a
