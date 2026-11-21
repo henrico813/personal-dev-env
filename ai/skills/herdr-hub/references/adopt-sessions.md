@@ -91,7 +91,7 @@ user where it is, its counts and the decisions it needs.
 
 Once the user approves the list, make each card:
 
-    card new <Project> "<title>" --adopt <stage> --user \
+    card new <Project> "<title>" --type <type> --adopt <stage> --user \
       --session <agent> --why "<what the session shows>"
 
 Add `--kind research` for work that ends in a document or a decision.

@@ -14,16 +14,20 @@ use std::thread;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-/// A whole card key. The card command allows digits in a project code,
-/// such as `DEMO2-KB-001`.
+/// A card key in either shape, such as `DEMO-KB-007` or `DEMO-516`.
+/// A new key counts only when its code has exactly four characters, so
+/// words such as `ISO-8601` or `merge-553` are not keys. An old key's
+/// code may have any length and hold digits, such as `DEMO2-KB-001`.
+pub(crate) const KEY_PATTERN: &str = "[A-Z][A-Z0-9]*-KB-[0-9]{3,}|[A-Z][A-Z0-9]{3}-[0-9]{3,}";
+/// A whole card key.
 static CARD_KEY: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[A-Z][A-Z0-9]*-KB-[0-9]{3,}$").unwrap());
-/// A card key at the start of a session name, such as `demo-kb-007-impl`.
+    LazyLock::new(|| Regex::new(&format!("^(?:{KEY_PATTERN})$")).unwrap());
+/// A card key at the start of a session name, such as `demo-516-impl`.
 static KEY_IN_NAME: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9]*-kb-[0-9]{3,}").unwrap());
-/// A card key anywhere in free text, in any case, such as `demo-kb-007,`.
+    LazyLock::new(|| Regex::new(&format!("^(?i:{KEY_PATTERN})")).unwrap());
+/// A card key anywhere in free text, in any case, such as `demo-516,`.
 static KEY_IN_TEXT: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\b[A-Z][A-Z0-9]*-KB-[0-9]{3,}\b").unwrap());
+    LazyLock::new(|| Regex::new(&format!(r"(?i)\b(?:{KEY_PATTERN})\b")).unwrap());
 
 /// The card sections whose bullets tell the AI model that sorts
 /// cards ready to start what the work needs.
@@ -240,15 +244,16 @@ impl Cards for CardCli {
     }
 }
 
-/// A card key in upper case, such as `DEMO-KB-007`. Reading one from
-/// JSON checks its form, so a parked record cannot hold a bad key.
+/// A card key in upper case, such as `DEMO-516` or `DEMO-KB-007`.
+/// Reading one from JSON checks its form, so a parked record cannot
+/// hold a bad key.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "String")]
 pub struct CardKey(String);
 
 impl CardKey {
     /// Returns the key a session name starts with, such as
-    /// `DEMO-KB-007` for `demo-kb-007-impl`.
+    /// `DEMO-516` for `demo-516-impl`.
     pub(crate) fn find_in_name(name: &str) -> Option<CardKey> {
         KEY_IN_NAME
             .find(name)
@@ -712,6 +717,38 @@ fn is_list_heading(line: &str, stage: Stage) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The hub finds a worker's card from its name to launch, message
+    /// and report on it. Missing `demo-516-impl` cuts the worker off from
+    /// its card, and reading `merge-553` as a card makes `hub launch`
+    /// refuse it.
+    #[test]
+    fn find_in_name_reads_only_card_keys() {
+        let cases = [
+            ("demo-516-impl", Some("DEMO-516")),
+            ("demo-kb-007-impl", Some("DEMO-KB-007")),
+            ("merge-553", None),
+        ];
+
+        for (name, key) in cases {
+            let found = CardKey::find_in_name(name);
+
+            assert_eq!(found.as_ref().map(CardKey::as_str), key, "{name}");
+        }
+    }
+
+    /// The hub reads card keys from the user's own approval words. A
+    /// name such as `ISO-8601` or `Windows-1252` read as a key names a
+    /// card the run lacks, which blocks the approval.
+    #[test]
+    fn find_all_in_text_skips_non_key_words() {
+        let text = "Run demo-516 per ISO-8601, RFC-2119 and Windows-1252.";
+
+        let found = CardKey::find_all_in_text(text);
+
+        let keys: Vec<&str> = found.iter().map(CardKey::as_str).collect();
+        assert_eq!(keys, ["DEMO-516"]);
+    }
 
     /// `run_status` and `run_brief` show the days and reason of each
     /// card waiting on people outside the team from this list, and an

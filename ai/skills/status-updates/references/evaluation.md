@@ -266,13 +266,13 @@ library to a home file server. Two workers asked questions that only
 the user can answer.
 
 Your notes:
-- LAN-KB-12, the restore command: should `lantern restore` overwrite
+- LANT-012, the restore command: should `lantern restore` overwrite
   a file that changed since the backup? Choices: overwrite it; keep
   both, adding ".restored" to the restored copy; ask each time. The
   worker recommends keeping both, since overwriting can lose an edit
   and asking each time stalls a restore of 10,000 photos. Its pull
   request waits on the answer.
-- LAN-KB-14, old backups: delete backups older than a year, or keep
+- LANT-014, old backups: delete backups older than a year, or keep
   every backup? Deleting frees about 40 GB on the server, which has
   12 GB left. Keeping costs nothing until the disk fills. The worker
   recommends deleting.

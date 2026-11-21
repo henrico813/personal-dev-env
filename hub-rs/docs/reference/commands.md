@@ -124,16 +124,16 @@ board active 5 of 8, in-review 19 of 6
 blocked 1, oldest 8 days
 open 6: 1 working, 1 hub, 1 you,
   1 kept, 1 to-close, 1 to-park; 1 parked
-unread 2: demo-kb-007-impl docs-fix
+unread 2: demo-007-impl docs-fix
 
 NAME                  STATE     CTX   WHY
 docs-fix              working   152k  1 held, hand off
-demo-kb-007-impl      hub       98k   unread report
-demo-kb-009-auto      you       12k   blocked
-demo-kb-012-auto      kept      77k   unpushed in /home/u/wt/demo-kb-012
+demo-007-impl         hub       98k   unread report
+demo-009-auto         you       12k   blocked
+demo-012-auto         kept      77k   unpushed in /home/u/wt/demo-012
 review-kanban-hub-16  to-close  60k   report read
-demo-kb-090-auto      to-park   104k  -
-demo-kb-081-auto      parked    -     since 11-10 22:41
+demo-090-auto         to-park   104k  -
+demo-081-auto         parked    -     since 11-10 22:41
 
 no session: DEMO-KB-004 active
 ```
@@ -309,8 +309,8 @@ counts from the last change.
 
 ```text
 REF      SESSION           STATE    AGE    PULL REQUEST
-Aaa0004  demo-kb-008-impl  pending  5m     app #20 merge
-Aaa0002  demo-kb-007-impl  expired  5h00m  app #20 merge
+Aaa0004  demo-008-impl     pending  5m     app #20 merge
+Aaa0002  demo-007-impl     expired  5h00m  app #20 merge
 ```
 
 STATE is the file's `state`, or `expired` for a pending or approved
@@ -362,9 +362,9 @@ as `gather` does. When that fails, they add
 `hub launch [--run DIR] NAME HANDOFF --model MODEL [--workspace LABEL]`
 starts a worker named NAME on MODEL in the current folder, prompts it
 to read HANDOFF, and records the start. A card key at the start of
-NAME, such as `demo-kb-007-impl`, makes it that card's worker. The
+NAME, such as `demo-007-impl`, makes it that card's worker. The
 worker opens in a new tab of the workspace whose label starts with
-the key, else in a new workspace such as `demo-kb-007 impl`. Work
+the key, else in a new workspace such as `demo-007 impl`. Work
 with no card opens in the hub's workspace, so run it in the hub's
 own pane. `--workspace LABEL` opens it in that workspace, and makes
 the workspace if none has that label. A todo card moves to active

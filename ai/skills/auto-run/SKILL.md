@@ -99,10 +99,10 @@ The user's rules for every run:
        Run tier: T1
 
        ## Run
-       - DEMO-KB-007 demo: failed uploads retry by themselves
+       - DEMO-007 demo: failed uploads retry by themselves
 
        ## Needs your hands
-       - DEMO-KB-009 demo: the new disk needs plugging in
+       - DEMO-009 demo: the new disk needs plugging in
 
 5. Check the list until it exits 0:
 
@@ -120,11 +120,11 @@ The user's rules for every run:
 
        Auto run 2: 3 cards run without you while you are away,
        until 07:00 on 12 Nov.
-       1. demo, DEMO-KB-007: failed uploads retry by themselves.
-       2. demo, DEMO-KB-011: the rest of the sync roadmap, 4 pull
+       1. demo, DEMO-007: failed uploads retry by themselves.
+       2. demo, DEMO-011: the rest of the sync roadmap, 4 pull
           requests in one stack.
        ...
-       Left out: DEMO-KB-009 (demo), the new disk needs your hands.
+       Left out: DEMO-009 (demo), the new disk needs your hands.
        Rules that end: planners use Opus until 02:00.
        Each card stops at a pull request or a question for you.
        Run tier: T1. Only a plan that changes your rules.md
