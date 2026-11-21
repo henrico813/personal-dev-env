@@ -4,8 +4,9 @@
 A card is one piece of work the user wants, like a GitHub issue. A plan
 made from it is like a pull request. Each card is one note,
 ``500 Zettelkasten/Projects/<Project>/<KEY> <Title>.md``, with a key
-such as PDEV-KB-012 built from the project code in the project
-folder's AGENTS.md. The key and the file name follow the naming
+such as PDEV-516 built from the project code in the project folder's
+AGENTS.md. Older cards keep keys such as PDEV-KB-012, which card still
+reads. The key and the file name follow the naming
 rules in ``chezmoi/dot_config/pde/names.toml``, installed as
 ``~/.config/pde/names.toml``.
 
@@ -762,7 +763,7 @@ def create_card(
         raise CardError("the title needs a letter or digit")
     today = date.today().isoformat()
     with hold_lock(STATE_DIR / "new.lock"):
-        number = str(find_next_number(folder, code))
+        number = str(find_next_number(projects, code))
         key = make_name(find_rule("card_key"), {"code": code, "n": number})
         path = folder / make_name(
             find_rule("card_file"), {"key": key, "title": name}
@@ -788,24 +789,31 @@ def create_card(
     return path
 
 
-def find_next_number(folder: Path, code: str) -> int:
-    """Return the highest card number in the folder plus one.
+def find_next_number(projects: Path, code: str) -> int:
+    """Return one more than the highest card or plan number of a code.
+
+    A plan made for a card shares its key, and plans sit in any project
+    folder or archive, so every folder counts. Old keys such as
+    PDEV-KB-012 count too, so a new key never repeats an old card's
+    number.
 
     Args:
-        folder: A project folder.
+        projects: The vault's Projects folder.
         code: The project code, such as PDEV.
 
     Returns:
         The number for the next card.
     """
-    key_rule = find_rule("card_key")
-    numbers = []
-    for path in folder.iterdir():
-        key = read_card_key(path.name)
-        fields = parse_name(key_rule, key) if key else None
-        if fields and fields.get("code") == code:
-            numbers.append(int(fields["n"]))
-    return max(numbers, default=0) + 1
+    card_file = find_rule("card_file")
+    plan_file = find_rule("plan_file")
+    numbers = [0]
+    for path in projects.glob(f"**/{code}-*.md"):
+        name = path.name
+        fields = parse_name(card_file, name) or parse_name(plan_file, name)
+        if fields:
+            digits = re.sub("[^0-9]", "", fields["key"][len(code) :])
+            numbers.append(int(digits))
+    return max(numbers) + 1
 
 
 def run_list(args: argparse.Namespace, projects: Path) -> int:
@@ -1661,6 +1669,8 @@ def run_delete(args: argparse.Namespace, projects: Path) -> int:
 def run_check(args: argparse.Namespace, projects: Path) -> int:
     """Print cards whose layout or fields card cannot use.
 
+    It also prints notes named like old -KB- cards that are not cards.
+
     Args:
         args: The parsed arguments.
         projects: The vault's Projects folder.
@@ -1676,6 +1686,12 @@ def run_check(args: argparse.Namespace, projects: Path) -> int:
         if card.key in seen:
             problems.append(f"{card.key} also in {seen[card.key]}")
         seen[card.key] = card.path.name
+    # No plan has an old -KB- name, so such a note without the card type
+    # is a broken card or a misnamed note, which every other command skips.
+    card_paths = {card.path for card in cards}
+    for path in sorted(projects.glob("*/*-KB-*.md")):
+        if path not in card_paths and read_card_key(path.name):
+            problems.append(f"{path.name} has a card name but no type: card")
     # The hub maps a session to one card, so a session on two cards
     # shows one worker's state on the wrong card.
     holders: dict[str, str] = {}
@@ -1959,8 +1975,9 @@ def render_template() -> str:
     """Return the Templater template that makes a card in Obsidian.
 
     It asks for the project, title, kind and work type, picks the next
-    number from the folder listing and moves the note into the project
-    folder. It takes no lock, so ``card check`` finds a clash.
+    number from the card and plan notes under Projects and moves the
+    note into the project folder. It takes no lock, so ``card check``
+    finds a clash.
 
     Returns:
         The template text.
@@ -1972,8 +1989,8 @@ def render_template() -> str:
         "WORK_TYPES_JSON": WORK_TYPES,
         "CARD_KEY_MAKE_JSON": key_rule.make,
         "CARD_FILE_MAKE_JSON": file_rule.make,
-        "CARD_KEY_RE_JSON": format_js_pattern(key_rule),
         "CARD_FILE_RE_JSON": format_js_pattern(file_rule),
+        "PLAN_FILE_RE_JSON": format_js_pattern(find_rule("plan_file")),
     }
     script = TEMPLATER_SCRIPT
     for placeholder, value in constants.items():
@@ -2037,12 +2054,15 @@ const fill = (template, values) => template.replace(
     return value;
   });
 const cardFileRe = new RegExp(CARD_FILE_RE_JSON);
-const cardKeyRe = new RegExp(CARD_KEY_RE_JSON);
+const planFileRe = new RegExp(PLAN_FILE_RE_JSON);
 let high = 0;
-for (const file of project.folder.children) {
-  const found = file.name.match(cardFileRe)?.groups.key.match(cardKeyRe);
-  if (found && found.groups.code === project.code) {
-    high = Math.max(high, Number(found.groups.n));
+for (const file of app.vault.getMarkdownFiles()) {
+  if (!file.path.startsWith(`${root}/`)) continue;
+  const found = file.name.match(cardFileRe) || file.name.match(planFileRe);
+  const key = found?.groups.key;
+  if (key?.startsWith(`${project.code}-`)) {
+    const digits = key.slice(project.code.length).replace(/[^0-9]/g, "");
+    high = Math.max(high, Number(digits));
   }
 }
 const key = fill(CARD_KEY_MAKE_JSON, { code: project.code, n: high + 1 });
@@ -2437,6 +2457,37 @@ def hold_lock(path: Path) -> Iterator[None]:
         yield
 
 
+def read_card_note(path: Path) -> Card | None:
+    """Read a note as a card, or return None when it is not one.
+
+    A plan made for a card has the same name shape and key, so a note
+    is a card only when its front matter says ``type: card``. Other
+    notes are read only to the end of their front matter, since a plan
+    can be long and the vault may sit on a network drive.
+
+    Args:
+        path: The note.
+
+    Returns:
+        The card, or None when the name holds no card key or the note
+        is not a card.
+    """
+    key = read_card_key(path.name)
+    if not key:
+        return None
+    mtime_ns = path.stat().st_mtime_ns
+    with path.open(encoding="utf-8") as note:
+        head = note.readline()
+        if head.strip() == "---":
+            while line := note.readline():
+                head += line
+                if line.strip() == "---":
+                    break
+        if read_fields(head).get("type") != "card":
+            return None
+        return Card(path, key, head + note.read(), mtime_ns)
+
+
 def load_card(path: Path) -> Card:
     """Read a card note from disk.
 
@@ -2447,13 +2498,12 @@ def load_card(path: Path) -> Card:
         The card.
 
     Raises:
-        CardError: The file name holds no card key.
+        CardError: The note is not a card.
     """
-    key = read_card_key(path.name)
-    if not key:
+    card = read_card_note(path)
+    if not card:
         raise CardError(f"{path.name} is not a card note")
-    mtime_ns = path.stat().st_mtime_ns
-    return Card(path, key, path.read_text(encoding="utf-8"), mtime_ns)
+    return card
 
 
 def load_all_cards(projects: Path) -> list[Card]:
@@ -2465,11 +2515,8 @@ def load_all_cards(projects: Path) -> list[Card]:
     Returns:
         The cards.
     """
-    return [
-        load_card(path)
-        for path in sorted(projects.glob("*/*.md"))
-        if read_card_key(path.name)
-    ]
+    notes = (read_card_note(path) for path in sorted(projects.glob("*/*.md")))
+    return [card for card in notes if card]
 
 
 def filter_cards(cards: list[Card], args: argparse.Namespace) -> list[Card]:
@@ -2492,7 +2539,7 @@ def filter_cards(cards: list[Card], args: argparse.Namespace) -> list[Card]:
 
 
 def find_card(projects: Path, key: str) -> Card:
-    """Find the one note that holds a key, in any project.
+    """Find the one card note that holds a key, in any project.
 
     Args:
         projects: The vault's Projects folder.
@@ -2502,7 +2549,7 @@ def find_card(projects: Path, key: str) -> Card:
         The card.
 
     Raises:
-        CardError: No note or more than one note holds the key.
+        CardError: No card note, or more than one, holds the key.
     """
     key = key.upper()
     paths = [
@@ -2510,12 +2557,13 @@ def find_card(projects: Path, key: str) -> Card:
         for path in projects.glob(f"*/{key}*.md")
         if read_card_key(path.name) == key
     ]
-    if not paths:
+    cards = [card for path in paths if (card := read_card_note(path))]
+    if not cards:
         raise CardError(f"no card {key}")
-    if len(paths) > 1:
-        names = ", ".join(path.name for path in paths)
+    if len(cards) > 1:
+        names = ", ".join(card.path.name for card in cards)
         raise CardError(f"two files hold {key}, fix by hand: {names}")
-    return load_card(paths[0])
+    return cards[0]
 
 
 def list_key_holders(folder: Path, key: str) -> list[Path]:
@@ -2598,7 +2646,8 @@ def read_card_key(file_name: str) -> str | None:
         file_name: A file name, such as ``PDEV-KB-012 Retry uploads.md``.
 
     Returns:
-        The key, or None when the file is not a card note.
+        The key, or None when the name holds no card key. A plan's
+        name can hold one too, so read_card_note also checks the type.
     """
     fields = parse_name(find_rule("card_file"), file_name)
     return fields.get("key") if fields else None

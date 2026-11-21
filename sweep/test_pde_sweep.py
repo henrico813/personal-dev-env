@@ -22,14 +22,15 @@ FAKE_HUB = """#!/bin/sh
 echo '{"no_session": [{"card": "ABC-KB-001", "stage": "active"},
   {"card": "ABC-KB-004", "stage": "active"}]}'
 """
-# A fake card with one stuck card, one card with a next step, and two
-# review cards, one linked to a merged pull request and one to an open
-# one.
+# A fake card with one stuck card, one card with a next step, and three
+# review cards. Two link to merged pull requests, one of them under a
+# new key, and one links to an open one.
 FAKE_CARD = """#!/bin/sh
 case "$1 $2" in
   "list --stage")
     echo "ABC-KB-002 review   build    Some work"
-    echo "ABC-KB-003 review   build    More work" ;;
+    echo "ABC-KB-003 review   build    More work"
+    echo "ABCD-005 review   build    New work" ;;
   "show ABC-KB-001") printf -- '---\\nstage: active\\n---\\n# Work\\n' ;;
   "show ABC-KB-002")
     printf -- '---\\nprs:\\n  - "https://github.com/o/r/pull/7"\\n---\\n' ;;
@@ -37,6 +38,8 @@ case "$1 $2" in
     printf -- '---\\nprs:\\n  - "https://github.com/o/r/pull/8"\\n---\\n' ;;
   "show ABC-KB-004")
     printf -- '---\\nstage: active\\n---\\n- note (hub): next: wait\\n' ;;
+  "show ABCD-005")
+    printf -- '---\\nprs:\\n  - "https://github.com/o/r/pull/9"\\n---\\n' ;;
 esac
 """
 # A fake gh where pull request 8 is open, every other one merged, and
@@ -365,7 +368,8 @@ class TestRun:
         )
         assert read_items(report, "stuck-cards") == ["- ABC-KB-001 active"]
         assert read_items(report, "review-cards-pr-done") == [
-            "- ABC-KB-002 https://github.com/o/r/pull/7 MERGED"
+            "- ABC-KB-002 https://github.com/o/r/pull/7 MERGED",
+            "- ABCD-005 https://github.com/o/r/pull/9 MERGED",
         ]
         assert read_items(report, "dirty-worktrees") == [
             "skipped: 1 on the default branch with only untracked files",

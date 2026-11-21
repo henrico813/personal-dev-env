@@ -13,6 +13,8 @@ import card
 import pytest
 
 KEY = "PDEV-KB-001"
+# The key card new gives the first card in an empty project.
+NEW_KEY = "PDEV-001"
 TODAY = "2026-11-07"
 REPO = Path(__file__).resolve().parents[1]
 RULES_FILE = REPO / "chezmoi/dot_config/pde/names.toml"
@@ -56,6 +58,16 @@ Cards have no tool yet.
 ---
 
 - 2026-11-06 draft: created by user
+"""
+# A plan made for card PDEV-005, which shares its key.
+PLAN = """---
+tags:
+  - "#Ticket"
+type: issue
+status: open
+---
+
+# Plan the retries
 """
 # A file for card new --from, with one heading in lower case.
 CARD_FILE = """---
@@ -139,19 +151,45 @@ def write_card(
 
 
 class TestNew:
-    """Making a card picks its key from the cards already in the folder."""
+    """Making a card picks its key from the cards and plans of its code."""
 
-    def test_new_takes_number_after_highest_card(self, projects: Path) -> None:
-        """A new card takes the highest card number plus one.
+    @pytest.mark.parametrize(
+        ("files", "name"),
+        [
+            pytest.param(
+                [
+                    "DevEnv/PDEV-KB-010 Old card.md",
+                    "Other/PDEV-412 A plan.md",
+                    "Other/Archive/PDEV-415 Old plan.md",
+                    "Other/HOME-900 A plan.md",
+                ],
+                "PDEV-416 Fix hub files drift.md",
+                id="plan-in-any-folder",
+            ),
+            pytest.param(
+                [
+                    "DevEnv/PDEV-KB-450 Old card.md",
+                    "DevEnv/PDEV-412 A plan.md",
+                ],
+                "PDEV-451 Fix hub files drift.md",
+                id="old-card-highest",
+            ),
+        ],
+    )
+    def test_new_key_follows_highest_project_number(
+        self, projects: Path, files: list[str], name: str
+    ) -> None:
+        """A new card takes one more than any card or plan of its code.
 
-        Plan notes share the project code, and cards deleted by hand
-        leave gaps. If either changed the number, two cards could get
-        one key, and links to the first would point at the second.
+        A plan made for a card shares the card's key, and plans sit in
+        any project folder or archive. Missing a plan gives a new card
+        the key of an unrelated plan. Missing an old card puts PDEV-300
+        beside PDEV-KB-300. Other codes must not count.
         """
-        folder = projects / "DevEnv"
-        (folder / "PDEV-KB-002 Old card.md").write_text("")
-        (folder / "PDEV-KB-010 Newer card.md").write_text("")
-        (folder / "PDEV-412 A plan.md").write_text("")
+        for file in files:
+            path = projects / file
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("")
 
         code = run_card(
             projects,
@@ -165,7 +203,7 @@ class TestNew:
         )
 
         assert code == 0
-        assert (folder / "PDEV-KB-011 Fix hub files drift.md").exists()
+        assert (projects / "DevEnv" / name).exists()
 
     def test_new_adopt_logs_adoption_at_stage(self, projects: Path) -> None:
         """Adopted work starts in its stage with an adoption Log line.
@@ -192,7 +230,7 @@ class TestNew:
         )
 
         assert code == 0
-        text = (projects / "DevEnv" / f"{KEY} Old work.md").read_text()
+        text = (projects / "DevEnv" / f"{NEW_KEY} Old work.md").read_text()
         assert f"stage: in-review\nstage_date: {TODAY}\n" in text
         assert text.endswith(
             f"- {TODAY} in-review: adopted by general-staff for the user."
@@ -220,7 +258,7 @@ class TestNew:
         )
 
         assert code == 1
-        assert not list((projects / "DevEnv").glob("*-KB-*"))
+        assert not list((projects / "DevEnv").glob("PDEV-*"))
 
     def test_new_from_copies_fields_and_sections(
         self, projects: Path, tmp_path: Path
@@ -240,7 +278,7 @@ class TestNew:
         )
 
         assert code == 0
-        path = projects / "DevEnv" / f"{KEY} Retry failed uploads.md"
+        path = projects / "DevEnv" / f"{NEW_KEY} Retry failed uploads.md"
         text = path.read_text()
         assert "kind: research\nwork_type: feat\n" in text
         assert card.read_section(text, "Context") == (
@@ -317,7 +355,7 @@ class TestNew:
         code = run_card(projects, "new", "DevEnv", *args, "--by", "user")
 
         assert code == 1
-        assert not list((projects / "DevEnv").glob("*-KB-*"))
+        assert not list((projects / "DevEnv").glob("PDEV-*"))
 
 
 class TestMove:
@@ -652,7 +690,7 @@ class TestSessions:
         [
             pytest.param(
                 "todo",
-                ["move", KEY, "active"],
+                ["move", NEW_KEY, "active"],
                 "active: by user",
                 id="start",
             ),
@@ -684,12 +722,13 @@ class TestSessions:
         holds it.
         """
         if stage:
-            write_card(projects, KEY, stage, "- [ ] Done.")
+            write_card(projects, NEW_KEY, stage, "- [ ] Done.")
 
         code = run_card(projects, *argv, "--session", "--by", "user")
 
         assert code == 0
-        text = (projects / "DevEnv" / f"{KEY} Fix some work.md").read_text()
+        path = projects / "DevEnv" / f"{NEW_KEY} Fix some work.md"
+        text = path.read_text()
         assert 'sessions:\n  - "opencode ses_abc"\n' in text
         assert text.endswith(
             f"- {TODAY} {stage_line}\n"
@@ -848,6 +887,27 @@ class TestEdit:
         )
 
 
+class TestShow:
+    """card show finds one card by its key."""
+
+    def test_show_finds_card_beside_its_plan(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """card show finds a card whose plan shares its key.
+
+        Every card command finds its card this way. If the plan counted
+        as a second holder of the key, the hub and agents could not show
+        or move the card once its plan exists.
+        """
+        write_card(projects, "PDEV-005", "draft", title="Build the retries")
+        (projects / "DevEnv" / "PDEV-005 Plan the retries.md").write_text(PLAN)
+
+        code = run_card(projects, "show", "pdev-005")
+
+        assert code == 0
+        assert "# PDEV-005 Build the retries\n" in capsys.readouterr().out
+
+
 class TestAttach:
     """Attaching copies a file into the project and embeds it in Context."""
 
@@ -972,7 +1032,29 @@ class TestList:
 
         assert code == 0
         first_line = capsys.readouterr().out.splitlines()[0]
-        assert first_line == f"PDEV-KB-001\tdraft\tbuild\tDevEnv\t{title}"
+        assert first_line == f"{NEW_KEY}\tdraft\tbuild\tDevEnv\t{title}"
+
+    def test_list_shows_both_shapes_without_plans(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """card list shows old and new card keys, and not a plan's.
+
+        Older cards keep their old keys, so the board must still show
+        them. A plan made for a card has the same name shape; listed as
+        a card, it would add a row for every plan.
+        """
+        write_card(projects, KEY, "draft")
+        write_card(projects, "PDEV-005", "draft", title="Build the retries")
+        (projects / "DevEnv" / "PDEV-005 Plan the retries.md").write_text(PLAN)
+
+        code = run_card(projects, "list", "--tabs")
+
+        assert code == 0
+        assert capsys.readouterr().out == (
+            "PDEV-005\tdraft\tbuild\tDevEnv\tBuild the retries\n"
+            "PDEV-KB-001\tdraft\tbuild\tDevEnv\tFix some work\n"
+            "2 cards\n"
+        )
 
 
 class TestBoard:
@@ -1140,6 +1222,27 @@ class TestHandEditedCard:
         assert "Hand edit." in text
         assert text.endswith("- added by card\n")
 
+    def test_check_reports_card_note_without_type(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """card check names an old-shape card note that lost its type.
+
+        Every other command skips a note without ``type: card``, so a
+        card whose front matter was deleted by hand drops off the board
+        with no message. card check is where the user finds it.
+        """
+        (projects / "DevEnv" / f"{KEY} Lost type.md").write_text(
+            f"# {KEY} Lost type\n"
+        )
+
+        code = run_card(projects, "check")
+
+        assert code == 1
+        assert capsys.readouterr().out == (
+            f"{KEY} Lost type.md has a card name but no type: card\n"
+            "1 problems in 0 cards\n"
+        )
+
 
 class TestNamingRules:
     """card makes and reads names with the rules in the rules file."""
@@ -1256,7 +1359,7 @@ class TestNamingRules:
             re.compile(pattern.replace("(?<", "(?P<")) for pattern in patterns
         ] == [
             card.find_rule("card_file").parse,
-            card.find_rule("card_key").parse,
+            card.find_rule("plan_file").parse,
         ]
 
 
@@ -1391,7 +1494,7 @@ class TestTitleRules:
         )
 
         assert code == 1
-        assert not list((projects / "DevEnv").glob("*-KB-*"))
+        assert not list((projects / "DevEnv").glob("PDEV-*"))
         assert capsys.readouterr().err == (
             "card: title refused:\n"
             "  T1 length: 57 characters, at most 50\n"
@@ -1422,7 +1525,7 @@ class TestTitleRules:
 
         assert code == 0
         assert capsys.readouterr().out == (
-            "PDEV-KB-001 Hubs read the approval state\n"
+            "PDEV-001 Hubs read the approval state\n"
             'T2 verb: "Hubs" is not in the verb list (user verb)\n'
             "T7 cut: Hubs read the approval sta~\n"
         )
@@ -1565,7 +1668,7 @@ class TestTitleRules:
         )
 
         assert code == 1
-        assert not list((projects / "DevEnv").glob("*-KB-*"))
+        assert not list((projects / "DevEnv").glob("PDEV-*"))
         assert capsys.readouterr().err == (
             "card: title refused:\n"
             f"  T3 type: {detail}\n"

@@ -19,7 +19,7 @@ every time:
 
 A worker is a session that a hub started. You need two things:
 
-- Your name, such as `demo-kb-001-impl`. Your prompt or handoff file
+- Your name, such as `demo-001-impl`. Your prompt or handoff file
   gives it.
 - The run folder, a folder the hub reads. It is in `HUB_RUN`.
 
@@ -32,18 +32,18 @@ A worker is a session that a hub started. You need two things:
    If it prints a path, go on. If it prints an empty line, find the
    run folder in your handoff file and add `--run <folder>` after the
    command name in every step, such as
-   `hub inbox --run /tmp/run demo-kb-001-impl`. If you cannot find
+   `hub inbox --run /tmp/run demo-001-impl`. If you cannot find
    it, tell the user and stop.
 
 2. Before you write a handoff, or when the hub says a message waits,
    read your held messages:
 
    ```sh
-   hub inbox demo-kb-001-impl
+   hub inbox demo-001-impl
    ```
 
-   - `no held messages for demo-kb-001-impl`: nothing waits. Go on.
-   - `2 held messages for demo-kb-001-impl`: below it, each message
+   - `no held messages for demo-001-impl`: nothing waits. Go on.
+   - `2 held messages for demo-001-impl`: below it, each message
      starts with a line such as `--- 14:05`. Follow each message. If
      you write a handoff, copy each message into it.
 
@@ -54,10 +54,10 @@ A worker is a session that a hub started. You need two things:
 
    ```sh
    setsid nohup bash /tmp/tests.sh > /tmp/tests.log 2>&1 &
-   hub wait demo-kb-001-impl --file /tmp/tests.done --deadline 30
+   hub wait demo-001-impl --file /tmp/tests.done --deadline 30
    ```
 
-   - `hub watch prods demo-kb-001-impl once /tmp/tests.done changes
+   - `hub watch prods demo-001-impl once /tmp/tests.done changes
      or at 14:35; end your turn now`: end your turn.
    - A line that starts with `error:`, with exit 2: give exactly one
      of `--file <path>` and `--pid <process ID>`.
@@ -68,20 +68,20 @@ A worker is a session that a hub started. You need two things:
    what it says.
 
 4. When your work is done, or you are stuck, write your report to a
-   file, such as `/tmp/report-demo-kb-001-impl.md`. Then send it:
+   file, such as `/tmp/report-demo-001-impl.md`. Then send it:
 
    ```sh
-   hub report demo-kb-001-impl /tmp/report-demo-kb-001-impl.md
+   hub report demo-001-impl /tmp/report-demo-001-impl.md
    ```
 
    For a short report, use standard input instead:
 
    ```sh
    printf '%s\n' "Done: fixed the typo." "PR: #12" |
-     hub report demo-kb-001-impl
+     hub report demo-001-impl
    ```
 
-   - `report demo-kb-001-impl written, 2 lines`: the hub has it. End
+   - `report demo-001-impl written, 2 lines`: the hub has it. End
      your turn.
    - `hub: empty report; nothing written` with exit 3: the text was
      empty. Write the report and run the command again.
@@ -144,31 +144,31 @@ own Herdr pane, with `HUB_RUN` set to your run folder.
    context size, such as `(hub 131k)`. Do what the line says, then
    run step 4 again:
 
-   - `report demo-kb-001-impl (hub 131k)`: run
-     `hub read demo-kb-001-impl --note "<what the report says>"`.
+   - `report demo-001-impl (hub 131k)`: run
+     `hub read demo-001-impl --note "<what the report says>"`.
      Write the note in a few words, such as `PR #12 ready`. It prints
      the report and ends with `unread:` and the names of other unread
      reports, or `-`. Act on the report. Read each name after
      `unread:` the same way.
-   - `missed report demo-kb-001-impl (hub 131k)`: the report waited
+   - `missed report demo-001-impl (hub 131k)`: the report waited
      10 minutes. Read it as for a `report` line.
-   - `blocked demo-kb-001-impl (hub 131k)`: the worker waits for the
+   - `blocked demo-001-impl (hub 131k)`: the worker waits for the
      user at a question or approval. Tell the user. Never answer it
      yourself.
-   - `not sent demo-kb-001-impl: <reason> (hub 131k)`: a message did
+   - `not sent demo-001-impl: <reason> (hub 131k)`: a message did
      not arrive. Run `hub status`. If the worker is still there, send
      the message again as step 5 says. Then delete the `.notsent`
      file for it in `$HUB_RUN/sends/`.
-   - `unsure demo-kb-001-impl: <reason> (hub 131k)`: a message may
+   - `unsure demo-001-impl: <reason> (hub 131k)`: a message may
      have arrived. Read the worker's screen:
 
      ```sh
-     herdr agent read demo-kb-001-impl \
+     herdr agent read demo-001-impl \
        --source recent-unwrapped --lines 40
      ```
 
      If the message is not there, delete the
-     `demo-kb-001-impl.*.sending` file in `$HUB_RUN/sends/` and send
+     `demo-001-impl.*.sending` file in `$HUB_RUN/sends/` and send
      the message again.
    - `board over its limit: active 10 of 8, in-review 18 of 6 (hub 131k)`:
      too many cards are in progress. Tell the user, with the board
@@ -185,26 +185,26 @@ own Herdr pane, with `HUB_RUN` set to your run folder.
      folder. Do not run step 4 again.
    - `timeout (hub 131k)`: nothing happened. Run step 4 again.
 
-   `hub read` exits 3 with `no unread report from demo-kb-001-impl`
+   `hub read` exits 3 with `no unread report from demo-001-impl`
    when you already read it. Go on.
 
 5. To send a worker a message, write it to a file, then send the
    file:
 
    ```sh
-   hub send demo-kb-001-impl --file /tmp/msg.md
+   hub send demo-001-impl --file /tmp/msg.md
    ```
 
-   - `sent demo-kb-001-impl`: it arrived.
-   - `held demo-kb-001-impl: <why>`: it waits. `hub next` sends it
+   - `sent demo-001-impl`: it arrived.
+   - `held demo-001-impl: <why>`: it waits. `hub next` sends it
      later. Do nothing.
-   - `reopening demo-kb-001-impl; held until it starts`: the worker
+   - `reopening demo-001-impl; held until it starts`: the worker
      was parked. A new tab opens and gets the message.
-   - `sent demo-kb-002-impl (demo-kb-001-impl handed off to it)`: the
+   - `sent demo-002-impl (demo-001-impl handed off to it)`: the
      worker handed off, and the newer one got it.
-   - `hub: not sent demo-kb-001-impl: <reason>` with exit 1: it did not
+   - `hub: not sent demo-001-impl: <reason>` with exit 1: it did not
      arrive. Run `hub status` and check the worker is there.
-   - `hub: unsure demo-kb-001-impl: <reason>; see sends/<file>` with
+   - `hub: unsure demo-001-impl: <reason>; see sends/<file>` with
      exit 1: check as for the `unsure` line in step 4, and delete that
      file before you send again.
 

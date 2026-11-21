@@ -35,7 +35,7 @@ card points at the session that does the work.
 
 Add `--kind research` when the work ends in a document or a decision
 rather than a change. `card` prints the new card's name, such as
-`PDEV-KB-013 Fix login timeout`, then the title's board cut. The
+`PDEV-416 Fix login timeout`, then the title's board cut. The
 card's Log line reads
 `- 2026-11-06 active: adopted by user for the user. session ...`,
 then `- 2026-11-06 session: fix-login (opencode ses_...)`.
@@ -60,11 +60,11 @@ If the session works from a plan, or has opened a pull request, link
 them:
 
 ```sh
-card link PDEV-KB-013 "PDEV-415 Login timeout"
+card link PDEV-416 "PDEV-415 Login timeout"
 ```
 
 ```sh
-card link PDEV-KB-013 https://github.com/OWNER/REPO/pull/450
+card link PDEV-416 https://github.com/OWNER/REPO/pull/450
 ```
 
 A plan note name goes into the `plans` field, and a URL into `prs`.
@@ -76,7 +76,7 @@ A worker session is named after its card's key and its role, in lower
 case, so the board and Herdr's agent list point at each other:
 
 ```sh
-herdr agent rename TARGET pdev-kb-013-impl
+herdr agent rename TARGET pdev-416-impl
 ```
 
 `TARGET` is the agent as `herdr agent list` shows it.
@@ -91,7 +91,7 @@ on you. Closing the session changes no file. Then move an `active`
 card back to `todo` and name the handoff:
 
 ```sh
-card move PDEV-KB-013 todo --user --by user --why "paused; handoff ~/.local/state/pde/handoffs/20261106-pdev-kb-013-impl.md"
+card move PDEV-416 todo --user --by user --why "paused; handoff ~/.local/state/pde/handoffs/20261106-pdev-416-impl.md"
 ```
 
 With `--user`, `card move` takes an `in-review` card back to `todo`
@@ -99,7 +99,7 @@ through `active`. To keep it waiting on you, leave it in `in-review`
 and name the handoff in a note:
 
 ```sh
-card note PDEV-KB-013 --by user "paused; handoff ~/.local/state/pde/handoffs/20261106-pdev-kb-013-impl.md"
+card note PDEV-416 --by user "paused; handoff ~/.local/state/pde/handoffs/20261106-pdev-416-impl.md"
 ```
 
 A paused `todo` card starts again like any todo card, from its
