@@ -36,12 +36,12 @@ Inkwell, the tool that turns a notes folder into a small website:
 
 Changed
 - Broken links now fail the build instead of showing a blank page
-  (#18). 22 of 22 tests pass. Not tried on a folder over 1,000
-  notes.
+  (inkwell #18). 22 of 22 tests pass. Not tried on a folder over
+  1,000 notes.
 
 Waiting on you
 1. Approve #18 in the approval app. It expires in about two hours.
-2. Review the comments on the tag-page change (#19). In
+2. Review the comments on the tag-page change (inkwell #19). In
    ~/src/inkwell/wt/tag-pages, run:
    rev 19
 
@@ -62,16 +62,16 @@ A recap has three parts: done, in progress, and waiting on you.
 Fernwood, the app that waters the garden on a timer, since Monday:
 
 Done
-- Skip watering when rain is forecast (#7): merged Tuesday.
+- Skip watering when rain is forecast (fernwood #7): merged Tuesday.
 
 In progress
-- A separate schedule for each garden bed (#8): 18 of 19 tests
-  pass. The failing test covers a bed with no plants; I am fixing
-  it. Not tried on the real valve controller yet.
+- A separate schedule for each garden bed (fernwood #8): 18 of 19
+  tests pass. The failing test covers a bed with no plants; I am
+  fixing it. Not tried on the real valve controller yet.
 
 Waiting on you
-1. Approve #9, which texts you when a valve sticks, in the approval
-   app. The request expires in about three hours.
+1. Approve fernwood #9, which texts you when a valve sticks, in the
+   approval app. The request expires in about three hours.
 
 **Q4. Bed schedules: what does a bed with no plants get?**
 - A: no watering, which saves water **(rec)**
@@ -98,7 +98,7 @@ Ready for your review, in merge order:
    its plan with:
 
    ```sh
-   less ~/notes/plan.md
+   nvim ~/notes/plan.md
    ```
 
 3. valve-kit: a text when a valve sticks (#3). Not tried on the real
