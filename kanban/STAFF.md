@@ -115,7 +115,7 @@ is missing, then renames the report to `report-<name>.read`.
 
 | Need | Command |
 | --- | --- |
-| Make a card | `card new DevEnv "title" --kind build` |
+| Make a card | `card new DevEnv "Retry failed uploads" --type fix` |
 | See the board | `card board`, `card list --stage active` |
 | Find text | `card grep "nobs" --section Context` |
 | Move a card | `card move KEY in-review --why "PR #450 open"` |
