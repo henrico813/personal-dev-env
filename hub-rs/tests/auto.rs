@@ -1,6 +1,7 @@
 mod common;
 
-use std::fs;
+use std::fs::{self, File};
+use std::time::SystemTime;
 
 use hub::commands::auto::{
     AutoApproval, run_auto_approve, run_auto_check, run_auto_now, run_auto_todo,
@@ -8,8 +9,14 @@ use hub::commands::auto::{
 use hub::external::cards::{CardNote, Stage};
 use hub::external::herdr::{AgentStatus, HerdrError};
 use hub::shared::HubError;
+use hub::watch::wait::{WaitRequest, run_wait};
+use jiff::SignedDuration;
 
 use common::{TestTools, make_agent, make_time, make_workspaces};
+
+/// The time `run_auto_now` runs at in these tests, in UTC so the times
+/// it prints do not depend on the machine.
+const NOW: &str = "2026-11-20T15:00:00+00:00[UTC]";
 
 /// Doubles whose cards ready to start are these keys, each with a
 /// note, and an empty run folder.
@@ -350,7 +357,7 @@ fn run_auto_now_writes_brief_from_files() {
     )
     .unwrap();
 
-    let outcome = run_auto_now(&test_tools.tools(), &test_tools.run()).unwrap();
+    let outcome = run_auto_now(&test_tools.tools(), &test_tools.run(), &make_time(NOW)).unwrap();
 
     let expected = "Auto run 2\n\
                     DEMO-KB-001: PR #12 opened; waiting for the user's review.\n\
@@ -372,7 +379,7 @@ fn run_auto_now_stops_without_approval() {
     let test_tools = TestTools::new();
     write_run_list(&test_tools, "- DEMO-KB-001 demo: retry", "");
 
-    let result = run_auto_now(&test_tools.tools(), &test_tools.run());
+    let result = run_auto_now(&test_tools.tools(), &test_tools.run(), &make_time(NOW));
 
     assert!(matches!(result, Err(HubError::NotDone(_))));
     assert!(!test_tools.run_path().join("brief-now.md").exists());
@@ -399,7 +406,7 @@ fn run_auto_now_gathers_hubs_silently() {
     test_tools.herdr.workspaces = make_workspaces(&["w2", "w1"]);
     write_approved_run(&test_tools);
 
-    let outcome = run_auto_now(&test_tools.tools(), &test_tools.run()).unwrap();
+    let outcome = run_auto_now(&test_tools.tools(), &test_tools.run(), &make_time(NOW)).unwrap();
 
     assert_eq!(
         *test_tools.herdr.moves.borrow(),
@@ -427,7 +434,7 @@ fn run_auto_now_prints_brief_when_herdr_fails() {
     );
     write_approved_run(&test_tools);
 
-    let outcome = run_auto_now(&test_tools.tools(), &test_tools.run()).unwrap();
+    let outcome = run_auto_now(&test_tools.tools(), &test_tools.run(), &make_time(NOW)).unwrap();
 
     assert_eq!(
         outcome.lines,
@@ -442,4 +449,166 @@ fn run_auto_now_prints_brief_when_herdr_fails() {
         fs::read_to_string(test_tools.run_path().join("brief-now.md")).unwrap(),
         "Auto run 2\nDEMO-KB-001: not started\nQuestions for you: 0\n"
     );
+}
+
+/// Writes the status file of card KEY's worker, last changed MINUTES
+/// before `NOW`.
+fn write_status(test_tools: &TestTools, key: &str, line: &str, minutes: i64) {
+    let path = test_tools
+        .run_path()
+        .join(format!("status-{}-auto.md", key.to_lowercase()));
+    fs::write(&path, format!("{line}\n")).unwrap();
+    let changed = make_time(NOW)
+        .checked_sub(SignedDuration::from_mins(minutes))
+        .unwrap();
+    File::options()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_modified(SystemTime::from(changed.timestamp()))
+        .unwrap();
+}
+
+/// Approves auto run 2 of three cards at 12:00 UTC. DEMO-KB-001 has
+/// stopped at a pull request; DEMO-KB-002 parked on the question
+/// `Which name?` with an idle worker; DEMO-KB-003 never started.
+fn write_run_parked_on_question(test_tools: &mut TestTools) {
+    fs::write(
+        test_tools.run_path().join("approved.md"),
+        "# Auto run 2 approved\n\nApproved: 2026-11-20 12:00\n\n# Auto run 2\n\n## Run\n\
+         - DEMO-KB-001 demo: retry\n- DEMO-KB-002 demo: rename\n- DEMO-KB-003 demo: export\n",
+    )
+    .unwrap();
+    write_status(test_tools, "DEMO-KB-001", "PR #12 open", 90);
+    test_tools
+        .cards
+        .stages
+        .insert("DEMO-KB-001".to_owned(), Stage::InReview);
+    write_status(test_tools, "DEMO-KB-002", "Parked on a question", 60);
+    test_tools
+        .herdr
+        .agents
+        .push(make_agent("demo-kb-002-auto", AgentStatus::Idle));
+    test_tools.cards.card_notes.insert(
+        "DEMO-KB-002".to_owned(),
+        CardNote {
+            needs_you: Some("Which name?".to_owned()),
+            ..CardNote::default()
+        },
+    );
+}
+
+/// Returns the `STALLED` or `Run ended` lines `run_auto_now` ends
+/// with, joined by newlines, if any.
+fn run_and_read_stall_line(test_tools: &TestTools) -> Option<String> {
+    let outcome = run_auto_now(&test_tools.tools(), &test_tools.run(), &make_time(NOW)).unwrap();
+    let start = outcome
+        .lines
+        .iter()
+        .position(|line| line.starts_with("STALLED") || line.starts_with("Run ended"))?;
+    Some(outcome.lines[start..].join("\n"))
+}
+
+/// A run once sat stalled for three hours. One card waited on a
+/// question, the card stacked on it could not start, and nothing told
+/// the user. The brief must end with a `STALLED` line naming each card
+/// that waits and why, broken at spaces to fit the user's 40-column
+/// phone so no card key splits. A card's worker or the auto hub that works, or a
+/// worker that waits on a job with `hub wait`, is progress, so no line
+/// may appear then.
+#[test]
+fn run_auto_now_reports_stall_without_progress() {
+    struct Case {
+        name: &'static str,
+        agent: Option<(&'static str, AgentStatus)>,
+        waits: bool,
+        expected: Option<&'static str>,
+    }
+    let cases = [
+        Case {
+            name: "stalled",
+            agent: None,
+            waits: false,
+            expected: Some(
+                "STALLED since 14:00: DEMO-KB-002, waits\n\
+                 on your question: Which name?;\n\
+                 DEMO-KB-003, not started (1 of 3 cards\n\
+                 done)",
+            ),
+        },
+        Case {
+            name: "worker-working",
+            agent: Some(("demo-kb-003-auto", AgentStatus::Working)),
+            waits: false,
+            expected: None,
+        },
+        Case {
+            name: "auto-hub-working",
+            agent: Some(("auto-hub-2", AgentStatus::Working)),
+            waits: false,
+            expected: None,
+        },
+        Case {
+            name: "hub-wait",
+            agent: None,
+            waits: true,
+            expected: None,
+        },
+    ];
+    for case in cases {
+        let mut test_tools = TestTools::new();
+        write_run_parked_on_question(&mut test_tools);
+        if let Some((name, status)) = case.agent {
+            test_tools.herdr.agents.push(make_agent(name, status));
+        }
+        if case.waits {
+            let request = WaitRequest {
+                name: "demo-kb-002-auto".parse().unwrap(),
+                pid: None,
+                file: Some(test_tools.path().join("tests.log")),
+                deadline_minutes: 120,
+            };
+            run_wait(&test_tools.run(), &request, &make_time(NOW)).unwrap();
+        }
+
+        let line = run_and_read_stall_line(&test_tools);
+
+        assert_eq!(line.as_deref(), case.expected, "{}", case.name);
+    }
+}
+
+/// The auto-run skill ends a run when every card stopped, at a pull
+/// request or a question, and the auto hub then sends its end brief.
+/// Such a run must say it ended, never `STALLED`, or the phone would
+/// buzz each hour after every run that ends on a question.
+#[test]
+fn run_auto_now_reports_end_not_stall() {
+    let cases = [
+        (
+            "all-done",
+            "Run ended: every card stopped at a pull\nrequest",
+        ),
+        ("brief-sent", "Run ended: the auto hub sent its end\nbrief"),
+    ];
+    for (name, expected) in cases {
+        let mut test_tools = TestTools::new();
+        write_run_parked_on_question(&mut test_tools);
+        if name == "all-done" {
+            test_tools.cards.card_notes.clear();
+            for key in ["DEMO-KB-002", "DEMO-KB-003"] {
+                write_status(&test_tools, key, "PR open", 60);
+                test_tools
+                    .cards
+                    .stages
+                    .insert(key.to_owned(), Stage::InReview);
+            }
+        } else {
+            let brief = test_tools.run_path().join("report-auto-hub-2.md");
+            fs::write(brief, "End brief\n").unwrap();
+        }
+
+        let line = run_and_read_stall_line(&test_tools);
+
+        assert_eq!(line.as_deref(), Some(expected), "{name}");
+    }
 }
