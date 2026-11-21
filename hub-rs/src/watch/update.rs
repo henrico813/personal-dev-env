@@ -6,9 +6,10 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
-use super::phone;
+use super::phone::PhoneBackoff;
 use crate::shared::HubError;
 use crate::shared::run_folder;
 
@@ -29,8 +30,9 @@ struct UpdateResult {
 
 /// Sends one phone notification for a result in `update.json` that is
 /// new and is neither `installed` nor `current`, then remembers the
-/// result in `watch_folder`. A refused notification is not remembered,
-/// so the next check sends it again. Does nothing when no update ran.
+/// result in `watch_folder`. A refused or held-back notification is not
+/// remembered, so a later check sends it once `backoff` allows. Does
+/// nothing when no update ran.
 ///
 /// # Errors
 ///
@@ -40,6 +42,8 @@ pub(crate) fn pass_on_update_result(
     state_folder: &Path,
     watch_folder: &Path,
     notifier: &Path,
+    backoff: &mut PhoneBackoff,
+    now: Timestamp,
 ) -> Result<(), HubError> {
     let Some(update) = read_update_result(&state_folder.join(UPDATE_FILE))? else {
         return Ok(());
@@ -50,8 +54,12 @@ pub(crate) fn pass_on_update_result(
     }
     if !matches!(update.result.as_str(), "installed" | "current") {
         let title = format!("pde-installer update {}", update.result);
-        phone::send_phone_notification(notifier, &title, &update.reason)
+        let sent = backoff
+            .send(notifier, &title, &update.reason, now)
             .map_err(HubError::NotDone)?;
+        if !sent {
+            return Ok(());
+        }
     }
     let text = serde_json::to_string(&update).map_err(|error| HubError::File {
         path: seen_path.clone(),

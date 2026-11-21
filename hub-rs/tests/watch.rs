@@ -13,8 +13,8 @@ use hub::shared::run_folder::RunFolder;
 use hub::watch::background::start_in_background;
 use hub::watch::wait::{WaitRequest, run_wait};
 use hub::watch::{
-    IdleClock, WatchOptions, WatchStart, check_once, restart_stopped_watch, run_watch,
-    run_watch_start,
+    IdleClock, PhoneBackoff, WatchOptions, WatchStart, check_once, restart_stopped_watch,
+    run_watch, run_watch_start,
 };
 use jiff::{SignedDuration, Zoned};
 use serde_json::{Value, json};
@@ -77,11 +77,19 @@ fn check_at(test_tools: &TestTools, start: &Zoned, minutes: &[i64]) {
     let notifier = test_tools.path().join("moshi-hook");
     let options = make_options(test_tools, &notifier, 1);
     let mut clock = IdleClock::default();
+    let mut backoff = PhoneBackoff::default();
     for minute in minutes {
         let now = start
             .checked_add(SignedDuration::from_mins(*minute))
             .unwrap();
-        let failures = check_once(&test_tools.tools(), &options, &mut clock, &now).unwrap();
+        let failures = check_once(
+            &test_tools.tools(),
+            &options,
+            &mut clock,
+            &mut backoff,
+            &now,
+        )
+        .unwrap();
         assert!(failures.is_empty(), "{failures:?}");
     }
 }
@@ -529,9 +537,10 @@ fn check_once_phones_only_when_hub_gone() {
 
 /// Moshi refuses pushes past its rate limit, and the phone alert is
 /// the only word the user gets when no hub runs. A refused alert must
-/// stay unrecorded and go again at the next check, or it is lost.
+/// stay unrecorded and go again once the backoff ends, or it is lost.
+/// Asking at each poll before then only meets more refusals.
 #[test]
-fn check_once_retries_refused_phone_alert() {
+fn check_once_retries_refused_alert_after_backoff() {
     let mut test_tools = TestTools::new();
     let run = make_watched_run(&mut test_tools);
     test_tools.herdr.agents.clear();
@@ -540,17 +549,45 @@ fn check_once_retries_refused_phone_alert() {
     let refusing = test_tools.write_script("moshi-hook", "", "rate limit reached", 1);
     let options = make_options(&test_tools, &refusing, 1);
     let mut clock = IdleClock::default();
-    let later = Zoned::now()
-        .checked_add(SignedDuration::from_mins(11))
-        .unwrap();
+    let mut backoff = PhoneBackoff::default();
+    let tools = test_tools.tools();
+    let at_minute = |minutes: i64, seconds: i64| {
+        Zoned::now()
+            .checked_add(SignedDuration::from_mins(minutes) + SignedDuration::from_secs(seconds))
+            .unwrap()
+    };
 
-    let refused = check_once(&test_tools.tools(), &options, &mut clock, &later).unwrap();
-    let alerted_after_refusal = count_events(run.path(), "phone_alerted");
+    let refused = check_once(
+        &tools,
+        &options,
+        &mut clock,
+        &mut backoff,
+        &at_minute(11, 0),
+    )
+    .unwrap();
     test_tools.write_script("moshi-hook", "", "", 0);
-    let sent = check_once(&test_tools.tools(), &options, &mut clock, &later).unwrap();
+    let held = check_once(
+        &tools,
+        &options,
+        &mut clock,
+        &mut backoff,
+        &at_minute(11, 5),
+    )
+    .unwrap();
+    let calls_while_held = read_script_calls(&refusing).len();
+    let alerted_while_held = count_events(run.path(), "phone_alerted");
+    let sent = check_once(
+        &tools,
+        &options,
+        &mut clock,
+        &mut backoff,
+        &at_minute(12, 5),
+    )
+    .unwrap();
 
     assert_eq!(refused.len(), 1, "{refused:?}");
-    assert_eq!(alerted_after_refusal, 0);
+    assert!(held.is_empty(), "{held:?}");
+    assert_eq!((calls_while_held, alerted_while_held), (1, 0));
     assert!(sent.is_empty(), "{sent:?}");
     assert_eq!(read_script_calls(&refusing).len(), 2);
     assert_eq!(count_events(run.path(), "phone_alerted"), 1);
@@ -688,21 +725,24 @@ fn run_watch_phones_once_per_failed_update() {
 }
 
 /// Moshi refuses pushes past its rate limit. A refused update notice
-/// must stay unremembered and go again at the next check, or the only
-/// word of a skipped update is lost.
+/// must not go again at each poll, where one retry may get through as
+/// a repeat, but must stay unremembered, or the only word of a skipped
+/// update is lost. A restarted watch sends it, and then never again.
 #[test]
-fn run_watch_retries_refused_update_notice() {
+fn run_watch_backs_off_refused_update_notice() {
     let test_tools = TestTools::new();
     let reason = "the checkout is on feat, not main";
     write_update_result(&test_tools, "skipped", reason, "2026-11-13T08:30:00Z");
     let refusing = test_tools.write_script("moshi-hook", "", "rate limit reached", 1);
-    let options = make_options(&test_tools, &refusing, 1);
+    let options = make_options(&test_tools, &refusing, 3);
 
     run_watch(&test_tools.tools(), &options, &mut Vec::new()).unwrap();
+    let calls_after_refusal = read_script_calls(&refusing).len();
     test_tools.write_script("moshi-hook", "", "", 0);
     run_watch(&test_tools.tools(), &options, &mut Vec::new()).unwrap();
     run_watch(&test_tools.tools(), &options, &mut Vec::new()).unwrap();
 
+    assert_eq!(calls_after_refusal, 1);
     assert_eq!(read_script_calls(&refusing).len(), 2);
 }
 
