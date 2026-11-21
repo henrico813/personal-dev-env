@@ -48,6 +48,8 @@ use crate::shared::{HubError, Tools};
 use events::{WatchEvent, WatchMemory, append_watch_event, load_watch_memory};
 use wait::WaitFile;
 
+pub use phone::PhoneBackoff;
+
 /// How long a worker that owes a report sits idle before its prod. An
 /// ordinary pause between tool calls is far shorter.
 const STALL_AFTER: SignedDuration = SignedDuration::from_mins(10);
@@ -228,18 +230,24 @@ pub fn run_watch(
     })?;
     let _lock = run_folder::take_file_lock(&folder.join(LOCK_FILE))?;
     let mut clock = IdleClock::default();
+    let mut backoff = PhoneBackoff::default();
     let mut last_failures = Vec::new();
     let mut checks = 0;
     while options.checks.is_none_or(|limit| checks < limit) {
-        let mut failures = match check_once(tools, options, &mut clock, &Zoned::now()) {
+        let now = Zoned::now();
+        let mut failures = match check_once(tools, options, &mut clock, &mut backoff, &now) {
             Ok(failures) => failures,
             Err(error) => vec![error.to_string()],
         };
         // The update's notice needs no Herdr, so it goes out while Herdr
         // is down too.
-        if let Err(error) =
-            update::pass_on_update_result(tools.state_folder, &folder, &options.notifier)
-        {
+        if let Err(error) = update::pass_on_update_result(
+            tools.state_folder,
+            &folder,
+            &options.notifier,
+            &mut backoff,
+            now.timestamp(),
+        ) {
             failures.push(error.to_string());
         }
         // A lasting failure, such as Herdr being down, would otherwise
@@ -280,6 +288,7 @@ pub fn check_once(
     tools: &Tools<'_>,
     options: &WatchOptions,
     clock: &mut IdleClock,
+    backoff: &mut PhoneBackoff,
     now: &Zoned,
 ) -> Result<Vec<String>, HubError> {
     // The watch cannot read another machine's files, so it leaves that
@@ -304,7 +313,7 @@ pub fn check_once(
         .collect();
     let mut read_runs = Vec::new();
     for watched in &runs {
-        if let Err(error) = pass_on_missed_reports(options, watched, now) {
+        if let Err(error) = pass_on_missed_reports(options, watched, backoff, now) {
             failures.push(describe_run_failure(&watched.run, &error));
         }
         // A run whose hub is gone prods nobody, but its claims and open
@@ -593,7 +602,8 @@ fn record_prod(run: &RunFolder, agent: &Agent, why: &str, now: &Zoned) -> Result
 /// `missed report NAME`, and nothing types into the hub's pane. When
 /// the hub is gone from Herdr, one phone notification tells the user
 /// instead, for reports from the last day only. It is recorded only
-/// once sent, so a refused one is tried again at the next check.
+/// once sent, so a refused or held-back one is tried again once
+/// `backoff` allows.
 ///
 /// # Errors
 ///
@@ -602,6 +612,7 @@ fn record_prod(run: &RunFolder, agent: &Agent, why: &str, now: &Zoned) -> Result
 fn pass_on_missed_reports(
     options: &WatchOptions,
     watched: &WatchedRun,
+    backoff: &mut PhoneBackoff,
     now: &Zoned,
 ) -> Result<(), HubError> {
     let (memory, watch) = (&watched.memory, &watched.watch);
@@ -644,8 +655,12 @@ fn pass_on_missed_reports(
         names.join(", "),
         watched.run.path().display()
     );
-    phone::send_phone_notification(&options.notifier, &title, &message)
+    let sent = backoff
+        .send(&options.notifier, &title, &message, now.timestamp())
         .map_err(HubError::NotDone)?;
+    if !sent {
+        return Ok(());
+    }
     for report in &new {
         let alerted = WatchEvent::PhoneAlerted {
             name: report.name.clone(),
