@@ -6,12 +6,55 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use jiff::{SignedDuration, Timestamp};
+
 /// How long `moshi-hook notify` may run. It makes a network call, and
 /// the watch checks no worker while it waits.
 const NOTIFY_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The wait between checks on whether the program ended.
 const EXIT_POLL: Duration = Duration::from_millis(100);
+
+/// The wait after a refused notification, about twice the length of
+/// one Moshi refusal spell seen in use.
+const BACKOFF: SignedDuration = SignedDuration::from_mins(5);
+
+/// Holds every phone notification back for a while after a refused
+/// one. Moshi's rate limit covers the whole account, so asking again
+/// at each poll, every few seconds, only meets more refusals.
+/// `run_watch` keeps one for the watch's life.
+#[derive(Default)]
+pub struct PhoneBackoff {
+    next_try: Option<Timestamp>,
+}
+
+impl PhoneBackoff {
+    /// Sends one notification as `send_phone_notification` does, unless
+    /// a wait from an earlier refusal runs at `now`. Returns `false`
+    /// when held back, so the caller leaves it unrecorded and tries
+    /// again at a later check.
+    ///
+    /// # Errors
+    ///
+    /// The program's failure, which starts a new wait.
+    pub(crate) fn send(
+        &mut self,
+        program: &Path,
+        title: &str,
+        message: &str,
+        now: Timestamp,
+    ) -> Result<bool, String> {
+        if self.next_try.is_some_and(|next_try| now < next_try) {
+            return Ok(false);
+        }
+        if let Err(error) = send_phone_notification(program, title, message) {
+            self.next_try = Some(now + BACKOFF);
+            return Err(error);
+        }
+        self.next_try = None;
+        Ok(true)
+    }
+}
 
 /// Runs `program notify --strict --source hub --title TITLE MESSAGE`
 /// and stops it after 30 seconds. `main` gives `moshi-hook` as
@@ -24,11 +67,7 @@ const EXIT_POLL: Duration = Duration::from_millis(100);
 ///
 /// Why the program did not start, ran too long or exited with a
 /// failure.
-pub(crate) fn send_phone_notification(
-    program: &Path,
-    title: &str,
-    message: &str,
-) -> Result<(), String> {
+fn send_phone_notification(program: &Path, title: &str, message: &str) -> Result<(), String> {
     let mut child = Command::new(program)
         .args([
             "notify", "--strict", "--source", "hub", "--title", title, message,
