@@ -174,8 +174,8 @@ pub fn run_auto_approve(
 /// file. It says `(needs you)` while the card holds an open question.
 /// A `Questions for you: N` line follows, then one line per open
 /// question of the run's cards, such as `- DEMO-KB-002 Deploy
-/// tonight?`. Last comes a `STALLED since ...` line while the run has
-/// stalled, or a `Run ended` line, as `stall::describe_stall_or_end`
+/// tonight?`. Last come `STALLED since ...` lines while the run has
+/// stalled, or `Run ended` lines, as `stall::describe_stall_or_end`
 /// says; a failed stall check adds a warning line to the output only.
 /// It then puts the hubs at the top of the sidebar, and a
 /// failure there adds a warning line to the output, never to the file.

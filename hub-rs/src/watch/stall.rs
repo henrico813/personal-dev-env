@@ -26,6 +26,9 @@ use crate::shared::{HubError, Tools};
 /// quiet.
 const QUIET_AFTER: SignedDuration = SignedDuration::from_mins(15);
 
+/// The width of the user's phone terminal.
+const PHONE_COLUMNS: usize = 40;
+
 /// What Herdr and the run folder say of one card of the run.
 pub(crate) struct CardFacts {
     pub key: CardKey,
@@ -86,10 +89,12 @@ impl Stall {
     }
 }
 
-/// Returns the line `hub auto now` ends with, `STALLED since ...` for
+/// Returns the lines `hub auto now` ends with, `STALLED since ...` for
 /// a stalled run or `Run ended ...` for one whose cards all stopped at
-/// a pull request or whose auto hub sent its end brief, else `None`. It returns `None` for an
-/// `approved.md` with no `Approved:` line too.
+/// a pull request or whose auto hub sent its end brief. They break at
+/// spaces to fit 40 columns, the width of the user's phone, so a card
+/// key never splits. Returns no lines while the run makes progress, or
+/// for an `approved.md` with no `Approved:` line.
 ///
 /// # Errors
 ///
@@ -102,9 +107,9 @@ pub(crate) fn describe_stall_or_end(
     keys: &[CardKey],
     questions: &[OpenQuestion],
     now: &Zoned,
-) -> Result<Option<String>, HubError> {
+) -> Result<Vec<String>, HubError> {
     let Some(approved) = read_approval_time(approved_text, now) else {
-        return Ok(None);
+        return Ok(Vec::new());
     };
     let agents = tools.herdr.list_agents()?;
     let memory = events::load_memory(run)?;
@@ -118,14 +123,13 @@ pub(crate) fn describe_stall_or_end(
         now,
     )?
     else {
-        return Ok(None);
+        return Ok(Vec::new());
     };
-    Ok(Some(
-        match judge_quiet_run(&quiet, &tools.cards.list_cards()?, questions) {
-            Verdict::Ended(reason) => format!("Run ended: {reason}"),
-            Verdict::Stalled(stall) => format!("STALLED {}", stall.describe(now)),
-        },
-    ))
+    let line = match judge_quiet_run(&quiet, &tools.cards.list_cards()?, questions) {
+        Verdict::Ended(reason) => format!("Run ended: {reason}"),
+        Verdict::Stalled(stall) => format!("STALLED {}", stall.describe(now)),
+    };
+    Ok(wrap_at_spaces(&line, PHONE_COLUMNS))
 }
 
 /// Returns the time on the `Approved: 2026-11-20 12:30` line that
@@ -290,4 +294,20 @@ fn names_run_card(name: &str, keys: &[CardKey]) -> bool {
 /// outside any real file time, reads as 1970.
 fn to_timestamp(time: SystemTime) -> Timestamp {
     Timestamp::try_from(time).unwrap_or(Timestamp::UNIX_EPOCH)
+}
+
+/// Splits TEXT at spaces into lines of at most WIDTH characters. A word
+/// longer than WIDTH gets a line of its own.
+fn wrap_at_spaces(text: &str, width: usize) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    for word in text.split(' ') {
+        match lines.last_mut() {
+            Some(line) if line.chars().count() + 1 + word.chars().count() <= width => {
+                line.push(' ');
+                line.push_str(word);
+            }
+            _ => lines.push(word.to_owned()),
+        }
+    }
+    lines
 }

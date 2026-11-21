@@ -498,21 +498,22 @@ fn write_run_parked_on_question(test_tools: &mut TestTools) {
     );
 }
 
-/// Returns the `STALLED` or `Run ended` line `run_auto_now` ends with,
-/// if any.
+/// Returns the `STALLED` or `Run ended` lines `run_auto_now` ends
+/// with, joined by newlines, if any.
 fn run_and_read_stall_line(test_tools: &TestTools) -> Option<String> {
     let outcome = run_auto_now(&test_tools.tools(), &test_tools.run(), &make_time(NOW)).unwrap();
-    outcome
+    let start = outcome
         .lines
-        .last()
-        .filter(|line| line.starts_with("STALLED") || line.starts_with("Run ended"))
-        .cloned()
+        .iter()
+        .position(|line| line.starts_with("STALLED") || line.starts_with("Run ended"))?;
+    Some(outcome.lines[start..].join("\n"))
 }
 
 /// A run once sat stalled for three hours. One card waited on a
 /// question, the card stacked on it could not start, and nothing told
 /// the user. The brief must end with a `STALLED` line naming each card
-/// that waits and why. A card's worker or the auto hub that works, or a
+/// that waits and why, broken at spaces to fit the user's 40-column
+/// phone so no card key splits. A card's worker or the auto hub that works, or a
 /// worker that waits on a job with `hub wait`, is progress, so no line
 /// may appear then.
 #[test]
@@ -529,8 +530,10 @@ fn run_auto_now_reports_stall_without_progress() {
             agent: None,
             waits: false,
             expected: Some(
-                "STALLED since 14:00: DEMO-KB-002, waits on your question: Which name?; \
-                 DEMO-KB-003, not started (1 of 3 cards done)",
+                "STALLED since 14:00: DEMO-KB-002, waits\n\
+                 on your question: Which name?;\n\
+                 DEMO-KB-003, not started (1 of 3 cards\n\
+                 done)",
             ),
         },
         Case {
@@ -583,9 +586,9 @@ fn run_auto_now_reports_end_not_stall() {
     let cases = [
         (
             "all-done",
-            "Run ended: every card stopped at a pull request",
+            "Run ended: every card stopped at a pull\nrequest",
         ),
-        ("brief-sent", "Run ended: the auto hub sent its end brief"),
+        ("brief-sent", "Run ended: the auto hub sent its end\nbrief"),
     ];
     for (name, expected) in cases {
         let mut test_tools = TestTools::new();
