@@ -454,8 +454,8 @@ command that competes with the hub's own commands, such as `hub next`.
 
 Hand any merge the card's own worker cannot run, such as one whose
 worker is parked, to a merge worker, a new Herdr session. Read
-[references/merge-worker.md](references/merge-worker.md) before you
-start one.
+[references/merge-worker.md](references/merge-worker.md) first, and
+push a conflict merge only after the `pull-request` privacy review.
 
 ## Hand off the hub
 
