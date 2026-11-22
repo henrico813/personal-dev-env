@@ -70,8 +70,9 @@ steps' defaults.
      added or changed line, the commit messages, the branch name and
      the PR title and body.
    - A line that only hints at a private thing is a hit, just as one
-     that names it. A word that ties the change to a job, such as
-     "office" or "shift", is a hit even when it names no company.
+     that names it. A word from a job, such as "office" or "shift",
+     is a hit on its own. It needs no company name and no other job
+     detail in the change.
    - Every review hit blocks the step, even one the reviewer calls
      optional or low risk.
    - Fix each hit by amending the commit that holds it: the phase
