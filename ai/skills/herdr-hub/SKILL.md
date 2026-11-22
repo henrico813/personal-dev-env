@@ -365,18 +365,9 @@ that report. Never ask the user to close a worker.
 Put each question that waits on the user on the card it blocks with
 `hub ask`, so the question and the needs-you mark in the card's Log
 agree. Write the whole question to a file, so no message names it by
-number alone, and run `hub ask <key> <question file>`:
-
-    ## New model overnight
-
-    Deploy the new model tonight so you can test it in the morning?
-
-    - A. Deploy from the branch, with the undo path ready.
-    - B. Wait until you return.
-
-    Recommended: A, since you want to test it in the morning.
-    If no reply: nothing deploys; the worker goes on with its tests.
-    Depends on: your rule of 2026-11-09 to test it in the morning.
+number alone, and run `hub ask <key> <question file>`. Read
+[references/hub-brief.md](references/hub-brief.md) for a worked
+example of the question file.
 
 The `If no reply:` line says what stays blocked and what the worker
 does meanwhile. The work the question asks about never goes ahead

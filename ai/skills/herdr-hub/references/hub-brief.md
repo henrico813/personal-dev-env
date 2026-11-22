@@ -26,3 +26,18 @@ Show `reviews.md` as printed, and each question in the short form of
 `status-updates`: its title's words, question, then key; `(rec)` on
 the `Recommended:` choice; its reason and other lines after the reply
 line.
+
+## A question file
+
+A `hub ask <key> <question file>` file looks like this:
+
+    ## New model overnight
+
+    Deploy the new model tonight so you can test it in the morning?
+
+    - A. Deploy from the branch, with the undo path ready.
+    - B. Wait until you return.
+
+    Recommended: A, since you want to test it in the morning.
+    If no reply: nothing deploys; the worker goes on with its tests.
+    Depends on: your rule of 2026-11-09 to test it in the morning.
