@@ -78,7 +78,6 @@ class TestStart:
         write_settings(
             repos.home,
             install_path=str(repos.checkout),
-            skill_fix_label="desk",
             extra_skills_repo=str(extra),
         )
 
@@ -333,7 +332,6 @@ class TestCommit:
         write_settings(
             repos.home,
             install_path=str(repos.checkout),
-            skill_fix_label="desk",
             extra_terms_file=str(terms),
         )
 
@@ -370,7 +368,6 @@ class TestHeld:
         write_settings(
             repos.home,
             install_path=str(repos.checkout),
-            skill_fix_label="desk",
             extra_terms_file=str(terms),
         )
         fix("Close the EXJIRA-12 worker first.")
@@ -407,7 +404,6 @@ class TestHeld:
         write_settings(
             repos.home,
             install_path=str(repos.checkout),
-            skill_fix_label="desk",
             extra_terms_file=str(terms),
         )
         fix("Close the EXJIRA-12 worker first.")

@@ -18,7 +18,6 @@ one entry per skills repository, each with its own `sync` field.
 | `pushed` or `pr_open` | Nothing: the fix is on the open fix pull request, number `pr` |
 | `pr_waiting` | Nothing: the request to open the fix pull request waits for the user's approval |
 | `offline` | Nothing: the fetch failed, and a later sync pushes the fix |
-| `no_label` | Ask the user to set `skill_fix_label` in `~/.config/pde/config.json` to a plain word for this PC, such as `desk`; fixes wait until then |
 | `scan` | Tell the user that `ci/scan` refused the push, with the file and line it printed; the fixes stay unpushed |
 | `conflict` | Follow "A conflict with another PC's fix" below |
 | `skipped` | Nothing: this repository has nothing to push, or is not set up on this PC |
