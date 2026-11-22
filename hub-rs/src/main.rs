@@ -323,6 +323,9 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         Command::Go => sidebar::run_go(&tools),
         Command::Gather => sidebar::run_gather(&tools),
         Command::Desk => sidebar::run_desk(&tools, &home),
+        Command::RestoreSidebar { start_board } => {
+            sidebar::run_restore_sidebar(&tools, *start_board)
+        }
         Command::Board {
             only_run,
             print,

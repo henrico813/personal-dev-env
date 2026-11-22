@@ -7,11 +7,17 @@
 //! to" list in that order, followed by the sessions that wait on the
 //! user. `run_handoff`, `run_adopt` and `run_auto_now` gather too,
 //! through `gather_after_hub_start`, so no hub has to run `hub gather`.
+//!
+//! A Herdr restart drops the hub tags, the desk row and the filter.
+//! `hub restore-sidebar` puts them back without moving workspaces. The
+//! `pde.hub` Herdr plugin runs it when Herdr starts and each time Herdr
+//! detects an agent. `hub watch` calls `restore_go_to_list` in every
+//! check, and `restore_other_machines` for machines without the plugin.
 
 use std::path::Path;
 
 use super::Outcome;
-use crate::external::herdr::{Agent, AgentStatus, HubKind, NewPlace, Workspace};
+use crate::external::herdr::{Agent, AgentStatus, Herdr, HerdrError, HubKind, NewPlace, Workspace};
 use crate::shared::lifecycle::is_hub_name;
 use crate::shared::{HubError, Tools};
 
@@ -75,6 +81,117 @@ pub fn run_desk(tools: &Tools<'_>, home: &Path) -> Result<Outcome, HubError> {
     move_block_to_top(tools, &block, &workspaces)?;
     show_go_to_list(tools, &agents, &hubs, Some(&desk_id))?;
     Ok(Outcome::line(line))
+}
+
+/// Tags each hub on this machine that lost its tag, shows the desk row
+/// when it is missing, then sets the filter. With `start_board`, it
+/// also types `hub board` into the desk's board pane when that pane's
+/// shell runs nothing, as in a desk Herdr just restored.
+pub fn run_restore_sidebar(tools: &Tools<'_>, start_board: bool) -> Result<Outcome, HubError> {
+    let restored = restore_hubs_and_desk(tools.herdr)?;
+    tools.herdr.filter_agent_list()?;
+    let mut put_back = restored.hubs.clone();
+    if restored.desk {
+        put_back.push(DESK_LABEL.to_owned());
+    }
+    let mut lines = vec![if put_back.is_empty() {
+        "nothing was missing".to_owned()
+    } else {
+        format!("put back: {}", put_back.join(" "))
+    }];
+    if start_board && let Some(board_pane_id) = &restored.board_pane_id {
+        // The sidebar is already right, so a board that fails to start
+        // does not fail the command.
+        match start_board_if_quiet(tools.herdr, board_pane_id) {
+            Ok(true) => lines.push("started the board in the desk".to_owned()),
+            Ok(false) => {}
+            Err(error) => lines.push(format!("could not start the board: {error}")),
+        }
+    }
+    Ok(Outcome { lines })
+}
+
+/// Does what `hub restore-sidebar` does, but sets the filter only when
+/// something was missing, since `hub watch` runs it every 5 seconds.
+/// It catches what the `pde.hub` plugin's hooks miss, such as a hub
+/// renamed after it started, which gives Herdr no event.
+pub(crate) fn restore_go_to_list(tools: &Tools<'_>) -> Result<(), HubError> {
+    let restored = restore_hubs_and_desk(tools.herdr)?;
+    if !restored.hubs.is_empty() || restored.desk {
+        tools.herdr.filter_agent_list()?;
+    }
+    Ok(())
+}
+
+/// Tags the hubs and shows the desk row on every saved machine, for a
+/// machine whose Herdr has no `pde.hub` plugin. This machine's Herdr
+/// lists those machines' agents through its own filter. Returns a line
+/// for each machine it could not reach, and goes on to the next.
+pub(crate) fn restore_other_machines(tools: &Tools<'_>) -> Vec<String> {
+    let labels = match tools.herdr.list_machines() {
+        Ok(labels) => labels,
+        Err(error) => return vec![format!("could not list the saved machines: {error}")],
+    };
+    let mut warnings = Vec::new();
+    for label in labels {
+        if let Err(error) = restore_hubs_and_desk(tools.herdr.on_machine(&label).as_ref()) {
+            warnings.push(format!("could not restore the sidebar on {label}: {error}"));
+        }
+    }
+    warnings
+}
+
+/// What `restore_hubs_and_desk` found and put back on one machine.
+struct Restored {
+    /// The names of the hubs it tagged.
+    hubs: Vec<String>,
+    /// It showed the desk row again.
+    desk: bool,
+    /// The desk's board pane, when the machine has a desk.
+    board_pane_id: Option<String>,
+}
+
+/// Tags each hub without a `go_to` token, and shows the desk row when
+/// Herdr has dropped it, through one machine's Herdr.
+fn restore_hubs_and_desk(herdr: &dyn Herdr) -> Result<Restored, HerdrError> {
+    let agents = herdr.list_agents()?;
+    let untagged = agents
+        .iter()
+        .filter(|agent| is_hub_name(&agent.name) && !agent.go_to_tagged);
+    let mut hubs = Vec::new();
+    for hub in untagged {
+        herdr.tag_hub_pane(&hub.pane_id, find_hub_kind(hub))?;
+        hubs.push(hub.name.clone());
+    }
+    let workspaces = herdr.list_workspaces()?;
+    let Some(desk) = find_desk(&workspaces) else {
+        return Ok(Restored {
+            hubs,
+            desk: false,
+            board_pane_id: None,
+        });
+    };
+    let board = herdr.find_desk_board(&desk.workspace_id)?;
+    if !board.shown {
+        herdr.show_desk_as_agent(&board.pane_id)?;
+    }
+    Ok(Restored {
+        hubs,
+        desk: !board.shown,
+        board_pane_id: Some(board.pane_id),
+    })
+}
+
+/// Types `hub board` into the board pane when its shell runs nothing,
+/// so the board never lands in an editor or a running command. Returns
+/// whether it typed.
+fn start_board_if_quiet(herdr: &dyn Herdr, board_pane_id: &str) -> Result<bool, HerdrError> {
+    let info = herdr.read_process_info(board_pane_id)?;
+    if info.foreground_group != info.shell_pid {
+        return Ok(false);
+    }
+    herdr.run_in_pane(board_pane_id, BOARD_COMMAND)?;
+    Ok(true)
 }
 
 /// Moves the top block and fills the "go to" agent list, then returns
@@ -166,10 +283,8 @@ fn move_block_to_top(
 
 /// Tags each hub's pane and the desk's board pane, then makes Herdr's
 /// agent list show only them and the sessions that wait on the user.
-/// Another machine's hubs show there once a hub on that machine runs
-/// `gather` too, since each machine tags only its own panes. Herdr
-/// forgets pane tokens and the filter on restart, so each `gather`,
-/// `desk`, handoff, adoption and `run_auto_now` sets them again.
+/// Each machine tags only its own panes. Herdr forgets pane tokens and
+/// the filter on restart, and `run_restore_sidebar` puts them back.
 fn show_go_to_list(
     tools: &Tools<'_>,
     agents: &[Agent],
@@ -180,7 +295,8 @@ fn show_go_to_list(
         tools.herdr.tag_hub_pane(&hub.pane_id, find_hub_kind(hub))?;
     }
     if let Some(desk_id) = desk_id {
-        tools.herdr.show_desk_as_agent(desk_id)?;
+        let board = tools.herdr.find_desk_board(desk_id)?;
+        tools.herdr.show_desk_as_agent(&board.pane_id)?;
     }
     // `run_flag` in older builds set the "needs you" label but not the token
     // the filter reads, so a flagged session gets its mark again.

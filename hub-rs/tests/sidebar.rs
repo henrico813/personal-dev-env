@@ -385,7 +385,7 @@ mod agent_filter {
                 ],
                 "{case_name}"
             );
-            assert_eq!(*herdr.desk_agents.borrow(), ["w4"], "{case_name}");
+            assert_eq!(*herdr.desk_agents.borrow(), ["w4:p-board"], "{case_name}");
             assert_eq!(
                 *herdr.marks.borrow(),
                 [(
@@ -395,6 +395,98 @@ mod agent_filter {
                 "{case_name}"
             );
             assert_eq!(herdr.agent_filters.get(), 1, "{case_name}");
+        }
+    }
+}
+
+mod restore_sidebar {
+    use hub::commands::sidebar::run_restore_sidebar;
+    use hub::external::herdr::{Agent, AgentStatus, HubKind, Workspace};
+    use hub::shared::Tools;
+
+    use super::common::{InMemoryHerdr, TestTools, make_agent};
+
+    /// A Herdr in the state its restart leaves, with a kanban hub that
+    /// lost its tag, another hub that kept it, a worker, and a desk in
+    /// `w4` whose board pane no longer shows as the desk agent.
+    fn make_restarted_herdr() -> InMemoryHerdr {
+        InMemoryHerdr {
+            agents: vec![
+                make_agent("kanban-hub-13", AgentStatus::Idle),
+                Agent {
+                    go_to_tagged: true,
+                    ..make_agent("auto-hub-1", AgentStatus::Working)
+                },
+                make_agent("demo-kb-001-impl", AgentStatus::Idle),
+            ],
+            workspaces: vec![
+                Workspace {
+                    workspace_id: "w1".to_owned(),
+                    label: "kanban".to_owned(),
+                },
+                Workspace {
+                    workspace_id: "w4".to_owned(),
+                    label: "desk".to_owned(),
+                },
+            ],
+            ..InMemoryHerdr::default()
+        }
+    }
+
+    /// Herdr runs this when it starts, after a restart dropped every
+    /// tag, the desk row and the filter. A hub or desk left out stays
+    /// missing from the top of the user's list until someone acts.
+    #[test]
+    fn run_restore_sidebar_restores_hubs_and_desk() {
+        let herdr = make_restarted_herdr();
+        let test_tools = TestTools::new();
+        let tools = Tools {
+            herdr: &herdr,
+            ..test_tools.tools()
+        };
+
+        let outcome = run_restore_sidebar(&tools, false).unwrap();
+
+        assert_eq!(outcome.lines, ["put back: kanban-hub-13 desk"]);
+        assert_eq!(
+            *herdr.tagged_hubs.borrow(),
+            [("w1:kanban-hub-13".to_owned(), HubKind::Kanban)]
+        );
+        assert_eq!(*herdr.desk_agents.borrow(), ["w4:p-board"]);
+        assert_eq!(herdr.agent_filters.get(), 1);
+    }
+
+    /// Herdr restores the desk with a new shell, so the board must
+    /// start there again. When the shell runs a program, such as an
+    /// editor, typing `hub board` would land in that program.
+    #[test]
+    fn run_restore_sidebar_starts_board_in_quiet_shell() {
+        let cases = [
+            ("quiet-shell", true, vec![("w4:p-board", "hub board")]),
+            ("program-in-front", false, vec![]),
+        ];
+
+        for (case_name, quiet, expected_runs) in cases {
+            let mut herdr = make_restarted_herdr();
+            let board = vec!["w4:p-board".to_owned()];
+            if quiet {
+                herdr.quiet_shells = board;
+            } else {
+                herdr.program_in_front = board;
+            }
+            let test_tools = TestTools::new();
+            let tools = Tools {
+                herdr: &herdr,
+                ..test_tools.tools()
+            };
+
+            run_restore_sidebar(&tools, true).unwrap();
+
+            let expected: Vec<(String, String)> = expected_runs
+                .into_iter()
+                .map(|(pane, command)| (pane.to_owned(), command.to_owned()))
+                .collect();
+            assert_eq!(*herdr.ran_in_panes.borrow(), expected, "{case_name}");
         }
     }
 }
