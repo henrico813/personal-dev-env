@@ -13,7 +13,7 @@ use super::{
     LanguageRules, format_if_old_is_formatted, is_inside, line_comments, nodes_starting_at,
 };
 use crate::shared::Error;
-use crate::shared::comments::CommentStyle;
+use crate::shared::comments::{CommentStyle, Definition, NameCheck};
 use crate::shared::style_rules::Rule;
 
 /// Words that start a comment line a tool reads, in any case.
@@ -91,12 +91,42 @@ impl LanguageRules for RustRules {
         line_comments::to_paragraphs(text, find_line_marker(text))
     }
 
+    /// Returns each function and method whose name this code chose, so not
+    /// one in an `extern` block.
+    fn list_definitions(&self, _file: &Path, root: Node, source: &str) -> Vec<Definition> {
+        let mut definitions = Vec::new();
+        let mut nodes = vec![root];
+        while let Some(node) = nodes.pop() {
+            let is_function = node.kind() == "function_item"
+                || (node.kind() == "function_signature_item"
+                    && node
+                        .parent()
+                        .and_then(|list| list.parent())
+                        .map(|item| item.kind())
+                        == Some("trait_item"));
+            if is_function && let Some(name) = name_function(node, source) {
+                definitions.push(Definition {
+                    line: node.start_position().row + 1,
+                    name_check: choose_name_check(node, source),
+                    name,
+                    docstring: None,
+                });
+            }
+            let mut cursor = node.walk();
+            let children: Vec<Node> = node.named_children(&mut cursor).collect();
+            nodes.extend(children.into_iter().rev());
+        }
+        definitions
+    }
+
     fn style_rules(&self) -> &'static [Rule] {
         &[
             Rule::Filler,
             Rule::AvoidedWord,
             Rule::RestatedName,
             Rule::StartsWithName,
+            Rule::SevenWords,
+            Rule::VerbFirst,
         ]
     }
 
@@ -147,6 +177,130 @@ impl LanguageRules for RustRules {
             })
             .collect();
         bodies.map_or_else(Vec::new, |bodies| find_doc_test_blocks(&bodies))
+    }
+}
+
+/// Returns a function's name after the types, traits and modules around it,
+/// as `name_code_below` names a comment above it, such as `Store::save`.
+fn name_function(function: Node, source: &str) -> Option<String> {
+    let mut names = vec![name_item(function, source)?];
+    for outer in successors(function.parent(), Node::parent) {
+        match outer.kind() {
+            "block" => break,
+            "impl_item" => names.push(read_impl_type(outer, source)?.to_string()),
+            "mod_item" | "trait_item" => names.push(name_item(outer, source)?),
+            _ => {}
+        }
+    }
+    names.reverse();
+    Some(names.join("::"))
+}
+
+/// Returns which name rules a function must meet. A method in
+/// `impl Trait for Type` and `main` are skipped, since the trait or Rust
+/// chose the name. A test, a constructor and a getter need no verb.
+fn choose_name_check(function: Node, source: &str) -> NameCheck {
+    let name = function
+        .child_by_field_name("name")
+        .map_or("", |name| &source[name.byte_range()]);
+    let is_in_trait_impl = function
+        .parent()
+        .and_then(|list| list.parent())
+        .is_some_and(|item| {
+            item.kind() == "impl_item" && item.child_by_field_name("trait").is_some()
+        });
+    if is_in_trait_impl || name == "main" {
+        return NameCheck::Skip;
+    }
+    let is_constructor = name == "new" || name.starts_with("new_") || name.starts_with("with_");
+    if is_constructor || is_test_function(function, source) || is_getter(function, source) {
+        NameCheck::WordCount
+    } else {
+        NameCheck::WordCountAndVerb
+    }
+}
+
+/// Returns true when an attribute above the function ends in `test`, such
+/// as `#[test]` or `#[tokio::test]`.
+fn is_test_function(function: Node, source: &str) -> bool {
+    successors(function.prev_named_sibling(), Node::prev_named_sibling)
+        .take_while(|node| node.kind() == "attribute_item" || node.kind().ends_with("comment"))
+        .filter(|node| node.kind() == "attribute_item")
+        .filter_map(|item| item.named_child(0)?.named_child(0))
+        .any(|path| {
+            let path = &source[path.byte_range()];
+            path.rsplit("::")
+                .next()
+                .is_some_and(|last| last.ends_with("test"))
+        })
+}
+
+/// Returns true for a method whose code shows it is a getter. It takes only
+/// `&self`, and its body is one expression that reads a field of `self`,
+/// such as `&self.title` or `self.name.clone()`.
+fn is_getter(function: Node, source: &str) -> bool {
+    let (Some(parameters), Some(body)) = (
+        function.child_by_field_name("parameters"),
+        function.child_by_field_name("body"),
+    ) else {
+        return false;
+    };
+    let takes_shared_self = matches!(
+        list_code(parameters).as_slice(),
+        [only] if only.kind() == "self_parameter" && {
+            let text = &source[only.byte_range()];
+            text.starts_with('&') && !text.contains("mut")
+        }
+    );
+    takes_shared_self
+        && matches!(list_code(body).as_slice(), [only] if reads_self_field(*only, source))
+}
+
+/// Returns a node's named children other than comments.
+fn list_code(node: Node) -> Vec<Node> {
+    let mut cursor = node.walk();
+    node.named_children(&mut cursor)
+        .filter(|child| !child.kind().ends_with("comment"))
+        .collect()
+}
+
+/// Returns true for `self.title`, a reference or `*` copy of it, or the
+/// field followed by `.clone()`, `.copied()`, `.cloned()` or an `as_` call
+/// with no arguments, such as `self.name.as_str()`.
+fn reads_self_field(expression: Node, source: &str) -> bool {
+    let reads_value = |node: Node| {
+        node.child_by_field_name("value")
+            .is_some_and(|value| value.kind() == "self" || reads_self_field(value, source))
+    };
+    match expression.kind() {
+        "field_expression" => reads_value(expression),
+        "reference_expression" => expression
+            .child_by_field_name("value")
+            .is_some_and(|value| reads_self_field(value, source)),
+        "unary_expression" => {
+            source[expression.byte_range()].starts_with('*')
+                && expression
+                    .named_child(0)
+                    .is_some_and(|value| reads_self_field(value, source))
+        }
+        "call_expression" => {
+            let (Some(method), Some(arguments)) = (
+                expression.child_by_field_name("function"),
+                expression.child_by_field_name("arguments"),
+            ) else {
+                return false;
+            };
+            let Some(method_name) = method.child_by_field_name("field") else {
+                return false;
+            };
+            let method_name = &source[method_name.byte_range()];
+            method.kind() == "field_expression"
+                && arguments.named_child_count() == 0
+                && (["clone", "copied", "cloned"].contains(&method_name)
+                    || method_name.starts_with("as_"))
+                && reads_value(method)
+        }
+        _ => false,
     }
 }
 
