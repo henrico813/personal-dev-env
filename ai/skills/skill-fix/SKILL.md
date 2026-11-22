@@ -179,7 +179,10 @@ the table below says:
 - `committed`: the fix is safe on its branch. Tell the user once:
   "Fix committed; it reaches every PC after you merge the fix PR."
   When `sync` is not `pushed`, `pr_open` or `pr_waiting`, act on it
-  as [references/replies.md](references/replies.md) says.
+  as [references/replies.md](references/replies.md) says. For a
+  `conflict`, commit the resolved merge on the user's yes. Then get
+  the privacy review in `pull-request` Guardrail 5, and run
+  `skill-fix sync` only when it reports zero hits.
 - `held`: the fix holds an extra term, a word from the file that
   `extra_terms_file` in `~/.config/pde/config.json` names. It stays
   on this PC. Say only: "This fix matched the extra-term list and is
