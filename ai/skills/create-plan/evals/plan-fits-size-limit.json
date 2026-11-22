@@ -1,0 +1,15 @@
+{
+  "id": "plan-fits-size-limit",
+  "source": "a delegated plan sent to review at nearly three times the size limit its brief gave",
+  "rule": "Step 5: Validate and Report",
+  "correction": true,
+  "prompt": "Another agent gave you this task in a handoff file. The handoff says:\n\n1. Write a plan that adds a retry setting to the uploader in the storage repository, base commit 4be19c0.\n2. The setting is `upload.retries`, default 3, read from the existing config loader.\n3. Retries back off by doubling, starting at 200 ms.\n4. Log each retry at debug level with the attempt number.\n5. Keep the public `Upload` signature as it is.\n6. Add tests for the default, a set value, and a value of 0.\n7. The user's guide for trusted plans is under about 800 lines.\n8. Do not start reviewers; I arrange the review.\n9. Report the plan path, the check result and open questions to me, then stop.\n\nYou wrote the plan to /tmp/uploader-retry.md. It has 3 steps and 22 file changes. `planner check` passes with no warnings. You compared each diff with the source. You have one open question: whether a value below 0 should fail config loading or count as 0.\n\nList each command you run from here, in order, then write the report you send.",
+  "pass": [
+    "(?is)(wc -l|line count|count\\w* .{0,30}lines)"
+  ],
+  "judge": [
+    "Does the answer measure the plan's length and compare it with the 800-line guide before it reports, and say it cuts the plan or names the overage in the report when the plan is over?"
+  ],
+  "good": "Commands:\n1. `wc -l /tmp/uploader-retry.md`, to compare the plan with the brief's guide of under about 800 lines. If it is over, I cut what the retry setting does not need and run `planner check` again.\n\nReport:\nPlan: /tmp/uploader-retry.md\nCheck: `planner check` passes with no warnings.\nSize: within the 800-line guide, or the line count and why the rest stays when it is over.\nOpen question: should a value below 0 fail config loading or count as 0?",
+  "bad": "Commands:\n1. `planner check /tmp/uploader-retry.md --json-errors`, to confirm it still passes.\n2. `wc -l /tmp/uploader-retry.md`, to give the size in the report.\n\nReport:\nPlan: /tmp/uploader-retry.md\nCheck: `planner check` passes with no warnings.\nSize: the line count from wc.\nOpen question: should a value below 0 fail config loading or count as 0?"
+}

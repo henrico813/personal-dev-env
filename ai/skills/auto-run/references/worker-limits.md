@@ -32,9 +32,10 @@ are back.
 
 - Decide minor things yourself and say so. Never ask the user, even
   after the away line in The run ends.
-- Work only in folders you make with `mktemp -d`, except that you
-  write your full report to the file your brief names. Never remove a
-  fixed `/tmp` path or use another agent's folder.
+- Work only in folders you make with
+  `mktemp -d ~/.local/state/pde-work.XXXXXX`, except that you write
+  your full report to the file your brief names. Never make a folder
+  in `/tmp`, remove a fixed `/tmp` path or use another agent's folder.
 - Read a skill's SKILL.md, then only the references your step needs.
 - Work on large files and plans with scripts, `git show`, `rg` and
   `sed -n` ranges, never by reading them whole.

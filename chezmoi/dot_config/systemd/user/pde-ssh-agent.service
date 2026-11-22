@@ -1,0 +1,9 @@
+[Unit]
+Description=The one SSH agent for every shell; add keys with ssh-add in a terminal
+
+[Service]
+ExecStartPre=/bin/rm -f %t/pde-ssh-agent.socket
+ExecStart=/usr/bin/ssh-agent -D -a %t/pde-ssh-agent.socket
+
+[Install]
+WantedBy=default.target

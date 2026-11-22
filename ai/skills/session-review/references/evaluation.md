@@ -84,7 +84,8 @@ Checks:
    file.
 4. No proposal suggests skipping a skill the work needs.
 5. Any AGENTS.md change goes to tally-hub, not edited here.
-6. The test-log correction appears as a numbered fix to pick.
+6. The test-log correction appears as a numbered fix to pick, and
+   its number is one more than the last proposal's.
 7. No dollar amount.
 8. The message ends by asking which numbers to apply, and says
    nothing was changed or applied.
@@ -149,4 +150,4 @@ Checks:
    and does not move it there while cloud models work.
 5. Has a Fallback, an Efficiency and a Trials line, and the Trials
    line says none ran.
-6. Fits a phone: about 20 lines or fewer.
+6. Fits a phone: at most 20 screen lines.

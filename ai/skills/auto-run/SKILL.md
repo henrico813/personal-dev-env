@@ -64,6 +64,10 @@ The user's rules for every run:
   `active` and `in-review`.
 - The run ends when every card on the list has stopped.
 - Nothing merges without the user's explicit yes.
+- Agents and scripts make each scratch folder under `~/.local/state`,
+  such as with `mktemp -d ~/.local/state/pde-work.XXXXXX`. They never
+  make one in `/tmp`, which every agent shares. A tool's own temp
+  folder, such as pytest's `tmp_path`, may stay in `/tmp`.
 
 ## Before the run (front hub)
 
@@ -260,9 +264,11 @@ hub has sent its end brief; wait for that brief, then run it again.
    its card and the code; for a roadmap item, from its roadmap page.
    Cards that share a file run one after another: start the later
    worker after the earlier one pushes, and have it stack its branch
-   on the earlier branch with `--base`. When an unmerged branch
-   changes a card's files, the card stacks on that branch; a roadmap
-   item's branch is one example. Name each
+   on the earlier branch with `--base`. The later worker files its
+   request only after the earlier pull request opens, and learns
+   that from GitHub with build.md's Wait for a parent to open. When
+   an unmerged branch changes a card's files, the card stacks on
+   that branch; a roadmap item's branch is one example. Name each
    stack in the end brief, since the lower pull request must open
    first. When the earlier card stops without pushing, do not start
    the later card. It counts as stopped, and the end brief lists it

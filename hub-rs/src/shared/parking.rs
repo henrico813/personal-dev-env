@@ -24,7 +24,7 @@ use crate::external::herdr::{Agent, AgentStart, NewPlace, Pane, Workspace};
 /// The most times reopening reads the new agent for its session ID.
 const SESSION_ID_READS: u32 = 10;
 
-/// What reopening a parked session needs. `hub status` shows its name,
+/// What reopening a parked session needs. `run_status` shows its name,
 /// card and time.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ParkedRecord {
@@ -50,7 +50,7 @@ pub(crate) enum ParkOutcome {
 }
 
 /// Holds `.tidy.lock` in the parked folder while one tidy pass, one
-/// `hub park` or one reopen runs. Dropping it, or the process ending,
+/// `run_park` or one reopen runs. Dropping it, or the process ending,
 /// lets the next one in.
 pub(crate) struct TidyLock {
     _file: File,
@@ -123,7 +123,7 @@ impl ParkedFolder {
     }
 
     /// Waits for the lock on `.tidy.lock` and holds it, so two hubs, or
-    /// `hub clean` beside `hub next`, never save or delete records at
+    /// `run_clean` beside `run_next`, never save or delete records at
     /// once.
     pub(crate) fn take_tidy_lock(&self) -> Result<TidyLock, HubError> {
         fs::create_dir_all(&self.folder).map_err(|source| self.make_file_error(source))?;
@@ -231,7 +231,7 @@ pub(crate) fn park_session(
         },
     };
     events::append_event(run, &parked).map_err(parked_but)?;
-    let note = format!("parked {name} ({} review)", card.key.as_str());
+    let note = format!("parked {name} ({} in-review)", card.key.as_str());
     run.append_note_line(&note, now).map_err(parked_but)?;
     tools
         .cards

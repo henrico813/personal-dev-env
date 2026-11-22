@@ -6,7 +6,8 @@
 . "$(dirname "$0")/env" || exit 1
 grep '^try ' "$D/deploy.checks" > "$D/deploy.lines" ||
   { echo "no try lines in $D/deploy.checks"; exit 1; }
-work=$(mktemp -d) || exit 1
+# In the PR folder, not /tmp, which every agent of a run shares.
+work=$(mktemp -d "$D/deploy-check.XXXXXX") || exit 1
 echo "folder: $work" > "$D/deploy.txt" || exit 1
 
 # Run COMMAND with sh in the scratch folder. It passes when it exits 0

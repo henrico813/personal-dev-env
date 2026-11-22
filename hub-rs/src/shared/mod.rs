@@ -201,7 +201,7 @@ pub struct Tools<'a> {
     pub reopen_poll: Duration,
 }
 
-/// The external systems a `Tools` lends, owned. `hub board` moves them
+/// The external systems a `Tools` lends, owned. `run_board` moves them
 /// into the thread that reads the hub's state, since a new thread
 /// cannot borrow from the one that started it.
 pub struct OwnedTools {
