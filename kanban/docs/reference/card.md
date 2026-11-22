@@ -9,8 +9,9 @@ same options.
 
 A card is the note `500 Zettelkasten/Projects/<Project>/<KEY>
 <Title>.md`. The key is the project code, a hyphen and a number of at
-least three digits, such as `PDEV-516`. Older cards keep keys such as
-`PDEV-KB-012`, which `card` still reads. A plan written for a card
+least three digits, such as `PDEV-516`. Done and dropped cards keep
+older keys such as `PDEV-KB-012`, which `card` still reads; `card
+rekey` gives open cards new keys. A plan written for a card
 takes the card's key, so the two notes share a key. `card` counts a
 note as a card only when its `type` field is `card`. The hub and
 sweep read a new key only when its project code has exactly four
@@ -54,6 +55,7 @@ named vault. The shape of the key and the file name comes from the
 | `card link KEY URL` | Adds a pull request URL to `prs`. |
 | `card link KEY --session [AGENT]` | Adds a Herdr agent's session to `sessions` and logs it. Without AGENT, it uses the agent in the current pane. Refuses a session already on another card, unless this card holds it too. A session that serves a second card, such as a merge worker's, logs its work there with `card note KEY2 TEXT` instead. |
 | `card delete KEY --user` | Deletes the note. Use `dropped` instead to keep a record. |
+| `card rekey [--apply --user]` | Gives each open card with an old key, such as `PDEV-KB-012`, the next new key of its project, such as `PDEV-523`. It prints one `OLD NEW` line per card and one `relink PATH` line per note whose links change. Done and dropped cards keep their keys. Without `--apply`, it writes nothing. `--apply` needs `--user`. It prints its backup folder under `~/.local/state/card`, backs up each note before writing it, renames the cards and adds `old_key`, then points links in every note under Projects to the new names, and prints an `undo` command. Undo puts the notes the rekey wrote back as they were before it, so it drops any edit made to them since. After two runs, run the newer undo command first. It stops at a note that changed since it read it, still printing the undo command; run rekey again to finish, or run the undo command. Refuses while a Herdr agent on this computer works on one of the cards, by its name or a session in `sessions`, when Herdr cannot list its agents, when two cards hold one key as key or `old_key`, when a new name is taken, or when a card was written but not renamed; then run the last undo command and rekey again. A second run renames the cards still on old keys and fixes links still on their old names. |
 | `card check` | Lists cards with a broken layout, an unknown stage or kind, a key two cards share, a note named like an old `-KB-` card without `type: card`, a session two cards share, or an open card whose title or work type breaks a [title rule](#title-rules). Exits 1 when it finds one. |
 | `card name RULE VALUE...` | Prints the name a naming rule makes. The VALUEs fill the rule's fields in order, and the last field takes the rest: `card name branch feat retry uploads` prints `feat/retry-uploads`. Refuses a name the rule would not read back, such as one with an unknown branch type. Needs no vault. |
 | `card template` | Prints the Obsidian template, `001.09 Zettel-Kanban.md`. |
@@ -254,6 +256,7 @@ topics:
 | `prs` | Pull request URLs, added by `card link`. |
 | `sessions` | The agent sessions that worked on the card, as `KIND SESSION_ID`, added by `--session`. |
 | `topics` | A link to the project, and any other topics. |
+| `old_key` | The key before `card rekey`, such as `PDEV-KB-012`. `card` still finds the card by it. |
 
 The key has no field. `card` reads it from the file name, and the
 title heading repeats it. `card` changes only the fields a command
