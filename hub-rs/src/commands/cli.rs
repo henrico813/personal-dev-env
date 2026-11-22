@@ -74,6 +74,7 @@ one used last.
   go       Show the next hub
   gather   Put hubs at the sidebar top
   desk     Make the user's desk
+  restore-sidebar Put back hubs and desk
   board    Cards, sessions and gauges{after-help}",
     after_help = "\
 hub COMMAND --help says what one does,
@@ -492,6 +493,20 @@ pub enum Command {
     /// set up the workspace you watch from a phone.
     #[command(after_help = "Example: hub desk")]
     Desk,
+    /// Put back hubs and desk
+    ///
+    /// Tags each hub on this machine that lost its tag, shows the desk
+    /// in the agent list again, and cuts the agent list as hub gather
+    /// does. It moves no workspace. A Herdr restart drops all three,
+    /// and the pde.hub Herdr plugin runs this command when Herdr starts
+    /// and when it detects an agent.
+    #[command(after_help = "Example: hub restore-sidebar")]
+    RestoreSidebar {
+        /// Also run hub board in the desk's first pane when its shell
+        /// runs nothing
+        #[arg(long)]
+        start_board: bool,
+    },
     /// Cards, sessions and gauges
     ///
     /// --print, --dump and --control each draw
@@ -640,6 +655,7 @@ impl Command {
             Command::Go => "go",
             Command::Gather => "gather",
             Command::Desk => "desk",
+            Command::RestoreSidebar { .. } => "restore-sidebar",
             Command::Board { .. } => "board",
         }
     }
@@ -855,6 +871,7 @@ pub fn takes_machine(command: &Command) -> bool {
         | Command::Go
         | Command::Gather
         | Command::Desk
+        | Command::RestoreSidebar { .. }
         | Command::Board { .. } => false,
     }
 }

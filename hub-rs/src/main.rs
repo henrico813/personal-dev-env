@@ -314,7 +314,7 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
                 };
                 auto::run_auto_approve(&tools, &run, &approval, &now)
             }
-            AutoStep::Now { run } => auto::run_auto_now(&tools, &find_auto_run(run)?),
+            AutoStep::Now { run } => auto::run_auto_now(&tools, &find_auto_run(run)?, &now),
         },
         Command::Flag { name } => flag::run_flag(&tools, name),
         Command::Unflag { name } => flag::run_unflag(&tools, name),
@@ -323,6 +323,9 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         Command::Go => sidebar::run_go(&tools),
         Command::Gather => sidebar::run_gather(&tools),
         Command::Desk => sidebar::run_desk(&tools, &home),
+        Command::RestoreSidebar { start_board } => {
+            sidebar::run_restore_sidebar(&tools, *start_board)
+        }
         Command::Board {
             only_run,
             print,

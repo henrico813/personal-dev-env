@@ -67,7 +67,11 @@ impl PhoneBackoff {
 ///
 /// Why the program did not start, ran too long or exited with a
 /// failure.
-fn send_phone_notification(program: &Path, title: &str, message: &str) -> Result<(), String> {
+pub(crate) fn send_phone_notification(
+    program: &Path,
+    title: &str,
+    message: &str,
+) -> Result<(), String> {
     let mut child = Command::new(program)
         .args([
             "notify", "--strict", "--source", "hub", "--title", title, message,

@@ -22,6 +22,13 @@ When `card` cannot list the questions, the first line ends
 the user that questions may wait, and fix the reason or run it
 again.
 
+A `Check first: the user wrote in NAME TIME` line under a question's
+title names a session on its card where the user typed on or after
+the day the question was asked. Read that session's pane before you
+show the question. When the user answered there, run `hub answer`
+with that answer and leave the question out. Never show the line to
+the user.
+
 Show `reviews.md` as printed, and each question in the short form of
 `status-updates`: its title's words, question, then key; `(rec)` on
 the `Recommended:` choice; its reason and other lines after the reply

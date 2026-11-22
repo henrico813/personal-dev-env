@@ -1072,6 +1072,8 @@ pub(super) mod tests {
                     "- no".to_owned(),
                     "Recommended: yes".to_owned(),
                 ],
+                sessions: Vec::new(),
+                asked_on: None,
             }],
             waiting: vec![SessionLine {
                 name: "blocked-fix".to_owned(),
@@ -1382,6 +1384,8 @@ pub(super) mod tests {
             project: "Demo".to_owned(),
             title: format!("Question {number}?"),
             lines: Vec::new(),
+            sessions: Vec::new(),
+            asked_on: None,
         }));
         queue
     }

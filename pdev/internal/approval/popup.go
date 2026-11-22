@@ -2,6 +2,7 @@ package approval
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -17,7 +18,13 @@ func popupPath() string {
 	return filepath.Join(stateDir(), "open-popup")
 }
 
+// SavePopup refuses to overwrite another still-live process's record, so a
+// second, short-lived --herdr-popup process cannot clobber the marker for a
+// popup that is still open under a different PID.
 func SavePopup(popup Popup) error {
+	if existing, err := LoadPopup(); err == nil && existing.PID != popup.PID && ProcessAlive(existing.PID) {
+		return fmt.Errorf("popup already open for pid %d", existing.PID)
+	}
 	if err := os.MkdirAll(stateDir(), 0o700); err != nil {
 		return err
 	}
@@ -40,6 +47,13 @@ func LoadPopup() (Popup, error) {
 	return popup, err
 }
 
-func RemovePopup() {
+// RemovePopup clears the marker only when it still names pid. A second,
+// short-lived --herdr-popup process must not erase the marker for a popup
+// still open under a different PID.
+func RemovePopup(pid int) {
+	popup, err := LoadPopup()
+	if err != nil || popup.PID != pid {
+		return
+	}
 	_ = os.Remove(popupPath())
 }

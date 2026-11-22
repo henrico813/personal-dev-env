@@ -10,7 +10,7 @@ use crate::shared::parking::ParkedRecord;
 
 /// One unfocused OpenCode agent in workspace `w1`, with pane
 /// `w1:<name>`, tab `w1:t-<name>`, state change 1, no session ID, no
-/// mark, no folders and no machine.
+/// mark, no folders, no machine and no `go_to` token.
 pub(crate) fn make_agent(name: &str, status: AgentStatus) -> Agent {
     Agent {
         name: name.to_owned(),
@@ -25,6 +25,7 @@ pub(crate) fn make_agent(name: &str, status: AgentStatus) -> Agent {
         state_seq: 1,
         folders: Vec::new(),
         machine: None,
+        go_to_tagged: false,
     }
 }
 
