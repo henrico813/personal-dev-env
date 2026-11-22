@@ -249,7 +249,7 @@ fn run_next_reopens_session_with_held_message() {
     assert_eq!(test_tools.herdr.started.borrow().len(), 1);
     assert_eq!(
         *test_tools.herdr.prompts.borrow(),
-        [(WORKER.to_owned(), "Review comments are in.".to_owned())]
+        [(WORKER.to_owned(), "hub: Review comments are in.".to_owned())]
     );
 }
 

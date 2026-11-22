@@ -527,7 +527,10 @@ fn hub_send_reads_message_from_file() {
         .iter()
         .find(|call| call.get(1).is_some_and(|word| word == "prompt"))
         .unwrap();
-    assert_eq!(prompt[2..4], ["docs-fix", "Rebase on main.\nThen push.\n"]);
+    assert_eq!(
+        prompt[2..4],
+        ["docs-fix", "hub: Rebase on main.\nThen push.\n"]
+    );
 }
 
 /// Runs `hub report` with these arguments and `input` on standard

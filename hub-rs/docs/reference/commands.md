@@ -202,6 +202,8 @@ object with the same facts:
 
 `hub send [--run DIR] NAME (MESSAGE | --file PATH)` sends now when
 the session can take it, and otherwise holds the message for `next`.
+Each delivered message starts with `hub: `, so the worker tells it
+from the user's own words.
 
 - `sent NAME`: delivered.
 - `held NAME: WHY`: held, where WHY is `it is blocked`,
@@ -252,7 +254,13 @@ oldest first, such as `approval A0016cd 1h12m left app #515 merge`,
 then `reviews.md` and one section per card's open question, or
 `Nothing waits on the user.` A pending request past pde-gh-write's
 four-hour expiry does not show. A question's section starts
-`Question KEY: TITLE`, then its lines as `hub ask` saved them. When
+`Question KEY: TITLE`, then its lines as `hub ask` saved them. Right
+under the title, a `Check first: the user wrote in NAME TIME` line
+names each session on the card where someone typed a message on or
+after the day of the needs-you mark, other than `hub send` messages,
+watch prods, their older `From the hub` and `Your context is about`
+forms, and the session's first prompt. NAME is the Herdr name,
+or the session ID when Herdr does not list it. When
 `card` cannot list the questions, the board line ends
 `questions unread`, a `questions: REASON` section follows, and the
 brief never says that nothing waits.

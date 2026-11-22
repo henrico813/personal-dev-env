@@ -122,12 +122,17 @@ the handoff file through Tell the user:
 3. Copy into it every result that lives only in this conversation,
    such as subagent reports and review findings. The new session
    cannot see them, so they are lost otherwise. Copy each question
-   waiting on the user into every handoff, word for word. When the
-   handoff pauses the work and no session takes it now, also list
-   each uncommitted file, unpushed branch and worktree you leave. Leave
-   the files as they are. When this session works for a hub, first run
-   `hub inbox <your agent name>` and copy every message it prints into
-   the handoff, since no one sends those messages again.
+   waiting on the user into every handoff, word for word, with where
+   the user may answer it. A question asked on a card with `hub ask`
+   stays only there, since the new session reads it from the card.
+   The new session checks each one before it asks, as the template
+   says, since the user often answers in another session's pane.
+   When the handoff pauses the work and no session takes it now, also
+   list each uncommitted file, unpushed branch and worktree you
+   leave. Leave the files as they are. When this session works for a
+   hub, first run `hub inbox <your agent name>` and copy every message
+   it prints into the handoff, since no one sends those messages
+   again.
 4. Never write a secret into it. Name where the secret lives instead,
    such as a sops file the new session reads with `pde-sops-peek`.
 5. Reread it as a reader with no earlier context. Explain each label

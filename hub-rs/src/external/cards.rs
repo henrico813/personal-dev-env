@@ -11,6 +11,7 @@ use std::str::FromStr;
 use std::sync::LazyLock;
 use std::thread;
 
+use jiff::civil::Date;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -375,6 +376,9 @@ pub struct CardNote {
     /// The text of the newest `needs-you` Log line, while no `answered`
     /// line follows it, so the card waits on the user.
     pub needs_you: Option<String>,
+    /// The date of that needs-you Log line, the day the question was
+    /// asked.
+    pub needs_you_date: Option<Date>,
     /// Each item of the Open Questions section, as its lines with the
     /// `- ` bullet and the two-space indent taken off. Item `N` in
     /// `card show --section` is at index `N - 1`.
@@ -566,13 +570,14 @@ fn parse_card_note(key: &CardKey, text: &str) -> CardNote {
         }
         let log_entry = line
             .strip_prefix("- ")
-            .and_then(|entry| entry.split_once(' '))
-            .map(|(_, words)| words);
-        if let Some(words) = log_entry {
+            .and_then(|entry| entry.split_once(' '));
+        if let Some((date, words)) = log_entry {
             if let Some(question) = words.strip_prefix("needs-you: ") {
                 note.needs_you = Some(question.trim().to_owned());
+                note.needs_you_date = date.parse().ok();
             } else if words.starts_with("answered: ") {
                 note.needs_you = None;
+                note.needs_you_date = None;
             }
             // A `card note` line reads `note (who): next: ...`.
             let text = words.split_once("): ").map_or(words, |(_, text)| text);
@@ -948,25 +953,29 @@ mod tests {
     /// `hub answer` finds the question by the line's text. Reading an
     /// answered question as open hides a finished worker behind `you`,
     /// and missing a new question after an answer leaves the user's
-    /// question unseen.
+    /// question unseen. `hub brief` reads the mark's date to find
+    /// what the user typed since, so a lost date hides those answers.
     #[test]
     fn parse_card_note_finds_open_question() {
         struct Case {
             name: &'static str,
             log: &'static str,
             open: Option<&'static str>,
+            asked_on: Option<&'static str>,
         }
         let cases = [
             Case {
                 name: "asked",
                 log: "- 2026-11-10 needs-you: which bucket?\n",
                 open: Some("which bucket?"),
+                asked_on: Some("2026-11-10"),
             },
             Case {
                 name: "answered",
                 log: "- 2026-11-10 needs-you: which bucket?\n\
                       - 2026-11-10 answered: the cold one\n",
                 open: None,
+                asked_on: None,
             },
             Case {
                 name: "asked-again",
@@ -974,11 +983,13 @@ mod tests {
                       - 2026-11-10 answered: the cold one\n\
                       - 2026-11-11 needs-you: which region?\n",
                 open: Some("which region?"),
+                asked_on: Some("2026-11-11"),
             },
             Case {
                 name: "no-question",
                 log: "- 2026-11-10 active: by the hub\n",
                 open: None,
+                asked_on: None,
             },
         ];
 
@@ -988,6 +999,12 @@ mod tests {
             let note = parse_card_note(&"DEMO-KB-007".parse().unwrap(), &card_show);
 
             assert_eq!(note.needs_you.as_deref(), case.open, "{}", case.name);
+            assert_eq!(
+                note.needs_you_date,
+                case.asked_on.map(|date| date.parse().unwrap()),
+                "{}",
+                case.name
+            );
         }
     }
 

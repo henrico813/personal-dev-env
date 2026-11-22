@@ -91,7 +91,7 @@ const LOCK_FILE: &str = "watch.lock";
 const LOG_FILE: &str = "watch.log";
 
 /// Starts each prod, so a worker tells it from a person's message.
-const PROD_PREFIX: &str = "hub watch: ";
+pub(crate) const PROD_PREFIX: &str = "hub watch: ";
 
 /// The prod for a worker that went idle without a report.
 const STALL_PROD: &str = "you have been idle 10 minutes without a report. \

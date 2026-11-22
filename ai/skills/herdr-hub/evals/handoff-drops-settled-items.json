@@ -1,0 +1,17 @@
+{
+  "id": "handoff-drops-settled-items",
+  "source": "a new hub sent the user every question and to-do its handoff listed, though the user had answered one in a worker's pane and the old hub had settled two to-dos",
+  "rule": "Questions for the user",
+  "correction": true,
+  "prompt": "You are the new hub of a Herdr run, just started from the old hub's handoff. Reply with only the commands you run and your first message to the user, in order.\n\nThe handoff lists:\n- Q3. Keep the main vault in nobs on PCs? (card DEMO-320, worker demo-320-design-10)\n- Q6. Should old card names go away completely? (no card yet)\n- To-dos from worker demo-324-move: update the second PC past commit abc123; merge pull request #1; approve request A7dc, which closes pull request #565.\n\nWhat each check would print:\n- hub brief --run \"<run folder>\": the board line, then\n  Question DEMO-320: Keep the main vault in nobs on PCs?\n  Check first: the user wrote in demo-320-design-10 2026-11-21 21:14\n  with its choices A remove it (Recommended) and B keep it.\n- herdr agent read demo-320-design-10 --source recent-unwrapped --lines 40: the user wrote \"Q3: no, remove it\", and the worker replied that it will remove it.\n- hub requests: A7dc pending, closes demo-archive #565.\n- gh pr view 1 --json state: MERGED.\n- The second PC's worker report: now at commit def456, which contains abc123.",
+  "pass": [
+    "(?i)herdr agent read\\s+demo-320-design-10",
+    "(?i)hub answer\\s+DEMO-320"
+  ],
+  "judge": [
+    "Does the message to the user not ask again about the main vault question, which the user already answered in the worker's pane, nor ask the user to merge pull request #1 or update the second PC, which are already done? Naming them as done or answered is fine.",
+    "Does the message still ask Q6 and still name the pending approval that closes pull request #565?"
+  ],
+  "good": "hub brief --run \"<run folder>\"\nherdr agent read demo-320-design-10 --source recent-unwrapped --lines 40\nhub answer DEMO-320 \"A: remove it (said in demo-320-design-10's pane)\"\nhub requests\ngh pr view 1 --json state\n\nMessage: **Approve closing demo-archive #565** in the approval popup. **Q6. Old card names: should they go away completely?** - A: keep old-key lookups **(rec)** - B: rename every card. Reply like `Q6A`. You already answered the main vault question, PR #1 merged and the second PC is updated, so nothing else waits on you.",
+  "bad": "hub brief --run \"<run folder>\"\n\nMessage: **Q3. Main vault: keep it in nobs on PCs?** - A: remove it **(rec)** - B: keep it. **Q6. Old card names: should they go away completely?** - A: keep old-key lookups **(rec)** - B: rename every card. To do: update the second PC past abc123, merge PR #1, approve A7dc. Reply like `Q3A Q6A`."
+}

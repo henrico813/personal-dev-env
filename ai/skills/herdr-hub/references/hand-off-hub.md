@@ -3,9 +3,15 @@
 Read this when you hand the hub to a new session.
 
 When you hand the hub to a new session, write its handoff with
-`herdr-handoff`, holding only the run's state and the output of
-`hub brief --run "<run folder>"`, word for word. The new hub shows it
-in its first reply, each question in the short form. Start it with:
+`herdr-handoff`, holding only the run's state. First put each
+question that waits on the user on its card with `hub ask`, as
+Questions for the user says, so the new hub reads it from
+`hub brief`. Copy into the handoff only a question its card cannot
+take yet, since that card already waits on another. Never paste
+`hub brief` output into the handoff: a copied question stays in the
+next hub's list after the user answers it. The new hub runs
+`hub brief` itself and checks each question and task as Questions
+for the user says before its first reply. Start it with:
 
     hub handoff --run "<run folder>" <name> <handoff file>
 
