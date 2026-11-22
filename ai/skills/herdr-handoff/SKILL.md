@@ -121,23 +121,43 @@ the handoff file through Tell the user:
    [references/handoff-template.md](references/handoff-template.md).
 3. Copy into it every result that lives only in this conversation,
    such as subagent reports and review findings. The new session
-   cannot see them, so they are lost otherwise. Copy each question
-   waiting on the user into every handoff, word for word, with where
-   the user may answer it. A question asked on a card with `hub ask`
-   stays only there, since the new session reads it from the card.
-   The new session checks each one before it asks, as the template
-   says, since the user often answers in another session's pane.
+   cannot see them, so they are lost otherwise.
    When the handoff pauses the work and no session takes it now, also
    list each uncommitted file, unpushed branch and worktree you
    leave. Leave the files as they are. When this session works for a
    hub, first run `hub inbox <your agent name>` and copy every message
    it prints into the handoff, since no one sends those messages
    again.
-4. Never write a secret into it. Name where the secret lives instead,
+4. Copy each question waiting on the user into every handoff, word
+   for word as it was first asked, with where the user may answer
+   it. The user knows a question by those words, and new words read
+   as a new question. Do not copy a question asked on a card with
+   `hub ask`, since the new session reads it from the card. The new
+   session checks each one before it asks, as the template says,
+   since the user often answers in another session's pane. Before
+   you copy a question:
+   - Check each place the user may have answered it: your chat, each
+     session pane where the question says the user may answer, and
+     the card's Decisions. When you are a hub or work for one, also
+     check each place that "Questions for the user" in the
+     `herdr-hub` skill lists.
+   - Move a question the user answered or made moot to "What the user
+     decided". Give the answer, or what made it moot, where the user
+     gave it, and its Q number, such as "(Q3)". A Q number stays
+     with its question until its whole batch ends, as "Question
+     numbers" in the `status-updates` skill says, and the template
+     tells the new session not to reuse it before then.
+   - Under each open question, add one line that names your session
+     and says where you looked and when, such as `Open: no answer in
+     hub-3's chat, worker api-7's pane or the card's Decisions at
+     2026-03-04 09:15`. Without that line, the new session cannot
+     tell a question never answered from one answered where no one
+     looked.
+5. Never write a secret into it. Name where the secret lives instead,
    such as a sops file the new session reads with `pde-sops-peek`.
-5. Reread it as a reader with no earlier context. Explain each label
+6. Reread it as a reader with no earlier context. Explain each label
    and use absolute paths.
-6. Name each skill the work needs with the step that needs it, such
+7. Name each skill the work needs with the step that needs it, such
    as "Load `pull-request` before you open the PR." Name a skill to
    load at the start only when the first step needs it, since every
    loaded skill is re-read on each turn.

@@ -41,7 +41,9 @@ that the new session does not repeat a mistake.>
 
 ## What the user decided
 
-1. <Each decision, in the user's words where the wording matters.>
+1. <Each decision, in the user's words where the wording matters.
+   For an answer to a question, add where the user gave it and the
+   question's Q number, such as "(Q3)".>
 
 ## Your work
 
@@ -58,15 +60,21 @@ waiting on the user.>
 ## Questions for the user
 
 <Each open question word for word, with its Q number, its choices, the
-choice this session recommends and why. Name where the user may have
-answered each one, such as a session's pane or a card. The new
-session first checks each one there and in the card's Decisions, and
-drops each one the user already answered or made moot. It asks the
-rest first, with the same Q numbers, since the user's replies name
-questions by these numbers. It asks in the short form of the
-`status-updates` skill, which says what a Q number is. When the
-handoff names a report file, the new session writes them there in
-full instead, as Coordination says.>
+choice this session recommends and why, and its `Open:` line, as step
+4 of "Write the handoff file" in SKILL.md says. Name where the user
+may have answered each one, such as a session's pane or a card.>
+
+Before you ask a question below, check each place it names and the
+card's Decisions for the user's reply. In a place its `Open:` line
+names, read only what came after that line's time. Read in full a
+place the line does not name, or one that shows no times. Drop each
+question the user answered or made moot. Ask the rest first, with the
+same Q numbers, in the short form of the `status-updates` skill,
+since the user's replies name questions by these numbers. Give no Q
+number listed in What the user decided to a new question until its
+batch ends, as "Question numbers" in that skill says. When this
+handoff names a report file, write the questions there in full
+instead, as Coordination says.
 
 ## Coordination
 
