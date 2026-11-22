@@ -40,6 +40,13 @@ func LoadPopup() (Popup, error) {
 	return popup, err
 }
 
-func RemovePopup() {
+// RemovePopup clears the marker only when it still names pid. A second,
+// short-lived --herdr-popup process must not erase the marker for a popup
+// still open under a different PID.
+func RemovePopup(pid int) {
+	popup, err := LoadPopup()
+	if err != nil || popup.PID != pid {
+		return
+	}
 	_ = os.Remove(popupPath())
 }
