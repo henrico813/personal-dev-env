@@ -216,7 +216,7 @@ own Herdr pane, with `HUB_RUN` set to your run folder.
    hub clean
    ```
 
-   It prints `closed NAME: WHY`, `parked NAME: KEY review` or
+   It prints `closed NAME: WHY`, `parked NAME: KEY in-review` or
    `forgot NAME` for each change, `kept NAME: WHY` for each session it
    keeps, and `nothing to close` when nothing changed. Never close a
    `kept` session yourself; its WHY says what closing would lose.

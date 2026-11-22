@@ -9,7 +9,8 @@ keep() { eval "$1=\$2"; printf '%s=%q\n' "$1" "$2" >> "$D/env"; }
 # written through a scratch index, so no checkout changes.
 plan_tree() {
   local plan=$1 repo=$2 base=$3 step=$4 tmp git_dir rc
-  tmp=$(mktemp -d) || return 1
+  local s=${XDG_STATE_HOME:-$HOME/.local/state}
+  mkdir -p "$s" && tmp=$(mktemp -d "$s/plan-tree.XXXXXX") || return 1
   if ! planner export "$plan" --repo "$repo" --base-commit "$base" \
     --out "$tmp/tree" --through "$step" >/dev/null; then
     rm -rf "$tmp"

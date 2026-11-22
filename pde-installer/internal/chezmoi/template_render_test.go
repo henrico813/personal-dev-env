@@ -54,6 +54,10 @@ func TestIgnoreListMatchesEachProfile(t *testing.T) {
 		".config/systemd/user/pde-skill-evals.service",
 		".config/systemd/user/pde-skill-evals.timer",
 		"enable_skill_evals_timer.sh",
+		".config/systemd/user/pde-ssh-agent.service",
+		".config/environment.d",
+		".config/environment.d/**",
+		"enable_ssh_agent.sh",
 	}
 	terminalIgnores := []string{
 		".config/alacritty",
@@ -634,6 +638,31 @@ func TestPRDForwardsDiffArguments(t *testing.T) {
 			t.Errorf("%s = %q, want %q", path, got, want)
 		}
 	}
+}
+
+// Only full installs run pde-ssh-agent, so elsewhere the socket has no agent
+// behind it and every ssh from an agent shell would fail.
+func TestZshenvSetsSocketOnlyOnFull(t *testing.T) {
+	socket := `export SSH_AUTH_SOCK="${XDG_RUNTIME_DIR:-/run/user/$UID}/pde-ssh-agent.socket"`
+	tests := map[string]struct {
+		profile string
+		want    []string
+		omit    []string
+	}{
+		"full": {
+			profile: "full",
+			want:    []string{socket},
+		},
+		"client": {
+			profile: "client",
+			omit:    []string{"pde-ssh-agent.socket"},
+		},
+		"terminal": {
+			profile: "terminal",
+			omit:    []string{"pde-ssh-agent.socket"},
+		},
+	}
+	assertProfileTemplates(t, "dot_zshenv.tmpl", tests)
 }
 
 func TestZshenvLoadsGoogEnvironment(t *testing.T) {

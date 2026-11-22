@@ -37,9 +37,11 @@ jobs:
         # release. Both must work with the tools ubuntu-latest has and
         # read nothing outside <dir>, because the job builds the newest
         # commit but tags the last one that changed <dir>. first is the
-        # version of the tool's first release.
+        # version of the tool's first release. hub starts at 0.17.0
+        # because GitHub refuses the tags hub-v0.2.0 to hub-v0.16.0 for
+        # this repository name.
         include:
-          - {tool: hub, dir: hub-rs, binary: target/release/hub, first: 0.2.0}
+          - {tool: hub, dir: hub-rs, binary: target/release/hub, first: 0.17.0}
     runs-on: ubuntu-latest
     env:
       TOOL: ${{ matrix.tool }}
