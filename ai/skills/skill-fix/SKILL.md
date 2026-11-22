@@ -100,27 +100,42 @@ agent, unless the linking skill names someone else.
    session on this PC shares the fix worktree, and `start` refuses
    another skill's fix while yours waits there. Save the diff to a
    new file under `/tmp`, then drop the edits. The first line makes
-   the diff show new files, such as a new reference file:
+   the diff show new files, such as a new reference file. When you
+   save a fix again, `git apply --3way` has staged its earlier
+   edits. Plain `git diff` leaves staged edits out, so diff against
+   `HEAD`:
 
    ```bash
    git -C <worktree> add --intent-to-add .
-   git -C <worktree> diff > <patch file>
+   git -C <worktree> diff HEAD > <patch file>
    skill-fix start <skill> --reset
    ```
 
    Then get the privacy review in the `pull-request` skill's
-   Guardrail 5, since `commit` can push the fix. Fill in its brief
-   with the fix worktree as `<worktree>`. Give the added lines of the
-   patch file in place of the brief's item 1, and the message file in
-   place of its item 2. Keep its item 3, the branch name. Skip its
-   item 4, since the tool writes the fix pull request's title and body
-   from fixed text that names no PC. Leave out `<BASE>` and
-   `<PR message file>`, since no item you keep uses them. Skip three
-   parts of the guardrail. Its Testing line and amend step fit only
-   pull-request's own steps. Its term scan runs inside `commit`.
+   Guardrail 5, since `commit` can push the fix. Its brief, for a
+   fresh agent, lists four things to read: the diff, the commit log,
+   the branch name and the PR text. It also has blanks in angle
+   brackets, such as `<worktree>`. Fill it in this way:
 
-   To fix a hit in the diff, run the `start` and `git apply` lines of
-   step 3 item 3, edit the fix, and save it again as above. Fix a hit
+   - `<worktree>`: the fix worktree.
+   - The diff (item 1): give the added lines of the patch file
+     instead.
+   - The commit log (item 2): give the message file instead.
+   - The branch name (item 3): keep it as it is.
+   - The PR text (item 4): skip it. The tool writes the fix
+     pull request's title and body from the same stock text each
+     time, which names no PC.
+   - `<BASE>` and `<PR message file>`: leave these blanks empty.
+     Only items 1, 2 and 4 use them, and you replace or skip those.
+
+   Skip three steps of the guardrail: its Testing line, its amend
+   step and its term scan. The first two change a pull request's
+   Testing text and commit, which a fix does not have, and `commit`
+   runs the term scan itself.
+
+   To fix a hit in the diff, run `skill-fix start <skill>` and
+   `git -C <worktree> apply --3way <patch file>`, edit the fix, and
+   save it again as above. Fix a hit
    in the message file in place. Get a new review each time the patch
    or message file changes, in this step or a later one. Show a fix
    only after its review reports zero hits.
@@ -131,7 +146,7 @@ agent, unless the linking skill names someone else.
    turn, then show them all.
 
    When a hub started you to write the fix, put the message, the diff,
-   the patch file's path and the privacy review's Hits line in your
+   the patch file's path and the privacy review's `Hits:` line in your
    report and end your turn. The hub reviews them, shows them to the
    user and sends you the answer with `hub send`.
 3. Wait for the answer. For each fix the user says yes to, in order,
