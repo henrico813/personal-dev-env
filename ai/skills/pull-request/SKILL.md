@@ -74,7 +74,10 @@ steps' defaults.
      "office" or "shift", is a hit on its own. It needs no company
      name and no other job detail in the change.
    - Every review hit blocks the step, even one the reviewer calls
-     optional or low risk.
+     optional or low risk. A reviewer may stray from the brief's
+     reply form. Each line its reply points to is still a hit, such
+     as one it offers an optional wording change for, even when the
+     reply says the change is safe. Fix it and get a new review.
    - Fix each hit by amending the commit that holds it: the phase
      commit in Open, the round's commit in Update, or the merge
      commit. None is pushed yet at this step. Fix a hit in the PR text
