@@ -460,7 +460,7 @@ mod restore_sidebar {
     /// start there again. When the shell runs a program, such as an
     /// editor, typing `hub board` would land in that program.
     #[test]
-    fn run_restore_sidebar_starts_board_in_quiet_shell() {
+    fn run_restore_sidebar_starts_board_when_quiet() {
         let cases = [
             ("quiet-shell", true, vec![("w4:p-board", "hub board")]),
             ("program-in-front", false, vec![]),
