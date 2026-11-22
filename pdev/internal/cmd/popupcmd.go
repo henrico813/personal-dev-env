@@ -40,7 +40,7 @@ func approvePopup(id string) int {
 	}
 	if json.Unmarshal([]byte(os.Getenv("HERDR_PLUGIN_CONTEXT_JSON")), &context) == nil && context.Workspace != "" {
 		if approval.SavePopup(approval.Popup{PID: os.Getpid(), Workspace: context.Workspace}) == nil {
-			defer approval.RemovePopup()
+			defer approval.RemovePopup(os.Getpid())
 		}
 	}
 	for {
