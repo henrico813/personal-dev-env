@@ -155,7 +155,7 @@ def packed(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.fixture
 def repos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Repos:
-    """A PC labelled desk with the demo skill installed and in its checkout.
+    """A PC with the demo skill installed and in its checkout.
 
     The user's git config is ignored, so hooks or signing cannot change
     what a test sees, and so are any ``PRIVATE_TERMS`` and
@@ -194,8 +194,10 @@ def repos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Repos:
         str(remote),
         str(checkout),
     )
+    # A fixed batch ID gives every test the same branch names.
+    run_git(checkout, "config", "skill-fix.batchid", "a1b2c3")
     install_skill(home, "demo", DEMO)
-    write_settings(home, install_path=str(checkout), skill_fix_label="desk")
+    write_settings(home, install_path=str(checkout))
     return Repos(
         home=home,
         checkout=checkout,

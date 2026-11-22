@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from pathlib import Path
 
@@ -19,7 +20,7 @@ from conftest import (
     write_tool,
 )
 
-BRANCH = "fix/skill-fixes-desk-1"
+BRANCH = "fix/skill-fixes-a1b2c3-1"
 SSH_URL = "git@github.com:owner/repo.git"
 HTTPS_URL = "https://github.com/owner/repo.git"
 
@@ -179,7 +180,6 @@ class TestSync:
         write_settings(
             repos.home,
             install_path=str(repos.checkout),
-            skill_fix_label="desk",
             extra_skills_repo=str(extra),
         )
         write(repos.home / "stub/gh-fails", "")
@@ -215,37 +215,55 @@ class TestSync:
         assert requests[0] == requests[1]
         assert requests[0].startswith(
             f"pr create --base main --head {BRANCH} "
-            "--title fix(skills): corrections from desk --body-file "
+            "--title fix(skills): corrections in batch a1b2c3-1 --body-file "
         )
         pushed = run_git(
             repos.remote, "rev-list", "--count", f"main..{BRANCH}"
         )
         assert pushed == "3"
 
-    def test_sync_without_label_waits_then_pushes(
-        self, fix: Callable[..., Reply], run: Run, repos: Repos
+    def test_sync_renames_old_branch_before_push(
+        self, fix: Callable[..., Reply], repos: Repos
     ) -> None:
-        """With no label the fix waits, then pushes under the label.
+        """An unpushed branch with an older name is pushed under the ID.
 
-        Branch names are public, and the label keeps them from naming
-        the PC. No branch may reach the remote before the label is set.
+        Older versions named branches after a PC label. Branch names are
+        public, so such a name must never reach the remote.
         """
-        write_settings(repos.home, install_path=str(repos.checkout))
-
-        waiting = fix()
-        write_settings(
-            repos.home,
-            install_path=str(repos.checkout),
-            skill_fix_label="desk",
+        run_git(
+            repos.checkout,
+            "worktree",
+            "add",
+            "--quiet",
+            "-b",
+            "fix/skill-fixes-oldlabel-4",
+            str(repos.worktree),
+            "github/main",
         )
-        synced = run("sync")
 
-        assert (waiting.body["sync"], waiting.body["branch"]) == (
-            "no_label",
-            "fix/skill-fixes-unset-1",
+        reply = fix()
+
+        assert (reply.body["branch"], reply.body["sync"]) == (
+            BRANCH,
+            "pr_waiting",
         )
-        assert synced.body["repos"][0]["branch"] == BRANCH
         assert list_branches(repos) == f"{BRANCH}\nmain"
+
+    def test_start_uses_saved_random_batch_id(
+        self, run: Run, repos: Repos
+    ) -> None:
+        """A clone with no batch ID gets a random one and keeps it.
+
+        A new ID on each run would split one PC's fixes across several
+        pull requests.
+        """
+        run_git(repos.checkout, "config", "--unset", "skill-fix.batchid")
+
+        reply = run("start", "demo")
+
+        batch_id = run_git(repos.checkout, "config", "skill-fix.batchid")
+        assert re.fullmatch(r"[0-9a-f]{6}", batch_id)
+        assert reply.body["branch"] == f"fix/skill-fixes-{batch_id}-1"
 
     def test_sync_after_merge_starts_new_batch(
         self, fix: Callable[..., Reply], repos: Repos
@@ -265,7 +283,7 @@ class TestSync:
 
         reply = fix()
 
-        new = "fix/skill-fixes-desk-2"
+        new = "fix/skill-fixes-a1b2c3-2"
         assert (reply.body["branch"], reply.body["sync"]) == (
             new,
             "pr_waiting",

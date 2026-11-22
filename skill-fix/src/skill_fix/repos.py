@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import subprocess
 import tempfile
 import urllib.parse
@@ -23,7 +24,9 @@ BATCH_PREFIX = "fix/skill-fixes-"
 HELD_PREFIX = "fix/skill-fixes-held-"
 # No remote has this name, so a plain git push of a held branch fails.
 NO_REMOTE = "skill-fix-held-never-pushed"
-LABEL = re.compile(r"[a-z0-9]+")
+# The local git config key that holds this clone's batch ID.
+BATCH_ID_KEY = "skill-fix.batchid"
+BATCH_ID = re.compile(r"[0-9a-f]{6}")
 SKILL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 # A fetch or push that hangs must not hold an agent's command forever.
 GIT_TIMEOUT = 120
@@ -68,8 +71,6 @@ class Settings:
 
     Attributes:
         install_path: The personal-dev-env checkout install ran from.
-        label: ``skill_fix_label``, the word for this PC in branch
-            names and PR titles, or None until it is set.
         extra_skills_repo: The extra repo's checkout, or None.
         extra_terms_file: The extra-term list, or None.
         forge: The extra repo's forge repo, or None when its fix PRs
@@ -77,7 +78,6 @@ class Settings:
     """
 
     install_path: Path | None
-    label: str | None
     extra_skills_repo: Path | None
     extra_terms_file: Path | None
     forge: ForgeRepo | None
@@ -119,9 +119,8 @@ def load_settings() -> Settings:
         The settings.
 
     Raises:
-        ToolError: The file is not a JSON object, the label is not
-            lowercase letters and digits, or a forge setting is
-            missing or not a repo address.
+        ToolError: The file is not a JSON object, or a forge setting
+            is missing or not a repo address.
     """
     path = Path.home() / ".config/pde/config.json"
     try:
@@ -132,14 +131,8 @@ def load_settings() -> Settings:
         raise ToolError(f"cannot read {path}") from error
     if not isinstance(data, dict):
         raise ToolError(f"{path} is not a JSON object")
-    label = data.get("skill_fix_label") or None
-    if label is not None and not (
-        isinstance(label, str) and LABEL.fullmatch(label)
-    ):
-        raise ToolError("skill_fix_label must be lowercase letters and digits")
     return Settings(
         install_path=to_path(data.get("install_path")),
-        label=label,
         extra_skills_repo=to_path(data.get("extra_skills_repo")),
         extra_terms_file=to_path(data.get("extra_terms_file")),
         forge=read_forge_settings(data),
@@ -310,17 +303,14 @@ def find_remote(checkout: Path) -> str:
     return result.stdout.strip() or "origin"
 
 
-def ensure_worktree(repo: Repo, label: str | None) -> str:
+def ensure_worktree(repo: Repo) -> str:
     """Add the fix worktree on first use and return its branch.
 
     A new worktree checks out the highest batch branch, local or on
     the remote, else a new ``-1`` branch from the remote's ``main``.
-    The label reads ``unset`` until ``skill_fix_label`` is set; sync
-    renames that branch before its first push.
 
     Args:
         repo: The repo to work in.
-        label: This PC's label, or None.
 
     Returns:
         The branch checked out in the worktree.
@@ -329,9 +319,9 @@ def ensure_worktree(repo: Repo, label: str | None) -> str:
         return read_branch(repo)
     # A worktree folder deleted by hand stays registered until a prune.
     run_git(repo.checkout, "worktree", "prune")
-    name = label or "unset"
-    numbers = list_batch_numbers(repo, name)
-    branch = f"{BATCH_PREFIX}{name}-{max(numbers, default=1)}"
+    batch_id = read_batch_id(repo)
+    numbers = list_batch_numbers(repo, batch_id)
+    branch = f"{BATCH_PREFIX}{batch_id}-{max(numbers, default=1)}"
     repo.worktree.parent.mkdir(parents=True, exist_ok=True)
     where = str(repo.worktree)
     if try_git(repo.checkout, "rev-parse", "--verify", f"refs/heads/{branch}"):
@@ -374,16 +364,32 @@ def read_branch(repo: Repo) -> str:
     return run_git(repo.worktree, "symbolic-ref", "--short", "HEAD").strip()
 
 
-def list_batch_numbers(repo: Repo, label: str) -> list[int]:
-    """Return the batch numbers of this label's branches, local or remote."""
+def read_batch_id(repo: Repo) -> str:
+    """Return this clone's batch ID, making and saving one on first use.
+
+    Fix branches and PR titles are public, so they carry this random
+    ID in place of anything that names the PC. The ID lives in the
+    checkout's local git config, which its fix worktree shares.
+    """
+    result = call_git(repo.checkout, ["config", "--get", BATCH_ID_KEY])
+    batch_id = result.stdout.strip()
+    if BATCH_ID.fullmatch(batch_id):
+        return batch_id
+    batch_id = secrets.token_hex(3)
+    run_git(repo.checkout, "config", "--local", BATCH_ID_KEY, batch_id)
+    return batch_id
+
+
+def list_batch_numbers(repo: Repo, batch_id: str) -> list[int]:
+    """Return the batch numbers of this ID's branches, local or remote."""
     output = run_git(
         repo.checkout,
         "for-each-ref",
         "--format=%(refname)",
-        f"refs/heads/{BATCH_PREFIX}{label}-*",
-        f"refs/remotes/{repo.remote}/{BATCH_PREFIX}{label}-*",
+        f"refs/heads/{BATCH_PREFIX}{batch_id}-*",
+        f"refs/remotes/{repo.remote}/{BATCH_PREFIX}{batch_id}-*",
     )
-    pattern = re.compile(rf"/{re.escape(BATCH_PREFIX + label)}-(\d+)$")
+    pattern = re.compile(rf"/{re.escape(BATCH_PREFIX + batch_id)}-(\d+)$")
     return [
         int(match.group(1))
         for match in map(pattern.search, output.splitlines())
@@ -391,10 +397,11 @@ def list_batch_numbers(repo: Repo, label: str) -> list[int]:
     ]
 
 
-def name_next_batch(repo: Repo, label: str) -> str:
-    """Return the branch name one batch past this label's highest."""
-    number = max(list_batch_numbers(repo, label), default=0) + 1
-    return f"{BATCH_PREFIX}{label}-{number}"
+def name_next_batch(repo: Repo) -> str:
+    """Return the branch name one batch past this clone's highest."""
+    batch_id = read_batch_id(repo)
+    number = max(list_batch_numbers(repo, batch_id), default=0) + 1
+    return f"{BATCH_PREFIX}{batch_id}-{number}"
 
 
 def list_changed_paths(repo: Repo) -> list[str]:

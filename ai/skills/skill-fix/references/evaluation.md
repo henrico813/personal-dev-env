@@ -48,7 +48,7 @@ plot-planner's text never says how to name beds. You named a bed
 each bed by its row and number, such as row 2 bed 3. Always."
 
 `skill-fix start plot-planner` would print:
-{"status":"ok","repo":"personal","worktree":"/home/user/.local/share/skill-fix/personal","file":"/home/user/.local/share/skill-fix/personal/ai/skills/plot-planner/SKILL.md","branch":"fix/skill-fixes-desk-1","edits":false}
+{"status":"ok","repo":"personal","worktree":"/home/user/.local/share/skill-fix/personal","file":"/home/user/.local/share/skill-fix/personal/ai/skills/plot-planner/SKILL.md","branch":"fix/skill-fixes-a1b2c3-1","edits":false}
 ```
 
 Checks:
@@ -128,7 +128,7 @@ The skill-development skill says: when the text states a rule too
 narrowly, widen that rule instead of adding a second one.
 
 `skill-fix start soil-report` would print:
-{"status":"ok","repo":"personal","worktree":"/home/user/.local/share/skill-fix/personal","file":"/home/user/.local/share/skill-fix/personal/ai/skills/soil-report/SKILL.md","branch":"fix/skill-fixes-desk-1","edits":false}
+{"status":"ok","repo":"personal","worktree":"/home/user/.local/share/skill-fix/personal","file":"/home/user/.local/share/skill-fix/personal/ai/skills/soil-report/SKILL.md","branch":"fix/skill-fixes-a1b2c3-1","edits":false}
 ```
 
 Checks:
@@ -151,7 +151,7 @@ row 2 bed 3." The hub reads your report and passes on the user's
 answer with `hub send`.
 
 `skill-fix start plot-planner` would print:
-{"status":"ok","repo":"personal","worktree":"/home/user/.local/share/skill-fix/personal","file":"/home/user/.local/share/skill-fix/personal/ai/skills/plot-planner/SKILL.md","branch":"fix/skill-fixes-desk-1","edits":false}
+{"status":"ok","repo":"personal","worktree":"/home/user/.local/share/skill-fix/personal","file":"/home/user/.local/share/skill-fix/personal/ai/skills/plot-planner/SKILL.md","branch":"fix/skill-fixes-a1b2c3-1","edits":false}
 ```
 
 Checks:

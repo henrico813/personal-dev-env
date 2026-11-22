@@ -53,15 +53,17 @@ skill-fix reads these keys in `~/.config/pde/config.json`:
 
 | Key | Meaning |
 | --- | --- |
-| `skill_fix_label` | A plain word for this PC, such as `desk`, in lowercase letters and digits |
 | `extra_skills_repo` | The checkout of the extra skills repository, when this PC has one |
 | `extra_terms_file` | A list of extra terms; a personal fix that holds one stays on this PC as a held fix |
 | `extra_forge_repo_url` | The web address of the extra repository on a forge, such as `https://forge.example.com/owner/skills`, when its fix pull requests are there |
 | `extra_forge_token_file` | The file that holds the forge API token; set it with `extra_forge_repo_url` |
 
-The label appears in public branch names and pull request titles, so
-it must name no machine. Until it is set, fixes are committed but
-nothing is pushed.
+Public branch names and pull request titles carry a random batch ID,
+such as `fix/skill-fixes-3f9a2c-1`, never anything that names the PC.
+Each clone keeps its ID in its local git config, under
+`skill-fix.batchid`. An unpushed branch with an older name, such as
+one from the old `skill_fix_label` setting, is renamed before its
+first push.
 
 When both forge keys are set, sync finds and opens the extra
 repository's fix pull request through the forge's API at

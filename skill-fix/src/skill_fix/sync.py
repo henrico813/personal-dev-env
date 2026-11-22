@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Literal
 
 from skill_fix import forge, repos
-from skill_fix.repos import Repo, RepoName, Settings, ToolError
+from skill_fix.repos import Repo, RepoName, ToolError
 
 SyncState = Literal[
     "pushed",
@@ -30,7 +30,6 @@ SyncState = Literal[
     "pr_open",
     "offline",
     "conflict",
-    "no_label",
     "scan",
     "skipped",
 ]
@@ -43,15 +42,15 @@ AUTH_FAILURE = re.compile(
     r"|Permission denied|returned error: 40[13]|Repository not found",
     re.IGNORECASE,
 )
-PR_TITLE = "fix(skills): corrections from {label}"
+PR_TITLE = "fix(skills): corrections in batch {batch}"
 # The body never changes, so a rerun of the same create command picks up
 # the waiting request instead of filing a new one.
 PR_BODY = """\
 ## Overview
 
-This PR holds one commit per correction to a skill, all made on one
-PC. Read the commits one at a time; each message says what the agent
-missed and what the fix changes.
+This PR holds one commit per correction to a skill. Read the commits
+one at a time; each message says what the agent missed and what the
+fix changes.
 
 ## Changes
 
@@ -62,6 +61,8 @@ merges.
 
 - [x] skill-fix fix rules: each commit passed them before it was made
 - [x] `ci/scan commits` on every commit before each push
+- [x] Privacy review: the skill-fix skill has each fix reviewed before
+  the user sees it
 - [ ] Tried in a session: not run; a fix takes effect after merge and
   update
 """
@@ -86,16 +87,15 @@ class SyncResult:
     request: str | None = None
 
 
-def sync_repo(repo: Repo, settings: Settings) -> SyncResult:
+def sync_repo(repo: Repo) -> SyncResult:
     """Push the fix branch and open its fix PR when none is open.
 
-    Offline, with no label, or after a refused scan, the commits wait
-    on their branch for a later sync. After the last fix PR merged,
-    fixes not in it move to a new batch branch.
+    Offline or after a refused scan, the commits wait on their branch
+    for a later sync. After the last fix PR merged, fixes not in it
+    move to a new batch branch.
 
     Args:
         repo: The repo to sync.
-        settings: This PC's settings.
 
     Returns:
         The sync's result.
@@ -111,19 +111,17 @@ def sync_repo(repo: Repo, settings: Settings) -> SyncResult:
     if not fetch_remote(repo, url):
         return SyncResult(repo.name, "offline", branch)
     main = f"{repo.remote}/main"
-    if settings.label is None:
-        waiting = repos.count_commits(repo, main) > 0
-        return SyncResult(
-            repo.name, "no_label" if waiting else "skipped", branch
-        )
-    if branch.startswith(f"{repos.BATCH_PREFIX}unset-"):
-        # Nothing was pushed under the unset name, so no remote branch moves.
-        new = repos.name_next_batch(repo, settings.label)
+    if not is_own_batch(repo, branch) and not repos.try_git(
+        repo.worktree, "rev-parse", "--verify", f"{repo.remote}/{branch}"
+    ):
+        # An older name, such as one that held a PC label, never goes
+        # public; a pushed branch keeps its name until its PR merges.
+        new = repos.name_next_batch(repo)
         repos.run_git(repo.worktree, "branch", "-m", new)
         branch = new
     pr = find_pr(repo, branch)
     if pr is not None and pr["state"] == "MERGED":
-        batch = start_new_batch(repo, settings.label, pr["headRefOid"])
+        batch = start_new_batch(repo, pr["headRefOid"])
         if batch is None:
             return SyncResult(repo.name, "conflict", branch, pr["number"])
         branch, pr = batch, None
@@ -152,7 +150,13 @@ def sync_repo(repo: Repo, settings: Settings) -> SyncResult:
         )
     if repos.count_commits(repo, main) == 0:
         return SyncResult(repo.name, "skipped", branch)
-    return open_fix_pr(repo, branch, settings.label)
+    return open_fix_pr(repo, branch)
+
+
+def is_own_batch(repo: Repo, branch: str) -> bool:
+    """Return whether branch is a batch branch named with this clone's ID."""
+    prefix = f"{repos.BATCH_PREFIX}{repos.read_batch_id(repo)}-"
+    return branch.startswith(prefix) and branch[len(prefix) :].isdigit()
 
 
 def find_remote_url(repo: Repo) -> str:
@@ -283,7 +287,7 @@ def find_mergeable(repo: Repo) -> str:
     return "CONFLICTING" if result.returncode == 1 else "MERGEABLE"
 
 
-def start_new_batch(repo: Repo, label: str, merged_head: str) -> str | None:
+def start_new_batch(repo: Repo, merged_head: str) -> str | None:
     """Move the fixes made after a merged PR's head to a new batch branch.
 
     The new branch starts from the remote's ``main``, and gets only
@@ -292,7 +296,6 @@ def start_new_batch(repo: Repo, label: str, merged_head: str) -> str | None:
 
     Args:
         repo: The repo to work in.
-        label: This PC's label.
         merged_head: The head of the merged fix PR.
 
     Returns:
@@ -300,7 +303,7 @@ def start_new_batch(repo: Repo, label: str, merged_head: str) -> str | None:
         the old branch checked out as it was.
     """
     old = repos.read_branch(repo)
-    new = repos.name_next_batch(repo, label)
+    new = repos.name_next_batch(repo)
     repos.run_git(repo.worktree, "switch", "--quiet", "-c", new)
     main = f"{repo.remote}/main"
     if repos.try_git(
@@ -313,7 +316,7 @@ def start_new_batch(repo: Repo, label: str, merged_head: str) -> str | None:
     return None
 
 
-def open_fix_pr(repo: Repo, branch: str, label: str) -> SyncResult:
+def open_fix_pr(repo: Repo, branch: str) -> SyncResult:
     """Ask pde-gh-write to open the fix PR; exit 3 means it waits.
 
     A rerun of the same command, with the same title, body and folder,
@@ -324,7 +327,7 @@ def open_fix_pr(repo: Repo, branch: str, label: str) -> SyncResult:
         ToolError: pde-gh-write is missing, refused the command, or
             the request was declined, or the forge API failed.
     """
-    title = PR_TITLE.format(label=label)
+    title = PR_TITLE.format(batch=branch.removeprefix(repos.BATCH_PREFIX))
     if repo.forge is not None:
         number = forge.open_pr(repo.forge, branch, title, PR_BODY)
         return SyncResult(repo.name, "pr_open", branch, number)
