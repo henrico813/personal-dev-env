@@ -291,6 +291,26 @@ fn run_auto_approve_given_saves_own_words() {
     assert!(approved.contains(&format!("The user's words: {words}\n")));
 }
 
+/// Old cards keep `-KB-` keys while new cards get keys such as
+/// `DEMO-516`, so one run lists both. A shape the hub cannot read
+/// blocks the approval.
+#[test]
+fn run_auto_approve_given_reads_both_shapes() {
+    let test_tools = make_todo_cards(&["DEMO-KB-001", "DEMO-516"]);
+    write_run_list(
+        &test_tools,
+        "- DEMO-KB-001 demo: retry\n- DEMO-516 demo: resume",
+        "",
+    );
+    let words = "Run demo-kb-001 and demo-516.";
+    let approval = make_approval(2, words, true);
+    let now = make_time("2026-11-11T22:14:00+00:00[UTC]");
+
+    run_auto_approve(&test_tools.tools(), &test_tools.run(), &approval, &now).unwrap();
+
+    assert!(test_tools.run_path().join("approved.md").exists());
+}
+
 /// Later sessions check their work against `approved.md`. A second
 /// approval must not replace it, or the record would show a list or
 /// words other than the ones the user approved first.

@@ -42,7 +42,7 @@ it plainly, such as "Should I add this to rules.md?", and leave
 
 Keep no list of sessions of your own. Herdr's session names and the
 kanban cards are the record: a card's worker is named after the card,
-such as `demo-kb-007-impl`, and the card logs its sessions. Card stages
+such as `demo-007-impl`, and the card logs its sessions. Card stages
 never set Herdr agent states, even `blocked` and `done`, which come from
 `herdr agent wait`, not `hub status`. See every session with the `hub`
 command, instead of `ls`, `cat` or `herdr agent list`:
@@ -58,10 +58,10 @@ session:
     blocked 2, oldest 8 days
     open 24: 4 working, 2 hub, 3 you,
       5 kept, 1 to-close, 2 to-park; 12 parked
-    unread 2: demo-kb-007-impl docs-fix
+    unread 2: demo-007-impl docs-fix
 
     NAME              STATE    CTX   WHY
-    demo-kb-007-impl  hub      98k   unread report
+    demo-007-impl     hub      98k   unread report
 
 STATE says who must act: `working` needs nothing, `hub` waits on you,
 `you` waits on the user, `kept` is finished but holds something (WHY
@@ -154,9 +154,8 @@ are off by default. Most lines end with your own context, such as
   [references/hub-next-lines.md](references/hub-next-lines.md) says.
 - `hand off now: hub at <N>k`: your context passed 150k. Hand off
   the hub now, as Hand off the hub says.
-- `to-close <names>: <why>; run hub clean`, or the same with
-  `to-park`: those sessions finished. Run `hub clean` as Cleanup
-  says.
+- `to-close <names>: <why>; run hub clean`, or the same with `to-park`:
+  those sessions finished. Run `hub clean` as Cleanup says.
 - `timeout`: the `--timeout` you gave ran out with no news. Start it
   again.
 - `replaced by a newer hub next`: start nothing, since a newer
@@ -183,9 +182,8 @@ tools, so you never read half a report.
   settles it. Bring the user only a question whose answer changes
   what the user sees. File it, with your recommendation, as
   Questions for the user says.
-- A request to go on with a routine step: tell the worker to go
-  ahead. A merge or pull request edit is never a routine step, as
-  Merges says.
+- A request to go on with a routine step: tell the worker to go ahead.
+  A merge or pull request edit is never a routine step, as Merges says.
 - Finished work: start the next step. For an open pull request, add
   it to the review list, as Merges says.
 - A merged pull request: check the merge. For a personal-dev-env pull
@@ -296,6 +294,11 @@ vault. A hub never reports to a hub on another machine.
   When you move a card to `in-review`, add the user's one next step with
   `card note KEY "next: <step>"`, such as `next: review PR #498`.
   `hub board` shows it on the card's details page.
+- When the user decides something about one card's work, such as what
+  it leaves out, add it to the Decisions section every card has, since
+  its worker reads the card, not `notes.md`. Run
+  `card add KEY Decisions "<decision>"` at once, even with no question
+  asked. For an answer, also do the steps in Questions for the user.
 - Move a card to or from `blocked`, the stage for work
   that waits only on people outside the user's team, as
   [references/blocked.md](references/blocked.md)
@@ -362,18 +365,9 @@ that report. Never ask the user to close a worker.
 Put each question that waits on the user on the card it blocks with
 `hub ask`, so the question and the needs-you mark in the card's Log
 agree. Write the whole question to a file, so no message names it by
-number alone, and run `hub ask <key> <question file>`:
-
-    ## New model overnight
-
-    Deploy the new model tonight so you can test it in the morning?
-
-    - A. Deploy from the branch, with the undo path ready.
-    - B. Wait until you return.
-
-    Recommended: A, since you want to test it in the morning.
-    If no reply: nothing deploys; the worker goes on with its tests.
-    Depends on: your rule of 2026-11-09 to test it in the morning.
+number alone, and run `hub ask <key> <question file>`. Read
+[references/hub-brief.md](references/hub-brief.md) for a worked
+example of the question file.
 
 The `If no reply:` line says what stays blocked and what the worker
 does meanwhile. The work the question asks about never goes ahead
@@ -381,7 +375,8 @@ without the user's answer, and no agent answers a question for the
 user. Add `Depends on:` when the question rests on an earlier
 decision, and name who made it. A question that blocks no card, such
 as which changes a session review makes, goes on a new draft card
-made with `card new <project> "<title>"`, so every reader finds it.
+made with `card new <project> "<title>" --type <type>`, so every
+reader finds it.
 
 `hub ask` refuses a question with a part missing. It also refuses a
 card that already waits on the user, since a card shows one open
