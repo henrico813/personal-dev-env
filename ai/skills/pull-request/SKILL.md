@@ -55,28 +55,35 @@ steps' defaults.
    request. To undo a test install, install again from the default
    branch.
 5. Before Open step 4 and Update step 3, get a privacy review, since
-   what those steps push or send is public at once. Start a fresh
-   agent on a `code-review` model, as `model-routing` picks, with the
-   brief in
-   [references/privacy-review.md](references/privacy-review.md),
-   which lists what counts as a hit. It reads every added or changed
-   line, the commit messages, the branch name and the PR title and
-   body, and flags hints as well as names. A word that ties the change
-   to a job, such as "office" or "shift", is a hit even when it names
-   no company. Every review hit blocks the step, even one the
-   reviewer calls optional or low risk. Fix each hit, in Open by
-   amending the phase commit, then run a new review with the same
-   BASE, as the brief says, until it reports zero hits. Write every
-   other Testing line before the review. Then add the review's own
-   line to the checks list, such as
-   `pass privacy review: 412 lines, 0 hits`; it needs no new review.
-   In Open, step 3 already used FILE as the commit message, so also
-   run `git commit --amend -F FILE` before the push. Run the
-   repository's term scan too, when its `AGENTS.md` names one.
-   Neither check replaces the other: the scan cannot find hints in
-   plain words, and the reviewer cannot know a private name that is
-   also an ordinary word. Another review, such as a skill review,
-   does not count either.
+   what those steps push or send is public at once.
+   - Start a fresh agent on a `code-review` model, as
+     `model-routing` picks, with the brief in
+     [references/privacy-review.md](references/privacy-review.md).
+     The brief lists what counts as a hit. The agent reads every
+     added or changed line, the commit messages, the branch name and
+     the PR title and body.
+   - A line that only hints at a private thing is a hit, just as one
+     that names it. A word that ties the change to a job, such as
+     "office" or "shift", is a hit even when it names no company.
+   - Every review hit blocks the step, even one the reviewer calls
+     optional or low risk.
+   - Fix each hit by amending the commit that holds it: the phase
+     commit in Open, or the round's commit in Update. Neither is
+     pushed yet at this step. Fix a hit in the PR text in FILE. Then
+     run a new review with the same BASE, as the brief says, until it
+     reports zero hits.
+   - Write every other Testing line before the review. Then add the
+     review's line to the checks list, such as
+     `pass privacy review: 412 lines, 0 hits`. Adding that one line
+     needs no new review, since it holds only the review's count.
+   - In Open, step 3 made the phase commit from FILE. Run
+     `git commit --amend -F FILE` before the push, so the commit
+     message gets the new Testing line too.
+   - Run the repository's term scan when its `AGENTS.md` names one.
+     Neither check replaces the other: the scan cannot find hints in
+     plain words, and the reviewer cannot know a private name that
+     is also an ordinary word. Another review, such as a skill
+     review, does not count either.
 
 ## Discover
 

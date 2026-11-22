@@ -1,6 +1,8 @@
 # Privacy review
 
 Guardrail 5 in [SKILL.md](../SKILL.md) says when to run this review.
+The kinds of hit follow `git-messages` item 6. The brief lists them in
+full, since the fresh agent reads only the brief.
 Send a fresh agent the brief below, with `<worktree>`, `<BASE>` and
 `<PR message file>` filled in. When you open a pull request, BASE is
 `<remote>/<parent>`, the branch the pull request merges into: the
@@ -30,8 +32,8 @@ A hit is a line that names or hints at:
   "one machine" and names none.
 - a job: the user's company, clients or job projects, or any word
   that ties the text to a job, such as "office", "shift",
-  "colleague", "boss" or "work" in the sense of a job. It counts
-  inside a longer word or a name, such as a skill or branch name, and
+  "colleague", "boss" or "work" in the sense of a job. It counts when
+  it is one part of a longer name, such as a skill or branch name, and
   even when it names no company.
 - a private vault, note or project that is not in this repository.
 - personal information, such as a person's name, email, address,
