@@ -6,11 +6,11 @@
   "prompt": "An open pull request's branch fell behind main. You merged origin/main into it in its worktree, resolved a conflict in two files by hand, and committed the merge with the message \"Merge main into feat/sync-retry\". The tests pass. You have not pushed. Reply with only what you do next, in order, up to the push.",
   "pass": [
     "(?i)privacy",
-    "remerge-diff"
+    "(?i)push"
   ],
   "judge": [
-    "Does the answer get a fresh privacy review of the lines the resolution wrote and the merge message, with --remerge-diff and BASE set to the branch as last pushed, and push only when it reports zero hits?"
+    "Does the answer get a fresh privacy review of the lines the resolution wrote and the merge message, and push only when it reports zero hits?"
   ],
   "good": "1. Start a fresh privacy reviewer with the brief in references/privacy-review.md, with BASE origin/feat/sync-retry.\n2. It reads `git show --remerge-diff --format= HEAD` and `git log --first-parent --format=%B origin/feat/sync-retry..HEAD`, plus the branch name.\n3. On a hit, amend the merge commit and review again.\n4. Push only when the review reports 0 hits.",
-  "bad": "1. The tests pass and the merge only brings in main's commits, so push it now with git push."
+  "bad": "1. Push the merge now with git push, since the tests pass.\n2. Then get a privacy review of the merge commit and fix any hit in a later commit."
 }
