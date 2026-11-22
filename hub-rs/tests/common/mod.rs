@@ -677,7 +677,7 @@ impl TestTools {
 
     /// The temporary folder that holds everything else.
     pub fn path(&self) -> &Path {
-        self.folder.path()
+        &self.folder.path
     }
 
     /// The run folder's path, for writing and reading its files.
