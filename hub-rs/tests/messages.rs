@@ -89,7 +89,7 @@ fn run_send_prompts_free_session_once() {
     assert_eq!(outcome.lines, ["sent docs-fix"]);
     assert_eq!(
         *test_tools.herdr.prompts.borrow(),
-        [("docs-fix".to_owned(), "Rebase on main.".to_owned())]
+        [("docs-fix".to_owned(), "hub: Rebase on main.".to_owned())]
     );
     assert_eq!(
         list_send_files(&test_tools.run_path()),
@@ -317,7 +317,7 @@ fn run_next_sends_held_message_once_free() {
     assert_eq!(prompts_while_blocked, 0);
     assert_eq!(
         *test_tools.herdr.prompts.borrow(),
-        [("docs-fix".to_owned(), "Rebase on main.".to_owned())]
+        [("docs-fix".to_owned(), "hub: Rebase on main.".to_owned())]
     );
     assert_eq!(
         list_send_files(&test_tools.run_path()),
@@ -348,7 +348,7 @@ fn run_next_sends_held_messages_oldest_first() {
         .iter()
         .map(|(_, text)| text.clone())
         .collect();
-    assert_eq!(texts, ["First.", "Second.", "Third."]);
+    assert_eq!(texts, ["hub: First.", "hub: Second.", "hub: Third."]);
 }
 
 /// A first message can make a worker ask for permission a moment after
@@ -367,7 +367,7 @@ fn run_next_holds_message_until_later_check() {
 
     assert_eq!(
         *test_tools.herdr.prompts.borrow(),
-        [("docs-fix".to_owned(), "First.".to_owned())]
+        [("docs-fix".to_owned(), "hub: First.".to_owned())]
     );
     assert_eq!(
         list_send_files(&test_tools.run_path()),
@@ -400,7 +400,7 @@ fn run_next_holds_message_focused_during_check() {
 
     assert_eq!(
         *test_tools.herdr.prompts.borrow(),
-        [("docs-fix".to_owned(), "First.".to_owned())]
+        [("docs-fix".to_owned(), "hub: First.".to_owned())]
     );
     assert_eq!(
         list_send_files(&test_tools.run_path()),
@@ -451,7 +451,10 @@ fn run_next_moves_message_to_card_successor() {
 
     assert_eq!(
         *test_tools.herdr.prompts.borrow(),
-        [("demo-kb-012-fix".to_owned(), "Rebase on main.".to_owned())]
+        [(
+            "demo-kb-012-fix".to_owned(),
+            "hub: Rebase on main.".to_owned()
+        )]
     );
     let events = read_events(&test_tools.run_path());
     let moved = events
@@ -490,7 +493,7 @@ fn run_next_skips_message_claimed_elsewhere() {
 
     assert_eq!(
         *test_tools.herdr.prompts.borrow(),
-        [("docs-fix".to_owned(), "First.".to_owned())]
+        [("docs-fix".to_owned(), "hub: First.".to_owned())]
     );
     assert_eq!(
         list_send_files(&test_tools.run_path()),
@@ -530,7 +533,7 @@ fn run_next_sends_through_message_machine() {
     assert_eq!(test_tools.herdr.prompts.borrow().len(), 0);
     assert_eq!(
         *test_tools.herdr.machines["laptop"].prompts.borrow(),
-        [("docs-fix".to_owned(), "Rebase on main.".to_owned())]
+        [("docs-fix".to_owned(), "hub: Rebase on main.".to_owned())]
     );
 }
 

@@ -78,6 +78,9 @@ and its `unread` line each time; never list the run folder. When you
 need a count or summary of a folder's contents that `hub status`
 does not cover, hand it to a worker as a `model-routing`
 `local-script` job, per Rules, instead of running `ls` directly.
+Before you tell the user a `you` session waits, read its newest
+lines with `herdr agent read`. When it asks nothing, its "needs you"
+mark is stale: run `hub unflag <name>` and leave it out.
 Tell the user what each `you` session waits on, and keep that in
 every later message until the session no longer waits on the user,
 as `status-updates` says. When such a session has never reported to
@@ -386,6 +389,11 @@ needs-you, so `hub status` shows the card's sessions as `you`. While
 the mark is open, a session that handed off that card also shows
 `you`: that session waits on the same question, not a new one. Close
 its tab yourself once the session that took over runs.
+
+Before you list a question or task as waiting, even one a handoff
+carries, check where the user answers: your chat, the card's session
+panes, its Decisions and Log, `hub requests` and GitHub. Leave out what
+is settled; record a found answer with `hub answer`.
 
 When the user answers, run `hub answer <key> "<answer>"`. It moves
 the question to the card's Decisions with the answer and marks the

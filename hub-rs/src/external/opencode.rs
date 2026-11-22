@@ -27,6 +27,13 @@ pub(crate) struct Activity {
     pub word: ActivityWord,
 }
 
+/// A message OpenCode stores as the user's. It may come from the hub
+/// or the watch, which type into the session's pane too.
+pub(crate) struct UserMessage {
+    pub at: Timestamp,
+    pub text: String,
+}
+
 /// Whether a session works, finished its turn or stopped.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ActivityWord {
@@ -262,6 +269,41 @@ impl OpenCodeDb {
             .optional()
             .map_err(OpenCodeError::Database)?;
         Ok(directory.map(PathBuf::from))
+    }
+
+    /// Returns the session's user messages sent at or after `since`,
+    /// oldest first. Leaves out the first one, the prompt that started
+    /// the session.
+    pub(crate) fn read_user_messages_since(
+        &self,
+        session: &str,
+        since: Timestamp,
+    ) -> Result<Vec<UserMessage>, OpenCodeError> {
+        let Some(connection) = self.open()? else {
+            return Ok(Vec::new());
+        };
+        let mut statement = connection
+            .prepare(
+                "select time_created, coalesce(json_extract(data, '$.text'), '') \
+                 from session_message where session_id = ?1 and type = 'user' order by seq",
+            )
+            .map_err(OpenCodeError::Database)?;
+        let rows = statement
+            .query_map([session], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(OpenCodeError::Database)?;
+        let mut messages = Vec::new();
+        for row in rows.skip(1) {
+            let (created_ms, text) = row.map_err(OpenCodeError::Database)?;
+            let at = Timestamp::from_millisecond(created_ms).map_err(|error| {
+                OpenCodeError::BadRow(format!("an OpenCode message has a bad time: {error}"))
+            })?;
+            if at >= since {
+                messages.push(UserMessage { at, text });
+            }
+        }
+        Ok(messages)
     }
 
     /// Opens the database read-only, or returns `None` when this machine

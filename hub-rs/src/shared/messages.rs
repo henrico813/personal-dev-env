@@ -31,6 +31,10 @@ use crate::external::herdr::{Agent, AgentKind, AgentStatus, Herdr, HerdrCode, He
 static PASTED_TEXT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^\s*┃\s+\[Pasted ~\d+ lines?\]\s*$").unwrap());
 
+/// Starts each message the hub delivers, so the worker and `run_brief`
+/// tell it from a person's message.
+pub(crate) const SEND_PREFIX: &str = "hub: ";
+
 /// A message's file name without its state, such as
 /// `docs-fix.20261110-221502.1`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -304,7 +308,8 @@ pub(crate) fn deliver_message(
     now: &Zoned,
 ) -> Result<SendOutcome, HubError> {
     let name = stored.message.name.clone();
-    let mut result = herdr.prompt(&name, &stored.message.text);
+    let text = format!("{SEND_PREFIX}{}", stored.message.text);
+    let mut result = herdr.prompt(&name, &text);
     if let Err(HerdrError::Refused {
         code: HerdrCode::AgentPromptStalled,
         ..
