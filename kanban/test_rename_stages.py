@@ -18,6 +18,7 @@ NAME = "PDEV-KB-001 Some work.md"
 # A card in an old stage, with Log moves to two old stages. Its Context
 # bullet and Log note are not moves, so they keep their words.
 OLD_CARD = """---
+type: card
 stage: waiting-on-others
 stage_date: 2026-11-02
 ---
@@ -40,6 +41,7 @@ stage_date: 2026-11-02
 """
 
 NEW_CARD = """---
+type: card
 stage: blocked
 stage_date: 2026-11-02
 ---

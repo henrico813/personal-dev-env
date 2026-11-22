@@ -9,17 +9,17 @@
 [[make]]
 rule = "card_key"
 fields = { code = "PDEV", n = "12" }
-name = "PDEV-KB-012"
+name = "PDEV-012"
 
 [[make]]
 rule = "card_key"
 fields = { code = "HOME", n = "1000" }
-name = "HOME-KB-1000"
+name = "HOME-1000"
 
 [[make]]
 rule = "card_file"
-fields = { key = "PDEV-KB-012", title = "Retry uploads" }
-name = "PDEV-KB-012 Retry uploads.md"
+fields = { key = "PDEV-516", title = "Retry uploads" }
+name = "PDEV-516 Retry uploads.md"
 
 [[make]]
 rule = "plan_file"
@@ -38,8 +38,8 @@ name = "feat(hub): add requests"
 
 [[make]]
 rule = "agent"
-fields = { key = "PDEV-KB-012", role = "build" }
-name = "pdev-kb-012-build"
+fields = { key = "PDEV-516", role = "build" }
+name = "pdev-516-build"
 
 [[make]]
 rule = "hub"
@@ -53,8 +53,18 @@ name = "review-kanban-hub-7"
 
 [[parse]]
 rule = "card_key"
+name = "PDEV-516"
+fields = { code = "PDEV", n = "516" }
+
+[[parse]]
+rule = "card_key"
 name = "PDEV-KB-012"
 fields = { code = "PDEV", n = "012" }
+
+[[parse]]
+rule = "card_file"
+name = "PDEV-516 Retry uploads.md"
+fields = { key = "PDEV-516", title = "Retry uploads" }
 
 [[parse]]
 rule = "card_file"
@@ -76,7 +86,7 @@ name = "RESEARCH-PDEV-KB-012 Notes.md"
 
 [[parse]]
 rule = "card_file"
-name = "PDEV-412 Retry uploads.md"
+name = "PDEV-41 Retry uploads.md"
 
 [[parse]]
 rule = "branch"
@@ -86,6 +96,11 @@ fields = { type = "fix", words = "abc-12-login-timeout" }
 [[parse]]
 rule = "branch"
 name = "Feat/Bad_Name"
+
+[[parse]]
+rule = "agent"
+name = "pdev-516-plan-3"
+fields = { key = "pdev-516", role = "plan-3" }
 
 [[parse]]
 rule = "agent"

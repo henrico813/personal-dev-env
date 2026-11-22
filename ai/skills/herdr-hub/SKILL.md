@@ -42,7 +42,7 @@ it plainly, such as "Should I add this to rules.md?", and leave
 
 Keep no list of sessions of your own. Herdr's session names and the
 kanban cards are the record: a card's worker is named after the card,
-such as `demo-kb-007-impl`, and the card logs its sessions. Card stages
+such as `demo-007-impl`, and the card logs its sessions. Card stages
 never set Herdr agent states, even `blocked` and `done`, which come from
 `herdr agent wait`, not `hub status`. See every session with the `hub`
 command, instead of `ls`, `cat` or `herdr agent list`:
@@ -58,10 +58,10 @@ session:
     blocked 2, oldest 8 days
     open 24: 4 working, 2 hub, 3 you,
       5 kept, 1 to-close, 2 to-park; 12 parked
-    unread 2: demo-kb-007-impl docs-fix
+    unread 2: demo-007-impl docs-fix
 
     NAME              STATE    CTX   WHY
-    demo-kb-007-impl  hub      98k   unread report
+    demo-007-impl     hub      98k   unread report
 
 STATE says who must act: `working` needs nothing, `hub` waits on you,
 `you` waits on the user, `kept` is finished but holds something (WHY
@@ -365,18 +365,9 @@ that report. Never ask the user to close a worker.
 Put each question that waits on the user on the card it blocks with
 `hub ask`, so the question and the needs-you mark in the card's Log
 agree. Write the whole question to a file, so no message names it by
-number alone, and run `hub ask <key> <question file>`:
-
-    ## New model overnight
-
-    Deploy the new model tonight so you can test it in the morning?
-
-    - A. Deploy from the branch, with the undo path ready.
-    - B. Wait until you return.
-
-    Recommended: A, since you want to test it in the morning.
-    If no reply: nothing deploys; the worker goes on with its tests.
-    Depends on: your rule of 2026-11-09 to test it in the morning.
+number alone, and run `hub ask <key> <question file>`. Read
+[references/hub-brief.md](references/hub-brief.md) for a worked
+example of the question file.
 
 The `If no reply:` line says what stays blocked and what the worker
 does meanwhile. The work the question asks about never goes ahead
@@ -384,7 +375,8 @@ without the user's answer, and no agent answers a question for the
 user. Add `Depends on:` when the question rests on an earlier
 decision, and name who made it. A question that blocks no card, such
 as which changes a session review makes, goes on a new draft card
-made with `card new <project> "<title>"`, so every reader finds it.
+made with `card new <project> "<title>" --type <type>`, so every
+reader finds it.
 
 `hub ask` refuses a question with a part missing. It also refuses a
 card that already waits on the user, since a card shows one open

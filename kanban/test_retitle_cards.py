@@ -12,10 +12,10 @@ import retitle_cards
 # a type and a new title. The second gets only a new type.
 FIRST_CARD = """# Card retitle list
 
-- ABC-KB-001 (draft) feat: Retry uploads
+- ABC-001 (draft) feat: Retry uploads
   -> Retry failed uploads twice
 """
-LIST = f"{FIRST_CARD}- ABC-KB-002 (todo) docs: Write the setup guide\n"
+LIST = f"{FIRST_CARD}- ABC-002 (todo) docs: Write the setup guide\n"
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ def projects(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     ]:
         argv = ["new", "Demo", title, "--type", work_type, "--by", "user"]
         assert card.main(argv, projects) == 0
-    first = next(folder.glob("ABC-KB-001 *.md"))
+    first = next(folder.glob("ABC-001 *.md"))
     first.write_text(first.read_text().replace("work_type: chore\n", ""))
     return projects
 
@@ -68,9 +68,9 @@ def test_main_without_apply_only_prints_changes(
     assert code == 0
     assert read_notes(projects) == before
     assert capsys.readouterr().out == (
-        "ABC-KB-001 type feat\n"
-        "ABC-KB-001 title Retry failed uploads twice\n"
-        "ABC-KB-002 type docs\n"
+        "ABC-001 type feat\n"
+        "ABC-001 title Retry failed uploads twice\n"
+        "ABC-002 type docs\n"
         "2 cards to change\n"
     )
 
@@ -94,12 +94,12 @@ def test_apply_sets_cards_and_undo_restores(
     )
 
     assert code == 0
-    first = card.find_card(projects, "ABC-KB-001")
+    first = card.find_card(projects, "ABC-001")
     assert (first.work_type, first.title) == (
         "feat",
         "Retry failed uploads twice",
     )
-    assert card.find_card(projects, "ABC-KB-002").work_type == "docs"
+    assert card.find_card(projects, "ABC-002").work_type == "docs"
     undo = shlex.split(capsys.readouterr().out.splitlines()[-1])[-1]
     subprocess.run(["sh", undo], check=True)
     assert read_notes(projects) == before
@@ -121,8 +121,8 @@ def test_main_apply_failure_still_prints_undo(
     real_main = card.main
 
     def fail_second_card(argv: list[str], projects: Path) -> int:
-        """Run card, but fail on ABC-KB-002 as a dropped drive would."""
-        if argv[1] == "ABC-KB-002":
+        """Run card, but fail on ABC-002 as a dropped drive would."""
+        if argv[1] == "ABC-002":
             raise PermissionError(13, "Permission denied")
         return real_main(argv, projects)
 
@@ -135,8 +135,8 @@ def test_main_apply_failure_still_prints_undo(
 
     out, err = capsys.readouterr()
     assert code == 1
-    assert card.find_card(projects, "ABC-KB-001").work_type == "feat"
-    assert "retitle_cards: stopped at ABC-KB-002\n" in err
+    assert card.find_card(projects, "ABC-001").work_type == "feat"
+    assert "retitle_cards: stopped at ABC-002\n" in err
     undo = shlex.split(out.splitlines()[-1])[-1]
     assert f"backup: {Path(undo).parent}\n" in out
     subprocess.run(["sh", undo], check=True)
@@ -147,26 +147,26 @@ def test_main_apply_failure_still_prints_undo(
     ("lines", "problem"),
     [
         pytest.param(
-            "- ABC-KB-002 (todo) docs: Write the setup guide\n"
+            "- ABC-002 (todo) docs: Write the setup guide\n"
             "  -> fix the guide.\n",
-            "ABC-KB-002 T6 form: starts with a lower-case letter,"
+            "ABC-002 T6 form: starts with a lower-case letter,"
             " ends with a period",
             id="failing-title",
         ),
         pytest.param(
-            "- ABC-KB-009 (draft) fix: Fix the guide\n",
-            "no card ABC-KB-009",
+            "- ABC-009 (draft) fix: Fix the guide\n",
+            "no card ABC-009",
             id="unknown-key",
         ),
         pytest.param(
-            "- ABC-KB-002 (todo) bug: Write the setup guide\n",
-            'ABC-KB-002 "bug" is not a work type',
+            "- ABC-002 (todo) bug: Write the setup guide\n",
+            'ABC-002 "bug" is not a work type',
             id="unknown-type",
         ),
         pytest.param(
-            "- ABC-KB-002 (in review) docs: Write the setup guide\n",
+            "- ABC-002 (in review) docs: Write the setup guide\n",
             "line 5 is not a card line:"
-            " - ABC-KB-002 (in review) docs: Write the setup guide",
+            " - ABC-002 (in review) docs: Write the setup guide",
             id="not-card-line",
         ),
         pytest.param(
@@ -176,12 +176,12 @@ def test_main_apply_failure_still_prints_undo(
         ),
         pytest.param(
             "  -> Retry uploads twice\n",
-            "line 5: a second -> for ABC-KB-001",
+            "line 5: a second -> for ABC-001",
             id="second-arrow",
         ),
         pytest.param(
-            "- abc-kb-001 (draft) fix: Retry uploads\n",
-            "line 5: abc-kb-001 is listed twice",
+            "- abc-001 (draft) fix: Retry uploads\n",
+            "line 5: abc-001 is listed twice",
             id="key-twice",
         ),
     ],

@@ -35,9 +35,10 @@ handing a task to an agent and reviewing it, `herdr-handoff` for
 handing work to a new session in a new Herdr workspace, `herdr-hub`
 for the session that coordinates other Herdr sessions,
 `auto-run` for working an approved list of cards and roadmaps to
-pull requests without the user, and `conclude-session` for closing
+pull requests without the user, `conclude-session` for closing
 out a session after one
-pick from the user; they
+pick from the user, and `daily-shutdown` for the end-of-day shutdown;
+they
 install only to
 `~/.agents/skills/`, and the OpenCode commands load them. Shared instructions
 require skill selection after reading supplied context and before domain work.
@@ -54,9 +55,9 @@ shared workflow skills. Those copies replace any `## Lessons` section with the
 empty one from `skills/`, so the installer then runs `skill-lessons render` to
 restore saved lessons. A failed render prints a warning and leaves the install
 in place. `install client` installs only the `obsidian-zettel`,
-`obsidian-daily-note`, `plain-direct-english`, `behavior-focused-testing`,
-`delegate`, `model-routing`, `skill-fix` and `status-updates`
-skills, the
+`obsidian-daily-note`, `daily-shutdown`, `plain-direct-english`,
+`behavior-focused-testing`, `delegate`, `model-routing`, `skill-fix`
+and `status-updates` skills, the
 `skill-lessons` tool and its render
 step, the `skill-fix` tool, and the OpenCode config
 without the plan and design commands or the plan reviewer agents. It removes

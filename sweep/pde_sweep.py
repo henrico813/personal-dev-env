@@ -62,7 +62,11 @@ BRANCH_FORMAT = (
     "--format=%(refname:short)%09%(upstream)%09%(upstream:remoteref)"
     "%09%(committerdate:unix)"
 )
-CARD_KEY_RE = re.compile(r"^[A-Z][A-Z0-9]*-KB-\d+$")
+# An old -KB- key, or a new key whose code has exactly four characters,
+# so ISO-8601 is not a key. Keys card makes for other codes are skipped.
+CARD_KEY_RE = re.compile(
+    r"^(?:[A-Z][A-Z0-9]*-KB-\d+|[A-Z][A-Z0-9]{3}-\d{3,})$"
+)
 PR_URL_RE = re.compile(r"https://github\.com/[\w.-]+/[\w.-]+/pull/\d+")
 
 
