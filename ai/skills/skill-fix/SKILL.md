@@ -108,15 +108,32 @@ agent, unless the linking skill names someone else.
    skill-fix start <skill> --reset
    ```
 
+   Then get the privacy review in the `pull-request` skill's
+   Guardrail 5, since `commit` can push the fix. Fill in its brief
+   with the fix worktree as `<worktree>`. Give the added lines of the
+   patch file in place of the brief's item 1, and the message file in
+   place of its item 2. Keep its item 3, the branch name. Skip its
+   item 4, since the tool writes the fix pull request's title and body
+   from fixed text that names no PC. Leave out `<BASE>` and
+   `<PR message file>`, since no item you keep uses them. Skip three
+   parts of the guardrail. Its Testing line and amend step fit only
+   pull-request's own steps. Its term scan runs inside `commit`.
+
+   To fix a hit in the diff, run the `start` and `git apply` lines of
+   step 3 item 3, edit the fix, and save it again as above. Fix a hit
+   in the message file in place. Get a new review each time the patch
+   or message file changes, in this step or a later one. Show a fix
+   only after its review reports zero hits.
+
 2. Offer the fix once, at the time the linking skill names. Show the
    user the message and the diff. To offer several fixes in one
    message, as conclude-session does, write and save each fix in
    turn, then show them all.
 
-   When a hub started you to write the fix, put the message, the diff
-   and the patch file's path in your report and end your turn. The
-   hub reviews them, shows them to the user and sends you the answer
-   with `hub send`.
+   When a hub started you to write the fix, put the message, the diff,
+   the patch file's path and the privacy review's Hits line in your
+   report and end your turn. The hub reviews them, shows them to the
+   user and sends you the answer with `hub send`.
 3. Wait for the answer. For each fix the user says yes to, in order,
    run `start`. When its `edits` is true, act as step 2 item 1 says.
    Otherwise apply the fix's diff and commit it:
@@ -211,6 +228,8 @@ text". Mention each finding to the user once.
 
 - The user knows whether the fix was committed or not saved.
 - The user saw the exact diff before `commit` ran.
+- A privacy review of the saved fix reported zero hits before the
+  user saw it.
 - The fix changes one skill's folder and passes the Final checks of
   skill-development.
 - The message has a `Missed:` and an `Intent:` line, with no task
