@@ -1,5 +1,5 @@
 //! Runs `hub at`, which stores a message to send at a time today, and
-//! holds each stored message once its time comes, for `hub next`. Read
+//! holds each stored message once its time comes, for `run_next`. Read
 //! `run_at`, then `hold_due_messages`.
 //!
 //! Each timed message is one file in the run folder's `timed/`, named
@@ -29,7 +29,7 @@ pub struct AtRequest {
     /// The time today, in this machine's time zone.
     pub time: Time,
     pub to: Recipients,
-    /// The file the text came from, which `hub next` names in its line.
+    /// The file the text came from, which `run_next` names in its line.
     pub file: PathBuf,
     pub text: String,
 }
@@ -92,7 +92,7 @@ pub fn run_at(run: &RunFolder, request: AtRequest, now: &Zoned) -> Result<Outcom
 
 /// Holds each timed message whose time has come for each of its
 /// sessions, logs `timed_held` and deletes its file. The held messages
-/// then go out as `hub send`'s held ones do. A crash or an error after
+/// then go out through `deliver_held_messages`. A crash or an error after
 /// some holds holds the message again on the next check.
 pub(crate) fn hold_due_messages(
     run: &RunFolder,

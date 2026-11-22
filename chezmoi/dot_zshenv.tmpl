@@ -6,6 +6,10 @@ export WORKTRUNK_SYSTEM_CONFIG_PATH="$HOME/.config/pde/worktrunk.toml"
 # caller put first, such as a test's fake tools, in front of it.
 (( ${path[(Ie)$HOME/.local/bin]} )) || path=("$HOME/.local/bin" $path)
 {{- if has "development" .pde.tiers }}
+# pde-ssh-agent.service is the one SSH agent. Add keys with ssh-add in a
+# terminal; ssh never asks for a passphrase in a popup.
+export SSH_AUTH_SOCK="${XDG_RUNTIME_DIR:-/run/user/$UID}/pde-ssh-agent.socket"
+export SSH_ASKPASS_REQUIRE=never
 # Load the Vibe Goog endpoint for interactive and agent Zsh shells.
 env_file="$HOME/.config/vibe/goog.env"
 

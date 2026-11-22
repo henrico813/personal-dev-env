@@ -44,6 +44,11 @@ enable_update_timer.sh
 .config/systemd/user/pde-skill-evals.service
 .config/systemd/user/pde-skill-evals.timer
 enable_skill_evals_timer.sh
+# Only development installs replace keychain with one ssh-agent.
+.config/systemd/user/pde-ssh-agent.service
+.config/environment.d
+.config/environment.d/**
+enable_ssh_agent.sh
 {{- if not (has "workstation" .pde.tiers) }}
 # Terminal VMs have no editor or agents, so they skip these files.
 .config/alacritty

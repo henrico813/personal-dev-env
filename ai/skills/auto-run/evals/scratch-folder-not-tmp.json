@@ -1,0 +1,15 @@
+{
+  "id": "scratch-folder-not-tmp",
+  "source": "an auto-run script made its scratch folder with a bare mktemp -d, in /tmp",
+  "rule": "Auto Run",
+  "correction": true,
+  "prompt": "You are writing a pull request that adds a shell script to the auto-run skill. Any agent of a run may start the script, from any folder and with no PR folder of its own. While it runs, it writes a few files to a scratch folder and removes them at the end. Give the line of the script that makes its scratch folder.",
+  "pass": [
+    "(?s)mktemp -d (-p )?\"?((~|\\$HOME|\\$\\{HOME\\})/\\.local/state|\\$\\{?XDG_STATE_HOME)|XDG_STATE_HOME:-\\$HOME/\\.local/state\\}?.{0,200}mktemp -d"
+  ],
+  "fail": [
+    "(?<!not )(?<!not `)(?<!never )(?<!never `)(?<!don't )(?<!don't `)(?<!avoid )(?<!avoid `)(?<!instead of )(?<!instead of `)\\b\\w+=\\s*\"?\\$\\(mktemp -d( (-p )?\"?(/tmp|\\$\\{?TMPDIR)[^)]*)?\\)"
+  ],
+  "good": "`work=$(mktemp -d \"${XDG_STATE_HOME:-$HOME/.local/state}/sync-check.XXXXXX\") || exit 1`, then `trap 'rm -rf \"$work\"' EXIT` to remove it at the end.",
+  "bad": "`work=$(mktemp -d) || exit 1`, then `trap 'rm -rf \"$work\"' EXIT` to remove it at the end."
+}

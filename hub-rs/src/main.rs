@@ -32,8 +32,8 @@ use hub::watch::wait::{self, WaitRequest};
 use hub::watch::{self, WatchOptions, WatchStart};
 use jiff::Zoned;
 
-/// How often `hub next` checks for news, `hub watch` checks the
-/// workers, and `hub handoff` checks for the next hub's first reply,
+/// How often `run_next` checks for news, the watch checks the
+/// workers, and `run_handoff` checks for the next hub's first reply,
 /// when `HUB_POLL_SECONDS` is not set.
 const DEFAULT_POLL: Duration = Duration::from_secs(5);
 
@@ -417,8 +417,8 @@ fn find_this_program() -> Result<PathBuf, HubError> {
     })
 }
 
-/// Starts a dead watch again for the run, as `hub report` and
-/// `hub wait` do after their work. A program path that cannot be read
+/// Starts a dead watch again for the run, after `run_report` or
+/// `run_wait` saves its work. A program path that cannot be read
 /// only skips the restart, since that work is already saved.
 fn restart_watch(run: &RunFolder, state_folder: &Path) -> Option<String> {
     let program = env::current_exe().ok()?;

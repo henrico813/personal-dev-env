@@ -63,12 +63,10 @@ of your own. Never print whole messages.
 
 ### 2. Ask once
 
-Send session-review's step 6 message with three changes:
+Send session-review's step 6 message with two changes:
 
-- Number every item in one run, proposals first, then fixes, so
-  each number names one item.
 - Before its last line, add a Closing steps list, numbered after the
-  fixes, with each step that applies:
+  last proposal or fix, with each step that applies:
   - Handoff: hand the work that is left to a new session. Offer it
     when work is left, including work planned but not started.
   - Status update: a recap a new reader follows.

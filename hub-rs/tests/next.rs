@@ -347,7 +347,7 @@ fn run_next_only_lists_finished_sessions() {
     );
     assert_eq!(
         second,
-        "to-park demo-kb-007-impl: DEMO-KB-007 review; run hub clean"
+        "to-park demo-kb-007-impl: DEMO-KB-007 in-review; run hub clean"
     );
     assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
     assert!(test_tools.cards.links.borrow().is_empty());
@@ -453,7 +453,7 @@ fn run_next_skips_handoff_of_finished_worker() {
 
     assert_eq!(
         first,
-        "to-park demo-kb-007-impl: DEMO-KB-007 review; run hub clean"
+        "to-park demo-kb-007-impl: DEMO-KB-007 in-review; run hub clean"
     );
     assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
     assert!(test_tools.herdr.prompts.borrow().is_empty());

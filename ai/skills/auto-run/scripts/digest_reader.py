@@ -13,6 +13,7 @@ file.
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -104,7 +105,10 @@ def ask_model(model: str, lines: list[str], question: str) -> dict:
         ValueError: The reply holds no JSON object.
         subprocess.TimeoutExpired: The model did not finish in time.
     """
-    with tempfile.TemporaryDirectory() as folder:
+    # Not /tmp, which every agent of a run shares.
+    state = os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state"
+    Path(state).mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=state) as folder:
         numbered = Path(folder) / "digest.txt"
         numbered.write_text(
             "".join(f"{n}\t{text}\n" for n, text in enumerate(lines, 1))
