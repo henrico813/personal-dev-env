@@ -36,6 +36,12 @@ is about.
 - Say what each thing does for the user before its label. Write "the
   approvals-file pull request (P4, #383)", not "P4". Explain every
   term, such as "batch 2", in every message.
+- A reply key, such as `Q7A`, is a term too. When one comes up in a
+  later message, such as one that confirms an answer, first say in
+  words what the question was about or what the user picked: "fix
+  branches are now named by skill, as you picked in `Q7A`", not
+  "`Q7A` is done". The user cannot tell what a bare key read later
+  stands for, and may take it for a new question.
 - Name the repository the first time an update names each pull
   request, card or plan, such as "inkwell #18". Do this even when
   the update covers only one repository, since the user works on

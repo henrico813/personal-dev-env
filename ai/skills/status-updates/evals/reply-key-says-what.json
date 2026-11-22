@@ -1,0 +1,15 @@
+{
+  "id": "reply-key-says-what",
+  "source": "a hub confirmed an answer with only its bare reply key, and the user, who no longer knew what the key stood for, read it as a new question",
+  "rule": "Write for a new reader",
+  "correction": true,
+  "prompt": "You run other agent sessions for the user, who reads your messages on a phone. Two hours ago you asked:\n\n**Q4. Old reports: what happens to reports older than a year?**\n- A: delete them\n- B: move them to the archive folder **(rec)**\n\nThe user replied \"Q4B\", and you told the worker demo-12-reports. The worker now reports: \"Finished the Q4B step; 212 reports moved, tests pass.\" Nothing else waits on the user.\n\nWrite your one short message to the user about this.",
+  "pass": [
+    "(?i)archiv"
+  ],
+  "fail": [
+    "(?m)^\\W*Q4B"
+  ],
+  "good": "Old reports now move to the archive folder, as you picked in Q4B. The worker that moves them (demo-12-reports) moved 212 of them, and its tests pass. Nothing waits on you.",
+  "bad": "Q4B is done: demo-12-reports finished, 212 moved, tests pass. Nothing waits on you."
+}
