@@ -31,7 +31,7 @@ pub fn run_brief(tools: &Tools<'_>, run: &RunFolder, now: Timestamp) -> Result<O
         Ok(board) => format!("board {}; {question_count}", board.counts),
         Err(error) => format!("board: {error}"),
     }];
-    board_lines.extend(board.as_ref().ok().and_then(Board::blocked_line));
+    board_lines.extend(board.as_ref().ok().and_then(Board::format_blocked_line));
     let blocked = board.map(|board| board.blocked).unwrap_or_default();
     let mut sections = vec![board_lines.join("\n")];
     let approvals = list_pending_approvals(tools, now)?;
@@ -139,7 +139,7 @@ fn list_pending_approvals(tools: &Tools<'_>, now: Timestamp) -> Result<Vec<Strin
         .iter()
         .map(|request| {
             let left = request
-                .time_left(now)
+                .find_time_left(now)
                 .map_or_else(String::new, |left| format!(" {} left", format_span(left)));
             format!(
                 "approval {}{left} {}",

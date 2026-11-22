@@ -173,27 +173,27 @@ fn make_ask(tokens: u64) -> String {
 /// Returns the saved asks at `path`, or none when the file does not
 /// exist.
 fn read_asked_tokens(path: &Path) -> Result<BTreeMap<String, u64>, HubError> {
-    let file_error = |source| HubError::File {
+    let wrap_file_error = |source| HubError::File {
         path: path.to_owned(),
         source,
     };
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
-        Err(source) => return Err(file_error(source)),
+        Err(source) => return Err(wrap_file_error(source)),
     };
-    serde_json::from_str(&text).map_err(|error| file_error(error.into()))
+    serde_json::from_str(&text).map_err(|error| wrap_file_error(error.into()))
 }
 
 /// Writes the saved asks whole to `path`, making its folder first.
 fn save_asked_tokens(path: &Path, asked: &BTreeMap<String, u64>) -> Result<(), HubError> {
-    let file_error = |source| HubError::File {
+    let wrap_file_error = |source| HubError::File {
         path: path.to_owned(),
         source,
     };
     if let Some(folder) = path.parent() {
-        fs::create_dir_all(folder).map_err(file_error)?;
+        fs::create_dir_all(folder).map_err(wrap_file_error)?;
     }
-    let text = serde_json::to_string(asked).map_err(|error| file_error(error.into()))?;
+    let text = serde_json::to_string(asked).map_err(|error| wrap_file_error(error.into()))?;
     run_folder::write_file_whole(path, &text)
 }

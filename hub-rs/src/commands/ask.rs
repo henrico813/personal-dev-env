@@ -37,7 +37,10 @@ pub fn run_ask(tools: &Tools<'_>, key: &CardKey, text: &str) -> Result<Outcome, 
             done: format!("added the question to {} {OPEN_QUESTIONS}", key.as_str()),
             error: Box::new(error.into()),
         })?;
-    Ok(Outcome::line(format!("{} asks '{title}'", key.as_str())))
+    Ok(Outcome::from_line(format!(
+        "{} asks '{title}'",
+        key.as_str()
+    )))
 }
 
 /// Moves the card's open question to Decisions, with `answer` as its
@@ -81,7 +84,7 @@ pub fn run_answer(tools: &Tools<'_>, key: &CardKey, answer: &str) -> Result<Outc
         .cards
         .add_item(key, DECISIONS, &format_item(&decision))?;
     let mut done = format!("added the answer to {} {DECISIONS}", key.as_str());
-    let partly_done = |done: &str, error| HubError::PartlyDone {
+    let make_partly_done_error = |done: &str, error| HubError::PartlyDone {
         done: done.to_owned(),
         error: Box::new(HubError::Card(error)),
     };
@@ -89,14 +92,14 @@ pub fn run_answer(tools: &Tools<'_>, key: &CardKey, answer: &str) -> Result<Outc
         tools
             .cards
             .remove_item(key, OPEN_QUESTIONS, index + 1)
-            .map_err(|error| partly_done(&done, error))?;
+            .map_err(|error| make_partly_done_error(&done, error))?;
         done.push_str(" and removed the question");
     }
     tools
         .cards
         .add_mark(key, Mark::Answered, answer)
-        .map_err(|error| partly_done(&done, error))?;
-    Ok(Outcome::line(format!(
+        .map_err(|error| make_partly_done_error(&done, error))?;
+    Ok(Outcome::from_line(format!(
         "{} answered '{title}': {answer}",
         key.as_str()
     )))

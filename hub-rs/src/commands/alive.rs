@@ -21,7 +21,7 @@ pub fn run_alive(tools: &Tools<'_>, session: &str, now: &Zoned) -> Result<Outcom
         return Err(OpenCodeError::NoSession(session.to_owned()).into());
     };
     let newest = activity.newest.to_zoned(now.time_zone().clone());
-    Ok(Outcome::line(format!(
+    Ok(Outcome::from_line(format!(
         "{} messages, newest {}, last tool {}, {}",
         activity.message_count,
         newest.strftime("%H:%M:%S"),

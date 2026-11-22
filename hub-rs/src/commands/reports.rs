@@ -61,7 +61,7 @@ pub fn run_read(
         .unwrap_or_default()
         .to_string_lossy()
         .into_owned();
-    let archived_but = |error: HubError| HubError::PartlyDone {
+    let make_archived_but_error = |error: HubError| HubError::PartlyDone {
         done: format!("archived {archive_name}"),
         error: Box::new(error),
     };
@@ -72,17 +72,18 @@ pub fn run_read(
             archive: archive_name.clone(),
         },
     };
-    events::append_event(run, &read).map_err(archived_but)?;
+    events::append_event(run, &read).map_err(make_archived_but_error)?;
     if let Some(note) = &request.note {
-        run.append_note_line(note, now).map_err(archived_but)?;
+        run.append_note_line(note, now)
+            .map_err(make_archived_but_error)?;
     }
     let text = fs::read_to_string(&archive).map_err(|source| {
-        archived_but(HubError::File {
+        make_archived_but_error(HubError::File {
             path: archive.clone(),
             source,
         })
     })?;
-    let others = run.list_reports(now).map_err(archived_but)?;
+    let others = run.list_reports(now).map_err(make_archived_but_error)?;
     let mut lines: Vec<String> = text.lines().map(str::to_owned).collect();
     lines.push(if others.is_empty() {
         "unread: -".to_owned()
@@ -95,7 +96,7 @@ pub fn run_read(
         tools
             .cards
             .add_note(&key, note)
-            .map_err(|error| archived_but(error.into()))?;
+            .map_err(|error| make_archived_but_error(error.into()))?;
     }
     Ok(Outcome { lines })
 }
@@ -110,7 +111,7 @@ pub fn run_report(run: &RunFolder, name: &AgentName, text: &str) -> Result<Outco
         ));
     }
     run.write_report(name, text)?;
-    Ok(Outcome::line(format!(
+    Ok(Outcome::from_line(format!(
         "report {} written, {} lines",
         name.as_str(),
         text.lines().count()
@@ -121,5 +122,5 @@ pub fn run_report(run: &RunFolder, name: &AgentName, text: &str) -> Result<Outco
 /// the day changed, it adds a date heading first.
 pub fn run_note(run: &RunFolder, text: &str, now: &Zoned) -> Result<Outcome, HubError> {
     let stamp = run.append_note_line(text, now)?;
-    Ok(Outcome::line(format!("noted {stamp}")))
+    Ok(Outcome::from_line(format!("noted {stamp}")))
 }

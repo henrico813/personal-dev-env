@@ -731,7 +731,7 @@ pub fn find_run_folder(
 /// needs two locks held, so while the user's hub handles a line during
 /// a single auto run the search takes the auto run.
 fn find_hub_folder(local_state: &Path) -> Result<RunFolder, HubError> {
-    let file_error = |source| HubError::File {
+    let wrap_file_error = |source| HubError::File {
         path: local_state.to_path_buf(),
         source,
     };
@@ -739,10 +739,10 @@ fn find_hub_folder(local_state: &Path) -> Result<RunFolder, HubError> {
         Ok(entries) => entries
             .map(|entry| entry.map(|entry| entry.path()))
             .collect::<Result<_, _>>()
-            .map_err(file_error)?,
+            .map_err(wrap_file_error)?,
         // No state folder means no hub ever ran here.
         Err(source) if source.kind() == io::ErrorKind::NotFound => Vec::new(),
-        Err(source) => return Err(file_error(source)),
+        Err(source) => return Err(wrap_file_error(source)),
     };
 
     let mut running = Vec::new();
@@ -843,7 +843,7 @@ fn read_events_time(run: &RunFolder) -> Result<Option<SystemTime>, HubError> {
 /// Tells whether a command works with `--machine`, which only
 /// `status`, `send`, `flag` and `unflag` do. The rest read this
 /// machine's files and database, or its own Herdr sidebar.
-pub fn takes_machine(command: &Command) -> bool {
+pub fn can_take_machine(command: &Command) -> bool {
     match command {
         Command::Status { .. }
         | Command::Send { .. }
@@ -925,10 +925,10 @@ mod tests {
         let mut pages = vec![("hub".to_owned(), hub.render_long_help().to_string())];
         for command in hub.get_subcommands_mut() {
             let path = format!("hub {}", command.get_name());
-            pages.push((path.clone(), help_and_example(command)));
+            pages.push((path.clone(), format_help_and_example(command)));
             for step in command.get_subcommands_mut() {
                 let step_path = format!("{path} {}", step.get_name());
-                pages.push((step_path, help_and_example(step)));
+                pages.push((step_path, format_help_and_example(step)));
             }
         }
 
@@ -940,7 +940,7 @@ mod tests {
     }
 
     /// One command's long help, then its example as written in the source.
-    fn help_and_example(command: &mut clap::Command) -> String {
+    fn format_help_and_example(command: &mut clap::Command) -> String {
         let example = command
             .get_after_help()
             .map(ToString::to_string)
@@ -1039,7 +1039,7 @@ mod tests {
         ];
 
         for (case_name, command, expected) in cases {
-            assert_eq!(takes_machine(&command), expected, "{case_name}");
+            assert_eq!(can_take_machine(&command), expected, "{case_name}");
         }
     }
 }

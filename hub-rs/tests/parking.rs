@@ -32,7 +32,7 @@ fn park_worker(test_tools: &mut TestTools, session_id: &str) {
     });
     fs::write(parked.join(format!("{WORKER}.json")), record.to_string()).unwrap();
     write_opencode_session(
-        &test_tools.opencode_path(),
+        &test_tools.build_opencode_path(),
         "ses_007",
         Path::new("/home/u/wt/demo-kb-007"),
     );
@@ -147,7 +147,7 @@ fn run_send_starts_nothing_for_unknown_session() {
     park_worker(&mut test_tools, "ses_007");
     let other = test_tools.path().join("other.db");
     write_opencode_session(&other, "ses_other", Path::new("/home/u"));
-    fs::rename(other, test_tools.opencode_path()).unwrap();
+    fs::rename(other, test_tools.build_opencode_path()).unwrap();
 
     let error = send(&test_tools, "Review comments are in.").unwrap_err();
 
@@ -268,7 +268,7 @@ fn run_next_prints_failed_reopen_once() {
     // Park the worker, then lose its session from the database.
     test_tools.herdr.agents.clear();
     park_worker(&mut test_tools, "ses_007");
-    fs::remove_file(test_tools.opencode_path()).unwrap();
+    fs::remove_file(test_tools.build_opencode_path()).unwrap();
 
     let first = check_once(&test_tools);
     let second = check_once(&test_tools);

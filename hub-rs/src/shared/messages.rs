@@ -156,7 +156,7 @@ pub(crate) struct MessageCounts {
 
 impl MessageCounts {
     /// Tells whether any message waits, is unsure or was not sent.
-    pub(crate) fn any(&self) -> bool {
+    pub(crate) fn has_any(&self) -> bool {
         self.held + self.unsure + self.not_sent > 0
     }
 }
@@ -213,7 +213,7 @@ pub(crate) fn deliver_held_messages(
         let (herdr, known): (&dyn Herdr, &[Agent]) = match &stored.message.machine {
             None => (tools.herdr, agents),
             Some(label) => {
-                machine_herdr = tools.herdr.on_machine(label);
+                machine_herdr = tools.herdr.clone_for_machine(label);
                 let listed = machine_agents
                     .entry(label.clone())
                     .or_insert_with(|| machine_herdr.list_agents().ok());
@@ -321,12 +321,12 @@ pub(crate) fn deliver_message(
     match result {
         Ok(()) => {
             let done = format!("sent {name}");
-            let sent_but = |error: HubError| HubError::PartlyDone {
+            let make_sent_but_error = |error: HubError| HubError::PartlyDone {
                 done: done.clone(),
                 error: Box::new(error),
             };
             fs::remove_file(&stored.path).map_err(|source| {
-                sent_but(HubError::File {
+                make_sent_but_error(HubError::File {
                     path: stored.path.clone(),
                     source,
                 })
@@ -336,7 +336,7 @@ pub(crate) fn deliver_message(
                 id: stored.id,
                 via,
             };
-            append_message_event(run, delivered, now).map_err(sent_but)?;
+            append_message_event(run, delivered, now).map_err(make_sent_but_error)?;
             Ok(SendOutcome::Delivered)
         }
         Err(error) if error.may_have_arrived() => {
@@ -399,7 +399,7 @@ pub(crate) fn find_card_successor(cards: &dyn Cards, name: &str, agents: &[Agent
 /// Renames a held file to sending. Returns `None` when another
 /// process took it first, so no two processes send one message.
 pub(crate) fn claim_message(stored: StoredMessage) -> Result<Option<StoredMessage>, HubError> {
-    let sending = state_path(&stored.path, &stored.id, SendState::Sending);
+    let sending = build_state_path(&stored.path, &stored.id, SendState::Sending);
     match fs::rename(&stored.path, &sending) {
         Ok(()) => Ok(Some(StoredMessage {
             path: sending,
@@ -564,7 +564,7 @@ pub(crate) fn take_held_messages(
         };
         // Deleting the file first would lose the text if the event write failed.
         if let Err(error) = append_message_event(run, delivered, now) {
-            let held = state_path(&claimed.path, &claimed.id, SendState::Held);
+            let held = build_state_path(&claimed.path, &claimed.id, SendState::Held);
             let _ = fs::rename(&claimed.path, held);
             return Err(error);
         }
@@ -615,7 +615,7 @@ fn mark_not_sent(
     reason: &str,
     now: &Zoned,
 ) -> Result<SendOutcome, HubError> {
-    let not_sent = state_path(&stored.path, &stored.id, SendState::NotSent);
+    let not_sent = build_state_path(&stored.path, &stored.id, SendState::NotSent);
     fs::rename(&stored.path, &not_sent).map_err(|source| HubError::File {
         path: stored.path.clone(),
         source,
@@ -665,7 +665,7 @@ fn place_message(
         let path = sends.join(format!("{}.{}", id.0, state.suffix()));
         let taken = [SendState::Held, SendState::Sending, SendState::NotSent]
             .into_iter()
-            .any(|other| state_path(&path, &id, other).exists());
+            .any(|other| build_state_path(&path, &id, other).exists());
         if taken {
             number += 1;
             continue;
@@ -683,7 +683,7 @@ fn place_message(
 }
 
 /// Returns the path of the same message in another state.
-fn state_path(path: &Path, id: &MessageId, state: SendState) -> PathBuf {
+fn build_state_path(path: &Path, id: &MessageId, state: SendState) -> PathBuf {
     path.with_file_name(format!("{}.{}", id.0, state.suffix()))
 }
 
@@ -699,12 +699,12 @@ fn split_message_id(id: &str) -> Option<(&str, &str, u32)> {
 
 /// Reads one message file.
 fn read_message_file(path: &Path) -> Result<Message, HubError> {
-    let file_error = |source: io::Error| HubError::File {
+    let wrap_file_error = |source: io::Error| HubError::File {
         path: path.to_owned(),
         source,
     };
-    let text = fs::read_to_string(path).map_err(file_error)?;
-    serde_json::from_str(&text).map_err(|error| file_error(error.into()))
+    let text = fs::read_to_string(path).map_err(wrap_file_error)?;
+    serde_json::from_str(&text).map_err(|error| wrap_file_error(error.into()))
 }
 
 /// Returns a message as the JSON its file holds.
@@ -741,7 +741,7 @@ mod tests {
             older_waiting: usize,
             expected: Delivery,
         }
-        let codex = |status| Agent {
+        let make_codex_agent = |status| Agent {
             kind: AgentKind::Other("codex".to_owned()),
             ..make_agent("docs-fix", status)
         };
@@ -784,13 +784,13 @@ mod tests {
             },
             Case {
                 name: "codex-working",
-                target: Target::Live(codex(AgentStatus::Working)),
+                target: Target::Live(make_codex_agent(AgentStatus::Working)),
                 older_waiting: 0,
                 expected: Delivery::Hold(HoldReason::BusyOtherKind("codex".to_owned())),
             },
             Case {
                 name: "codex-idle",
-                target: Target::Live(codex(AgentStatus::Idle)),
+                target: Target::Live(make_codex_agent(AgentStatus::Idle)),
                 older_waiting: 0,
                 expected: Delivery::Now,
             },

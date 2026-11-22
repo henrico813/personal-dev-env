@@ -63,7 +63,7 @@ fn clean_sessions(
     let outcomes = tidy::run_tidy_pass(tools, run, &collected, &lock, now, dry_run)?;
     let mut lines: Vec<String> = outcomes
         .iter()
-        .map(|outcome| outcome.line(dry_run))
+        .map(|outcome| outcome.format_line(dry_run))
         .collect();
     if !outcomes.iter().any(TidyOutcome::is_change) {
         lines.push("nothing to close".to_owned());
@@ -93,9 +93,9 @@ pub fn run_park(
     let Some(facts) = collected.sessions.iter().find(|facts| facts.name == name) else {
         return Err(HubError::NotDone(format!("no session {name}")));
     };
-    let stays = |why: &str| HubError::NotDone(format!("{name} stays: {why}"));
+    let make_stays_error = |why: &str| HubError::NotDone(format!("{name} stays: {why}"));
     if let Some(problem) = tidy::find_unsafe_problem(&collected) {
-        return Err(stays(problem));
+        return Err(make_stays_error(problem));
     }
     let (panes, quiet_shells) = match &facts.agent {
         Some(agent) => tidy::read_tab_panes(tools, &agent.tab_id)?,
@@ -106,13 +106,14 @@ pub fn run_park(
     let judged = [(facts, verdict)];
     let actions = tidy::plan_tidy_actions(&judged, &panes, tools.own_pane, &quiet_shells);
     if is_park && !matches!(actions.as_slice(), [TidyAction::Park { .. }]) {
-        return Err(stays(TAB_HOLDS_WORK));
+        return Err(make_stays_error(TAB_HOLDS_WORK));
     }
     match parking::park_session(tools, run, facts, &panes, now)? {
-        ParkOutcome::Parked(card) => {
-            Ok(Outcome::line(format!("parked {name} on {}", card.as_str())))
-        }
-        ParkOutcome::Stays(verdict) => Err(stays(verdict.why_or_state())),
-        ParkOutcome::TabInUse => Err(stays(TAB_HOLDS_WORK)),
+        ParkOutcome::Parked(card) => Ok(Outcome::from_line(format!(
+            "parked {name} on {}",
+            card.as_str()
+        ))),
+        ParkOutcome::Stays(verdict) => Err(make_stays_error(verdict.pick_why_or_state())),
+        ParkOutcome::TabInUse => Err(make_stays_error(TAB_HOLDS_WORK)),
     }
 }

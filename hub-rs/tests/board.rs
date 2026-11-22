@@ -123,7 +123,7 @@ fn print_board_gathers_live_hubs_and_questions() {
 
 /// A `notes.md` entry from `ago` before now, under its UTC day's
 /// heading, such as `## 2026-11-15` and `- 0905 TEXT`.
-fn note_entry(ago: SignedDuration, text: &str) -> String {
+fn format_note_entry(ago: SignedDuration, text: &str) -> String {
     let at = Timestamp::now()
         .checked_sub(ago)
         .unwrap()
@@ -142,8 +142,8 @@ fn note_entry(ago: SignedDuration, text: &str) -> String {
 #[test]
 fn print_board_away_starts_at_saved_time() {
     let test_tools = TestTools::new();
-    let notes = note_entry(SignedDuration::from_mins(120), "parked old-search")
-        + &note_entry(SignedDuration::from_mins(30), "launched api-build");
+    let notes = format_note_entry(SignedDuration::from_mins(120), "parked old-search")
+        + &format_note_entry(SignedDuration::from_mins(30), "launched api-build");
     fs::write(test_tools.run_path().join("notes.md"), notes).unwrap();
     let seen = Timestamp::now()
         .checked_sub(SignedDuration::from_mins(90))
@@ -187,7 +187,7 @@ fn print_board_reads_gone_hubs_once_saved() {
         let started =
             format!(r#"{{"at":"2026-11-12T08:00:00Z","event":"watch_started","hub":"{hub}"}}"#);
         fs::write(run.join("events.jsonl"), started + "\n").unwrap();
-        let entry = note_entry(SignedDuration::from_mins(minutes_ago), note);
+        let entry = format_note_entry(SignedDuration::from_mins(minutes_ago), note);
         fs::write(run.join("notes.md"), entry).unwrap();
     }
     test_tools
@@ -226,7 +226,7 @@ fn print_board_reads_gone_hubs_once_saved() {
 /// as if nothing waits.
 #[test]
 fn print_board_hubless_shows_cards_and_note() {
-    let test_tools = tools_with_todo_card();
+    let test_tools = make_tools_with_todo_card();
     let hubs = Hubs::Live(test_tools.path().to_owned());
 
     let outcome = board::print_board(&test_tools.tools(), &hubs, &TimeZone::UTC, PHONE).unwrap();
@@ -240,12 +240,12 @@ fn print_board_hubless_shows_cards_and_note() {
     assert_eq!(outcome.lines[next + 3], " hub: start DEMO-KB-007");
 }
 
-/// The one criterion in the note of `tools_with_todo_card`.
+/// The one criterion in the note of `make_tools_with_todo_card`.
 const CRITERION: &str = "- [ ] A failed upload retries.";
 
 /// A hub with one card ready to start, DEMO-KB-007, whose note holds
 /// `CRITERION`.
-fn tools_with_todo_card() -> TestTools {
+fn make_tools_with_todo_card() -> TestTools {
     let mut test_tools = TestTools::new();
     test_tools
         .cards
@@ -267,7 +267,7 @@ fn tools_with_todo_card() -> TestTools {
 /// user never sees.
 #[test]
 fn control_board_prints_screen_after_each_step() {
-    let test_tools = tools_with_todo_card();
+    let test_tools = make_tools_with_todo_card();
 
     let steps =
         "tap block:queue\ntap group:todo\ntap card:DEMO-KB-007\npress q\npress q\npress q\n";
@@ -298,7 +298,7 @@ fn control_board_prints_screen_after_each_step() {
 /// no criteria and the user cannot tell what the card has to do.
 #[test]
 fn control_board_open_card_reads_unread_note() {
-    let test_tools = tools_with_todo_card();
+    let test_tools = make_tools_with_todo_card();
 
     let steps = "tap block:queue\ntap group:todo\ntap card:DEMO-KB-007\n";
     let (result, screens) = control(&test_tools, steps);

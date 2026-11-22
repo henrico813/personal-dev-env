@@ -98,7 +98,7 @@ pub fn run_auto_check(tools: &Tools<'_>, run: &RunFolder) -> Result<Outcome, Hub
     let list = read_run_list(&text);
     let number = check_run_list(&tools.cards.list_cards()?, &list)
         .map_err(|problems| HubError::NotDone(problems.join("\n")))?;
-    Ok(Outcome::line(format!(
+    Ok(Outcome::from_line(format!(
         "run {number}: {} cards to run",
         list.run_keys().len()
     )))
@@ -163,7 +163,7 @@ pub fn run_auto_approve(
         approval.reply
     );
     run_folder::write_file_whole(&run.path().join("approved.md"), &approved)?;
-    Ok(Outcome::line(format!(
+    Ok(Outcome::from_line(format!(
         "approved run {number}: {} cards",
         list.run_keys().len()
     )))

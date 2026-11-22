@@ -47,7 +47,7 @@ pub struct InMemoryHerdr {
     pub start_reads: Cell<usize>,
     /// What `read_screen` shows, by agent name. Others show nothing.
     pub screens: BTreeMap<String, String>,
-    /// The double each `on_machine` label returns.
+    /// The double each `clone_for_machine` label returns.
     pub machines: BTreeMap<String, InMemoryHerdr>,
     /// Runs inside each `prompt` call, as another process acting
     /// meanwhile.
@@ -114,7 +114,7 @@ impl InMemoryHerdr {
     /// Returns the agents as they are now, with `after_prompt` applied
     /// once a prompt was tried, `after_start` once an agent was started,
     /// and the agents of closed tabs left out.
-    fn current_agents(&self) -> Vec<Agent> {
+    fn list_current_agents(&self) -> Vec<Agent> {
         let mut agents = self.agents.clone();
         let mut changes = Vec::new();
         if !self.prompts.borrow().is_empty() {
@@ -153,12 +153,12 @@ impl InMemoryHerdr {
 impl Herdr for InMemoryHerdr {
     fn list_agents(&self) -> Result<Vec<Agent>, HerdrError> {
         self.take_failure("list_agents")?;
-        Ok(self.current_agents())
+        Ok(self.list_current_agents())
     }
 
     fn get_agent(&self, target: &str) -> Result<Agent, HerdrError> {
         self.take_failure("get_agent")?;
-        let agents = self.current_agents();
+        let agents = self.list_current_agents();
         if !self.started.borrow().is_empty() {
             self.start_reads.set(self.start_reads.get() + 1);
         }
@@ -245,7 +245,7 @@ impl Herdr for InMemoryHerdr {
             None => Vec::new(),
         };
         let mut panes: Vec<Pane> = self
-            .current_agents()
+            .list_current_agents()
             .into_iter()
             .map(|agent| Pane {
                 pane_id: agent.pane_id,
@@ -339,7 +339,7 @@ impl Herdr for InMemoryHerdr {
 
     /// Returns the double in `machines` for the label, so a test reads
     /// what that machine's Herdr was asked.
-    fn on_machine(&self, label: &str) -> Box<dyn Herdr + '_> {
+    fn clone_for_machine(&self, label: &str) -> Box<dyn Herdr + '_> {
         let machine = self
             .machines
             .get(label)
@@ -354,7 +354,7 @@ impl Herdr for InMemoryHerdr {
     }
 }
 
-/// Lets `on_machine` return a borrowed double. Each call goes to the
+/// Lets `clone_for_machine` return a borrowed double. Each call goes to the
 /// double itself.
 impl Herdr for &InMemoryHerdr {
     fn list_agents(&self) -> Result<Vec<Agent>, HerdrError> {
@@ -445,8 +445,8 @@ impl Herdr for &InMemoryHerdr {
         (**self).move_workspaces(ids, before_id)
     }
 
-    fn on_machine(&self, label: &str) -> Box<dyn Herdr + '_> {
-        (**self).on_machine(label)
+    fn clone_for_machine(&self, label: &str) -> Box<dyn Herdr + '_> {
+        (**self).clone_for_machine(label)
     }
 
     fn list_machines(&self) -> Result<Vec<String>, HerdrError> {
@@ -701,7 +701,7 @@ impl TestTools {
     }
 
     /// The OpenCode database file, which no test has made yet.
-    pub fn opencode_path(&self) -> PathBuf {
+    pub fn build_opencode_path(&self) -> PathBuf {
         self.folder.path().join("opencode.db")
     }
 }
