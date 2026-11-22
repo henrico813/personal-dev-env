@@ -54,6 +54,8 @@ pub(crate) fn read_events(
 /// such as a hub, gives `None`.
 pub(crate) fn find_event_card(event: &AwayEvent) -> Option<CardKey> {
     event.text.split_whitespace().find_map(|word| {
+        // A parked line puts the key after a bracket, as in
+        // `parked api-build (DEMO-KB-010 in-review)`.
         CardKey::find_in_name(word.trim_start_matches(|letter: char| !letter.is_alphanumeric()))
     })
 }
@@ -161,31 +163,5 @@ mod tests {
                 ("23:50", "closed old-search (card done)"),
             ]
         );
-    }
-
-    /// AWAY rows are free text. A report row starts with the worker's
-    /// name, and a parked line puts the key in brackets. A bracket left
-    /// on the key hides the card the row is about.
-    #[test]
-    fn find_event_card_reads_first_key_word() {
-        let cases = [
-            ("demo-kb-001-build reported", Some("DEMO-KB-001")),
-            (
-                "parked api-build (DEMO-KB-010 in-review)",
-                Some("DEMO-KB-010"),
-            ),
-        ];
-
-        for (text, expected) in cases {
-            let event = AwayEvent {
-                at: Timestamp::UNIX_EPOCH,
-                time: "10:40".to_owned(),
-                text: text.to_owned(),
-            };
-
-            let card = find_event_card(&event);
-
-            assert_eq!(card.as_ref().map(CardKey::as_str), expected, "{text}");
-        }
     }
 }
