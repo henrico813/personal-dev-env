@@ -459,10 +459,11 @@ the auto hub queues it when it expires. A declined or interrupted
 request is never filed again, and ship.sh refuses to; list it in
 your report. For a held pull request, write on the item's page what
 a new session does after its parent merges: set PARENT to the
-default branch with `keep`, run
-build.md's Carry a parent's commit to a child and Push a later round,
-with a privacy review before the push, try it, add the result to
-Testing and `tested`, get a new privacy review, and run
+default branch with `keep`. Then it runs build.md's Carry a parent's
+commit to a child. Next it gets a privacy review with `"$REMOTE/$BR"`
+as BASE, and only then runs build.md's Push a later round. It tries
+the change and adds the result to Testing and `tested`. Last, it gets
+a new privacy review with the same BASE and runs
 `bash <PR folder>/ship.sh`.
 
 Then report finished work to the hub, with, for each pull request:
