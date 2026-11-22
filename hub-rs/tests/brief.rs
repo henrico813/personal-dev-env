@@ -4,10 +4,12 @@ use std::fs;
 
 use hub::commands::brief::run_brief;
 use hub::external::cards::{BlockedCard, BoardCounts, CardNote};
+use hub::external::herdr::AgentStatus;
+use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp};
 use serde_json::json;
 
-use common::TestTools;
+use common::{OpenCodeRow, TestTools, make_agent, write_opencode_db};
 
 /// The user decides from this one message, often away from the
 /// desk. Hubs once named questions by number alone and the user
@@ -248,6 +250,108 @@ fn run_brief_lists_only_live_pending_approvals() {
             "board active 3 of 8, in-review 0 of 6; 0 questions",
             "",
             "approval A0016cd 1h12m left app #515 merge",
+        ]
+    );
+}
+
+/// The user often answers a question in the worker's own pane, and a
+/// hub that asks it again makes them repeat themselves. So a question
+/// whose card session got a message the user typed since the day it
+/// was asked carries a `Check first:` line naming that session. The
+/// session's start prompt, hub messages, in their older `From the
+/// hub` form too, and watch prods are not the user's, and neither is
+/// anything from before the ask.
+#[test]
+fn run_brief_flags_sessions_user_typed_in() {
+    let mut test_tools = TestTools::new();
+    let asked_on = "2026-11-21".parse().unwrap();
+    let vault = CardNote {
+        project: "Demo".to_owned(),
+        needs_you: Some("Keep the main vault in nobs?".to_owned()),
+        needs_you_date: Some(asked_on),
+        sessions: vec!["ses_old".to_owned(), "ses_new".to_owned()],
+        ..CardNote::default()
+    };
+    let patch = CardNote {
+        project: "Demo".to_owned(),
+        needs_you: Some("Commit the fix after the merge?".to_owned()),
+        needs_you_date: Some(asked_on),
+        sessions: vec!["ses_fix".to_owned()],
+        ..CardNote::default()
+    };
+    test_tools
+        .cards
+        .card_notes
+        .insert("DEMO-320".to_owned(), vault);
+    test_tools
+        .cards
+        .card_notes
+        .insert("DEMO-323".to_owned(), patch);
+    let mut worker = make_agent("demo-320-design-10", AgentStatus::Idle);
+    worker.session_id = Some("ses_new".to_owned());
+    test_tools.herdr.agents = vec![worker];
+    let at = |text: &str| text.parse::<Timestamp>().unwrap().as_millisecond();
+    let user = |session, time, text| OpenCodeRow {
+        session,
+        kind: "user",
+        updated_ms: at(time),
+        data: json!({ "text": text }),
+    };
+    write_opencode_db(
+        &test_tools.opencode_path(),
+        &[
+            user(
+                "ses_old",
+                "2026-11-19T09:00:00Z",
+                "Read the handoff at a.md",
+            ),
+            user("ses_old", "2026-11-19T12:00:00Z", "keep it"),
+            user(
+                "ses_new",
+                "2026-11-21T12:00:00Z",
+                "Read the handoff at b.md",
+            ),
+            user("ses_new", "2026-11-21T13:00:00Z", "hub: the user is away"),
+            user(
+                "ses_new",
+                "2026-11-21T14:00:00Z",
+                "hub watch: you have been idle",
+            ),
+            user("ses_new", "2026-11-21T15:14:00Z", "On Q33: keep it out"),
+            user(
+                "ses_fix",
+                "2026-11-21T12:00:00Z",
+                "Read the handoff at c.md",
+            ),
+            user("ses_fix", "2026-11-21T13:00:00Z", "hub: commit after PR #8"),
+            user(
+                "ses_fix",
+                "2026-11-21T14:00:00Z",
+                "From the hub: PR #8 merged",
+            ),
+        ],
+    );
+
+    let outcome = run_brief(&test_tools.tools(), &test_tools.run(), Timestamp::now()).unwrap();
+
+    let typed = "2026-11-21T15:14:00Z"
+        .parse::<Timestamp>()
+        .unwrap()
+        .to_zoned(TimeZone::system())
+        .strftime("%Y-%m-%d %H:%M")
+        .to_string();
+    let questions: Vec<&str> = outcome
+        .lines
+        .iter()
+        .map(String::as_str)
+        .filter(|line| line.starts_with("Question ") || line.starts_with("Check first"))
+        .collect();
+    assert_eq!(
+        questions,
+        [
+            "Question DEMO-320: Keep the main vault in nobs?",
+            &format!("Check first: the user wrote in demo-320-design-10 {typed}"),
+            "Question DEMO-323: Commit the fix after the merge?",
         ]
     );
 }

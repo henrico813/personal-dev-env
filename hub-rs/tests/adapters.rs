@@ -297,6 +297,26 @@ mod herdr_cli {
         );
     }
 
+    /// Gather and the watch tag hubs only on the machines this list
+    /// names, so a misread list leaves another machine's hubs out of
+    /// the "go to" list without a warning. A disabled machine has no
+    /// connection, and each call to it would fail.
+    #[test]
+    fn herdr_cli_lists_enabled_machines() {
+        let folder = TempFolder::new();
+        let answer = json!([
+            {"id": "019e", "label": "laptop", "target": "u@laptop", "session": "default", "enabled": true, "selected": false},
+            {"id": "019f", "label": "old-box", "target": "u@old", "session": "default", "enabled": false, "selected": false},
+        ]);
+        let script = folder.write_script("herdr", &answer.to_string(), "", 0);
+        let herdr = HerdrCli::new(script.clone(), None, folder.path().join("herdr.sock"));
+
+        let machines = herdr.list_machines().unwrap();
+
+        assert_eq!(machines, ["laptop"]);
+        assert_eq!(read_script_calls(&script), [["machine", "list", "--json"]]);
+    }
+
     /// The tidy pass closes a quiet shell only with its finished agent's
     /// tab, and it knows the shell is quiet only from these two numbers.
     /// A field read from the wrong key keeps every such tab open, and
@@ -444,26 +464,44 @@ mod herdr_cli {
         );
     }
 
-    /// The desk's board pane must become an agent with the `go_to`
-    /// token, or the "go to" list has no desk row. Herdr lists panes in
-    /// tab order, so the first pane listed is the board's, not the
-    /// shell's.
+    /// Herdr lists panes in tab order, so the first pane listed is the
+    /// board's, not the shell's. A user may run a session there, whose
+    /// report replaces the `desk` one. A pane misread as not shown
+    /// makes the watch report the desk again every 5 seconds.
     #[test]
-    fn show_desk_as_agent_reports_first_pane() {
+    fn find_desk_board_reads_first_pane() {
         let folder = TempFolder::new();
         let answer = json!({"id": "cli", "result": {"panes": [
-            {"pane_id": "w4:p1", "tab_id": "w4:t1", "focused": false, "agent": null},
+            {"pane_id": "w4:p1", "tab_id": "w4:t1", "focused": false, "agent": "opencode",
+             "tokens": {"go_to": "2-desk"}},
             {"pane_id": "w4:p2", "tab_id": "w4:t2", "focused": true, "agent": null},
         ]}});
         let script = folder.write_script("herdr", &answer.to_string(), "", 0);
         let herdr = HerdrCli::new(script.clone(), None, folder.path().join("herdr.sock"));
 
-        herdr.show_desk_as_agent("w4").unwrap();
+        let board = herdr.find_desk_board("w4").unwrap();
+
+        assert_eq!(board.pane_id, "w4:p1");
+        assert!(board.shown);
+        assert_eq!(
+            read_script_calls(&script),
+            [vec!["pane", "list", "--workspace", "w4"]]
+        );
+    }
+
+    /// The desk's board pane must become an agent with the `go_to`
+    /// token, or the "go to" list has no desk row.
+    #[test]
+    fn show_desk_as_agent_reports_board_pane() {
+        let folder = TempFolder::new();
+        let script = folder.write_script("herdr", "{}", "", 0);
+        let herdr = HerdrCli::new(script.clone(), None, folder.path().join("herdr.sock"));
+
+        herdr.show_desk_as_agent("w4:p1").unwrap();
 
         assert_eq!(
             read_script_calls(&script),
             [
-                vec!["pane", "list", "--workspace", "w4"],
                 vec![
                     "pane",
                     "report-agent",

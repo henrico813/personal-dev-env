@@ -21,6 +21,7 @@ func TestHerdrLinkScriptNeverFailsInstall(t *testing.T) {
 	plugins := []struct{ id, dir string }{
 		{"pde.approval", "pde-approval"},
 		{"pde.comment-review", "glimmer"},
+		{"pde.hub", "pde-hub"},
 	}
 	tests := []struct {
 		name string
@@ -213,7 +214,7 @@ func runHerdrSetup(
 		"herdr-plugins",
 	)
 	// The fake herdr's already state reports 1.0.0, the version written here.
-	for _, dir := range []string{"pde-approval", "glimmer"} {
+	for _, dir := range []string{"pde-approval", "glimmer", "pde-hub"} {
 		manifest := filepath.Join(pluginsDir, dir, "herdr-plugin.toml")
 		if err := os.MkdirAll(filepath.Dir(manifest), 0o755); err != nil {
 			t.Fatal(err)
@@ -385,11 +386,11 @@ case "$1 ${2:-}" in
     ;;
   plugin\ list)
     case "$HERDR_MODE" in
-      already) printf '{"result":{"plugins":[{"plugin_id":"pde.approval","version":"1.0.0","manifest_path":"%s"},{"plugin_id":"pde.comment-review","version":"1.0.0","manifest_path":"%s"}]}}\n' \
-        "$HERDR_PLUGINS/pde-approval/herdr-plugin.toml" "$HERDR_PLUGINS/glimmer/herdr-plugin.toml" ;;
-      older) printf '{"result":{"plugins":[{"plugin_id":"pde.approval","version":"0.9.0","manifest_path":"%s"},{"plugin_id":"pde.comment-review","version":"0.9.0","manifest_path":"%s"}]}}\n' \
-        "$HERDR_PLUGINS/pde-approval/herdr-plugin.toml" "$HERDR_PLUGINS/glimmer/herdr-plugin.toml" ;;
-      elsewhere) printf '{"result":{"plugins":[{"plugin_id":"pde.approval","manifest_path":"/a/herdr-plugin.toml"},{"plugin_id":"pde.comment-review","manifest_path":"/b/herdr-plugin.toml"}]}}\n' ;;
+      already) printf '{"result":{"plugins":[{"plugin_id":"pde.approval","version":"1.0.0","manifest_path":"%s"},{"plugin_id":"pde.comment-review","version":"1.0.0","manifest_path":"%s"},{"plugin_id":"pde.hub","version":"1.0.0","manifest_path":"%s"}]}}\n' \
+        "$HERDR_PLUGINS/pde-approval/herdr-plugin.toml" "$HERDR_PLUGINS/glimmer/herdr-plugin.toml" "$HERDR_PLUGINS/pde-hub/herdr-plugin.toml" ;;
+      older) printf '{"result":{"plugins":[{"plugin_id":"pde.approval","version":"0.9.0","manifest_path":"%s"},{"plugin_id":"pde.comment-review","version":"0.9.0","manifest_path":"%s"},{"plugin_id":"pde.hub","version":"0.9.0","manifest_path":"%s"}]}}\n' \
+        "$HERDR_PLUGINS/pde-approval/herdr-plugin.toml" "$HERDR_PLUGINS/glimmer/herdr-plugin.toml" "$HERDR_PLUGINS/pde-hub/herdr-plugin.toml" ;;
+      elsewhere) printf '{"result":{"plugins":[{"plugin_id":"pde.approval","manifest_path":"/a/herdr-plugin.toml"},{"plugin_id":"pde.comment-review","manifest_path":"/b/herdr-plugin.toml"},{"plugin_id":"pde.hub","manifest_path":"/c/herdr-plugin.toml"}]}}\n' ;;
       *) printf '{"result":{"plugins":[]}}\n' ;;
     esac
     ;;

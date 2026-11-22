@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -19,7 +20,7 @@ from conftest import (
     write_tool,
 )
 
-BRANCH = "fix/skill-fixes-desk-1"
+BRANCH = "fix/demo-lessons"
 SSH_URL = "git@github.com:owner/repo.git"
 HTTPS_URL = "https://github.com/owner/repo.git"
 
@@ -50,6 +51,24 @@ def use_ssh_remote(repos: Repos, target: str) -> None:
         HTTPS_URL,
     )
     run_git(repos.checkout, "config", "--global", "core.sshCommand", "false")
+
+
+def commit_skills(repos: Repos, *skills: str) -> None:
+    """Add the fix worktree and commit a new SKILL.md for each skill."""
+    run_git(
+        repos.checkout,
+        "worktree",
+        "add",
+        "--quiet",
+        "-b",
+        "fix/skill-fixes-unpushed",
+        str(repos.worktree),
+        "github/main",
+    )
+    for skill in skills:
+        write(repos.worktree / f"ai/skills/{skill}/SKILL.md", f"# {skill}\n")
+        run_git(repos.worktree, "add", ".")
+        run_git(repos.worktree, "commit", "--quiet", "-m", f"fix({skill}): x")
 
 
 def list_branches(repos: Repos) -> str:
@@ -179,7 +198,6 @@ class TestSync:
         write_settings(
             repos.home,
             install_path=str(repos.checkout),
-            skill_fix_label="desk",
             extra_skills_repo=str(extra),
         )
         write(repos.home / "stub/gh-fails", "")
@@ -215,37 +233,101 @@ class TestSync:
         assert requests[0] == requests[1]
         assert requests[0].startswith(
             f"pr create --base main --head {BRANCH} "
-            "--title fix(skills): corrections from desk --body-file "
+            "--title fix(skills): demo-lessons --body-file "
         )
         pushed = run_git(
             repos.remote, "rev-list", "--count", f"main..{BRANCH}"
         )
         assert pushed == "3"
 
-    def test_sync_without_label_waits_then_pushes(
+    def test_sync_renames_old_branch_before_push(
+        self, fix: Callable[..., Reply], repos: Repos
+    ) -> None:
+        """An unpushed branch with an older name is pushed under its skills.
+
+        Older versions named branches after a PC label. Branch names are
+        public, so such a name must never reach the remote.
+        """
+        run_git(
+            repos.checkout,
+            "worktree",
+            "add",
+            "--quiet",
+            "-b",
+            "fix/skill-fixes-oldlabel-4",
+            str(repos.worktree),
+            "github/main",
+        )
+
+        reply = fix()
+
+        assert (reply.body["branch"], reply.body["sync"]) == (
+            BRANCH,
+            "pr_waiting",
+        )
+        assert list_branches(repos) == f"{BRANCH}\nmain"
+
+    def test_branch_name_lists_each_changed_skill(
+        self, fix: Callable[..., Reply], repos: Repos
+    ) -> None:
+        """A batch that changes two skills names both, first changed first.
+
+        The name tells the user which skills a fix PR changes before
+        they open it.
+        """
+        commit_skills(repos, "tidy")
+
+        reply = fix()
+
+        assert reply.body["branch"] == "fix/tidy-demo-lessons", reply.body
+        assert list_branches(repos) == "fix/tidy-demo-lessons\nmain"
+
+    def test_long_branch_name_ends_in_and_more(
+        self, fix: Callable[..., Reply], repos: Repos
+    ) -> None:
+        """Skills that would pass 60 characters become "and-more".
+
+        A branch name that lists every skill of a large batch would be
+        too long to read.
+        """
+        commit_skills(
+            repos, "tidy", "plant-watering-schedule", "seed-catalog-cleanup"
+        )
+
+        reply = fix()
+
+        assert reply.body["branch"] == (
+            "fix/tidy-plant-watering-schedule-and-more-lessons"
+        )
+
+    def test_branch_skips_name_of_merged_pr(
+        self, fix: Callable[..., Reply], repos: Repos
+    ) -> None:
+        """A name a merged PR used gets a number, even with its branch gone.
+
+        GitHub deletes a merged branch, and a new branch of the same
+        name would be taken for that merged PR and never get its own.
+        """
+        save_pr(repos.home, BRANCH, number=5, state="MERGED", headRefOid="x")
+
+        reply = fix()
+
+        assert reply.body["branch"] == f"{BRANCH}-2", reply.body
+
+    def test_new_worktree_returns_to_pushed_branch(
         self, fix: Callable[..., Reply], run: Run, repos: Repos
     ) -> None:
-        """With no label the fix waits, then pushes under the label.
+        """A worktree deleted by hand comes back on the pushed batch branch.
 
-        Branch names are public, and the label keeps them from naming
-        the PC. No branch may reach the remote before the label is set.
+        A fresh unpushed branch would start a second batch and a second
+        fix PR while the first one is still open.
         """
-        write_settings(repos.home, install_path=str(repos.checkout))
+        fix()
+        shutil.rmtree(repos.worktree)
 
-        waiting = fix()
-        write_settings(
-            repos.home,
-            install_path=str(repos.checkout),
-            skill_fix_label="desk",
-        )
-        synced = run("sync")
+        reply = run("start", "demo")
 
-        assert (waiting.body["sync"], waiting.body["branch"]) == (
-            "no_label",
-            "fix/skill-fixes-unset-1",
-        )
-        assert synced.body["repos"][0]["branch"] == BRANCH
-        assert list_branches(repos) == f"{BRANCH}\nmain"
+        assert reply.body["branch"] == BRANCH, reply.body
 
     def test_sync_after_merge_starts_new_batch(
         self, fix: Callable[..., Reply], repos: Repos
@@ -265,7 +347,7 @@ class TestSync:
 
         reply = fix()
 
-        new = "fix/skill-fixes-desk-2"
+        new = f"{BRANCH}-2"
         assert (reply.body["branch"], reply.body["sync"]) == (
             new,
             "pr_waiting",

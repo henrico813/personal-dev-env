@@ -58,8 +58,11 @@ waiting on the user.>
 ## Questions for the user
 
 <Each open question word for word, with its Q number, its choices, the
-choice this session recommends and why. The new session asks these
-first, with the same Q numbers, since the user's replies name
+choice this session recommends and why. Name where the user may have
+answered each one, such as a session's pane or a card. The new
+session first checks each one there and in the card's Decisions, and
+drops each one the user already answered or made moot. It asks the
+rest first, with the same Q numbers, since the user's replies name
 questions by these numbers. It asks in the short form of the
 `status-updates` skill, which says what a Q number is. When the
 handoff names a report file, the new session writes them there in
@@ -98,7 +101,11 @@ full instead, as Coordination says.>
   file in one step at its end. The hub's watch prods the new session
   when that file changes or the deadline passes. The new session never
   uses an interactive question tool, since Herdr then rejects every
-  message to it. It sends a pull request edit request only after the
+  message to it. A message that starts with `hub: ` comes from the
+  hub; any other message in its pane comes from the user. When the
+  user answers a question or decides something in its pane, it
+  reports that to the hub at once, since the hub's question list never
+  sees the pane. It sends a pull request edit request only after the
   hub tells it the user reviewed that pull request, and a merge request
   only after the hub tells it the user asked to merge it, as
   `ai/AGENTS.md` says. When its

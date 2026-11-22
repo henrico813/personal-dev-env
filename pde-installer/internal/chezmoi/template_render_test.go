@@ -461,6 +461,7 @@ func TestClientGetsOnlyAllowedSkills(t *testing.T) {
 	slices.Sort(skills)
 	want := []string{
 		"behavior-focused-testing",
+		"daily-shutdown",
 		"delegate",
 		"model-routing",
 		"obsidian-daily-note",

@@ -91,7 +91,7 @@ fn run_next_sends_and_announces_due_message() {
     assert_eq!(second, "timeout (hub -)");
     assert_eq!(
         *test_tools.herdr.prompts.borrow(),
-        [("docs-fix".to_owned(), "Resume work.".to_owned())]
+        [("docs-fix".to_owned(), "hub: Resume work.".to_owned())]
     );
 }
 
@@ -128,8 +128,11 @@ fn run_next_limits_timed_all_to_workers() {
     assert_eq!(
         *test_tools.herdr.prompts.borrow(),
         [
-            ("demo-kb-007-impl".to_owned(), "Resume work.".to_owned()),
-            ("docs-fix".to_owned(), "Resume work.".to_owned()),
+            (
+                "demo-kb-007-impl".to_owned(),
+                "hub: Resume work.".to_owned()
+            ),
+            ("docs-fix".to_owned(), "hub: Resume work.".to_owned()),
         ]
     );
 }

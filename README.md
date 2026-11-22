@@ -109,6 +109,7 @@ Vibe binaries plus repo-managed AI config.
 | Auto run | `ai/skills/auto-run/` | `~/.agents/skills/auto-run/` | Shared workflow skill for working an approved list of cards and roadmaps to pull requests without the user |
 | Session review | `ai/skills/session-review/` | `~/.agents/skills/session-review/` | Shared workflow skill for reviewing a session's token use, lessons and local model jobs |
 | Conclude session | `ai/skills/conclude-session/` | `~/.agents/skills/conclude-session/` | Shared workflow skill for closing out a session after one pick from the user |
+| Daily shutdown | `ai/skills/daily-shutdown/` | `~/.agents/skills/daily-shutdown/` | Shared workflow skill for the end-of-day shutdown: drafts tomorrow's tasks and the day's lessons, then adds the approved blocks to the daily note |
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/` | Shared test-writing guidance |
 | Screen check | `ai/skills/screen-check/` | `~/.agents/skills/screen-check/` | Agents run a changed TUI or CLI on a hidden phone-size screen and check it |
 | Model routing | `ai/skills/model-routing/` | `~/.agents/skills/model-routing/` | Shared table of job kinds and their models, the script that picks and logs each agent's model, and how local jobs are checked |
@@ -138,7 +139,7 @@ Vibe binaries plus repo-managed AI config.
 | Comment review | `glimmer/`, `chezmoi/` | `~/.local/bin/glimmer`, `~/.local/share/pde/herdr-plugins/glimmer/` (full only) | Decide on an AI's Go, Python and Rust comments one per phone screen with Ctrl+b e, and keep agents from changing the ones you approved; run `glimmer help` for its commands |
 | Skill lessons | `skill-lessons/` | `~/.local/bin/skill-lessons` (client and full) | Shows the lessons saved before `skill-fix` in the installed copy of a skill; see the [skill-lessons README](skill-lessons/README.md) |
 | Skill fix | `skill-fix/` | `~/.local/bin/skill-fix` (client and full) | Commits a fix to a skill's text in a separate worktree, then pushes it to one fix pull request per PC |
-| Hub | `hub-rs/` | `~/.local/bin/hub` (full only) | Shows, messages, parks and tidies the Herdr sessions a hub session runs; see the [hub README](hub-rs/README.md) |
+| Hub | `hub-rs/`, `chezmoi/` | `~/.local/bin/hub`, `~/.local/share/pde/herdr-plugins/pde-hub/` (full only) | Shows, messages, parks and tidies the Herdr sessions a hub session runs, and puts the hubs and the desk back in Herdr's agent list after a restart; see the [hub README](hub-rs/README.md) |
 | Desktop slowdown guard | `chezmoi/`, `pdev/` | `~/.config/picom/picom.conf` and `~/.xinputrc` (i3), `~/.local/bin/pde-x-watch` (full only), `~/.config/autostart/pde-x-watch.desktop` (full with i3) | picom composites on the GPU, the i3 session starts no ibus, and a desktop notice names an X client that leaks windows or a busy Xorg; see [the how-to](pdev/docs/how-to/answer-an-x-watch-warning.md) |
 | prs | `prs/` | `~/.local/bin/prs` (full only) | Reads your open pull requests on a phone; see [GitHub Pull Request Reviews](chezmoi/README.md#github-pull-request-reviews) |
 | Automatic updates | `chezmoi/` | `~/.config/systemd/user/pde-update.{service,timer}` (full only) | Runs `pde-installer update` every hour; set `update_interval` in `~/.config/pde/config.json` to change it. See the [update reference](pde-installer/docs/reference/commands.md#pde-installer-update) |
@@ -195,15 +196,17 @@ loads `~/.agents/skills/`.
 | `auto-run` | Brief the user on todo cards and roadmaps, then have a separate hub plan, build, review and file the approved list as PRs | "Set up an auto run", "Build the rest of the roadmap overnight" |
 | `session-review` | Review a session for token use, skill fixes to write and jobs a local model could run, then wait for your pick | "Review this session for token usage, skill lessons and local model handoff" |
 | `conclude-session` | Close out a session: review it, wait for your pick, then commit skill fixes, open one skill PR and hand off or report | "conclude-session" |
+| `daily-shutdown` | Draft the end-of-day shutdown from the day's notes, wait for your approval, then add each block to the daily note | "Do the shutdown" |
 | `model-routing` | Pick each agent's model from its job kind with `pde_route.py`, and retry a failed job on the next model | "Which model should run these test jobs?" |
 | `review-plan` | Review a plan, PR, commit, or diff for architecture, bugs, completeness | "Use review-plan on docs/design-auth.md with focus on security" |
 
 The skills are installed to `~/.agents/skills/`, and the installer copies the
 shared `AGENTS.md` into `~/.codex/` and `~/.claude/` so the workflow defaults
 stay aligned with the rest of the tree. `install client` installs only
-`obsidian-zettel`, `obsidian-daily-note`, `plain-direct-english`,
-`behavior-focused-testing`, `delegate`, `model-routing`,
-`skill-fix` and `status-updates`; every other skill is full-only.
+`obsidian-zettel`, `obsidian-daily-note`, `daily-shutdown`,
+`plain-direct-english`, `behavior-focused-testing`, `delegate`,
+`model-routing`, `skill-fix` and `status-updates`; every other skill
+is full-only.
 
 ## Privacy Checks
 

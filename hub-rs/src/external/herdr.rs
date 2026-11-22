@@ -12,6 +12,8 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 const LABEL_SOURCE: &str = "pde-hub";
+/// What the desk's board pane reports as its agent program.
+const DESK_AGENT: &str = "desk";
 const NEEDS_YOU: &str = "needs you";
 /// The pane token that keeps the desk and the hubs at the top of the
 /// filtered agent list. Herdr sorts its values as text, so their numbers
@@ -53,9 +55,11 @@ pub trait Herdr {
     /// Tags a hub's pane, so the filtered agent list keeps it in its
     /// kind's place, and labels its row "hub busy" or "hub free".
     fn tag_hub_pane(&self, pane_id: &str, kind: HubKind) -> Result<(), HerdrError>;
-    /// Reports the desk's first pane, where the board runs, as an agent
-    /// named `desk`, so the filtered agent list can show it first.
-    fn show_desk_as_agent(&self, workspace_id: &str) -> Result<(), HerdrError>;
+    /// Returns the desk's first pane, where the board runs.
+    fn find_desk_board(&self, workspace_id: &str) -> Result<DeskBoard, HerdrError>;
+    /// Reports the desk's board pane as an agent named `desk`, so the
+    /// filtered agent list can show it first.
+    fn show_desk_as_agent(&self, board_pane_id: &str) -> Result<(), HerdrError>;
     /// Makes Herdr's agent list, headed "go to", show only the desk,
     /// the hubs and the sessions that wait on the user, through
     /// Herdr's socket.
@@ -84,6 +88,9 @@ pub trait Herdr {
     /// Returns a Herdr for a saved machine, for a held message sent
     /// with `--machine`.
     fn on_machine(&self, label: &str) -> Box<dyn Herdr + '_>;
+    /// Returns the label of each enabled saved machine, such as the
+    /// `laptop` in `herdr --machine laptop`.
+    fn list_machines(&self) -> Result<Vec<String>, HerdrError>;
 }
 
 /// Runs the `herdr` command, on this machine or a saved one.
@@ -265,22 +272,28 @@ impl Herdr for HerdrCli {
         self.report_pane_labels(pane_id, &options)
     }
 
-    fn show_desk_as_agent(&self, workspace_id: &str) -> Result<(), HerdrError> {
+    fn find_desk_board(&self, workspace_id: &str) -> Result<DeskBoard, HerdrError> {
         let printed = self.run_herdr(&["pane", "list", "--workspace", workspace_id])?;
+        let result = read_result(&printed)?;
         // Herdr lists panes in tab order, so the first is the board's.
-        let panes = parse_pane_list(&read_result(&printed)?)?;
-        let board = panes
-            .first()
+        let board = result["panes"]
+            .get(0)
             .ok_or_else(|| HerdrError::Failed("Herdr lists no pane in the desk".to_owned()))?;
-        let pane_id = board.pane_id.as_str();
+        Ok(DeskBoard {
+            pane_id: read_text(board, "pane_id")?,
+            shown: !board["agent"].is_null() && board["tokens"][GO_TO_TOKEN].is_string(),
+        })
+    }
+
+    fn show_desk_as_agent(&self, board_pane_id: &str) -> Result<(), HerdrError> {
         let report = [
             "pane",
             "report-agent",
-            pane_id,
+            board_pane_id,
             "--source",
             LABEL_SOURCE,
             "--agent",
-            "desk",
+            DESK_AGENT,
             "--state",
             "idle",
         ];
@@ -294,7 +307,7 @@ impl Herdr for HerdrCli {
             "--state-label",
             "done=your desk",
         ];
-        self.report_pane_labels(pane_id, &options)
+        self.report_pane_labels(board_pane_id, &options)
     }
 
     fn filter_agent_list(&self) -> Result<(), HerdrError> {
@@ -412,6 +425,25 @@ impl Herdr for HerdrCli {
             socket: self.socket.clone(),
         })
     }
+
+    fn list_machines(&self) -> Result<Vec<String>, HerdrError> {
+        // Herdr keeps saved machines in the client's own state and does
+        // not forward `machine` commands, so another machine has none.
+        if self.machine.is_some() {
+            return Ok(Vec::new());
+        }
+        let printed = self.run_herdr(&["machine", "list", "--json"])?;
+        let machines: Value = serde_json::from_slice(&printed)
+            .map_err(|error| HerdrError::Failed(format!("Herdr's answer is not JSON: {error}")))?;
+        let raw_machines = machines
+            .as_array()
+            .ok_or_else(|| HerdrError::Failed("Herdr's machine list is not a list".to_owned()))?;
+        raw_machines
+            .iter()
+            .filter(|raw| raw["enabled"].as_bool() == Some(true))
+            .map(|raw| read_text(raw, "label"))
+            .collect()
+    }
 }
 
 /// One agent as Herdr lists it.
@@ -436,6 +468,9 @@ pub struct Agent {
     pub folders: Vec<PathBuf>,
     /// The saved machine it runs on, or `None` for this one.
     pub machine: Option<String>,
+    /// The pane has the `go_to` token that `Herdr::tag_hub_pane` sets.
+    /// Herdr drops the token when its server restarts.
+    pub go_to_tagged: bool,
 }
 
 /// A hub's place in the filtered agent list, by what the hub does.
@@ -490,6 +525,17 @@ pub struct Pane {
     pub focused: bool,
     /// False for a plain shell pane.
     pub has_agent: bool,
+}
+
+/// The desk's first pane, where the board runs.
+#[derive(Clone, Debug)]
+pub struct DeskBoard {
+    pub pane_id: String,
+    /// The pane has an agent and the `go_to` token, so the filtered
+    /// list shows it in the desk's place. The agent is the `desk`
+    /// report, or a session the user runs there, whose own report
+    /// replaces it. Herdr drops both when its server restarts.
+    pub shown: bool,
 }
 
 /// A pane's shell and the process group in front, from
@@ -682,6 +728,7 @@ fn parse_agent(raw: &Value, machine: Option<&str>) -> Result<Agent, HerdrError> 
             .ok_or_else(|| make_missing_field_error("state_change_seq"))?,
         folders,
         machine: machine.map(str::to_owned),
+        go_to_tagged: raw["tokens"][GO_TO_TOKEN].is_string(),
     })
 }
 
@@ -767,7 +814,8 @@ mod tests {
     /// at once. `run_handoff` names the old hub's session and tab from
     /// it, so a misread one sends the session review to the wrong place.
     /// `run_status` reads the mark, folders and machine to decide what
-    /// may close.
+    /// may close. A misread `go_to` token leaves a hub that lost it out
+    /// of the "go to" list, since gather and the watch skip tagged hubs.
     #[test]
     fn parse_agent_reads_herdr_fields() {
         let answer: Value = serde_json::from_str(AGENT_LIST).unwrap();
@@ -786,6 +834,7 @@ mod tests {
         assert_eq!(agent.state_seq, 12);
         assert_eq!(agent.folders, [PathBuf::from("/home/u/wt/demo-kb-007")]);
         assert_eq!(agent.machine.as_deref(), Some("laptop"));
+        assert!(agent.go_to_tagged);
     }
 
     /// Herdr keeps a label for each state, and a pane shows only the
