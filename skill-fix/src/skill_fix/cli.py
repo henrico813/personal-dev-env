@@ -68,7 +68,7 @@ def start_fix(skill: str, reset: bool) -> dict:
     """
     settings = repos.load_settings()
     repo = repos.find_repo(skill, settings)
-    branch = repos.ensure_worktree(repo, settings.label)
+    branch = repos.ensure_worktree(repo)
     if reset:
         repos.discard_edits(repo, skill)
     folder = repo.find_skill_dir(skill)
@@ -150,7 +150,7 @@ def commit_or_hold(
     if held_branch is not None:
         repos.run_git(repo.worktree, "branch", "-D", held_branch)
     try:
-        result = sync_repo(repo, settings)
+        result = sync_repo(repo)
     except ToolError as error:
         raise ToolError(f"committed {commit}; sync failed: {error}") from error
     return {
@@ -177,7 +177,7 @@ def sync_repos(name: str | None) -> dict:
     for repo in repos.list_repos(settings):
         if name is None or repo.name == name:
             try:
-                result = sync_repo(repo, settings)
+                result = sync_repo(repo)
             except ToolError as error:
                 results.append(
                     {"repo": repo.name, "sync": "error", "detail": str(error)}

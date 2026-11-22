@@ -53,15 +53,19 @@ skill-fix reads these keys in `~/.config/pde/config.json`:
 
 | Key | Meaning |
 | --- | --- |
-| `skill_fix_label` | A plain word for this PC, such as `desk`, in lowercase letters and digits |
 | `extra_skills_repo` | The checkout of the extra skills repository, when this PC has one |
 | `extra_terms_file` | A list of extra terms; a personal fix that holds one stays on this PC as a held fix |
 | `extra_forge_repo_url` | The web address of the extra repository on a forge, such as `https://forge.example.com/owner/skills`, when its fix pull requests are there |
 | `extra_forge_token_file` | The file that holds the forge API token; set it with `extra_forge_repo_url` |
 
-The label appears in public branch names and pull request titles, so
-it must name no machine. Until it is set, fixes are committed but
-nothing is pushed.
+A batch of fixes waits on the local branch `fix/skill-fixes-unpushed`.
+Its first push renames it after the skills its fixes change, such as
+`fix/herdr-hub-lessons` or `fix/auto-run-herdr-hub-lessons`. Fixes to
+other skills that come later join it under that name. The pull request
+title is the same words, such as `fix(skills): herdr-hub-lessons`.
+When an earlier branch or pull request used the name, it gets a
+number, such as `fix/herdr-hub-lessons-2`. Each name used is kept in
+the clone's local git config, under `skill-fix.branch`.
 
 When both forge keys are set, sync finds and opens the extra
 repository's fix pull request through the forge's API at

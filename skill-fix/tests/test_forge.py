@@ -159,7 +159,6 @@ def extra(repos: Repos, tmp_path: Path, forge: tuple[FakeForge, str]) -> Extra:
     write_settings(
         repos.home,
         install_path=str(repos.checkout),
-        skill_fix_label="desk",
         extra_skills_repo=str(checkout),
         extra_forge_repo_url=forge[1],
         extra_forge_token_file=str(token_file),
@@ -212,9 +211,7 @@ class TestForgeSync:
 
         assert (first.body["sync"], first.body["pr"]) == ("pr_open", 1)
         assert (second.body["sync"], second.body["pr"]) == ("pushed", 1)
-        assert [post["head"] for post in fake.posts] == [
-            "fix/skill-fixes-desk-1"
-        ]
+        assert [post["head"] for post in fake.posts] == ["fix/tool-lessons"]
 
     def test_merged_forge_pr_starts_new_batch(
         self,
@@ -240,7 +237,7 @@ class TestForgeSync:
 
         reply = fix_tool()
 
-        new = "fix/skill-fixes-desk-2"
+        new = "fix/tool-lessons-2"
         assert (reply.body["branch"], reply.body["pr"]) == (new, 2)
         assert (
             run_git(extra.remote, "rev-list", "--count", f"main..{new}") == "1"
@@ -268,7 +265,7 @@ class TestForgeSync:
 
         reply = fix_tool()
 
-        branch = "fix/skill-fixes-desk-1"
+        branch = "fix/tool-lessons"
         assert (reply.body["sync"], reply.body["pr"]) == ("pushed", 1)
         assert (
             run_git(extra.remote, "rev-list", "--merges", "--count", branch)
