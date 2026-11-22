@@ -290,41 +290,41 @@ fn run_brief_flags_sessions_user_typed_in() {
     let mut worker = make_agent("demo-320-design-10", AgentStatus::Idle);
     worker.session_id = Some("ses_new".to_owned());
     test_tools.herdr.agents = vec![worker];
-    let at = |text: &str| text.parse::<Timestamp>().unwrap().as_millisecond();
-    let user = |session, time, text| OpenCodeRow {
+    let parse_millis = |text: &str| text.parse::<Timestamp>().unwrap().as_millisecond();
+    let make_user_row = |session, time, text| OpenCodeRow {
         session,
         kind: "user",
-        updated_ms: at(time),
+        updated_ms: parse_millis(time),
         data: json!({ "text": text }),
     };
     write_opencode_db(
-        &test_tools.opencode_path(),
+        &test_tools.build_opencode_path(),
         &[
-            user(
+            make_user_row(
                 "ses_old",
                 "2026-11-19T09:00:00Z",
                 "Read the handoff at a.md",
             ),
-            user("ses_old", "2026-11-19T12:00:00Z", "keep it"),
-            user(
+            make_user_row("ses_old", "2026-11-19T12:00:00Z", "keep it"),
+            make_user_row(
                 "ses_new",
                 "2026-11-21T12:00:00Z",
                 "Read the handoff at b.md",
             ),
-            user("ses_new", "2026-11-21T13:00:00Z", "hub: the user is away"),
-            user(
+            make_user_row("ses_new", "2026-11-21T13:00:00Z", "hub: the user is away"),
+            make_user_row(
                 "ses_new",
                 "2026-11-21T14:00:00Z",
                 "hub watch: you have been idle",
             ),
-            user("ses_new", "2026-11-21T15:14:00Z", "On Q33: keep it out"),
-            user(
+            make_user_row("ses_new", "2026-11-21T15:14:00Z", "On Q33: keep it out"),
+            make_user_row(
                 "ses_fix",
                 "2026-11-21T12:00:00Z",
                 "Read the handoff at c.md",
             ),
-            user("ses_fix", "2026-11-21T13:00:00Z", "hub: commit after PR #8"),
-            user(
+            make_user_row("ses_fix", "2026-11-21T13:00:00Z", "hub: commit after PR #8"),
+            make_user_row(
                 "ses_fix",
                 "2026-11-21T14:00:00Z",
                 "From the hub: PR #8 merged",

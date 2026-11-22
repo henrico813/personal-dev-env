@@ -87,7 +87,7 @@ pub trait Herdr {
     fn move_workspaces(&self, ids: &[String], before_id: &str) -> Result<(), HerdrError>;
     /// Returns a Herdr for a saved machine, for a held message sent
     /// with `--machine`.
-    fn on_machine(&self, label: &str) -> Box<dyn Herdr + '_>;
+    fn clone_for_machine(&self, label: &str) -> Box<dyn Herdr + '_>;
     /// Returns the label of each enabled saved machine, such as the
     /// `laptop` in `herdr --machine laptop`.
     fn list_machines(&self) -> Result<Vec<String>, HerdrError>;
@@ -418,7 +418,7 @@ impl Herdr for HerdrCli {
         call_socket(&self.socket, "workspace.move_block", params)
     }
 
-    fn on_machine(&self, label: &str) -> Box<dyn Herdr + '_> {
+    fn clone_for_machine(&self, label: &str) -> Box<dyn Herdr + '_> {
         Box::new(HerdrCli {
             program: self.program.clone(),
             machine: Some(label.to_owned()),
@@ -769,25 +769,25 @@ fn make_missing_field_error(field: &str) -> HerdrError {
 
 /// Sends one request to Herdr's socket and checks its answer.
 fn call_socket(socket: &Path, method: &str, params: Value) -> Result<(), HerdrError> {
-    let unreachable = |error: io::Error| {
+    let make_unreachable_error = |error: io::Error| {
         HerdrError::Failed(format!(
             "cannot reach Herdr at {}: {error}",
             socket.display()
         ))
     };
-    let mut stream = UnixStream::connect(socket).map_err(unreachable)?;
+    let mut stream = UnixStream::connect(socket).map_err(make_unreachable_error)?;
     stream
         .set_read_timeout(Some(SOCKET_TIME_LIMIT))
-        .map_err(unreachable)?;
+        .map_err(make_unreachable_error)?;
     stream
         .set_write_timeout(Some(SOCKET_TIME_LIMIT))
-        .map_err(unreachable)?;
+        .map_err(make_unreachable_error)?;
     let request = json!({"id": "hub", "method": method, "params": params});
-    writeln!(stream, "{request}").map_err(unreachable)?;
+    writeln!(stream, "{request}").map_err(make_unreachable_error)?;
     let mut answer = String::new();
     BufReader::new(stream)
         .read_line(&mut answer)
-        .map_err(unreachable)?;
+        .map_err(make_unreachable_error)?;
     let no_usable_answer =
         || HerdrError::Failed(format!("Herdr gave no usable answer: {answer:?}"));
     let reply: Value = serde_json::from_str(&answer).map_err(|_| no_usable_answer())?;

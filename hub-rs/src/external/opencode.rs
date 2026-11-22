@@ -128,11 +128,11 @@ impl OpenCodeDb {
         let raw_steps = statement
             .query_map([session], |row| {
                 // SQLite stores integers signed; a negative count reads as zero.
-                let count = |index| row.get::<_, i64>(index).map(|value| value.max(0) as u64);
+                let read_count = |index| row.get::<_, i64>(index).map(|value| value.max(0) as u64);
                 Ok(TokenStep {
-                    input: count(0)?,
-                    cache_read: count(1)?,
-                    cache_write: count(2)?,
+                    input: read_count(0)?,
+                    cache_read: read_count(1)?,
+                    cache_write: read_count(2)?,
                 })
             })
             .map_err(OpenCodeError::Database)?;
@@ -194,13 +194,16 @@ impl OpenCodeDb {
             return Ok(None);
         };
         let reply = parse_row_data(&data)?;
-        let text = |pointer| reply.pointer(pointer).and_then(Value::as_str);
-        let (Some(provider), Some(id)) = (text("/model/providerID"), text("/model/id")) else {
+        let read_pointer_text = |pointer| reply.pointer(pointer).and_then(Value::as_str);
+        let (Some(provider), Some(id)) = (
+            read_pointer_text("/model/providerID"),
+            read_pointer_text("/model/id"),
+        ) else {
             return Err(OpenCodeError::BadRow(
                 "the newest OpenCode reply names no model".to_owned(),
             ));
         };
-        Ok(Some(match text("/model/variant") {
+        Ok(Some(match read_pointer_text("/model/variant") {
             Some(effort) => format!("{provider}/{id}#{effort}"),
             None => format!("{provider}/{id}"),
         }))
@@ -394,7 +397,7 @@ mod tests {
     /// hub hand off far too early.
     #[test]
     fn count_trusted_context_skips_zero_and_next() {
-        let step = |input, cache_read, cache_write| TokenStep {
+        let make_step = |input, cache_read, cache_write| TokenStep {
             input,
             cache_read,
             cache_write,
@@ -403,12 +406,16 @@ mod tests {
             ("no-steps", vec![], None),
             (
                 "newest-counts",
-                vec![step(10, 100_000, 7_000), step(20, 110_000, 0)],
+                vec![make_step(10, 100_000, 7_000), make_step(20, 110_000, 0)],
                 Some(110_020),
             ),
             (
                 "zero-and-next-skipped",
-                vec![step(10, 100_000, 7_000), step(0, 0, 0), step(0, 217_700, 0)],
+                vec![
+                    make_step(10, 100_000, 7_000),
+                    make_step(0, 0, 0),
+                    make_step(0, 217_700, 0),
+                ],
                 Some(107_010),
             ),
         ];

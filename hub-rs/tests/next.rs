@@ -94,7 +94,7 @@ fn set_hub_context(test_tools: &mut TestTools, tokens: u64) {
         updated_ms: 0,
         data: json!({"tokens": {"input": tokens, "cache": {"read": 0, "write": 0}}}),
     };
-    write_opencode_db(&test_tools.opencode_path(), &[step]);
+    write_opencode_db(&test_tools.build_opencode_path(), &[step]);
 }
 
 /// Makes this hub `kanban-hub-2`, in pane `w1:kanban-hub-2`, with a
@@ -181,15 +181,15 @@ fn run_next_prints_missed_report_once() {
 #[test]
 fn run_next_prints_each_blocked_state_once() {
     let mut test_tools = TestTools::new();
-    let blocked = |state_seq| Agent {
+    let make_blocked_agent = |state_seq| Agent {
         state_seq,
         ..make_agent("demo-kb-009-auto", AgentStatus::Blocked)
     };
-    test_tools.herdr.agents = vec![blocked(4)];
+    test_tools.herdr.agents = vec![make_blocked_agent(4)];
 
     let first = check_once(&test_tools);
     let second = check_once(&test_tools);
-    test_tools.herdr.agents = vec![blocked(6)];
+    test_tools.herdr.agents = vec![make_blocked_agent(6)];
     let third = check_once(&test_tools);
 
     assert_eq!(first, "blocked demo-kb-009-auto (hub -)");
@@ -274,21 +274,21 @@ fn run_next_wakes_once_per_board_crossing() {
     let mut test_tools = TestTools::new();
     // The review count alone passes its limit; a combined count once
     // hid this.
-    let board = |in_review| BoardCounts {
+    let make_board_counts = |in_review| BoardCounts {
         active: 2,
         in_review,
         active_limit: 8,
         in_review_limit: 6,
     };
-    test_tools.cards.board = Some(board(9));
+    test_tools.cards.board = Some(make_board_counts(9));
 
     let first = check_once(&test_tools);
     forget_minute_pass(&test_tools);
     let still_over = check_once(&test_tools);
-    test_tools.cards.board = Some(board(6));
+    test_tools.cards.board = Some(make_board_counts(6));
     forget_minute_pass(&test_tools);
     let under = check_once(&test_tools);
-    test_tools.cards.board = Some(board(9));
+    test_tools.cards.board = Some(make_board_counts(9));
     forget_minute_pass(&test_tools);
     let over_again = check_once(&test_tools);
 
@@ -444,8 +444,12 @@ fn run_next_skips_handoff_of_finished_worker() {
         updated_ms: 0,
         data: json!({"tokens": {"input": 152_000, "cache": {"read": 0, "write": 0}}}),
     };
-    write_opencode_db(&test_tools.opencode_path(), &[step]);
-    write_opencode_session(&test_tools.opencode_path(), "ses_demo-kb-007-impl", &folder);
+    write_opencode_db(&test_tools.build_opencode_path(), &[step]);
+    write_opencode_session(
+        &test_tools.build_opencode_path(),
+        "ses_demo-kb-007-impl",
+        &folder,
+    );
 
     let first = check_once(&test_tools);
     forget_minute_pass(&test_tools);

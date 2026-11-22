@@ -114,7 +114,7 @@ pub fn run_wait(run: &RunFolder, request: &WaitRequest, now: &Zoned) -> Result<O
         deadline: deadline.timestamp(),
     };
     write_wait(run, &wait)?;
-    Ok(Outcome::line(format!(
+    Ok(Outcome::from_line(format!(
         "hub watch prods {name} once {what} or at {}; end your turn now",
         deadline.strftime("%H:%M")
     )))
@@ -139,18 +139,18 @@ fn write_wait(run: &RunFolder, wait: &WaitFile) -> Result<(), HubError> {
 /// left out, so it never hides a stall.
 pub(crate) fn list_waits(run: &RunFolder) -> Result<Vec<WaitFile>, HubError> {
     let folder = run.path().join(WAITS_FOLDER);
-    let file_error = |source| HubError::File {
+    let wrap_file_error = |source| HubError::File {
         path: folder.clone(),
         source,
     };
     let entries = match fs::read_dir(&folder) {
         Ok(entries) => entries,
         Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(source) => return Err(file_error(source)),
+        Err(source) => return Err(wrap_file_error(source)),
     };
     let mut waits = Vec::new();
     for entry in entries {
-        let path = entry.map_err(file_error)?.path();
+        let path = entry.map_err(wrap_file_error)?.path();
         if path.extension().is_none_or(|extension| extension != "json") {
             continue;
         }

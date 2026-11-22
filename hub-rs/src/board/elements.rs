@@ -152,7 +152,7 @@ pub(crate) struct ScreenDump {
 }
 
 /// Returns the drawn element under `column` and `row`, if any.
-pub(super) fn element_at(elements: &[Element], column: u16, row: u16) -> Option<&Element> {
+pub(super) fn find_element_at(elements: &[Element], column: u16, row: u16) -> Option<&Element> {
     elements.iter().find(|element| {
         element.place.is_some_and(|place| {
             place.row == row

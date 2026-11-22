@@ -71,14 +71,14 @@ pub(crate) fn pass_on_update_result(
 /// Returns the result saved at `path`, or `None` when the file does not
 /// exist.
 fn read_update_result(path: &Path) -> Result<Option<UpdateResult>, HubError> {
-    let file_error = |source| HubError::File {
+    let wrap_file_error = |source| HubError::File {
         path: path.to_owned(),
         source,
     };
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(source) => return Err(file_error(source)),
+        Err(source) => return Err(wrap_file_error(source)),
     };
-    serde_json::from_str(&text).map_err(|error| file_error(error.into()))
+    serde_json::from_str(&text).map_err(|error| wrap_file_error(error.into()))
 }

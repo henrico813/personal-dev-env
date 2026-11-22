@@ -77,11 +77,11 @@ pub fn run_send(
                 now,
             )?;
             deliver_now(tools.herdr, run, stored, now)?;
-            Ok(Outcome::line(format!("sent {name}")))
+            Ok(Outcome::from_line(format!("sent {name}")))
         }
         Delivery::Hold(why) => {
             messages::hold_message(run, name, machine, &request.text, now)?;
-            Ok(Outcome::line(format!("held {name}: {}", why.words())))
+            Ok(Outcome::from_line(format!("held {name}: {}", why.words())))
         }
         Delivery::Reopen(record) => {
             messages::hold_message(run, name, machine, &request.text, now)?;
@@ -93,7 +93,7 @@ pub fn run_send(
                 done: format!("held {name}"),
                 error: Box::new(error),
             })?;
-            Ok(Outcome::line(format!(
+            Ok(Outcome::from_line(format!(
                 "reopening {name}; held until it starts"
             )))
         }
@@ -116,7 +116,7 @@ pub fn run_send(
             };
             events::append_event(run, &moved)?;
             deliver_now(tools.herdr, run, stored, now)?;
-            Ok(Outcome::line(format!(
+            Ok(Outcome::from_line(format!(
                 "sent {successor} ({name} handed off to it)"
             )))
         }

@@ -76,7 +76,7 @@ fn print_lines(lines: &[String]) -> ExitCode {
 /// command. A command finds its run folder before it reads anything
 /// else, so a missing folder is reported first.
 fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
-    if cli.machine.is_some() && !cli::takes_machine(&cli.command) {
+    if cli.machine.is_some() && !cli::can_take_machine(&cli.command) {
         let name = cli.command.name();
         return Err(HubError::Usage(format!(
             "{name} works on this machine only"

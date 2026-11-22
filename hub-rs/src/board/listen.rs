@@ -70,16 +70,17 @@ impl StepListener {
             ));
         }
         if let Some(folder) = path.parent() {
-            fs::create_dir_all(folder).map_err(|source| socket_error(folder, source))?;
+            fs::create_dir_all(folder).map_err(|source| wrap_socket_error(folder, source))?;
         }
         // A board that was killed leaves its socket file behind, and
         // binding fails while the file is there.
         match fs::remove_file(&path) {
             Ok(()) => {}
             Err(error) if error.kind() == ErrorKind::NotFound => {}
-            Err(source) => return Err(socket_error(&path, source)),
+            Err(source) => return Err(wrap_socket_error(&path, source)),
         }
-        let listener = UnixListener::bind(&path).map_err(|source| socket_error(&path, source))?;
+        let listener =
+            UnixListener::bind(&path).map_err(|source| wrap_socket_error(&path, source))?;
         let (sender, steps) = mpsc::channel();
         // Like the reader thread, it is never joined. It waits for the
         // next agent until the process ends.
@@ -121,7 +122,7 @@ pub fn send_step(state_folder: &Path, step: &str) -> Result<Outcome, HubError> {
     let path = state_folder.join(SOCKET);
     let stream = UnixStream::connect(&path)
         .map_err(|_| HubError::NotDone("no board listens; start hub board --listen".to_owned()))?;
-    writeln!(&stream, "{}", step.trim()).map_err(|source| socket_error(&path, source))?;
+    writeln!(&stream, "{}", step.trim()).map_err(|source| wrap_socket_error(&path, source))?;
     let mut reply = String::new();
     stream
         .set_read_timeout(Some(REPLY_WAIT))
@@ -131,7 +132,7 @@ pub fn send_step(state_folder: &Path, step: &str) -> Result<Outcome, HubError> {
                 "the board did not answer within {} seconds",
                 REPLY_WAIT.as_secs()
             )),
-            _ => socket_error(&path, source),
+            _ => wrap_socket_error(&path, source),
         })?;
     if reply.is_empty() {
         return Err(HubError::NotDone(
@@ -139,7 +140,7 @@ pub fn send_step(state_folder: &Path, step: &str) -> Result<Outcome, HubError> {
         ));
     }
     let screen: serde_json::Value = serde_json::from_str(&reply)
-        .map_err(|error| socket_error(&path, std::io::Error::from(error)))?;
+        .map_err(|error| wrap_socket_error(&path, std::io::Error::from(error)))?;
     if let Some(reason) = screen.get("error").and_then(serde_json::Value::as_str) {
         return Err(HubError::Usage(reason.to_owned()));
     }
@@ -176,7 +177,7 @@ fn pass_steps_to_board(listener: &UnixListener, steps: &Sender<SentStep>) {
 }
 
 /// Wraps a failure to make or use `board.sock` for `main` to print.
-fn socket_error(path: &Path, source: std::io::Error) -> HubError {
+fn wrap_socket_error(path: &Path, source: std::io::Error) -> HubError {
     HubError::File {
         path: path.to_owned(),
         source,
@@ -189,7 +190,7 @@ mod tests {
 
     use crate::board::control::answer_sent_step;
     use crate::board::view::Step;
-    use crate::board::view::tests::queue_board;
+    use crate::board::view::tests::make_queue_board;
 
     /// A state folder of its own under the system's temporary folder,
     /// removed on drop.
@@ -221,7 +222,7 @@ mod tests {
     fn send_step_reaches_board_and_returns_screen() {
         let temp = TempState::new("send-step");
         let (_listener, steps) = StepListener::start(&temp.path).unwrap();
-        let mut board = queue_board();
+        let mut board = make_queue_board();
 
         // The agent sends a tap from another thread, as `--send` does
         // from another terminal.
@@ -250,7 +251,7 @@ mod tests {
     fn send_step_hidden_tap_fails_naming_show() {
         let temp = TempState::new("send-hidden-card");
         let (_listener, steps) = StepListener::start(&temp.path).unwrap();
-        let mut board = queue_board();
+        let mut board = make_queue_board();
         let state_folder = temp.path.clone();
         let agent = thread::spawn(move || send_step(&state_folder, "tap card:DEMO-KB-020"));
 

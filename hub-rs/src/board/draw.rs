@@ -1,6 +1,6 @@
 //! Draws the board's queue view and details page, and lists the
 //! elements each holds, drawn or hidden. Read `draw_list` and
-//! `list_elements` first.
+//! `build_list_elements` first.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -48,18 +48,18 @@ pub(super) fn draw_list(
     list: &mut ListState,
 ) {
     let [top, middle, bottom] = split_screen(area);
-    frame.render_widget(count_line(screen.groups, screen.color), top);
+    frame.render_widget(format_count_line(screen.groups, screen.color), top);
     let width = usize::from(middle.width);
     let items: Vec<ListItem> = screen
         .lines
         .iter()
-        .map(|line| ListItem::new(list_line(screen, *line, width)))
+        .map(|line| ListItem::new(format_list_line(screen, *line, width)))
         .collect();
     let list_widget =
         List::new(items).highlight_style(Style::new().add_modifier(Modifier::REVERSED));
     frame.render_stateful_widget(list_widget, middle, list);
     frame.render_widget(
-        Paragraph::new(view_hint(screen.status)).style(dim()),
+        Paragraph::new(format_view_hint(screen.status)).style(pick_dim_style()),
         bottom,
     );
 }
@@ -75,24 +75,28 @@ pub(super) fn draw_details(frame: &mut Frame, details: &mut Details) {
     details.scroll = details
         .scroll
         .min(wrapped.len().saturating_sub(usize::from(middle.height)));
-    let shown: Vec<TextLine> = shown_details(details, middle)
+    let shown: Vec<TextLine> = select_shown_detail_lines(details, middle)
         .into_iter()
         .map(TextLine::from)
         .collect();
     frame.render_widget(Paragraph::new(shown), middle);
-    frame.render_widget(Paragraph::new(BACK_HINT).style(dim()), bottom);
+    frame.render_widget(Paragraph::new(BACK_HINT).style(pick_dim_style()), bottom);
 }
 
 /// Returns the queue view's elements as `draw_list` drew them in
 /// `area`, with `list` scrolled and chosen as the last draw left it.
 /// Rows scrolled off come too, hidden, and so do the cards of a folded
 /// group or behind `+ N more`, which come right after that line.
-pub(super) fn list_elements(screen: &ListScreen<'_>, area: Rect, list: &ListState) -> Vec<Element> {
+pub(super) fn build_list_elements(
+    screen: &ListScreen<'_>,
+    area: Rect,
+    list: &ListState,
+) -> Vec<Element> {
     let [top, middle, bottom] = split_screen(area);
-    let mut elements = vec![back_element(QUEUE_BACK, top)];
-    let mut column = top.x + width_of(QUEUE_BACK) + width_of(BACK_GAP);
+    let mut elements = vec![build_back_element(QUEUE_BACK, top)];
+    let mut column = top.x + measure_width(QUEUE_BACK) + measure_width(BACK_GAP);
     for (group, status, text) in count_parts(screen.groups) {
-        let width = width_of(&text);
+        let width = measure_width(&text);
         elements.push(Element {
             id: format!("count:{}", status.word()),
             kind: Kind::Count,
@@ -110,7 +114,7 @@ pub(super) fn list_elements(screen: &ListScreen<'_>, area: Rect, list: &ListStat
         });
         column = column
             .saturating_add(width)
-            .saturating_add(width_of(COUNT_GAP));
+            .saturating_add(measure_width(COUNT_GAP));
     }
     let width = usize::from(middle.width);
     for (index, line) in screen.lines.iter().enumerate() {
@@ -118,7 +122,7 @@ pub(super) fn list_elements(screen: &ListScreen<'_>, area: Rect, list: &ListStat
         let element = Element {
             id,
             kind,
-            text: line_text(&list_line(screen, *line, width)),
+            text: join_line_text(&format_list_line(screen, *line, width)),
             place: None,
             tap,
             chosen: list.selected() == Some(index),
@@ -126,7 +130,7 @@ pub(super) fn list_elements(screen: &ListScreen<'_>, area: Rect, list: &ListStat
             hiding: None,
             action: Action::Line(index),
         };
-        let element = match row_or_scroll(index, list.offset(), middle) {
+        let element = match find_row_or_scroll(index, list.offset(), middle) {
             Ok(row) => Element {
                 place: Some(Place {
                     column: middle.x,
@@ -139,7 +143,7 @@ pub(super) fn list_elements(screen: &ListScreen<'_>, area: Rect, list: &ListStat
         };
         // A card under a line scrolled off is first reached by the
         // scroll that shows the line.
-        let reach = |own: String| {
+        let pick_reach_step = |own: String| {
             element
                 .hiding
                 .as_ref()
@@ -150,34 +154,38 @@ pub(super) fn list_elements(screen: &ListScreen<'_>, area: Rect, list: &ListStat
                 group,
                 is_open: false,
             } => {
-                let show = reach(format!("tap group:{}", group.slug()));
-                hidden_items(screen, group, 0, HiddenBy::Fold, &show, width)
+                let show = pick_reach_step(format!("tap group:{}", group.slug()));
+                build_hidden_items(screen, group, 0, HiddenBy::Fold, &show, width)
             }
             Line::More { group, hidden } => {
-                let show = reach(format!("tap more:{}", group.slug()));
-                let first = group_items(screen.groups, group)
+                let show = pick_reach_step(format!("tap more:{}", group.slug()));
+                let first = find_group_items(screen.groups, group)
                     .len()
                     .saturating_sub(hidden);
-                hidden_items(screen, group, first, HiddenBy::More, &show, width)
+                build_hidden_items(screen, group, first, HiddenBy::More, &show, width)
             }
             _ => Vec::new(),
         };
         elements.push(element);
         elements.extend(hidden_cards);
     }
-    elements.push(text_element("hint", &view_hint(screen.status), bottom));
+    elements.push(build_text_element(
+        "hint",
+        &format_view_hint(screen.status),
+        bottom,
+    ));
     elements
 }
 
 /// Returns a view's bottom line, such as
 /// `esc back  ? help  read 10:42 0.6s`, with the board's `status` last.
-pub(super) fn view_hint(status: &str) -> String {
+pub(super) fn format_view_hint(status: &str) -> String {
     format!("esc back  ? help  {status}")
 }
 
 /// Returns the element of a view's breadcrumb, such as `< queue`, on
 /// `area`'s first row. A tap on it goes back to the glance page.
-pub(super) fn back_element(text: &str, area: Rect) -> Element {
+pub(super) fn build_back_element(text: &str, area: Rect) -> Element {
     Element {
         kind: Kind::Back,
         tap: Some("back"),
@@ -185,41 +193,43 @@ pub(super) fn back_element(text: &str, area: Rect) -> Element {
         place: Some(Place {
             column: area.x,
             row: area.y,
-            width: width_of(text),
+            width: measure_width(text),
         }),
-        ..text_element("back", text, area)
+        ..build_text_element("back", text, area)
     }
 }
 
 /// Returns the columns `text` takes, where a mark such as `·` takes
 /// more than one byte but one column.
-pub(super) fn width_of(text: &str) -> u16 {
+pub(super) fn measure_width(text: &str) -> u16 {
     u16::try_from(text.chars().count()).unwrap_or(u16::MAX)
 }
 
 /// Returns the details page's elements as `draw_details` drew them in
 /// `area`, with the lines scrolled off hidden. A tap anywhere on the
 /// page goes back, so each says so.
-pub(super) fn details_elements(details: &Details, area: Rect) -> Vec<Element> {
+pub(super) fn build_details_elements(details: &Details, area: Rect) -> Vec<Element> {
     let [top, middle, bottom] = split_screen(area);
-    let back = |element: Element| Element {
+    let add_back_tap = |element: Element| Element {
         tap: Some("back"),
         action: Action::Back,
         ..element
     };
-    let mut elements = vec![back(Element {
+    let mut elements = vec![add_back_tap(Element {
         kind: Kind::Back,
-        ..text_element("back", "< back", top)
+        ..build_text_element("back", "< back", top)
     })];
     for (number, text) in wrap_details(details, middle).iter().enumerate() {
         let id = format!("line:{number}");
-        let element = match row_or_scroll(number, details.scroll, middle) {
-            Ok(row) => text_element(&id, text, Rect { y: row, ..middle }),
-            Err(step) => text_element(&id, text, middle).hide(HiddenBy::Scroll, step.to_owned()),
+        let element = match find_row_or_scroll(number, details.scroll, middle) {
+            Ok(row) => build_text_element(&id, text, Rect { y: row, ..middle }),
+            Err(step) => {
+                build_text_element(&id, text, middle).hide(HiddenBy::Scroll, step.to_owned())
+            }
         };
-        elements.push(back(element));
+        elements.push(add_back_tap(element));
     }
-    elements.push(back(text_element("hint", BACK_HINT, bottom)));
+    elements.push(add_back_tap(build_text_element("hint", BACK_HINT, bottom)));
     elements
 }
 
@@ -246,7 +256,11 @@ fn wrap_details(details: &Details, middle: Rect) -> Vec<String> {
 /// `first` on top, or for a line off screen the step that scrolls
 /// toward it. On the page or view keys act on, repeating that step
 /// reaches the line, since PageDown moves it by the rows it shows.
-pub(super) fn row_or_scroll(index: usize, first: usize, middle: Rect) -> Result<u16, &'static str> {
+pub(super) fn find_row_or_scroll(
+    index: usize,
+    first: usize,
+    middle: Rect,
+) -> Result<u16, &'static str> {
     if index < first {
         return Err("press pageup");
     }
@@ -259,7 +273,7 @@ pub(super) fn row_or_scroll(index: usize, first: usize, middle: Rect) -> Result<
 
 /// Returns `group`'s items from `first` on as hidden elements, each
 /// with `hidden_by` and `show`.
-fn hidden_items(
+fn build_hidden_items(
     screen: &ListScreen<'_>,
     group: Group,
     first: usize,
@@ -267,14 +281,14 @@ fn hidden_items(
     show: &str,
     width: usize,
 ) -> Vec<Element> {
-    group_items(screen.groups, group)
+    find_group_items(screen.groups, group)
         .iter()
         .skip(first)
         .map(|item| {
             let element = Element {
-                id: item_id(item),
+                id: format_item_id(item),
                 kind: Kind::Item,
-                text: line_text(&item_line(item, width, screen.color)),
+                text: join_line_text(&format_item_line(item, width, screen.color)),
                 place: None,
                 tap: Some("open"),
                 chosen: false,
@@ -288,7 +302,7 @@ fn hidden_items(
 }
 
 /// Returns `group`'s items, or none when the read has no such group.
-fn group_items(groups: &[(Group, Vec<Item>)], group: Group) -> &[Item] {
+fn find_group_items(groups: &[(Group, Vec<Item>)], group: Group) -> &[Item] {
     groups
         .iter()
         .find(|(each, _)| *each == group)
@@ -296,13 +310,13 @@ fn group_items(groups: &[(Group, Vec<Item>)], group: Group) -> &[Item] {
 }
 
 /// Returns an item's element id, such as `card:DEMO-KB-007`.
-fn item_id(item: &Item) -> String {
-    format!("{}:{}", item.target.kind_word(), item.id)
+fn format_item_id(item: &Item) -> String {
+    format!("{}:{}", item.target.pick_kind_word(), item.id)
 }
 
 /// Returns the wrapped details lines that fit in `middle`, from
 /// `details.scroll` on.
-fn shown_details(details: &Details, middle: Rect) -> Vec<String> {
+fn select_shown_detail_lines(details: &Details, middle: Rect) -> Vec<String> {
     wrap_details(details, middle)
         .into_iter()
         .skip(details.scroll)
@@ -327,9 +341,9 @@ fn describe_line(
             Some("show all"),
         ),
         Line::Item { group, index } => {
-            let id = group_items(groups, group)
+            let id = find_group_items(groups, group)
                 .get(index)
-                .map_or_else(String::new, item_id);
+                .map_or_else(String::new, format_item_id);
             (id, Kind::Item, Some("open"))
         }
         Line::NoHub => ("no-hub".to_owned(), Kind::Text, None),
@@ -338,7 +352,7 @@ fn describe_line(
 
 /// Returns an element that shows `text` on `area`'s first row and does
 /// nothing on a tap.
-pub(super) fn text_element(id: &str, text: &str, area: Rect) -> Element {
+pub(super) fn build_text_element(id: &str, text: &str, area: Rect) -> Element {
     Element {
         id: id.to_owned(),
         kind: Kind::Text,
@@ -357,7 +371,7 @@ pub(super) fn text_element(id: &str, text: &str, area: Rect) -> Element {
 }
 
 /// Returns a drawn line's words, with the end trimmed.
-pub(super) fn line_text(line: &TextLine<'_>) -> String {
+pub(super) fn join_line_text(line: &TextLine<'_>) -> String {
     let text: String = line
         .spans
         .iter()
@@ -387,7 +401,7 @@ pub(super) fn count_words(groups: &[(Group, Vec<Item>)]) -> String {
 
 /// Returns the queue view's top line, such as
 /// `< queue  2 run · 1 you · 1 idle`.
-fn count_line(groups: &[(Group, Vec<Item>)], color: bool) -> TextLine<'static> {
+fn format_count_line(groups: &[(Group, Vec<Item>)], color: bool) -> TextLine<'static> {
     let bold = Style::new().add_modifier(Modifier::BOLD);
     let mut spans = vec![Span::styled(QUEUE_BACK, bold), Span::raw(BACK_GAP)];
     for (index, (_, status, text)) in count_parts(groups).into_iter().enumerate() {
@@ -401,7 +415,7 @@ fn count_line(groups: &[(Group, Vec<Item>)], color: bool) -> TextLine<'static> {
 }
 
 /// Returns one list line, `width` columns wide.
-fn list_line(screen: &ListScreen<'_>, line: Line, width: usize) -> TextLine<'static> {
+fn format_list_line(screen: &ListScreen<'_>, line: Line, width: usize) -> TextLine<'static> {
     match line {
         Line::Heading { group, is_open } => {
             let count = screen
@@ -411,10 +425,12 @@ fn list_line(screen: &ListScreen<'_>, line: Line, width: usize) -> TextLine<'sta
                 .map_or(0, |(_, items)| items.len());
             let arrow = if is_open { "v" } else { ">" };
             let text = format!("{arrow} {} {count}", group.title());
-            TextLine::styled(text, heading_style(group, screen.color))
+            TextLine::styled(text, pick_heading_style(group, screen.color))
         }
-        Line::More { hidden, .. } => TextLine::styled(format!("   + {hidden} more"), dim()),
-        Line::NoHub => TextLine::styled(format!("   {NO_HUB}"), dim()),
+        Line::More { hidden, .. } => {
+            TextLine::styled(format!("   + {hidden} more"), pick_dim_style())
+        }
+        Line::NoHub => TextLine::styled(format!("   {NO_HUB}"), pick_dim_style()),
         Line::Item { group, index } => {
             let item = screen
                 .groups
@@ -422,7 +438,7 @@ fn list_line(screen: &ListScreen<'_>, line: Line, width: usize) -> TextLine<'sta
                 .find(|(each, _)| *each == group)
                 .and_then(|(_, items)| items.get(index));
             match item {
-                Some(item) => item_line(item, width, screen.color),
+                Some(item) => format_item_line(item, width, screen.color),
                 None => TextLine::default(),
             }
         }
@@ -432,11 +448,11 @@ fn list_line(screen: &ListScreen<'_>, line: Line, width: usize) -> TextLine<'sta
 /// Returns an item's line, such as ` rev  Retry failed u~ DevEnv`. The
 /// line holds its status word, its words cut to fit with `~`, and its
 /// tag in the last `TAG_WIDTH` columns.
-pub(super) fn item_line(item: &Item, width: usize, color: bool) -> TextLine<'static> {
+pub(super) fn format_item_line(item: &Item, width: usize, color: bool) -> TextLine<'static> {
     let room = width.saturating_sub(Status::WIDTH + 3 + TAG_WIDTH);
     let tag: String = item.tag.chars().take(TAG_WIDTH).collect();
     let status_style = match item.status {
-        Status::None => dim(),
+        Status::None => pick_dim_style(),
         status if color => Style::new().fg(status.color()),
         _ => Style::new(),
     };
@@ -448,7 +464,7 @@ pub(super) fn item_line(item: &Item, width: usize, color: bool) -> TextLine<'sta
         ),
         Span::raw(" "),
         Span::raw(format!("{:room$}", fit_text(&item.text, room))),
-        Span::styled(format!(" {tag}"), dim()),
+        Span::styled(format!(" {tag}"), pick_dim_style()),
     ])
 }
 
@@ -463,7 +479,7 @@ fn fit_text(text: &str, room: usize) -> String {
 
 /// Returns the bold style of a heading or count, in its group's color
 /// unless `color` is false.
-fn heading_style(group: Group, color: bool) -> Style {
+fn pick_heading_style(group: Group, color: bool) -> Style {
     let style = Style::new().add_modifier(Modifier::BOLD);
     if color {
         style.fg(group.color())
@@ -473,7 +489,7 @@ fn heading_style(group: Group, color: bool) -> Style {
 }
 
 /// Returns the style of hints and tags.
-pub(super) fn dim() -> Style {
+pub(super) fn pick_dim_style() -> Style {
     Style::new().add_modifier(Modifier::DIM)
 }
 
