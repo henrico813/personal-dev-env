@@ -6,7 +6,7 @@ use std::fmt;
 use std::path::PathBuf;
 
 use jiff::{Timestamp, Zoned};
-use rusqlite::{Connection, OpenFlags, OptionalExtension};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 use serde_json::Value;
 
 /// A session with no tool running that changed nothing for this long
@@ -285,23 +285,25 @@ impl OpenCodeDb {
         let mut statement = connection
             .prepare(
                 "select time_created, coalesce(json_extract(data, '$.text'), '') \
-                 from session_message where session_id = ?1 and type = 'user' order by seq",
+                 from session_message \
+                 where session_id = ?1 and type = 'user' and time_created >= ?2 \
+                 and seq > (select min(seq) from session_message \
+                            where session_id = ?1 and type = 'user') \
+                 order by seq",
             )
             .map_err(OpenCodeError::Database)?;
         let rows = statement
-            .query_map([session], |row| {
+            .query_map(params![session, since.as_millisecond()], |row| {
                 Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
             })
             .map_err(OpenCodeError::Database)?;
         let mut messages = Vec::new();
-        for row in rows.skip(1) {
+        for row in rows {
             let (created_ms, text) = row.map_err(OpenCodeError::Database)?;
             let at = Timestamp::from_millisecond(created_ms).map_err(|error| {
                 OpenCodeError::BadRow(format!("an OpenCode message has a bad time: {error}"))
             })?;
-            if at >= since {
-                messages.push(UserMessage { at, text });
-            }
+            messages.push(UserMessage { at, text });
         }
         Ok(messages)
     }
