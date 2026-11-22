@@ -14,7 +14,8 @@ version the agent reads.
 `<Write in parts>` is the block in Write in parts below.
 `<report file>` stands for a new file in the PR folder, such as
 `<PR folder>/plan-review-1.md`. The first planner starts before that
-folder exists, so give it a file in a folder you make with `mktemp -d`.
+folder exists, so give it a file in a folder you make with
+`mktemp -d ~/.local/state/pde-work.XXXXXX`.
 
 ## Contents
 

@@ -1,4 +1,4 @@
-//! Reads the questions that wait on the user from the cards. `hub ask`
+//! Reads the questions that wait on the user from the cards. `run_ask`
 //! puts each one in its card's Open Questions and marks the card
 //! needs-you with the question's title, so the open mark finds the item.
 
@@ -34,7 +34,7 @@ pub(crate) fn read_open_questions(cards: &dyn Cards) -> Result<Vec<OpenQuestion>
         let Some(title) = note.needs_you else {
             continue;
         };
-        // `hub ask` adds its item last, after any older item with that title.
+        // `run_ask` adds its item last, after any older item with that title.
         let lines = note
             .open_questions
             .into_iter()

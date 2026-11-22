@@ -4,22 +4,25 @@
 A card is one piece of work the user wants, like a GitHub issue. A plan
 made from it is like a pull request. Each card is one note,
 ``500 Zettelkasten/Projects/<Project>/<KEY> <Title>.md``, with a key
-such as PDEV-KB-012 built from the project code in the project
-folder's AGENTS.md. The key and the file name follow the naming
-rules in ``chezmoi/dot_config/pde/names.toml``, installed as
+such as PDEV-516 built from the project code in the project folder's
+AGENTS.md. Done and dropped cards keep older keys such as PDEV-KB-012,
+which card still reads; ``card rekey`` gives open ones new keys. The
+key and the file name follow the naming rules in
+``chezmoi/dot_config/pde/names.toml``, installed as
 ``~/.config/pde/names.toml``.
 
-The tables FIELDS, SECTIONS, STAGES, KINDS and MOVES below define the
-note layout and the rules. ``card template`` prints the Obsidian
-template from the same tables, so cards made in either place match.
+The tables FIELDS, SECTIONS, STAGES, KINDS, WORK_TYPES, MOVES and
+VERBS below define the note layout and the rules. ``card template``
+prints the Obsidian template from the same tables, so cards made in
+either place match.
 
 Usage::
 
     card [--vault NAME] COMMAND ...
 
-    card new PROJECT TITLE [--kind K] [--user]  make a card in draft
-    card new PROJECT --from FILE [--user]  FILE gives title, kind, sections
-    card new PROJECT TITLE --adopt STAGE --user [--why TEXT]
+    card new PROJECT TITLE --type T [--kind K] [--user]  make a card in draft
+    card new PROJECT --from FILE [--user]  title, type, kind, sections
+    card new PROJECT TITLE --type T --adopt STAGE --user [--why TEXT]
                                        [--session [AGENT]]
     card list [--stage S] [--project P] [--kind K] [--tabs]
     card board                         counts and the review queue
@@ -30,11 +33,12 @@ Usage::
     card add KEY SECTION TEXT          add a bullet or criteria checkbox
     card attach KEY FILE               copy FILE to attachments, embed it
     card edit KEY SECTION N TEXT|--remove  replace or remove item N
-    card set KEY title|kind VALUE
+    card set KEY title|kind|type VALUE [--user]
     card link KEY PLAN|PR_URL
     card link KEY --session [AGENT]    record a Herdr agent's session
     card delete KEY --user
-    card check                         cards with a broken layout
+    card rekey [--apply --user]        new keys for open old-key cards
+    card check                         cards with a broken layout or title
     card name RULE VALUE...            make a name, such as a branch
     card template                      print the Obsidian template
 
@@ -53,11 +57,13 @@ import functools
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import tomllib
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -83,6 +89,9 @@ KINDS = {
     "research": "ends in a document or a decision",
 }
 DEFAULT_KIND = "build"
+# The kind of change a card is, as in a commit title. check_title's T3
+# rule needs one.
+WORK_TYPES = ["feat", "fix", "docs", "refactor", "chore", "research"]
 # Moving a card chains these moves, through `find_move_chain`, when no
 # single one reaches the stage, and refuses a stage no chain reaches,
 # so finishing a card is final and follow-up work gets a new card.
@@ -131,6 +140,7 @@ FIELDS = [
     "template_version",
     "project",
     "kind",
+    "work_type",
     "date_created",
     "plans",
     "prs",
@@ -148,6 +158,35 @@ SECTIONS = [
 # file of `run_new`. Only this program writes the Log.
 WRITABLE_SECTIONS = [name for name in SECTIONS if name != "Log"]
 CRITERIA = "Acceptance Criteria"
+TITLE_LIMIT = 50
+# A hub board queue row on a 40-column phone screen keeps 27 columns
+# for the title, its cut mark included.
+BOARD_TITLE_WIDTH = 27
+# Words a title may start with, for rule T2. With --user, any other
+# first word only reports.
+VERBS = frozenset(
+    """
+    accept access add adopt alert align allow apply archive ask audit automate
+    back block build bump cache catch change check clean clear close collect
+    combine compare configure connect convert copy count cover create cut debug
+    decide define delete deploy describe design detect document download draft
+    drop edit enable end enforce evaluate explain explore export extend fetch
+    file fill filter find finish fix flag fold follow format free gate gather
+    generate give group guard hand handle harden help hide implement import
+    improve install investigate keep label land launch let limit link list load
+    lock log make mark match measure merge migrate move name note open order
+    package park pass pause pick pin plan point port prepare prevent print
+    process propose prune publish pull push put query queue read rebuild
+    recheck record redesign reduce reevaluate refactor refine refresh refuse
+    reject release reload remind remove rename reorder repair replace report
+    require rerun research reset resolve restore resume retire retry return
+    reuse review rewrite route run save scan schedule scope score search send
+    separate set share show shrink simplify skip slim sort speed split start
+    stop store support swap switch sync tag take teach tell test tidy time
+    track train trim try tune turn undo unify unlock update upgrade use
+    validate verify wait wake warn watch wire wrap write
+    """.split()
+)
 
 WIDTH = 60
 BOARD_WIDTH = 40
@@ -173,6 +212,8 @@ CHECKBOX_RE = re.compile(r"^\s*- \[[ xX]\] \S", re.M)
 ITEM_PREFIX_RE = re.compile(r"^(- \[[ xX]\] |[-*] )?(.*)$")
 # Characters Obsidian refuses in file names, plus link syntax.
 BAD_NAME_CHARS_RE = re.compile(r'[\\/:*?"<>|#^\[\]]')
+# The target of a wikilink, before any #heading or |alias.
+LINK_TARGET_RE = re.compile(r"\[\[([^\]|#\n]+)")
 
 
 class CardError(Exception):
@@ -204,6 +245,11 @@ class Card:
         return str(read_fields(self.text).get("kind", ""))
 
     @property
+    def work_type(self) -> str:
+        """The work_type field, or an empty string when it is missing."""
+        return str(read_fields(self.text).get("work_type", ""))
+
+    @property
     def stage_date(self) -> str:
         """The day of the last move, else the creation date."""
         fields = read_fields(self.text)
@@ -218,14 +264,15 @@ class Card:
 
 @dataclass(frozen=True)
 class NewCard:
-    """The title, kind and section text of a card about to be made.
+    """The title, kind, work type and section text of a new card.
 
-    ``sections`` maps a name from WRITABLE_SECTIONS to the text under
-    its heading.
+    ``work_type`` is empty when none was given. ``sections`` maps a
+    name from WRITABLE_SECTIONS to the text under its heading.
     """
 
     title: str
     kind: str
+    work_type: str
     sections: dict[str, str]
 
 
@@ -242,6 +289,16 @@ class AgentSession:
 
 
 @dataclass(frozen=True)
+class NoteChange:
+    """A note's new text, and its new path when card rekey renames it."""
+
+    path: Path
+    new_path: Path
+    new_text: str
+    mtime_ns: int
+
+
+@dataclass(frozen=True)
 class Rule:
     """One rule from names.toml.
 
@@ -251,6 +308,23 @@ class Rule:
     name: str
     make: str
     parse: re.Pattern[str]
+
+
+@dataclass(frozen=True)
+class TitleFinding:
+    """One title rule's result, such as ``T4 label: "board:"``.
+
+    A finding that does not fail only reports, such as T7's board cut.
+    """
+
+    rule: str
+    name: str
+    detail: str
+    fails: bool
+
+    def __str__(self) -> str:
+        """Return the finding as card prints it."""
+        return f"{self.rule} {self.name}: {self.detail}"
 
 
 def main(argv: list[str], projects: Path | None = None) -> int:
@@ -305,13 +379,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--from",
         dest="from_file",
         metavar="FILE",
-        help="take the title, kind and sections from FILE, laid out below",
+        help="take the title, type, kind and sections from FILE,"
+        " laid out below",
     )
     new.add_argument(
         "--kind",
         choices=list(KINDS),
         help="; ".join(f"{name} {meaning}" for name, meaning in KINDS.items())
         + f"; default {DEFAULT_KIND}",
+    )
+    new.add_argument(
+        "--type",
+        dest="work_type",
+        choices=WORK_TYPES,
+        help="the kind of change, needed unless FILE gives it",
     )
     new.add_argument(
         "--user",
@@ -412,10 +493,15 @@ def build_parser() -> argparse.ArgumentParser:
     add_author(edit)
     edit.set_defaults(run=run_edit)
 
-    set_ = commands.add_parser("set", help="change the title or kind")
+    set_ = commands.add_parser("set", help="change the title, kind or type")
     set_.add_argument("key")
-    set_.add_argument("field", choices=["title", "kind"])
+    set_.add_argument("field", choices=["title", "kind", "type"])
     set_.add_argument("value")
+    set_.add_argument(
+        "--user",
+        action="store_true",
+        help="the user chose this title; agents pass it only when told",
+    )
     set_.set_defaults(run=run_set)
 
     link = commands.add_parser(
@@ -430,6 +516,21 @@ def build_parser() -> argparse.ArgumentParser:
     delete.add_argument("key")
     delete.add_argument("--user", action="store_true", required=True)
     delete.set_defaults(run=run_delete)
+
+    rekey = commands.add_parser(
+        "rekey", help="give open cards with old keys new keys"
+    )
+    rekey.add_argument(
+        "--apply",
+        action="store_true",
+        help="make the changes; without it, only print them",
+    )
+    rekey.add_argument(
+        "--user",
+        action="store_true",
+        help="the user asked for this; needed with --apply",
+    )
+    rekey.set_defaults(run=run_rekey)
 
     check = commands.add_parser("check", help="find broken cards")
     check.set_defaults(run=run_check)
@@ -524,9 +625,10 @@ def format_card_file_help() -> str:
     """
     return "\n".join(
         [
-            "--from FILE holds the title and kind, then sections:",
+            "--from FILE holds the title, type and kind, then sections:",
             "  ---",
             "  title: Retry failed uploads",
+            "  type: fix",
             "  kind: build",
             "  ---",
             "",
@@ -536,6 +638,7 @@ def format_card_file_help() -> str:
             "  ## Acceptance Criteria",
             "  - [ ] A failed upload retries.",
             "",
+            f"type is one of {', '.join(WORK_TYPES)}.",
             f"kind is optional, {DEFAULT_KIND} by default. Each of these",
             "sections may appear once, in any letter case:",
             f"  {', '.join(WRITABLE_SECTIONS)}",
@@ -546,6 +649,10 @@ def format_card_file_help() -> str:
 
 def run_new(args: argparse.Namespace, projects: Path) -> int:
     """Make a card in draft, or adopt work under way, and print its name.
+
+    A title or work type that fails check_title is refused. The
+    findings that only report, such as the board cut, print after the
+    name.
 
     Args:
         args: The parsed arguments.
@@ -558,6 +665,8 @@ def run_new(args: argparse.Namespace, projects: Path) -> int:
         raise CardError("give either a TITLE or --from FILE")
     if args.from_file is not None and args.kind:
         raise CardError("with --from, FILE gives the kind")
+    if args.from_file is not None and args.work_type:
+        raise CardError("with --from, FILE gives the type")
     if args.adopt and not args.user:
         raise CardError(
             "only the user adopts work already under way."
@@ -572,7 +681,12 @@ def run_new(args: argparse.Namespace, projects: Path) -> int:
     if args.from_file is not None:
         new_card = read_card_file(Path(args.from_file))
     else:
-        new_card = NewCard(args.title, args.kind or DEFAULT_KIND, {})
+        new_card = NewCard(
+            args.title, args.kind or DEFAULT_KIND, args.work_type or "", {}
+        )
+    findings = require_passing_title(
+        new_card.title.strip(), new_card.work_type, args.user
+    )
     stage = args.adopt or STAGES[0]
     verb = "adopted by" if args.adopt else "by"
     entry = format_log_entry(
@@ -583,22 +697,25 @@ def run_new(args: argparse.Namespace, projects: Path) -> int:
         session = find_agent_session(args.session)
     path = create_card(projects, args.project, new_card, stage, entry, session)
     print(path.stem)
+    for finding in findings:
+        print(finding)
     return 0
 
 
 def read_card_file(path: Path) -> NewCard:
-    """Read a new card's title, kind and section text from a file.
+    """Read a new card's title, type, kind and section text from a file.
 
-    The file has frontmatter with ``title`` and an optional ``kind``,
-    then ``##`` headings named as in WRITABLE_SECTIONS, in any case.
-    Any other heading, or text before the first heading, is refused so
-    that no line is dropped without notice.
+    The file has frontmatter with ``title``, ``type`` and an optional
+    ``kind``, then ``##`` headings named as in WRITABLE_SECTIONS, in
+    any case. Any other heading, or text before the first heading, is
+    refused so that no line is dropped without notice. check_title
+    refuses a missing or unknown type later.
 
     Args:
         path: The file, laid out as ``card new --help`` shows.
 
     Returns:
-        The card's title, kind and section text.
+        The card's title, kind, work type and section text.
 
     Raises:
         CardError: The file cannot be read, has no title, names an
@@ -615,6 +732,7 @@ def read_card_file(path: Path) -> NewCard:
     kind = str(fields.get("kind") or DEFAULT_KIND)
     if kind not in KINDS:
         raise CardError(f"kind is one of {', '.join(KINDS)}")
+    work_type = str(fields.get("type", "")).strip()
     allowed = [name.lower() for name in WRITABLE_SECTIONS]
     seen: set[str] = set()
     lines = text.split("\n")
@@ -638,7 +756,7 @@ def read_card_file(path: Path) -> NewCard:
         for name in WRITABLE_SECTIONS
         if (body := read_section(text, name)) and body.strip()
     }
-    return NewCard(title, kind, sections)
+    return NewCard(title, kind, work_type, sections)
 
 
 def create_card(
@@ -658,7 +776,7 @@ def create_card(
     Args:
         projects: The vault's Projects folder.
         project: The project folder name, in any case.
-        new_card: The title, kind and section text.
+        new_card: The title, kind, work type and section text.
         stage: The first stage, draft unless the card is adopted.
         log_entry: The first Log line, without its date.
         session: A Herdr agent session to record, or None.
@@ -676,7 +794,7 @@ def create_card(
         raise CardError("the title needs a letter or digit")
     today = date.today().isoformat()
     with hold_lock(STATE_DIR / "new.lock"):
-        number = str(find_next_number(folder, code))
+        number = str(find_next_number(projects, code))
         key = make_name(find_rule("card_key"), {"code": code, "n": number})
         path = folder / make_name(
             find_rule("card_file"), {"key": key, "title": name}
@@ -686,6 +804,7 @@ def create_card(
             title=new_card.title.strip(),
             project=folder.name,
             kind=new_card.kind,
+            work_type=new_card.work_type,
             today=today,
             stage=stage,
             log_entry=log_entry,
@@ -701,24 +820,31 @@ def create_card(
     return path
 
 
-def find_next_number(folder: Path, code: str) -> int:
-    """Return the highest card number in the folder plus one.
+def find_next_number(projects: Path, code: str) -> int:
+    """Return one more than the highest card or plan number of a code.
+
+    A plan made for a card shares its key, and plans sit in any project
+    folder or archive, so every folder counts. Old keys such as
+    PDEV-KB-012 count too, so a new key never repeats an old card's
+    number.
 
     Args:
-        folder: A project folder.
+        projects: The vault's Projects folder.
         code: The project code, such as PDEV.
 
     Returns:
         The number for the next card.
     """
-    key_rule = find_rule("card_key")
-    numbers = []
-    for path in folder.iterdir():
-        key = read_card_key(path.name)
-        fields = parse_name(key_rule, key) if key else None
-        if fields and fields.get("code") == code:
-            numbers.append(int(fields["n"]))
-    return max(numbers, default=0) + 1
+    card_file = find_rule("card_file")
+    plan_file = find_rule("plan_file")
+    numbers = [0]
+    for path in projects.glob(f"**/{code}-*.md"):
+        name = path.name
+        fields = parse_name(card_file, name) or parse_name(plan_file, name)
+        if fields:
+            digits = re.sub("[^0-9]", "", fields["key"][len(code) :])
+            numbers.append(int(digits))
+    return max(numbers) + 1
 
 
 def run_list(args: argparse.Namespace, projects: Path) -> int:
@@ -1056,7 +1182,7 @@ def plan_moves(
         raise CardError(format_refused_move(key, current, target, user))
     source = current
     for stage in chain:
-        check_move(text, source, stage, user, projects)
+        check_move(text, key, source, stage, user, projects)
         source = stage
     return chain
 
@@ -1131,14 +1257,20 @@ def format_refused_move(
 
 
 def check_move(
-    text: str, current: str, target: str, user: bool, projects: Path
+    text: str,
+    key: str,
+    current: str,
+    target: str,
+    user: bool,
+    projects: Path,
 ) -> None:
-    """Refuse a single move for its criteria or a full stage.
+    """Refuse a single move for its criteria, its title or a full stage.
 
     find_move_chain already keeps to MOVES and to the caller's moves.
 
     Args:
         text: The card text.
+        key: The card's key, which read_title drops from the heading.
         current: The card's stage now.
         target: The stage to move to.
         user: True when the user made the move.
@@ -1155,6 +1287,11 @@ def check_move(
         raise CardError(
             f"add a '- [ ] ...' item to {CRITERIA} before moving to {TODO}"
         )
+    # Workers start todo cards, so every move into todo is checked,
+    # a staff pause included.
+    if target == TODO:
+        work_type = str(read_fields(text).get("work_type", ""))
+        require_passing_title(read_title(text, key), work_type, user)
     # Only staff moves can fill a stage that has a limit; the user's
     # moves pass.
     limit = {ACTIVE: ACTIVE_LIMIT, IN_REVIEW: REVIEW_LIMIT}.get(target)
@@ -1406,7 +1543,10 @@ def find_item(
 
 
 def run_set(args: argparse.Namespace, projects: Path) -> int:
-    """Change a card's kind, or its title and file name.
+    """Change a card's kind or work type, or its title and file name.
+
+    A title that fails check_title with the card's work type is
+    refused, as in run_new.
 
     Args:
         args: The parsed arguments.
@@ -1422,6 +1562,17 @@ def run_set(args: argparse.Namespace, projects: Path) -> int:
         update_card(card, lambda text: set_field(text, "kind", args.value))
         print(f"{card.key} kind {args.value}")
         return 0
+    if args.field == "type":
+        if args.value not in WORK_TYPES:
+            raise CardError(f"type is one of {', '.join(WORK_TYPES)}")
+        update_card(
+            card, lambda text: set_field(text, "work_type", args.value)
+        )
+        print(f"{card.key} type {args.value}")
+        return 0
+    findings = require_passing_title(
+        args.value.strip(), card.work_type, args.user
+    )
     name = BAD_NAME_CHARS_RE.sub("", args.value).strip()
     if not name:
         raise CardError("the title needs a letter or digit")
@@ -1436,6 +1587,8 @@ def run_set(args: argparse.Namespace, projects: Path) -> int:
     if new_path != card.path:
         os.rename(card.path, new_path)
     print(new_path.stem)
+    for finding in findings:
+        print(finding)
     return 0
 
 
@@ -1544,8 +1697,341 @@ def run_delete(args: argparse.Namespace, projects: Path) -> int:
     return 0
 
 
+def run_rekey(args: argparse.Namespace, projects: Path) -> int:
+    """Give open cards with old keys new keys, or print what would change.
+
+    Each open card with a key such as PDEV-KB-012 takes a new key such
+    as PDEV-523, keeps the old one in ``old_key``, and links to it under
+    Projects follow. --apply renames every card first, then points links
+    at each card's name by its ``old_key``, so a stop never leaves a link
+    to a key not yet given out. It backs up each note before writing it,
+    and its undo.sh restores the notes it wrote; after two runs, run the
+    newer undo.sh first. A second run after a stop finishes the job.
+
+    Args:
+        args: The parsed arguments.
+        projects: The vault's Projects folder.
+
+    Returns:
+        The exit code, 1 when a write stops partway.
+
+    Raises:
+        CardError: --apply lacks --user, a card was written but not
+            renamed, two cards hold one key, Herdr cannot list its agents
+            or one works on a card to rekey, a new name is taken, or the
+            backup folder cannot be made.
+    """
+    if args.apply and not args.user:
+        raise CardError("--apply needs --user; the user runs it after review")
+    # card new must not take a number while the new keys are handed out.
+    with hold_lock(STATE_DIR / "new.lock"):
+        cards = load_all_cards(projects)
+        old_keys = [read_fields(card.text).get("old_key") for card in cards]
+        stuck = [
+            card.key for card, old in zip(cards, old_keys) if old == card.key
+        ]
+        if stuck:
+            raise CardError(
+                f"{', '.join(stuck)} written but not renamed; run the last"
+                " undo line, then card rekey --apply --user again"
+            )
+        # A card made from an old template can take a rekeyed card's old key.
+        counts = Counter(card.key for card in cards)
+        counts.update(old for old in old_keys if isinstance(old, str))
+        if shared := sorted(key for key, count in counts.items() if count > 1):
+            raise CardError(
+                f"two cards hold {', '.join(shared)} as key or old_key"
+            )
+        new_keys = number_open_cards(projects, cards)
+        if workers := find_live_workers(
+            [card for card in cards if card.key in new_keys]
+        ):
+            raise CardError(
+                f"live workers on {', '.join(workers)}; wait until they end"
+            )
+        renames = list_card_renames(cards, new_keys)
+        relinks = list_link_changes(projects, cards, new_keys)
+        for old_key, new_key in new_keys.items():
+            print(f"{old_key} {new_key}")
+        for change in relinks:
+            print(f"relink {change.path.relative_to(projects)}")
+        if not args.apply or not (renames or relinks):
+            print(
+                f"{len(renames)} cards to rekey,"
+                f" {len(relinks)} notes to relink"
+            )
+            return 0
+        try:
+            backup = Path(tempfile.mkdtemp(prefix="rekey-", dir=STATE_DIR))
+        except OSError as error:
+            raise CardError(f"{error}, no note changed") from error
+        print(f"backup: {backup}")
+        written: list[NoteChange] = []
+        try:
+            finished = write_rekey_changes(projects, backup, renames, written)
+            if finished:
+                # Read again, so each link follows its card's name by old_key.
+                relinks = list_link_changes(
+                    projects, load_all_cards(projects), {}
+                )
+                finished = write_rekey_changes(
+                    projects, backup, relinks, written
+                )
+            if finished:
+                print(
+                    f"rekeyed {len(renames)} cards,"
+                    f" relinked {len(relinks)} notes"
+                )
+        finally:
+            # A stop or Ctrl-C leaves the later notes alone, so undo puts
+            # back only the written ones and keeps any edit to the rest.
+            undo = write_undo_script(projects, backup, written)
+            print(f"undo (newest first): sh {shlex.quote(str(undo))}")
+    return 0 if finished else 1
+
+
+def number_open_cards(projects: Path, cards: list[Card]) -> dict[str, str]:
+    """Give each open card with an old key the next free key of its code.
+
+    Done and dropped cards keep their keys. A code's cards take numbers
+    in the order of their old numbers, after the highest card or plan
+    number of the code.
+
+    Args:
+        projects: The vault's Projects folder.
+        cards: Every card.
+
+    Returns:
+        Each old key's new key, such as PDEV-KB-012 to PDEV-523.
+    """
+    key_rule = find_rule("card_key")
+    by_code: dict[str, list[tuple[int, str]]] = {}
+    for card in cards:
+        if card.stage in (DONE, DROPPED) or "-KB-" not in card.key:
+            continue
+        fields = parse_name(key_rule, card.key)
+        assert fields is not None, "card_file and card_key read one shape"
+        numbered = by_code.setdefault(fields["code"], [])
+        numbered.append((int(fields["n"]), card.key))
+    new_keys = {}
+    for code, numbered in sorted(by_code.items()):
+        first = find_next_number(projects, code)
+        for offset, (_, key) in enumerate(sorted(numbered)):
+            values = {"code": code, "n": str(first + offset)}
+            new_keys[key] = make_name(key_rule, values)
+    return new_keys
+
+
+def find_live_workers(cards: list[Card]) -> list[str]:
+    """List the cards a running Herdr agent works on, as ``KEY (agent)``.
+
+    An agent works on a card when its name holds the card's key, such
+    as pdev-kb-012-build, or when its session is in the card's sessions.
+
+    Args:
+        cards: The cards to check.
+
+    Returns:
+        One entry per card and agent.
+
+    Raises:
+        CardError: Herdr gave no agent list.
+    """
+    try:
+        proc = subprocess.run(
+            ["herdr", "agent", "list"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        running = json.loads(proc.stdout)["result"]["agents"]
+    except (OSError, subprocess.TimeoutExpired, ValueError, KeyError) as error:
+        raise CardError(
+            f"herdr agent list failed ({error}), so live workers are unknown"
+        ) from error
+    agent_rule = find_rule("agent")
+    workers = []
+    for agent in running:
+        name = agent.get("name") or ""
+        fields = parse_name(agent_rule, name)
+        session = (agent.get("agent_session") or {}).get("value")
+        entry = f"{agent.get('agent')} {session}"
+        for card in cards:
+            by_name = fields is not None and fields["key"].upper() == card.key
+            sessions = as_list(read_fields(card.text).get("sessions"))
+            if by_name or (session and entry in sessions):
+                workers.append(f"{card.key} ({name or entry})")
+    return workers
+
+
+def list_card_renames(
+    cards: list[Card], new_keys: dict[str, str]
+) -> list[NoteChange]:
+    """Work out each rekeyed card's new path, ``old_key`` and heading.
+
+    Its links stay as they are until every card has its new name. Nothing
+    is written.
+
+    Args:
+        cards: Every card.
+        new_keys: Each old key's new key.
+
+    Returns:
+        One change per rekeyed card.
+
+    Raises:
+        CardError: A file already has a rekeyed card's new name.
+    """
+    changes = []
+    for card in cards:
+        if card.key not in new_keys:
+            continue
+        new_key = new_keys[card.key]
+        new_path = card.path.with_name(
+            new_key + card.path.name[len(card.key) :]
+        )
+        if new_path.exists():
+            raise CardError(f"{new_path.name} already exists")
+        mtime_ns = card.path.stat().st_mtime_ns
+        text = card.path.read_text(encoding="utf-8")
+        text = set_field(text, "old_key", card.key)
+        text = set_title(text, new_key, card.title)
+        changes.append(NoteChange(card.path, new_path, text, mtime_ns))
+    return changes
+
+
+def list_link_changes(
+    projects: Path, cards: list[Card], new_keys: dict[str, str]
+) -> list[NoteChange]:
+    """Work out each note whose links change, and write nothing.
+
+    In every note under Projects, a link to an open card's old file name
+    or ``old_key`` follows the card's name, keeping any #heading or
+    |alias. Links to the cards in new_keys follow their new names, as the
+    dry run shows them.
+
+    Args:
+        projects: The vault's Projects folder.
+        cards: Every card.
+        new_keys: Each old key's new key, empty once cards are renamed.
+
+    Returns:
+        The notes whose text changes.
+    """
+    targets = {}
+    for card in cards:
+        title = card.path.stem[len(card.key) :]
+        old_key = read_fields(card.text).get("old_key")
+        if isinstance(old_key, str) and card.stage not in (DONE, DROPPED):
+            targets[old_key + title] = card.path.stem
+            targets[old_key] = card.key
+        if card.key in new_keys:
+            targets[card.path.stem] = new_keys[card.key] + title
+            targets[card.key] = new_keys[card.key]
+    changes = []
+    for path in sorted(projects.rglob("*.md")):
+        mtime_ns = path.stat().st_mtime_ns
+        text = path.read_text(encoding="utf-8")
+        new_text = LINK_TARGET_RE.sub(
+            lambda link: f"[[{targets.get(link[1], link[1])}", text
+        )
+        if new_text != text:
+            changes.append(NoteChange(path, path, new_text, mtime_ns))
+    return changes
+
+
+def write_rekey_changes(
+    projects: Path,
+    backup: Path,
+    changes: list[NoteChange],
+    written: list[NoteChange],
+) -> bool:
+    """Back up, write and rename each note in order, until one fails.
+
+    Args:
+        projects: The vault's Projects folder.
+        backup: The folder for the copies, which keep their paths under
+            Projects.
+        changes: The notes to change.
+        written: Gains each note once its new text is written, before
+            its rename.
+
+    Returns:
+        True when every note changed. False when it stopped, after
+        saying on stderr what to do next.
+    """
+    for change in changes:
+        try:
+            # Note names such as AGENTS.md repeat across project folders.
+            copy = backup / change.path.relative_to(projects)
+            copy.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(change.path, copy)
+            wrote = write_safely(
+                change.path,
+                change.path.stem,
+                change.new_text,
+                change.mtime_ns,
+            )
+        except OSError as error:
+            print(f"card: {error}", file=sys.stderr)
+            wrote = False
+        if not wrote:
+            print(
+                f"card: stopped at {change.path.name}; run card rekey"
+                " --apply --user again to finish, or the undo line",
+                file=sys.stderr,
+            )
+            return False
+        written.append(change)
+        if change.new_path == change.path:
+            continue
+        try:
+            os.rename(change.path, change.new_path)
+        except OSError as error:
+            # The card has old_key now, so a second run refuses until undo.
+            print(f"card: {error}", file=sys.stderr)
+            print(
+                f"card: stopped at {change.path.name}; run the undo line,"
+                " then card rekey --apply --user again",
+                file=sys.stderr,
+            )
+            return False
+    return True
+
+
+def write_undo_script(
+    projects: Path, backup: Path, written: list[NoteChange]
+) -> Path:
+    """Write an undo.sh in the backup folder that restores the written notes.
+
+    It puts notes back in the reverse order of their writes, since a
+    renamed card is written again when its links change. For each note,
+    undo.sh removes a renamed card's new file, then copies the old note
+    back.
+
+    Args:
+        projects: The vault's Projects folder.
+        backup: The folder holding the copies.
+        written: The notes whose new text was written, in order.
+
+    Returns:
+        The path of undo.sh.
+    """
+    lines = ["#!/bin/sh", "set -e"]
+    for change in reversed(written):
+        if change.new_path != change.path:
+            lines.append(f"rm -f -- {shlex.quote(str(change.new_path))}")
+        copy = shlex.quote(str(backup / change.path.relative_to(projects)))
+        lines.append(f"cp -p -- {copy} {shlex.quote(str(change.path))}")
+    undo = backup / "undo.sh"
+    undo.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return undo
+
+
 def run_check(args: argparse.Namespace, projects: Path) -> int:
     """Print cards whose layout or fields card cannot use.
+
+    It also prints notes named like old -KB- cards that are not cards.
 
     Args:
         args: The parsed arguments.
@@ -1562,6 +2048,12 @@ def run_check(args: argparse.Namespace, projects: Path) -> int:
         if card.key in seen:
             problems.append(f"{card.key} also in {seen[card.key]}")
         seen[card.key] = card.path.name
+    # No plan has an old -KB- name, so such a note without the card type
+    # is a broken card or a misnamed note, which every other command skips.
+    card_paths = {card.path for card in cards}
+    for path in sorted(projects.glob("*/*-KB-*.md")):
+        if path not in card_paths and read_card_key(path.name):
+            problems.append(f"{path.name} has a card name but no type: card")
     # The hub maps a session to one card, so a session on two cards
     # shows one worker's state on the wrong card.
     holders: dict[str, str] = {}
@@ -1579,7 +2071,7 @@ def run_check(args: argparse.Namespace, projects: Path) -> int:
 
 
 def find_card_issues(card: Card) -> list[str]:
-    """List what is wrong with one card's fields and sections.
+    """List what is wrong with one card's fields, sections and title.
 
     Args:
         card: The card.
@@ -1598,7 +2090,155 @@ def find_card_issues(card: Card) -> list[str]:
     for name in SECTIONS:
         if find_heading(lines, name) is None:
             issues.append(f"no {name} section")
+    # Closed cards keep the titles they closed with.
+    if card.stage not in (DONE, DROPPED):
+        findings = check_title(card.title, card.work_type, False)
+        issues += [str(finding) for finding in findings if finding.fails]
     return issues
+
+
+def require_passing_title(
+    title: str, work_type: str, user: bool
+) -> list[TitleFinding]:
+    """Refuse a title that fails a rule, else return its findings.
+
+    Args:
+        title: The title without the key.
+        work_type: The card's work type, empty when it has none.
+        user: True when the user chose the title.
+
+    Returns:
+        The findings, which only report, such as T7's board cut.
+
+    Raises:
+        CardError: A rule fails, with every failing finding listed.
+    """
+    findings = check_title(title, work_type, user)
+    failing = [finding for finding in findings if finding.fails]
+    if failing:
+        raise CardError(format_title_refusal(failing))
+    return findings
+
+
+def format_title_refusal(failing: list[TitleFinding]) -> str:
+    """Return the refusal, one line per failing finding, then hints.
+
+    Args:
+        failing: The failing findings.
+
+    Returns:
+        The text that main prints after ``card: ``.
+    """
+    lines = ["title refused:", *(f"  {finding}" for finding in failing)]
+    if any(finding.rule != "T3" for finding in failing):
+        lines.append(
+            f"Put a verb first, at most {TITLE_LIMIT} characters,"
+            ' such as "Retry failed uploads".'
+        )
+    if any(finding.rule == "T3" for finding in failing):
+        lines.append(f"Work types: {', '.join(WORK_TYPES)}.")
+        lines.append(
+            "Give one with card new --type T, or card set KEY type T."
+        )
+    return "\n".join(lines)
+
+
+def check_title(title: str, work_type: str, user: bool) -> list[TitleFinding]:
+    """Run the title rules T1 to T7 and return every finding.
+
+    A title reads like a commit title and its start fits a hub board
+    row. With user, an unknown first word only reports, but a missing
+    or unknown work type still fails.
+
+    Args:
+        title: The title without the key.
+        work_type: The card's work type, empty when it has none.
+        user: True when the user chose the title.
+
+    Returns:
+        The findings in rule order, T7's board cut last.
+    """
+    findings = []
+    if len(title) > TITLE_LIMIT:
+        detail = f"{len(title)} characters, at most {TITLE_LIMIT}"
+        findings.append(TitleFinding("T1", "length", detail, True))
+    words = title.split(" ")
+    verb = words[0].rstrip(":,")
+    if verb.lower() not in VERBS:
+        detail = f'"{verb}" is not in the verb list'
+        if user:
+            detail += " (user verb)"
+        findings.append(TitleFinding("T2", "verb", detail, not user))
+    if not work_type:
+        findings.append(TitleFinding("T3", "type", "no work type", True))
+    elif work_type not in WORK_TYPES:
+        detail = f'"{work_type}" is not a work type'
+        findings.append(TitleFinding("T3", "type", detail, True))
+    labels = [word for word in words[:3] if word.endswith(":")]
+    if labels:
+        findings.append(TitleFinding("T4", "label", f'"{labels[0]}"', True))
+    keys = find_title_keys(title)
+    if keys:
+        detail = ", ".join(f'"{key}"' for key in keys)
+        findings.append(TitleFinding("T5", "key", detail, True))
+    form = []
+    if title[:1].islower():
+        form.append("starts with a lower-case letter")
+    if title.endswith("."):
+        form.append("ends with a period")
+    # A label's colon is a T4 finding only.
+    body = " ".join(
+        word.removesuffix(":") if index < 3 else word
+        for index, word in enumerate(words)
+    )
+    refused = sorted(set(BAD_NAME_CHARS_RE.findall(body)))
+    if refused:
+        form.append(f"holds {' '.join(refused)}")
+    if form:
+        findings.append(TitleFinding("T6", "form", ", ".join(form), True))
+    findings.append(TitleFinding("T7", "cut", cut_for_board(title), False))
+    return findings
+
+
+def find_title_keys(title: str) -> list[str]:
+    """Return the words of a title that read as a card or plan key.
+
+    A key in a title goes stale when the card or plan is renamed. Case
+    is ignored, so ``demo-kb-004`` counts, and so does a plan-shaped
+    word such as ``ISO-8601``.
+
+    Args:
+        title: The title without the key.
+
+    Returns:
+        The key words, such as ``["DEMO-KB-004", "DEMO-41"]``.
+    """
+    card_key = re.compile(find_rule("card_key").parse.pattern, re.I)
+    plan_file = re.compile(find_rule("plan_file").parse.pattern, re.I)
+    keys = []
+    for word in title.split():
+        word = word.strip(".,:;!?()\"'")
+        # plan_file reads a whole file name, so the word gets its suffix.
+        if card_key.fullmatch(word) or plan_file.fullmatch(f"{word}.md"):
+            keys.append(word)
+    return keys
+
+
+def cut_for_board(title: str) -> str:
+    """Return the title as a hub board queue row shows it on a phone.
+
+    The hub keeps the first 26 characters of a longer title and adds
+    ``~``, such as ``Retry a failed upload twic~``.
+
+    Args:
+        title: The title without the key.
+
+    Returns:
+        The title, cut to BOARD_TITLE_WIDTH columns.
+    """
+    if len(title) <= BOARD_TITLE_WIDTH:
+        return title
+    return title[: BOARD_TITLE_WIDTH - 1] + "~"
 
 
 def run_name(args: argparse.Namespace) -> int:
@@ -1642,6 +2282,7 @@ def render_card(
     title: str,
     project: str,
     kind: str,
+    work_type: str,
     today: str,
     stage: str,
     log_entry: str,
@@ -1654,6 +2295,7 @@ def render_card(
         title: The title for the first heading.
         project: The project folder name.
         kind: One of KINDS, or a template expression.
+        work_type: One of WORK_TYPES, or a template expression.
         today: The date, as YYYY-MM-DD.
         stage: The first stage.
         log_entry: The first Log line, without its date.
@@ -1671,6 +2313,7 @@ def render_card(
         "template_version": "1",
         "project": project,
         "kind": kind,
+        "work_type": work_type,
         "date_created": today,
         "plans": [],
         "prs": [],
@@ -1693,9 +2336,10 @@ def render_card(
 def render_template() -> str:
     """Return the Templater template that makes a card in Obsidian.
 
-    It asks for the project, title and kind, picks the next number
-    from the folder listing and moves the note into the project
-    folder. It takes no lock, so ``card check`` finds a clash.
+    It asks for the project, title, kind and work type, picks the next
+    number from the card and plan notes under Projects and moves the
+    note into the project folder. It takes no lock, so ``card check``
+    finds a clash.
 
     Returns:
         The template text.
@@ -1704,10 +2348,11 @@ def render_template() -> str:
     file_rule = find_rule("card_file")
     constants = {
         "KINDS_JSON": KINDS,
+        "WORK_TYPES_JSON": WORK_TYPES,
         "CARD_KEY_MAKE_JSON": key_rule.make,
         "CARD_FILE_MAKE_JSON": file_rule.make,
-        "CARD_KEY_RE_JSON": format_js_pattern(key_rule),
         "CARD_FILE_RE_JSON": format_js_pattern(file_rule),
+        "PLAN_FILE_RE_JSON": format_js_pattern(find_rule("plan_file")),
     }
     script = TEMPLATER_SCRIPT
     for placeholder, value in constants.items():
@@ -1717,6 +2362,7 @@ def render_template() -> str:
         title="<% title %>",
         project="<% project.name %>",
         kind="<% kind %>",
+        work_type="<% workType %>",
         today="<% today %>",
         stage=STAGES[0],
         log_entry=f"{STAGES[0]}: by the user in Obsidian",
@@ -1756,6 +2402,9 @@ const kinds = KINDS_JSON;
 const kind = await tp.system.suggester(
   Object.entries(kinds).map(([name, meaning]) => `${name}: ${meaning}`),
   Object.keys(kinds), true, "Kind");
+const workTypes = WORK_TYPES_JSON;
+const workType = await tp.system.suggester(
+  workTypes, workTypes, true, "Work type");
 const fill = (template, values) => template.replace(
   /\{([a-z_]+)(?:\|([a-z0-9]+))?\}/g, (slot, field, filter) => {
     const value = String(values[field]);
@@ -1767,12 +2416,15 @@ const fill = (template, values) => template.replace(
     return value;
   });
 const cardFileRe = new RegExp(CARD_FILE_RE_JSON);
-const cardKeyRe = new RegExp(CARD_KEY_RE_JSON);
+const planFileRe = new RegExp(PLAN_FILE_RE_JSON);
 let high = 0;
-for (const file of project.folder.children) {
-  const found = file.name.match(cardFileRe)?.groups.key.match(cardKeyRe);
-  if (found && found.groups.code === project.code) {
-    high = Math.max(high, Number(found.groups.n));
+for (const file of app.vault.getMarkdownFiles()) {
+  if (!file.path.startsWith(`${root}/`)) continue;
+  const found = file.name.match(cardFileRe) || file.name.match(planFileRe);
+  const key = found?.groups.key;
+  if (key?.startsWith(`${project.code}-`)) {
+    const digits = key.slice(project.code.length).replace(/[^0-9]/g, "");
+    high = Math.max(high, Number(digits));
   }
 }
 const key = fill(CARD_KEY_MAKE_JSON, { code: project.code, n: high + 1 });
@@ -2129,7 +2781,7 @@ def write_safely(
 
     Args:
         path: The note to write.
-        key: The card key, for the temporary file name.
+        key: The temporary file's name, such as the card key.
         text: The new note text.
         expected_mtime_ns: The note's modified time when read, or None
             for a new note.
@@ -2167,6 +2819,37 @@ def hold_lock(path: Path) -> Iterator[None]:
         yield
 
 
+def read_card_note(path: Path) -> Card | None:
+    """Read a note as a card, or return None when it is not one.
+
+    A plan made for a card has the same name shape and key, so a note
+    is a card only when its front matter says ``type: card``. Other
+    notes are read only to the end of their front matter, since a plan
+    can be long and the vault may sit on a network drive.
+
+    Args:
+        path: The note.
+
+    Returns:
+        The card, or None when the name holds no card key or the note
+        is not a card.
+    """
+    key = read_card_key(path.name)
+    if not key:
+        return None
+    mtime_ns = path.stat().st_mtime_ns
+    with path.open(encoding="utf-8") as note:
+        head = note.readline()
+        if head.strip() == "---":
+            while line := note.readline():
+                head += line
+                if line.strip() == "---":
+                    break
+        if read_fields(head).get("type") != "card":
+            return None
+        return Card(path, key, head + note.read(), mtime_ns)
+
+
 def load_card(path: Path) -> Card:
     """Read a card note from disk.
 
@@ -2177,13 +2860,12 @@ def load_card(path: Path) -> Card:
         The card.
 
     Raises:
-        CardError: The file name holds no card key.
+        CardError: The note is not a card.
     """
-    key = read_card_key(path.name)
-    if not key:
+    card = read_card_note(path)
+    if not card:
         raise CardError(f"{path.name} is not a card note")
-    mtime_ns = path.stat().st_mtime_ns
-    return Card(path, key, path.read_text(encoding="utf-8"), mtime_ns)
+    return card
 
 
 def load_all_cards(projects: Path) -> list[Card]:
@@ -2195,11 +2877,8 @@ def load_all_cards(projects: Path) -> list[Card]:
     Returns:
         The cards.
     """
-    return [
-        load_card(path)
-        for path in sorted(projects.glob("*/*.md"))
-        if read_card_key(path.name)
-    ]
+    notes = (read_card_note(path) for path in sorted(projects.glob("*/*.md")))
+    return [card for card in notes if card]
 
 
 def filter_cards(cards: list[Card], args: argparse.Namespace) -> list[Card]:
@@ -2222,7 +2901,7 @@ def filter_cards(cards: list[Card], args: argparse.Namespace) -> list[Card]:
 
 
 def find_card(projects: Path, key: str) -> Card:
-    """Find the one note that holds a key, in any project.
+    """Find the one card note that holds a key, or had it before a rekey.
 
     Args:
         projects: The vault's Projects folder.
@@ -2232,7 +2911,7 @@ def find_card(projects: Path, key: str) -> Card:
         The card.
 
     Raises:
-        CardError: No note or more than one note holds the key.
+        CardError: No card note, or more than one, holds the key.
     """
     key = key.upper()
     paths = [
@@ -2240,12 +2919,20 @@ def find_card(projects: Path, key: str) -> Card:
         for path in projects.glob(f"*/{key}*.md")
         if read_card_key(path.name) == key
     ]
-    if not paths:
+    cards = [card for path in paths if (card := read_card_note(path))]
+    if not cards:
+        # card rekey keeps a card's old key in old_key.
+        cards = [
+            card
+            for card in load_all_cards(projects)
+            if read_fields(card.text).get("old_key") == key
+        ]
+    if not cards:
         raise CardError(f"no card {key}")
-    if len(paths) > 1:
-        names = ", ".join(path.name for path in paths)
+    if len(cards) > 1:
+        names = ", ".join(card.path.name for card in cards)
         raise CardError(f"two files hold {key}, fix by hand: {names}")
-    return load_card(paths[0])
+    return cards[0]
 
 
 def list_key_holders(folder: Path, key: str) -> list[Path]:
@@ -2328,7 +3015,8 @@ def read_card_key(file_name: str) -> str | None:
         file_name: A file name, such as ``PDEV-KB-012 Retry uploads.md``.
 
     Returns:
-        The key, or None when the file is not a card note.
+        The key, or None when the name holds no card key. A plan's
+        name can hold one too, so read_card_note also checks the type.
     """
     fields = parse_name(find_rule("card_file"), file_name)
     return fields.get("key") if fields else None

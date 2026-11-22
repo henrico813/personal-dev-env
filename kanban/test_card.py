@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import shlex
 import subprocess
 import tomllib
 from datetime import date
@@ -13,6 +14,8 @@ import card
 import pytest
 
 KEY = "PDEV-KB-001"
+# The key card new gives the first card in an empty project.
+NEW_KEY = "PDEV-001"
 TODAY = "2026-11-07"
 REPO = Path(__file__).resolve().parents[1]
 RULES_FILE = REPO / "chezmoi/dot_config/pde/names.toml"
@@ -57,9 +60,20 @@ Cards have no tool yet.
 
 - 2026-11-06 draft: created by user
 """
+# A plan made for card PDEV-005, which shares its key.
+PLAN = """---
+tags:
+  - "#Ticket"
+type: issue
+status: open
+---
+
+# Plan the retries
+"""
 # A file for card new --from, with one heading in lower case.
 CARD_FILE = """---
 title: Retry failed uploads
+type: feat
 kind: research
 ---
 
@@ -113,13 +127,16 @@ def write_card(
     stage: str,
     criteria: str = "",
     stage_date: str = "2026-11-06",
+    title: str = "Fix some work",
+    work_type: str = "feat",
 ) -> Path:
-    """Write a card note at a stage, with optional criteria lines."""
+    """Write a card note at a stage, with optional criteria, title and type."""
     text = card.render_card(
         key=key,
-        title="Some work",
+        title=title,
         project="DevEnv",
         kind="build",
+        work_type=work_type,
         today="2026-11-01",
         stage=stage,
         log_entry=f"{stage}: by user",
@@ -129,32 +146,65 @@ def write_card(
         text = text.replace(
             "## Open Questions", f"{criteria}\n\n## Open Questions"
         )
-    path = projects / "DevEnv" / f"{key} Some work.md"
+    path = projects / "DevEnv" / f"{key} {title}.md"
     path.write_text(text)
     return path
 
 
 class TestNew:
-    """Making a card picks its key from the cards already in the folder."""
+    """Making a card picks its key from the cards and plans of its code."""
 
-    def test_new_takes_number_after_highest_card(self, projects: Path) -> None:
-        """A new card takes the highest card number plus one.
+    @pytest.mark.parametrize(
+        ("files", "name"),
+        [
+            pytest.param(
+                [
+                    "DevEnv/PDEV-KB-010 Old card.md",
+                    "Other/PDEV-412 A plan.md",
+                    "Other/Archive/PDEV-415 Old plan.md",
+                    "Other/HOME-900 A plan.md",
+                ],
+                "PDEV-416 Fix hub files drift.md",
+                id="plan-in-any-folder",
+            ),
+            pytest.param(
+                [
+                    "DevEnv/PDEV-KB-450 Old card.md",
+                    "DevEnv/PDEV-412 A plan.md",
+                ],
+                "PDEV-451 Fix hub files drift.md",
+                id="old-card-highest",
+            ),
+        ],
+    )
+    def test_new_key_follows_highest_project_number(
+        self, projects: Path, files: list[str], name: str
+    ) -> None:
+        """A new card takes one more than any card or plan of its code.
 
-        Plan notes share the project code, and cards deleted by hand
-        leave gaps. If either changed the number, two cards could get
-        one key, and links to the first would point at the second.
+        A plan made for a card shares the card's key, and plans sit in
+        any project folder or archive. Missing a plan gives a new card
+        the key of an unrelated plan. Missing an old card puts PDEV-300
+        beside PDEV-KB-300. Other codes must not count.
         """
-        folder = projects / "DevEnv"
-        (folder / "PDEV-KB-002 Old card.md").write_text("")
-        (folder / "PDEV-KB-010 Newer card.md").write_text("")
-        (folder / "PDEV-412 A plan.md").write_text("")
+        for file in files:
+            path = projects / file
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("")
 
         code = run_card(
-            projects, "new", "DevEnv", "Hub files drift", "--by", "user"
+            projects,
+            "new",
+            "DevEnv",
+            "Fix hub files drift",
+            "--type",
+            "fix",
+            "--by",
+            "user",
         )
 
         assert code == 0
-        assert (folder / "PDEV-KB-011 Hub files drift.md").exists()
+        assert (projects / "DevEnv" / name).exists()
 
     def test_new_adopt_logs_adoption_at_stage(self, projects: Path) -> None:
         """Adopted work starts in its stage with an adoption Log line.
@@ -169,6 +219,8 @@ class TestNew:
             "new",
             "DevEnv",
             "Old work",
+            "--type",
+            "feat",
             "--adopt",
             "in-review",
             "--user",
@@ -179,7 +231,7 @@ class TestNew:
         )
 
         assert code == 0
-        text = (projects / "DevEnv" / f"{KEY} Old work.md").read_text()
+        text = (projects / "DevEnv" / f"{NEW_KEY} Old work.md").read_text()
         assert f"stage: in-review\nstage_date: {TODAY}\n" in text
         assert text.endswith(
             f"- {TODAY} in-review: adopted by general-staff for the user."
@@ -198,6 +250,8 @@ class TestNew:
             "new",
             "DevEnv",
             "Old work",
+            "--type",
+            "feat",
             "--adopt",
             "active",
             "--by",
@@ -205,12 +259,12 @@ class TestNew:
         )
 
         assert code == 1
-        assert not list((projects / "DevEnv").glob("*-KB-*"))
+        assert not list((projects / "DevEnv").glob("PDEV-*"))
 
-    def test_new_from_copies_title_kind_sections(
+    def test_new_from_copies_fields_and_sections(
         self, projects: Path, tmp_path: Path
     ) -> None:
-        """A --from file gives the card its title, kind and section text.
+        """A --from file gives the card its title, type, kind and sections.
 
         An agent or the user makes a card from one file instead of a
         card add per line. Text under the wrong heading or a lost kind
@@ -225,9 +279,9 @@ class TestNew:
         )
 
         assert code == 0
-        path = projects / "DevEnv" / f"{KEY} Retry failed uploads.md"
+        path = projects / "DevEnv" / f"{NEW_KEY} Retry failed uploads.md"
         text = path.read_text()
-        assert "kind: research\n" in text
+        assert "kind: research\nwork_type: feat\n" in text
         assert card.read_section(text, "Context") == (
             "\n- Uploads fail on a slow link.\n"
         )
@@ -269,6 +323,11 @@ class TestNew:
                 ["--from", "FILE", "--kind", "build"],
                 id="kind-and-file",
             ),
+            pytest.param(
+                CARD_FILE,
+                ["--from", "FILE", "--type", "feat"],
+                id="type-and-file",
+            ),
             pytest.param(None, ["--from", "FILE"], id="missing-file"),
             pytest.param(None, [], id="no-title-or-file"),
         ],
@@ -284,9 +343,10 @@ class TestNew:
 
         A typo such as ## Criteria, or a section written twice, would
         otherwise drop that text from the card without notice, and the
-        worker would build without it. A TITLE or --kind beside the file
-        leaves unclear which one the user meant. FILE in args stands for
-        the card file, which is not written when file_text is None.
+        worker would build without it. A TITLE, --kind or --type beside
+        the file leaves unclear which one the user meant. FILE in args
+        stands for the card file, which is not written when file_text is
+        None.
         """
         card_file = tmp_path / "card.md"
         if file_text is not None:
@@ -296,7 +356,7 @@ class TestNew:
         code = run_card(projects, "new", "DevEnv", *args, "--by", "user")
 
         assert code == 1
-        assert not list((projects / "DevEnv").glob("*-KB-*"))
+        assert not list((projects / "DevEnv").glob("PDEV-*"))
 
 
 class TestMove:
@@ -631,13 +691,22 @@ class TestSessions:
         [
             pytest.param(
                 "todo",
-                ["move", KEY, "active"],
+                ["move", NEW_KEY, "active"],
                 "active: by user",
                 id="start",
             ),
             pytest.param(
                 "",
-                ["new", "DevEnv", "Some work", "--adopt", "active", "--user"],
+                [
+                    "new",
+                    "DevEnv",
+                    "Fix some work",
+                    "--type",
+                    "feat",
+                    "--adopt",
+                    "active",
+                    "--user",
+                ],
                 "active: adopted by user for the user",
                 id="adopt",
             ),
@@ -654,12 +723,13 @@ class TestSessions:
         holds it.
         """
         if stage:
-            write_card(projects, KEY, stage, "- [ ] Done.")
+            write_card(projects, NEW_KEY, stage, "- [ ] Done.")
 
         code = run_card(projects, *argv, "--session", "--by", "user")
 
         assert code == 0
-        text = (projects / "DevEnv" / f"{KEY} Some work.md").read_text()
+        path = projects / "DevEnv" / f"{NEW_KEY} Fix some work.md"
+        text = path.read_text()
         assert 'sessions:\n  - "opencode ses_abc"\n' in text
         assert text.endswith(
             f"- {TODAY} {stage_line}\n"
@@ -818,6 +888,44 @@ class TestEdit:
         )
 
 
+class TestShow:
+    """card show finds one card by its key."""
+
+    def test_show_finds_card_beside_its_plan(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """card show finds a card whose plan shares its key.
+
+        Every card command finds its card this way. If the plan counted
+        as a second holder of the key, the hub and agents could not show
+        or move the card once its plan exists.
+        """
+        write_card(projects, "PDEV-005", "draft", title="Build the retries")
+        (projects / "DevEnv" / "PDEV-005 Plan the retries.md").write_text(PLAN)
+
+        code = run_card(projects, "show", "pdev-005")
+
+        assert code == 0
+        assert "# PDEV-005 Build the retries\n" in capsys.readouterr().out
+
+    def test_show_finds_card_by_old_key(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """card show finds a rekeyed card by the key it had before.
+
+        Log lines, notes outside Projects and agents' memories still name
+        old keys after card rekey, and every card command finds its card
+        the way show does.
+        """
+        path = write_card(projects, "PDEV-411", "draft")
+        path.write_text(card.set_field(path.read_text(), "old_key", KEY))
+
+        code = run_card(projects, "show", "pdev-kb-001")
+
+        assert code == 0
+        assert "# PDEV-411 Fix some work\n" in capsys.readouterr().out
+
+
 class TestAttach:
     """Attaching copies a file into the project and embeds it in Context."""
 
@@ -932,15 +1040,39 @@ class TestList:
         width. A title cut to fit 60 characters stays cut on a wide
         screen, and a missing project leaves the row without its tag.
         """
-        title = "See subagent tokens, cost, model and usage in the sidebar"
-        run_card(projects, "new", "DevEnv", title, "--by", "user")
+        title = "Show subagent tokens and cost in the sidebar"
+        run_card(
+            projects, "new", "DevEnv", title, "--type", "feat", "--by", "user"
+        )
         capsys.readouterr()
 
         code = run_card(projects, "list", "--tabs")
 
         assert code == 0
         first_line = capsys.readouterr().out.splitlines()[0]
-        assert first_line == f"PDEV-KB-001\tdraft\tbuild\tDevEnv\t{title}"
+        assert first_line == f"{NEW_KEY}\tdraft\tbuild\tDevEnv\t{title}"
+
+    def test_list_shows_both_shapes_without_plans(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """card list shows old and new card keys, and not a plan's.
+
+        Older cards keep their old keys, so the board must still show
+        them. A plan made for a card has the same name shape; listed as
+        a card, it would add a row for every plan.
+        """
+        write_card(projects, KEY, "draft")
+        write_card(projects, "PDEV-005", "draft", title="Build the retries")
+        (projects / "DevEnv" / "PDEV-005 Plan the retries.md").write_text(PLAN)
+
+        code = run_card(projects, "list", "--tabs")
+
+        assert code == 0
+        assert capsys.readouterr().out == (
+            "PDEV-005\tdraft\tbuild\tDevEnv\tBuild the retries\n"
+            "PDEV-KB-001\tdraft\tbuild\tDevEnv\tFix some work\n"
+            "2 cards\n"
+        )
 
 
 class TestBoard:
@@ -1027,14 +1159,14 @@ class TestBoard:
             "\n"
             "IN-REVIEW, oldest first (1)\n"
             "- PDEV-KB-001 2026-11-02\n"
-            "  Some work\n"
+            "  Fix some work\n"
             "\n"
             "BLOCKED, oldest first (2)\n"
             "- PDEV-KB-003 8 days\n"
-            "  Some work\n"
+            "  Fix some work\n"
             "  platform team's review\n"
             "- PDEV-KB-009 1 day\n"
-            "  Some work\n"
+            "  Fix some work\n"
         )
 
 
@@ -1107,6 +1239,27 @@ class TestHandEditedCard:
         text = path.read_text()
         assert "Hand edit." in text
         assert text.endswith("- added by card\n")
+
+    def test_check_reports_card_note_without_type(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """card check names an old-shape card note that lost its type.
+
+        Every other command skips a note without ``type: card``, so a
+        card whose front matter was deleted by hand drops off the board
+        with no message. card check is where the user finds it.
+        """
+        (projects / "DevEnv" / f"{KEY} Lost type.md").write_text(
+            f"# {KEY} Lost type\n"
+        )
+
+        code = run_card(projects, "check")
+
+        assert code == 1
+        assert capsys.readouterr().out == (
+            f"{KEY} Lost type.md has a card name but no type: card\n"
+            "1 problems in 0 cards\n"
+        )
 
 
 class TestNamingRules:
@@ -1224,5 +1377,734 @@ class TestNamingRules:
             re.compile(pattern.replace("(?<", "(?P<")) for pattern in patterns
         ] == [
             card.find_rule("card_file").parse,
-            card.find_rule("card_key").parse,
+            card.find_rule("plan_file").parse,
         ]
+
+
+class TestTitleRules:
+    """Titles read like commit titles, and their start fits a board row."""
+
+    @pytest.mark.parametrize(
+        ("title", "rules"),
+        [
+            pytest.param(
+                "Uploads retry after the network drops for a minute or two",
+                ["T1", "T2"],
+                id="long-noun-first",
+            ),
+            pytest.param(
+                "photo wall: sort the albums and suggest better captions",
+                ["T1", "T2", "T4", "T6"],
+                id="lower-case-label",
+            ),
+            pytest.param(
+                "Shopkeep: AI tags use Ledger, tested",
+                ["T2", "T4"],
+                id="label-first",
+            ),
+            pytest.param(
+                "Photo app fixes from the spring album review: short"
+                " captions, plain album names",
+                ["T1", "T2", "T6"],
+                id="late-colon",
+            ),
+            pytest.param(
+                "Make photo album captions readable on a tiny phone",
+                [],
+                id="50-characters",
+            ),
+            pytest.param(
+                "Make photo album captions readable on a tiny phones",
+                ["T1"],
+                id="51-characters",
+            ),
+            pytest.param("Fix: board rows drift", ["T4"], id="verb-label"),
+            pytest.param(
+                "Fix the DEMO-KB-004 board rows", ["T5"], id="card-key"
+            ),
+            pytest.param(
+                "Close DEMO-41 after the merge", ["T5"], id="plan-key"
+            ),
+            pytest.param(
+                "Fix the board rows (DEMO-KB-004)", ["T5"], id="wrapped-key"
+            ),
+            pytest.param("Fix board rows.", ["T6"], id="period"),
+            pytest.param("Fix the #board rows", ["T6"], id="link-character"),
+        ],
+    )
+    def test_check_title_fails_each_broken_rule(
+        self, title: str, rules: list[str]
+    ) -> None:
+        """check_title fails exactly the rules a title breaks.
+
+        The bad titles have the shapes of real cards that showed cut or
+        as labels on the board. A missed rule lets such a title back, and
+        a rule that fires on a good title refuses an agent's good card.
+        """
+        findings = card.check_title(title, "feat", False)
+
+        assert [finding.rule for finding in findings if finding.fails] == (
+            rules
+        )
+
+    def test_check_title_user_passes_only_verb(self) -> None:
+        """With user, an unknown first word reports and other rules fail.
+
+        The user may start a title with a verb VERBS lacks. The user's
+        title must still not start with a label or a lower-case letter.
+        """
+        findings = card.check_title(
+            "photo wall: sort the albums", "feat", True
+        )
+
+        assert [finding.rule for finding in findings if finding.fails] == [
+            "T4",
+            "T6",
+        ]
+        assert str(findings[0]) == (
+            'T2 verb: "photo" is not in the verb list (user verb)'
+        )
+
+    @pytest.mark.parametrize(
+        ("title", "shown"),
+        [
+            pytest.param(
+                "Retry a failed upload twice now",
+                "Retry a failed upload twic~",
+                id="cut",
+            ),
+            pytest.param(
+                "Retry a failed upload twice",
+                "Retry a failed upload twice",
+                id="27-characters",
+            ),
+        ],
+    )
+    def test_cut_for_board_matches_hub_row(
+        self, title: str, shown: str
+    ) -> None:
+        """cut_for_board shows a title as a hub board queue row does.
+
+        The user judges from this cut whether a title's meaning shows on
+        the phone. A cut one column off would show a word the board
+        hides, or hide one it shows.
+        """
+        assert card.cut_for_board(title) == shown
+
+    def test_new_refuses_title_listing_every_finding(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """card new writes no card for a failing title and lists each finding.
+
+        An agent fixes its title in one try only when the refusal names
+        every broken rule. A card written anyway would put the bad title
+        on the board.
+        """
+        code = run_card(
+            projects,
+            "new",
+            "DevEnv",
+            "Uploads retry after the network drops for a minute or two",
+            "--type",
+            "feat",
+            "--by",
+            "general-staff",
+        )
+
+        assert code == 1
+        assert not list((projects / "DevEnv").glob("PDEV-*"))
+        assert capsys.readouterr().err == (
+            "card: title refused:\n"
+            "  T1 length: 57 characters, at most 50\n"
+            '  T2 verb: "Uploads" is not in the verb list\n'
+            "Put a verb first, at most 50 characters,"
+            ' such as "Retry failed uploads".\n'
+        )
+
+    def test_new_user_reports_verb_and_cut(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """With --user, card new makes the card and prints what it reports.
+
+        The user may start a title with a verb VERBS lacks. The printed
+        board cut shows the user what the phone's board row keeps.
+        """
+        code = run_card(
+            projects,
+            "new",
+            "DevEnv",
+            "Hubs read the approval state",
+            "--type",
+            "feat",
+            "--user",
+            "--by",
+            "user",
+        )
+
+        assert code == 0
+        assert capsys.readouterr().out == (
+            "PDEV-001 Hubs read the approval state\n"
+            'T2 verb: "Hubs" is not in the verb list (user verb)\n'
+            "T7 cut: Hubs read the approval sta~\n"
+        )
+
+    def test_set_title_refuses_failing_title_unchanged(
+        self, projects: Path
+    ) -> None:
+        """card set refuses a failing title and leaves the note as it was.
+
+        A partial change, such as a renamed file with the old heading,
+        would leave the card's name and title apart.
+        """
+        path = write_card(projects, KEY, "draft")
+        before = path.read_text()
+
+        code = run_card(projects, "set", KEY, "title", "fix board rows.")
+
+        assert code == 1
+        assert path.read_text() == before
+
+    def test_set_title_refuses_card_without_type(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """card set refuses even a good title while the card has no type.
+
+        T3 reads the card's own work type, so the retitle script must set
+        the type before the title. The refusal names the command to run.
+        """
+        path = write_card(projects, KEY, "draft", work_type="")
+        before = path.read_text()
+
+        code = run_card(projects, "set", KEY, "title", "Fix board rows")
+
+        assert code == 1
+        assert path.read_text() == before
+        assert capsys.readouterr().err == (
+            "card: title refused:\n"
+            "  T3 type: no work type\n"
+            "Work types: feat, fix, docs, refactor, chore, research.\n"
+            "Give one with card new --type T, or card set KEY type T.\n"
+        )
+
+    def test_set_title_user_passes_unknown_verb(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """With --user, card set takes a title whose verb VERBS lacks.
+
+        Without it, the user could not give a card such a title at all.
+        The printed lines show the user the verb report and the board cut.
+        """
+        path = write_card(projects, KEY, "draft")
+
+        code = run_card(
+            projects, "set", KEY, "title", "Spruce up board rows", "--user"
+        )
+
+        assert code == 0
+        new_path = path.with_name(f"{KEY} Spruce up board rows.md")
+        assert card.read_title(new_path.read_text(), KEY) == (
+            "Spruce up board rows"
+        )
+        assert capsys.readouterr().out == (
+            f"{KEY} Spruce up board rows\n"
+            'T2 verb: "Spruce" is not in the verb list (user verb)\n'
+            "T7 cut: Spruce up board rows\n"
+        )
+
+    def test_check_lists_open_cards_failing_titles(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """card check lists each failing rule of an open card's title.
+
+        The retitle pass finds the cards to fix from this list. A done
+        or dropped card keeps its title, so listing it would bury the
+        open ones.
+        """
+        write_card(projects, "PDEV-KB-001", "draft", title="Some work")
+        write_card(projects, "PDEV-KB-002", "done", title="Some work")
+        write_card(projects, "PDEV-KB-003", "active")
+
+        code = run_card(projects, "check")
+
+        assert code == 1
+        assert capsys.readouterr().out == (
+            'PDEV-KB-001 T2 verb: "Some" is not in the verb list\n'
+            "1 problems in 3 cards\n"
+        )
+
+    def test_move_to_todo_refuses_failing_title(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A move into todo refuses a failing title and leaves the card.
+
+        Workers start todo cards, so a worker never starts on a card
+        whose title breaks the rules. A staff pause back to todo counts
+        too.
+        """
+        path = write_card(projects, KEY, "active", title="Some work")
+        before = path.read_text()
+
+        code = run_card(
+            projects, "move", KEY, "todo", "--why", "paused", "--by", "hub"
+        )
+
+        assert code == 1
+        assert path.read_text() == before
+        assert capsys.readouterr().err.startswith("card: title refused:\n")
+
+    @pytest.mark.parametrize(
+        ("args", "detail"),
+        [
+            pytest.param(
+                ["Retry failed uploads"], "no work type", id="missing"
+            ),
+            pytest.param(
+                ["--from", "FILE"], '"bug" is not a work type', id="unknown"
+            ),
+        ],
+    )
+    def test_new_refuses_missing_or_unknown_type(
+        self,
+        projects: Path,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        args: list[str],
+        detail: str,
+    ) -> None:
+        """card new refuses a missing or unknown work type, even with --user.
+
+        A card needs a work type before anyone builds it. Unlike an
+        unknown verb, the user's --user does not pass it. FILE in args
+        stands for a card file whose type is bug.
+        """
+        card_file = tmp_path / "card.md"
+        card_file.write_text(CARD_FILE.replace("type: feat", "type: bug"))
+        args = [str(card_file) if arg == "FILE" else arg for arg in args]
+
+        code = run_card(
+            projects, "new", "DevEnv", *args, "--user", "--by", "user"
+        )
+
+        assert code == 1
+        assert not list((projects / "DevEnv").glob("PDEV-*"))
+        assert capsys.readouterr().err == (
+            "card: title refused:\n"
+            f"  T3 type: {detail}\n"
+            "Work types: feat, fix, docs, refactor, chore, research.\n"
+            "Give one with card new --type T, or card set KEY type T.\n"
+        )
+
+    def test_set_type_fills_old_card(self, projects: Path) -> None:
+        """card set KEY type writes the work type into a card that lacks one.
+
+        Cards made before rule T3 hold no work type, and the retitle
+        pass gives each one with this command. Without it, such a card
+        could never pass card check or move into todo again.
+        """
+        path = write_card(projects, KEY, "draft")
+        path.write_text(path.read_text().replace("work_type: feat\n", ""))
+
+        code = run_card(projects, "set", KEY, "type", "fix")
+
+        assert code == 0
+        assert card.read_fields(path.read_text())["work_type"] == "fix"
+        assert run_card(projects, "check") == 0
+
+    def test_check_lists_cards_without_valid_type(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """card check lists each open card with a missing or unknown work type.
+
+        Cards made before rule T3 have none, and the retitle pass finds
+        them from this list.
+        """
+        path = write_card(projects, "PDEV-KB-001", "draft")
+        path.write_text(path.read_text().replace("work_type: feat\n", ""))
+        write_card(projects, "PDEV-KB-002", "active", work_type="bug")
+
+        code = run_card(projects, "check")
+
+        assert code == 1
+        assert capsys.readouterr().out == (
+            "PDEV-KB-001 T3 type: no work type\n"
+            'PDEV-KB-002 T3 type: "bug" is not a work type\n'
+            "2 problems in 2 cards\n"
+        )
+
+    def test_move_to_todo_refuses_untyped_card(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A move into todo refuses a card with no work type, even the user's.
+
+        Workers start todo cards, and --user passes only T2, never T3.
+        """
+        path = write_card(projects, KEY, "draft", "- [ ] Done.")
+        path.write_text(path.read_text().replace("work_type: feat\n", ""))
+        before = path.read_text()
+
+        code = run_card(
+            projects, "move", KEY, "todo", "--user", "--by", "user"
+        )
+
+        assert code == 1
+        assert path.read_text() == before
+        assert "  T3 type: no work type\n" in capsys.readouterr().err
+
+
+@pytest.fixture
+def herdr_agents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A herdr on PATH whose agent list is the returned JSON file.
+
+    The file starts with no agents. A real program, unlike a patched
+    subprocess.run, leaves undo.sh free to run with sh.
+    """
+    agents = tmp_path / "agents.json"
+    agents.write_text('{"result": {"agents": []}}')
+    herdr = tmp_path / "bin" / "herdr"
+    herdr.parent.mkdir()
+    herdr.write_text(f"#!/bin/sh\ncat {shlex.quote(str(agents))}\n")
+    herdr.chmod(0o755)
+    path = f"{herdr.parent}{os.pathsep}{os.environ['PATH']}"
+    monkeypatch.setenv("PATH", path)
+    return agents
+
+
+def write_rekey_vault(projects: Path) -> None:
+    """Open, done and dropped old-key cards, PDEV-410 with its plan, links.
+
+    PDEV-410 is the highest number, so the open cards take PDEV-411 and
+    PDEV-412. The first card has session ses_abc; the second links the
+    first.
+    """
+    first = write_card(projects, KEY, "draft")
+    first.write_text(
+        card.set_field(first.read_text(), "sessions", ["opencode ses_abc"])
+    )
+    second = write_card(
+        projects, "PDEV-KB-002", "todo", title="Retry failed uploads"
+    )
+    second.write_text(second.read_text() + "See [[PDEV-KB-001]].\n")
+    write_card(projects, "PDEV-KB-003", "done", title="Old done work")
+    write_card(projects, "PDEV-KB-004", "dropped", title="Dropped idea")
+    write_card(projects, "PDEV-410", "active", title="Build the retries")
+    (projects / "DevEnv" / "PDEV-410 Plan the retries.md").write_text(PLAN)
+    (projects / "DevEnv" / "Links.md").write_text(
+        "[[PDEV-KB-001]], [[PDEV-KB-002 Retry failed uploads|uploads]]"
+        " and [[PDEV-KB-003 Old done work]]\n"
+    )
+
+
+def read_tree(projects: Path) -> dict[str, bytes]:
+    """Every file under Projects, by its path relative to Projects."""
+    return {
+        str(path.relative_to(projects)): path.read_bytes()
+        for path in projects.rglob("*")
+        if path.is_file()
+    }
+
+
+def format_agent_list(*agents: dict[str, Any]) -> str:
+    """The JSON that herdr agent list prints while these agents run."""
+    return json.dumps({"result": {"agents": list(agents)}})
+
+
+def edit_before_write(monkeypatch: pytest.MonkeyPatch, note: Path) -> None:
+    """Make rekey find one note edited by the user on its first write.
+
+    The real write_safely then refuses that write, since the note's
+    modified time moved on. Later writes go through.
+    """
+    real = card.write_safely
+
+    def write(path: Path, *args: Any) -> bool:
+        """Append a line before the note's first write, then write it."""
+        if path == note and not path.read_text().endswith("edited\n"):
+            with path.open("a") as handle:
+                handle.write("edited\n")
+            # A write within one clock tick of the read can keep the time.
+            stat = path.stat()
+            os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
+        return real(path, *args)
+
+    monkeypatch.setattr(card, "write_safely", write)
+
+
+@pytest.mark.usefixtures("herdr_agents")
+class TestRekey:
+    """card rekey gives open cards with old keys new keys."""
+
+    def test_dry_run_prints_keys_writes_nothing(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Without --apply, rekey prints old and new keys and writes nothing.
+
+        The user reviews this list before running --apply. Done and
+        dropped cards and cards that already have new keys must not be on
+        it, and each note whose links change is named.
+        """
+        write_rekey_vault(projects)
+        before = read_tree(projects)
+
+        code = run_card(projects, "rekey")
+
+        assert code == 0
+        assert capsys.readouterr().out == (
+            "PDEV-KB-001 PDEV-411\n"
+            "PDEV-KB-002 PDEV-412\n"
+            "relink DevEnv/Links.md\n"
+            "relink DevEnv/PDEV-KB-002 Retry failed uploads.md\n"
+            "2 cards to rekey, 2 notes to relink\n"
+        )
+        assert read_tree(projects) == before
+
+    def test_apply_renames_cards_keeping_old_key(self, projects: Path) -> None:
+        """--apply renames open cards and writes old_key and the new heading.
+
+        A card without old_key cannot be found by the key in its Log and in
+        other notes.
+        """
+        write_rekey_vault(projects)
+        devenv = projects / "DevEnv"
+
+        code = run_card(projects, "rekey", "--apply", "--user")
+
+        assert code == 0
+        assert not (devenv / "PDEV-KB-001 Fix some work.md").exists()
+        text = (devenv / "PDEV-411 Fix some work.md").read_text()
+        assert "\nold_key: PDEV-KB-001\n" in text
+        assert "\n# PDEV-411 Fix some work\n" in text
+        assert (devenv / "PDEV-412 Retry failed uploads.md").exists()
+
+    def test_apply_relinks_only_open_cards(self, projects: Path) -> None:
+        """--apply points links to open cards at their new names.
+
+        A link left on the old name breaks in Obsidian, also in a card that
+        was renamed itself. Done cards keep their names, so links to them
+        stay.
+        """
+        write_rekey_vault(projects)
+        devenv = projects / "DevEnv"
+
+        code = run_card(projects, "rekey", "--apply", "--user")
+
+        assert code == 0
+        assert (devenv / "Links.md").read_text() == (
+            "[[PDEV-411]], [[PDEV-412 Retry failed uploads|uploads]]"
+            " and [[PDEV-KB-003 Old done work]]\n"
+        )
+        retry = (devenv / "PDEV-412 Retry failed uploads.md").read_text()
+        assert "See [[PDEV-411]].\n" in retry
+
+    def test_undo_script_restores_every_note(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The printed undo.sh puts every renamed and relinked note back.
+
+        It is the user's way back from a rekey they do not want, so it
+        must restore the notes that only had links changed too.
+        """
+        write_rekey_vault(projects)
+        before = read_tree(projects)
+        run_card(projects, "rekey", "--apply", "--user")
+
+        undo = shlex.split(capsys.readouterr().out.splitlines()[-1])[-1]
+        subprocess.run(["sh", undo], check=True)
+
+        assert read_tree(projects) == before
+
+    def test_undo_after_stop_keeps_later_edits(
+        self,
+        projects: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """After a stop, undo puts back only the notes rekey wrote.
+
+        The likeliest stop is the user editing a note during the run, and
+        undo must not copy the old note over that edit.
+        """
+        write_rekey_vault(projects)
+        before = read_tree(projects)
+        retry = "DevEnv/PDEV-KB-002 Retry failed uploads.md"
+        edit_before_write(monkeypatch, projects / retry)
+
+        code = run_card(projects, "rekey", "--apply", "--user")
+        undo = shlex.split(capsys.readouterr().out.splitlines()[-1])[-1]
+        subprocess.run(["sh", undo], check=True)
+
+        assert code == 1
+        edited = {**before, retry: before[retry] + b"edited\n"}
+        assert read_tree(projects) == edited
+
+    def test_second_apply_finishes_stopped_run(
+        self, projects: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A second --apply after a stop renames the rest and fixes links.
+
+        The first run renames PDEV-KB-001 and stops at PDEV-KB-002, then
+        card new takes PDEV-412, so the second run gives PDEV-KB-002 the
+        key PDEV-413. Each link must name the card it meant, never the new
+        card, and PDEV-411 must not get yet another key.
+        """
+        write_rekey_vault(projects)
+        devenv = projects / "DevEnv"
+        retry = devenv / "PDEV-KB-002 Retry failed uploads.md"
+        edit_before_write(monkeypatch, retry)
+        first = run_card(projects, "rekey", "--apply", "--user")
+        run_card(
+            projects,
+            "new",
+            "DevEnv",
+            "Add a retry button",
+            "--type",
+            "feat",
+            "--by",
+            "user",
+        )
+
+        code = run_card(projects, "rekey", "--apply", "--user")
+
+        assert (first, code) == (1, 0)
+        assert sorted(path.name for path in devenv.glob("PDEV-*")) == [
+            "PDEV-410 Build the retries.md",
+            "PDEV-410 Plan the retries.md",
+            "PDEV-411 Fix some work.md",
+            "PDEV-412 Add a retry button.md",
+            "PDEV-413 Retry failed uploads.md",
+            "PDEV-KB-003 Old done work.md",
+            "PDEV-KB-004 Dropped idea.md",
+        ]
+        assert (devenv / "Links.md").read_text() == (
+            "[[PDEV-411]], [[PDEV-413 Retry failed uploads|uploads]]"
+            " and [[PDEV-KB-003 Old done work]]\n"
+        )
+        retry = devenv / "PDEV-413 Retry failed uploads.md"
+        assert "See [[PDEV-411]].\n" in retry.read_text()
+
+    def test_second_apply_finishes_stopped_relink(
+        self, projects: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A second --apply after a stop while relinking rewrites the links.
+
+        The first run renames every card and stops at Links.md, its first
+        link write, so the second run has no card left to rename. It must
+        still rewrite the links, or they stay on old names while rekey
+        reports success.
+        """
+        write_rekey_vault(projects)
+        links = projects / "DevEnv" / "Links.md"
+        edit_before_write(monkeypatch, links)
+        first = run_card(projects, "rekey", "--apply", "--user")
+
+        code = run_card(projects, "rekey", "--apply", "--user")
+
+        assert (first, code) == (1, 0)
+        assert links.read_text() == (
+            "[[PDEV-411]], [[PDEV-412 Retry failed uploads|uploads]]"
+            " and [[PDEV-KB-003 Old done work]]\n"
+            "edited\n"
+        )
+
+    @pytest.mark.parametrize(
+        ("argv", "herdr_output", "notes", "reason"),
+        [
+            pytest.param(
+                ["--apply", "--user"],
+                format_agent_list(
+                    {
+                        "name": "pdev-kb-002-build",
+                        "agent": "opencode",
+                        "agent_session": {"value": "ses_xyz"},
+                    }
+                ),
+                {},
+                "live workers on PDEV-KB-002 (pdev-kb-002-build)",
+                id="worker-name",
+            ),
+            pytest.param(
+                ["--apply", "--user"],
+                format_agent_list(
+                    {
+                        "name": "worker-1",
+                        "agent": "opencode",
+                        "agent_session": {"value": "ses_abc"},
+                    }
+                ),
+                {},
+                "live workers on PDEV-KB-001 (worker-1)",
+                id="worker-session",
+            ),
+            pytest.param(
+                ["--apply", "--user"],
+                '{"error": "no server"}',
+                {},
+                "live workers are unknown",
+                id="herdr-failed",
+            ),
+            pytest.param(
+                ["--apply", "--user"],
+                format_agent_list(),
+                {"Other/PDEV-KB-001 Kanban demo.md": HAND_EDITED},
+                "two cards hold PDEV-KB-001",
+                id="shared-key",
+            ),
+            pytest.param(
+                ["--apply", "--user"],
+                format_agent_list(),
+                {
+                    "Other/PDEV-400 Kanban demo.md": HAND_EDITED.replace(
+                        "prs: []\n", "prs: []\nold_key: PDEV-KB-002\n"
+                    )
+                },
+                "two cards hold PDEV-KB-002",
+                id="old-key-reused",
+            ),
+            pytest.param(
+                ["--apply", "--user"],
+                format_agent_list(),
+                {
+                    "Other/PDEV-KB-005 Kanban demo.md": HAND_EDITED.replace(
+                        "prs: []\n", "prs: []\nold_key: PDEV-KB-005\n"
+                    )
+                },
+                "PDEV-KB-005 written but not renamed",
+                id="stuck-card",
+            ),
+            pytest.param(
+                ["--apply"],
+                format_agent_list(),
+                {},
+                "--apply needs --user",
+                id="no-user",
+            ),
+        ],
+    )
+    def test_refuses_and_changes_nothing(
+        self,
+        projects: Path,
+        herdr_agents: Path,
+        capsys: pytest.CaptureFixture[str],
+        argv: list[str],
+        herdr_output: str,
+        notes: dict[str, str],
+        reason: str,
+    ) -> None:
+        """Rekey refuses, with its reason, before it changes any note.
+
+        A running worker on a card must end first, Herdr without an agent
+        list may hide one, two cards with one key cannot both get the new
+        one, a card written but not renamed would give its number to
+        another card, and only the user runs --apply.
+        """
+        write_rekey_vault(projects)
+        for name, text in notes.items():
+            (projects / name).parent.mkdir(exist_ok=True)
+            (projects / name).write_text(text)
+        herdr_agents.write_text(herdr_output)
+        before = read_tree(projects)
+
+        code = run_card(projects, "rekey", *argv)
+
+        assert code == 1
+        assert reason in capsys.readouterr().err
+        assert read_tree(projects) == before

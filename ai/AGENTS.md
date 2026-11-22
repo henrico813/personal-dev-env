@@ -87,6 +87,8 @@
   `session-review` skill.
 - When the user types `conclude-session` or asks to close out or
   wrap up a session, load and follow the `conclude-session` skill.
+- When the user asks to do the shutdown, or to close out the
+  day, load and follow the `daily-shutdown` skill.
 - When writing a status update, progress report, recap, handoff
   message or question to the user, load and follow the
   `status-updates` skill.

@@ -1,0 +1,15 @@
+{
+  "id": "chat-decision-on-card",
+  "source": "decisions made in hub chat that reached only notes.md or a card Log line, so a worker reading the card missed them",
+  "rule": "Cards",
+  "correction": true,
+  "prompt": "You are the hub of a Herdr run. Reply with only the commands you run and the message you send, in order.\n\nCard SHOP-KB-041, \"Refunds page\", is in active. Its worker, shop-kb-041-impl, is writing the plan and has not asked anything. The user writes in your chat, unprompted: \"For the refunds page, drop partial refunds from this card; full refunds only. Partial refunds get their own card later.\" Nothing else waits on the user.",
+  "pass": [
+    "(?i)card add\\s+SHOP-KB-041\\s+Decisions"
+  ],
+  "judge": [
+    "Does the answer add the user's decision itself, full refunds only on this card, to card SHOP-KB-041's Decisions section, not only to notes.md, a Log line or a message to the worker?"
+  ],
+  "good": "card add SHOP-KB-041 Decisions \"User: full refunds only; partial refunds go to their own card later.\"\nhub send --run \"<run folder>\" shop-kb-041-impl \"The user decided: full refunds only on this card; partial refunds get their own card later. It is in the card's Decisions.\"",
+  "bad": "hub note --run \"<run folder>\" \"SHOP-KB-041: user dropped partial refunds\"\ncard add SHOP-KB-041 Decisions \"Refund scope: see the hub's notes.md\"\nhub send --run \"<run folder>\" shop-kb-041-impl \"The user decided: full refunds only; partial refunds get their own card later.\""
+}

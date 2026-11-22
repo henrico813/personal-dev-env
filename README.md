@@ -109,6 +109,7 @@ Vibe binaries plus repo-managed AI config.
 | Auto run | `ai/skills/auto-run/` | `~/.agents/skills/auto-run/` | Shared workflow skill for working an approved list of cards and roadmaps to pull requests without the user |
 | Session review | `ai/skills/session-review/` | `~/.agents/skills/session-review/` | Shared workflow skill for reviewing a session's token use, lessons and local model jobs |
 | Conclude session | `ai/skills/conclude-session/` | `~/.agents/skills/conclude-session/` | Shared workflow skill for closing out a session after one pick from the user |
+| Daily shutdown | `ai/skills/daily-shutdown/` | `~/.agents/skills/daily-shutdown/` | Shared workflow skill for the end-of-day shutdown: drafts tomorrow's tasks and the day's lessons, then adds the approved blocks to the daily note |
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/` | Shared test-writing guidance |
 | Screen check | `ai/skills/screen-check/` | `~/.agents/skills/screen-check/` | Agents run a changed TUI or CLI on a hidden phone-size screen and check it |
 | Model routing | `ai/skills/model-routing/` | `~/.agents/skills/model-routing/` | Shared table of job kinds and their models, the script that picks and logs each agent's model, and how local jobs are checked |
@@ -195,15 +196,17 @@ loads `~/.agents/skills/`.
 | `auto-run` | Brief the user on todo cards and roadmaps, then have a separate hub plan, build, review and file the approved list as PRs | "Set up an auto run", "Build the rest of the roadmap overnight" |
 | `session-review` | Review a session for token use, skill fixes to write and jobs a local model could run, then wait for your pick | "Review this session for token usage, skill lessons and local model handoff" |
 | `conclude-session` | Close out a session: review it, wait for your pick, then commit skill fixes, open one skill PR and hand off or report | "conclude-session" |
+| `daily-shutdown` | Draft the end-of-day shutdown from the day's notes, wait for your approval, then add each block to the daily note | "Do the shutdown" |
 | `model-routing` | Pick each agent's model from its job kind with `pde_route.py`, and retry a failed job on the next model | "Which model should run these test jobs?" |
 | `review-plan` | Review a plan, PR, commit, or diff for architecture, bugs, completeness | "Use review-plan on docs/design-auth.md with focus on security" |
 
 The skills are installed to `~/.agents/skills/`, and the installer copies the
 shared `AGENTS.md` into `~/.codex/` and `~/.claude/` so the workflow defaults
 stay aligned with the rest of the tree. `install client` installs only
-`obsidian-zettel`, `obsidian-daily-note`, `plain-direct-english`,
-`behavior-focused-testing`, `delegate`, `model-routing`,
-`skill-fix` and `status-updates`; every other skill is full-only.
+`obsidian-zettel`, `obsidian-daily-note`, `daily-shutdown`,
+`plain-direct-english`, `behavior-focused-testing`, `delegate`,
+`model-routing`, `skill-fix` and `status-updates`; every other skill
+is full-only.
 
 ## Privacy Checks
 

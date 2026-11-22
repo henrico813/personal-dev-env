@@ -64,6 +64,10 @@ The user's rules for every run:
   `active` and `in-review`.
 - The run ends when every card on the list has stopped.
 - Nothing merges without the user's explicit yes.
+- Agents and scripts make each scratch folder under `~/.local/state`,
+  such as with `mktemp -d ~/.local/state/pde-work.XXXXXX`. They never
+  make one in `/tmp`, which every agent shares. A tool's own temp
+  folder, such as pytest's `tmp_path`, may stay in `/tmp`.
 
 ## Before the run (front hub)
 
@@ -99,10 +103,10 @@ The user's rules for every run:
        Run tier: T1
 
        ## Run
-       - DEMO-KB-007 demo: failed uploads retry by themselves
+       - DEMO-007 demo: failed uploads retry by themselves
 
        ## Needs your hands
-       - DEMO-KB-009 demo: the new disk needs plugging in
+       - DEMO-009 demo: the new disk needs plugging in
 
 5. Check the list until it exits 0:
 
@@ -120,11 +124,11 @@ The user's rules for every run:
 
        Auto run 2: 3 cards run without you while you are away,
        until 07:00 on 12 Nov.
-       1. demo, DEMO-KB-007: failed uploads retry by themselves.
-       2. demo, DEMO-KB-011: the rest of the sync roadmap, 4 pull
+       1. demo, DEMO-007: failed uploads retry by themselves.
+       2. demo, DEMO-011: the rest of the sync roadmap, 4 pull
           requests in one stack.
        ...
-       Left out: DEMO-KB-009 (demo), the new disk needs your hands.
+       Left out: DEMO-009 (demo), the new disk needs your hands.
        Rules that end: planners use Opus until 02:00.
        Each card stops at a pull request or a question for you.
        Run tier: T1. Only a plan that changes your rules.md
@@ -260,9 +264,11 @@ hub has sent its end brief; wait for that brief, then run it again.
    its card and the code; for a roadmap item, from its roadmap page.
    Cards that share a file run one after another: start the later
    worker after the earlier one pushes, and have it stack its branch
-   on the earlier branch with `--base`. When an unmerged branch
-   changes a card's files, the card stacks on that branch; a roadmap
-   item's branch is one example. Name each
+   on the earlier branch with `--base`. The later worker files its
+   request only after the earlier pull request opens, and learns
+   that from GitHub with build.md's Wait for a parent to open. When
+   an unmerged branch changes a card's files, the card stacks on
+   that branch; a roadmap item's branch is one example. Name each
    stack in the end brief, since the lower pull request must open
    first. When the earlier card stops without pushing, do not start
    the later card. It counts as stopped, and the end brief lists it

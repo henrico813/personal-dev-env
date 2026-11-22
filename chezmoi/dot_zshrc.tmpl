@@ -2,12 +2,6 @@
 # Disable terminal flow control to enable Ctrl-S for forward history search
 stty -ixon
 
-{{- if has "development" .pde.tiers }}
-# SSH agent via keychain (lazy key loading)
-if command -v keychain &>/dev/null; then
-    eval "$(keychain --eval --agents ssh --quiet)"
-fi
-{{- end }}
 
 # Plugins are checksummed chezmoi externals and load only from local paths.
 PDE_ZSH_PLUGINS=${ZDOTDIR:-$HOME}/.local/share/zsh/plugins

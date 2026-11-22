@@ -74,7 +74,7 @@ pub(crate) enum TidyOutcome {
 
 impl TidyOutcome {
     /// Returns the line `run_clean` prints, such as
-    /// `parked demo-kb-007-impl: DEMO-KB-007 review`. A dry run says
+    /// `parked demo-kb-007-impl: DEMO-KB-007 in-review`. A dry run says
     /// `would close`, `would park` and `would forget`.
     pub(crate) fn line(&self, dry_run: bool) -> String {
         let pick = |done: &str, planned: &str| if dry_run { planned } else { done }.to_owned();
@@ -87,7 +87,7 @@ impl TidyOutcome {
                 )
             }
             TidyOutcome::Parked { name, card } => format!(
-                "{} {name}: {} review",
+                "{} {name}: {} in-review",
                 pick("parked", "would park"),
                 card.as_str()
             ),

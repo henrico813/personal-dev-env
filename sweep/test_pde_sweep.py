@@ -22,14 +22,16 @@ FAKE_HUB = """#!/bin/sh
 echo '{"no_session": [{"card": "ABC-KB-001", "stage": "active"},
   {"card": "ABC-KB-004", "stage": "active"}]}'
 """
-# A fake card with one stuck card, one card with a next step, and two
-# review cards, one linked to a merged pull request and one to an open
-# one.
+# A fake card with one stuck card, one card with a next step, and three
+# in-review cards. Two link to merged pull requests, one of them under
+# a new key, and one links to an open one. It lists cards only for the
+# in-review stage.
 FAKE_CARD = """#!/bin/sh
-case "$1 $2" in
-  "list --stage")
-    echo "ABC-KB-002 review   build    Some work"
-    echo "ABC-KB-003 review   build    More work" ;;
+case "$*" in
+  "list --stage in-review")
+    echo "ABC-KB-002 in-review   build    Some work"
+    echo "ABC-KB-003 in-review   build    More work"
+    echo "ABCD-005 in-review   build    New work" ;;
   "show ABC-KB-001") printf -- '---\\nstage: active\\n---\\n# Work\\n' ;;
   "show ABC-KB-002")
     printf -- '---\\nprs:\\n  - "https://github.com/o/r/pull/7"\\n---\\n' ;;
@@ -37,6 +39,8 @@ case "$1 $2" in
     printf -- '---\\nprs:\\n  - "https://github.com/o/r/pull/8"\\n---\\n' ;;
   "show ABC-KB-004")
     printf -- '---\\nstage: active\\n---\\n- note (hub): next: wait\\n' ;;
+  "show ABCD-005")
+    printf -- '---\\nprs:\\n  - "https://github.com/o/r/pull/9"\\n---\\n' ;;
 esac
 """
 # A fake gh where pull request 8 is open, every other one merged, and
@@ -273,20 +277,20 @@ class TestMergeNoSessionCards:
         keeps a card from going missing or showing twice.
         """
         first = json.dumps(
-            {"no_session": [{"card": "B-KB-2", "stage": "review"}]}
+            {"no_session": [{"card": "B-KB-2", "stage": "in-review"}]}
         )
         second = json.dumps(
             {
                 "no_session": [
                     {"card": "A-KB-1", "stage": "active"},
-                    {"card": "B-KB-2", "stage": "review"},
+                    {"card": "B-KB-2", "stage": "in-review"},
                 ]
             }
         )
 
         cards = pde_sweep.merge_no_session_cards([first, second])
 
-        assert cards == [("A-KB-1", "active"), ("B-KB-2", "review")]
+        assert cards == [("A-KB-1", "active"), ("B-KB-2", "in-review")]
 
 
 class TestRun:
@@ -365,7 +369,8 @@ class TestRun:
         )
         assert read_items(report, "stuck-cards") == ["- ABC-KB-001 active"]
         assert read_items(report, "review-cards-pr-done") == [
-            "- ABC-KB-002 https://github.com/o/r/pull/7 MERGED"
+            "- ABC-KB-002 https://github.com/o/r/pull/7 MERGED",
+            "- ABCD-005 https://github.com/o/r/pull/9 MERGED",
         ]
         assert read_items(report, "dirty-worktrees") == [
             "skipped: 1 on the default branch with only untracked files",

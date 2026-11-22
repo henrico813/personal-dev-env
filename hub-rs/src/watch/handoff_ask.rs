@@ -87,7 +87,7 @@ pub(super) fn ask_for_handoffs(
 
 /// Saves that the session started its successor, so the watch never
 /// asks or marks it again, whatever its context. Marked again, it would
-/// wait on the user and `hub clean` would keep it open.
+/// wait on the user and `run_clean` would keep it open.
 ///
 /// # Errors
 ///

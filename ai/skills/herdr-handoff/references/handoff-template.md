@@ -3,7 +3,11 @@
 Copy the outline in the code block below into the handoff file and
 fill each part. Leave out a part with nothing in it. Keep the reader
 in mind: a new session that knows nothing of this one, and may reread
-the file after compaction.
+the file after compaction. In the outline, text in `<...>` speaks to
+you, the writer, and calls the reader "the new session". Text outside
+it speaks to the new session as "you". One exception: leave `<file>`
+in the `hub report` bullet as it is. The new session puts its report
+file there each time.
 
 ## Contents
 
@@ -69,20 +73,24 @@ full instead, as Coordination says.>
 - <Which session owns each file, branch and worktree.>
 - **<What the new session must not touch, until when.>**
 - <Who records ownership changes on the tracking page, if any.>
-- Write progress-only news to <your status file>. Write a question,
-  a blocker, or finished work "<this session's agent name>" waits on,
-  such as a PR opening, with
-  `hub report --run "<run folder>" <your agent name> <file>`, then end
-  your turn. It replaces <report file> whole. Never prompt "<this
-  session's agent name>"; it learns of your report when your turn
-  ends.
+- Write progress-only news to <the new session's status file>.
+  Report each question, blocker or finished work that "<this
+  session's agent name>" waits on, such as a PR opening. Run
+  `hub report --run "<run folder>" <the new session's agent name>
+  <file>`, then end your turn. The command replaces <report file>
+  whole with <file>. Never prompt "<this session's agent name>"; it
+  learns of your report when your turn ends.
 - <When this session keeps nothing and no hub runs: leave out the
-  report line above, and say the new session asks the user in its
-  own pane.>
-- <When a hub runs: the hub's agent name in place of this session's
-  name in the line above, a report file in the hub's run folder, and
-  that the new session reports only to the hub. To wait on a long
-  job, such as a test run, it first runs `hub wait` with
+  `hub report` bullet above, and say the new session asks the user in
+  its own pane.>
+- <When a hub runs, change three things in the `hub report` bullet
+  above. Put the hub's agent name in place of "<this session's agent
+  name>". Put the hub's run folder in place of <run folder>. Put a
+  file in that folder in place of <report file>. Then add the bullet
+  "You report only to the hub." to the handoff. Below it, turn the
+  rest of this placeholder into bullets. Each bullet speaks to the
+  new session as "you". To wait on a long job, such as a test run,
+  the new session first runs `hub wait` with
   `--run "<run folder>"`, its agent name, `--file <summary file>` and
   `--deadline <minutes>`. Then it starts the job with
   `setsid nohup bash <script> > <log> 2>&1 &`, so the job outlives

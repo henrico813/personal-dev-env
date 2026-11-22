@@ -118,7 +118,8 @@ script-checked jobs to the local model says.
    Run build.md's Set up a PR's folder as soon as the plan file
    exists, since the setup reads the plan's key. Until then, the
    first planner writes its report to a folder you make with
-   `mktemp -d`. Give the plan its tier as Review tiers says.
+   `mktemp -d ~/.local/state/pde-work.XXXXXX`. Give the plan its
+   tier as Review tiers says.
 2. **Plan review.** Fresh reviewers review the plan before build, as
    Review tiers says for its tier, with prompts.md's Fresh plan
    review. Check each required fix yourself, against the code or
@@ -182,7 +183,8 @@ script-checked jobs to the local model says.
    since Vibe leaves those out and only an install reaches them: write
    its try line as `not run` with that reason, a check that cannot
    apply, as `herdr-hub` allows. Try any other change from
-   the worktree, or in a scratch home from `mktemp -d`; a change that
+   the worktree, or in a scratch home from
+   `mktemp -d ~/.local/state/pde-work.XXXXXX`; a change that
    adds a dependency or a build step gets the scratch home install,
    cleanup included, since CI does not build tools the installer's
    way. In a brief for an agent that tries it, name the folder in
@@ -215,10 +217,12 @@ script-checked jobs to the local model says.
      before you add a child's line, add its parent's line the same
      way when the parent is yours, its `request.result` starts with
      `exit 3` and its line is not there yet.
-   - When the user is around, rerun ship.sh now. First read the last
-     line of `<run folder>/requests.log`; when it was filed less than
-     a minute ago, wait for the rest of that minute. The rerun saves
-     and runs the request script, which calls
+   - When the user is around, rerun ship.sh now. When the parent is
+     another worker's pull request that is not open yet, first wait
+     for it with build.md's Wait for a parent to open. Then read the
+     last line of `<run folder>/requests.log`; when it was filed less
+     than a minute ago, wait for the rest of that minute. The rerun
+     saves and runs the request script, which calls
      `pde-gh-write pr create --base <parent branch>`. When it files a
      new request, ship.sh adds a line to `requests.log`: the time, the
      branch and the PR folder.
@@ -429,8 +433,9 @@ its entries parked.
 - Hand-edit a plan's diffs or the branch's files. Every build commit
   comes from `planner export`.
 - Create, copy, edit or commit a `.code-comments.json`.
-- Remove a fixed `/tmp` path. Every agent works in its own folder from
-  `mktemp -d`.
+- Make a folder in `/tmp`, or remove a fixed `/tmp` path. Every
+  agent works in its own folder from
+  `mktemp -d ~/.local/state/pde-work.XXXXXX`.
 
 ## Your last report
 

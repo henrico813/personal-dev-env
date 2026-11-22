@@ -13,8 +13,8 @@ agents in OpenCode's database
 **Agents share a scratch folder.** An agent that runs
 `rm -rf /tmp/<name>` can delete another agent's work, and one that
 clones into a fixed path can overwrite it. Every brief says to use
-`mktemp -d` only. When a report admits a slip, check whether another
-agent lost files.
+`mktemp -d ~/.local/state/pde-work.XXXXXX` only. When a report admits
+a slip, check whether another agent lost files.
 
 **A lint failure does not stop the script.** `lint FILE && echo ok`
 prints the failure and carries on, so a commit with a bad title gets

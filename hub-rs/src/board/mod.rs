@@ -88,7 +88,7 @@ enum Job {
     /// Show this session in Herdr.
     Jump(String),
     /// Run the clean pass on these sessions only, in this run, as
-    /// `hub clean` does.
+    /// `run_clean` does.
     Clean { run: PathBuf, names: Vec<String> },
 }
 

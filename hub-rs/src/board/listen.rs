@@ -18,7 +18,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::Duration;
 
-/// The socket's path in the state folder, beside `hub watch`'s lock.
+/// The socket's path in the state folder, beside the watch's lock.
 const SOCKET: &str = "hub/board.sock";
 
 /// How long the listener waits for an agent's step line. An agent that

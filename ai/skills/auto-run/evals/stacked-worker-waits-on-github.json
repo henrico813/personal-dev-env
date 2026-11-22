@@ -1,0 +1,12 @@
+{
+  "id": "stacked-worker-waits-on-github",
+  "source": "a stacked worker missed its parent pull request opening by watching the parent's PR folder",
+  "rule": "The auto hub",
+  "correction": true,
+  "prompt": "You are the worker for one card in an auto run. Your pull request stacks on a branch that another worker pushed an hour ago. That worker's request to open its pull request still waits for the user's approval, and the user is around. You have tried your pushed commit. You may file your own request only after the lower pull request opens. How do you find out that it opened, and where do you find the commands for that?",
+  "pass": [
+    "wait-for-parent\\.sh|Wait for a parent to open"
+  ],
+  "good": "Follow build.md's Wait for a parent to open: run `hub wait --file \"$D/parent.txt\" --deadline 250`, start wait-for-parent.sh with setsid nohup, and end my turn. It asks GitHub every minute and writes parent.txt once the pull request exists; on OPEN I file my request.",
+  "bad": "Run `hub wait --file <other worker's PR folder>/request.result --deadline 60`, end my turn, and file my request when that file changes."
+}

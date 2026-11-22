@@ -75,8 +75,13 @@ Drop any proposal on the Do not propose list below.
 
 ### 3. Fixes
 
-List the corrections the user made in this session as a numbered
-pick list. Keep only those that pass "Check the correction" in
+List the corrections the user made in this session as a pick list.
+Number them on from step 2's proposals: after three proposals, the
+first fix is 4. Each number in a reply such as "1, 4" then names
+exactly one item. In the review's other lists, such as the Fallback
+map, the Efficiency map and Trials from step 4, use bullets. Then
+only the items to pick carry numbers.
+Keep only the corrections that pass "Check the correction" in
 [skill-fix](../skill-fix/SKILL.md), and name the skill each would go
 to. In the review file, give each a `Passes:` line on why it passes,
 as [references/example.md](references/example.md) shows. Write each
@@ -173,7 +178,7 @@ points to the `model-routing` skill.
     2. ...
 
     Fixes to write, pick by number
-    1. <rule> -> <skill>
+    <last proposal's number + 1>. <rule> -> <skill>
 
     Fallback: <the role least ready for a local model, and its fix>.
     Efficiency: <the largest step a local model could take, and its

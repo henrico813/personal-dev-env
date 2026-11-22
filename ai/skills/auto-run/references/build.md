@@ -8,10 +8,10 @@ printed. Each snippet stops with `exit 1` on the first failure; never
 run the lines after a failed one by hand.
 
 The setup copies this skill's scripts into the PR folder: `fns.sh`,
-`build.sh`, `ship.sh`, `plants.sh`, `suites.sh` and
-`deploy-check.sh`. Run each as the section below says. You need not
-read them: each prints a short result and logs the rest in the PR
-folder.
+`build.sh`, `ship.sh`, `plants.sh`, `suites.sh`, `deploy-check.sh`
+and `wait-for-parent.sh`. Run each as the section below says. You
+need not read them: each prints a short result and logs the rest in
+the PR folder.
 
 ## Contents
 
@@ -25,6 +25,7 @@ folder.
 - Put back the bugs
 - Ship
 - Check a deploy
+- Wait for a parent to open
 - Push a later round
 - Print a PR's status line
 - Base a child on an unbuilt parent
@@ -344,6 +345,50 @@ is in `<PR folder>/deploy.log`.
   PR through the loop.
 - Anything else, such as no `deploy.txt`: the local job failed its
   check.
+
+## Wait for a parent to open
+
+A child whose parent is another worker's pull request files its
+request only after that pull request opens. Nothing in your own PR
+folders changes when it opens, so ask GitHub. `wait-for-parent.sh`
+runs `gh pr view` on `PARENT` every minute, in the worktree. Once
+the pull request exists, the script writes the pull request's state
+and the time to `parent.txt` in the PR folder. A line looks like
+`OPEN 2026-01-01T09:00:00Z`. After four hours of tries with no pull
+request, it writes `NONE` and the time instead, and stops, since the
+parent's request expires four hours after it is filed. Wait on it
+outside your chat, as common.md's Reporting says, then end your turn.
+The `rm` line removes a `parent.txt` left by an earlier wait, which
+would wake you at once:
+
+```sh
+. <PR folder>/env
+rm -f "$D/parent.txt"
+hub wait --run "$RUN" <your agent name> --file "$D/parent.txt" \
+  --deadline 250
+setsid nohup bash "$D/wait-for-parent.sh" > "$D/wait.log" 2>&1 &
+```
+
+The deadline is ten minutes longer than the script's four hours, so
+the file is there when the watch prods you. Read `parent.txt`:
+
+- `OPEN`: file your request as pr-loop.md's Ship says.
+- `MERGED` or `CLOSED`: report a question to the hub; the parent
+  branch may be gone, so `--base` on it can fail.
+- `NONE`: read the last line of `wait.log`. When it says
+  `no pull requests found`, the parent never opened: report a
+  question to the hub. Report any other error as a blocker that
+  quotes it, such as an expired `gh` login.
+- No file: the script stopped early, or it is still on its last
+  tries. Read the last line of `wait.log`. When it says
+  `no pull requests found`, the script is still trying: run the
+  `hub wait` line once more with `--deadline 15`. If `parent.txt`
+  still does not appear, report a blocker. Report any other error as
+  a blocker that quotes it.
+
+Use it only while the user is around. While the user is away, the
+parent's request waits in `requests.sh`, so queue yours as
+pr-loop.md's Ship says.
 
 ## Push a later round
 
