@@ -168,7 +168,10 @@ script-checked jobs to the local model says.
    well, so read it yourself and rewrite it until it says who is
    affected and why, gives the final pass's real numbers, uses plain
    words and follows `git-messages` item 5 on pull request text for
-   a reader who missed the work. Then run build.md's ship
+   a reader who missed the work. Since ship.sh pushes, first get the
+   privacy review in pull-request Guardrail 5, with
+   `"$REMOTE/$PARENT"` as BASE and `$D/FILE` as the PR message file.
+   Then run build.md's ship
    script. It stops when the branch's tree differs from the plan, the
    text is bad, a check fails, the branch is wrong, the parent moved
    or the branch is already pushed. It squashes onto the parent,
@@ -194,7 +197,9 @@ script-checked jobs to the local model says.
    while it ran. Add the result, and where it ran, as a try line of
    the checks list in Testing in `$D/FILE`, as `git-messages` item 5
    says. Write the same line, starting with the
-   pushed commit's full hash, to `tested` in the PR folder.
+   pushed commit's full hash, to `tested` in the PR folder. The try
+   line changed `$D/FILE`, so get a new privacy review, with
+   `"$REMOTE/$BR"` as BASE, and update its line in Testing.
    Then file the request:
    - While the user is away, as common.md's The run says, do not
      rerun ship.sh. Add its line to the run's `requests.sh`, which
@@ -420,6 +425,10 @@ its entries parked.
   `PDE_GH_WRITE`.
 - Send a merge or pull request edit request before common.md's
   Limits allows it.
+- Push, file an open request or send a `pr edit` before a privacy
+  review of the change and its text reports zero hits, as
+  pull-request Guardrail 5 says. After the first push, BASE is
+  `"$REMOTE/$BR"`.
 - Edit a comment the user approved. Send the new wording as a reword
   in that pull request's comment review.
 - Amend or squash a branch that is pushed or that another branch
@@ -452,7 +461,8 @@ your report. For a held pull request, write on the item's page what
 a new session does after its parent merges: set PARENT to the
 default branch with `keep`, run
 build.md's Carry a parent's commit to a child and Push a later round,
-try it, add the result to Testing and `tested`, and run
+with a privacy review before the push, try it, add the result to
+Testing and `tested`, get a new privacy review, and run
 `bash <PR folder>/ship.sh`.
 
 Then report finished work to the hub, with, for each pull request:
