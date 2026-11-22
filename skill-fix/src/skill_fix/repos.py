@@ -19,11 +19,15 @@ from typing import Literal
 
 RepoName = Literal["personal", "extra"]
 SKILLS_DIRS: dict[RepoName, str] = {"personal": "ai/skills", "extra": "skills"}
-BATCH_PREFIX = "fix/skill-fixes-"
+# A batch's branch until its first push, which renames it after the
+# skills it changes. This name never reaches a remote.
+UNPUSHED_BRANCH = "fix/skill-fixes-unpushed"
 HELD_PREFIX = "fix/skill-fixes-held-"
 # No remote has this name, so a plain git push of a held branch fails.
 NO_REMOTE = "skill-fix-held-never-pushed"
-LABEL = re.compile(r"[a-z0-9]+")
+# The local git config key that holds each name a batch branch was
+# given, newest last.
+BRANCH_KEY = "skill-fix.branch"
 SKILL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 # A fetch or push that hangs must not hold an agent's command forever.
 GIT_TIMEOUT = 120
@@ -68,8 +72,6 @@ class Settings:
 
     Attributes:
         install_path: The personal-dev-env checkout install ran from.
-        label: ``skill_fix_label``, the word for this PC in branch
-            names and PR titles, or None until it is set.
         extra_skills_repo: The extra repo's checkout, or None.
         extra_terms_file: The extra-term list, or None.
         forge: The extra repo's forge repo, or None when its fix PRs
@@ -77,7 +79,6 @@ class Settings:
     """
 
     install_path: Path | None
-    label: str | None
     extra_skills_repo: Path | None
     extra_terms_file: Path | None
     forge: ForgeRepo | None
@@ -119,9 +120,8 @@ def load_settings() -> Settings:
         The settings.
 
     Raises:
-        ToolError: The file is not a JSON object, the label is not
-            lowercase letters and digits, or a forge setting is
-            missing or not a repo address.
+        ToolError: The file is not a JSON object, or a forge setting
+            is missing or not a repo address.
     """
     path = Path.home() / ".config/pde/config.json"
     try:
@@ -132,14 +132,8 @@ def load_settings() -> Settings:
         raise ToolError(f"cannot read {path}") from error
     if not isinstance(data, dict):
         raise ToolError(f"{path} is not a JSON object")
-    label = data.get("skill_fix_label") or None
-    if label is not None and not (
-        isinstance(label, str) and LABEL.fullmatch(label)
-    ):
-        raise ToolError("skill_fix_label must be lowercase letters and digits")
     return Settings(
         install_path=to_path(data.get("install_path")),
-        label=label,
         extra_skills_repo=to_path(data.get("extra_skills_repo")),
         extra_terms_file=to_path(data.get("extra_terms_file")),
         forge=read_forge_settings(data),
@@ -310,17 +304,15 @@ def find_remote(checkout: Path) -> str:
     return result.stdout.strip() or "origin"
 
 
-def ensure_worktree(repo: Repo, label: str | None) -> str:
+def ensure_worktree(repo: Repo) -> str:
     """Add the fix worktree on first use and return its branch.
 
-    A new worktree checks out the highest batch branch, local or on
-    the remote, else a new ``-1`` branch from the remote's ``main``.
-    The label reads ``unset`` until ``skill_fix_label`` is set; sync
-    renames that branch before its first push.
+    A new worktree checks out the unpushed batch branch, else the
+    newest saved batch branch, local or on the remote, else a new
+    unpushed branch from the remote's ``main``.
 
     Args:
         repo: The repo to work in.
-        label: This PC's label, or None.
 
     Returns:
         The branch checked out in the worktree.
@@ -329,12 +321,13 @@ def ensure_worktree(repo: Repo, label: str | None) -> str:
         return read_branch(repo)
     # A worktree folder deleted by hand stays registered until a prune.
     run_git(repo.checkout, "worktree", "prune")
-    name = label or "unset"
-    numbers = list_batch_numbers(repo, name)
-    branch = f"{BATCH_PREFIX}{name}-{max(numbers, default=1)}"
+    branch = UNPUSHED_BRANCH
+    saved = list_saved_branches(repo)
+    if not has_local_branch(repo, branch) and saved:
+        branch = saved[-1]
     repo.worktree.parent.mkdir(parents=True, exist_ok=True)
     where = str(repo.worktree)
-    if try_git(repo.checkout, "rev-parse", "--verify", f"refs/heads/{branch}"):
+    if has_local_branch(repo, branch):
         run_git(repo.checkout, "worktree", "add", "--quiet", where, branch)
     elif try_git(
         repo.checkout, "rev-parse", "--verify", f"{repo.remote}/{branch}"
@@ -350,6 +343,7 @@ def ensure_worktree(repo: Repo, label: str | None) -> str:
             f"{repo.remote}/{branch}",
         )
     else:
+        branch = UNPUSHED_BRANCH
         run_git(
             repo.checkout,
             "worktree",
@@ -369,32 +363,71 @@ def has_worktree(repo: Repo) -> bool:
     return (repo.worktree / ".git").exists()
 
 
+def has_local_branch(repo: Repo, branch: str) -> bool:
+    """Return whether the checkout has a local branch of this name."""
+    return try_git(
+        repo.checkout, "rev-parse", "--verify", f"refs/heads/{branch}"
+    )
+
+
 def read_branch(repo: Repo) -> str:
     """Return the branch checked out in the fix worktree."""
     return run_git(repo.worktree, "symbolic-ref", "--short", "HEAD").strip()
 
 
-def list_batch_numbers(repo: Repo, label: str) -> list[int]:
-    """Return the batch numbers of this label's branches, local or remote."""
+def list_saved_branches(repo: Repo) -> list[str]:
+    """Return each name a batch branch was given on this clone, oldest first.
+
+    The names live in the checkout's local git config, which its fix
+    worktree shares, so a name stays used after its branch is deleted.
+    """
+    result = call_git(repo.checkout, ["config", "--get-all", BRANCH_KEY])
+    return result.stdout.split()
+
+
+def save_branch(repo: Repo, branch: str) -> None:
+    """Record branch as the newest name a batch branch was given."""
+    run_git(repo.checkout, "config", "--local", "--add", BRANCH_KEY, branch)
+
+
+def list_branch_names(repo: Repo) -> set[str]:
+    """Return every branch name in use: local, on the remote or saved."""
     output = run_git(
         repo.checkout,
         "for-each-ref",
         "--format=%(refname)",
-        f"refs/heads/{BATCH_PREFIX}{label}-*",
-        f"refs/remotes/{repo.remote}/{BATCH_PREFIX}{label}-*",
+        "refs/heads/",
+        f"refs/remotes/{repo.remote}/",
     )
-    pattern = re.compile(rf"/{re.escape(BATCH_PREFIX + label)}-(\d+)$")
-    return [
-        int(match.group(1))
-        for match in map(pattern.search, output.splitlines())
-        if match
-    ]
+    names = set(list_saved_branches(repo))
+    for ref in output.splitlines():
+        for prefix in ("refs/heads/", f"refs/remotes/{repo.remote}/"):
+            if ref.startswith(prefix):
+                names.add(ref.removeprefix(prefix))
+    return names
 
 
-def name_next_batch(repo: Repo, label: str) -> str:
-    """Return the branch name one batch past this label's highest."""
-    number = max(list_batch_numbers(repo, label), default=0) + 1
-    return f"{BATCH_PREFIX}{label}-{number}"
+def list_batch_skills(repo: Repo) -> list[str]:
+    """Return the skills the branch's commits change, first changed first.
+
+    Only commits the remote's ``main`` lacks count.
+    """
+    output = run_git(
+        repo.worktree,
+        "log",
+        "--reverse",
+        "--format=",
+        "--name-only",
+        f"{repo.remote}/main..HEAD",
+    )
+    prefix = f"{repo.skills_dir}/"
+    skills: list[str] = []
+    for path in output.splitlines():
+        if path.startswith(prefix):
+            skill = path.removeprefix(prefix).split("/")[0]
+            if skill not in skills:
+                skills.append(skill)
+    return skills
 
 
 def list_changed_paths(repo: Repo) -> list[str]:

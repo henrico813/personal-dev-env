@@ -2,10 +2,11 @@
 
 Read ``sync_repo`` first. Pushes are plain ``git push``, never forced.
 Each batch gets its own branch, so a merged batch's branch is never
-pushed to again. On GitHub, the only PR write is one ``pde-gh-write pr
-create`` per batch, and the user approves it there. A repo whose fix
-PRs are on a forge opens its PR through the forge API instead, and the
-user merges it there.
+pushed to again. The first push names the branch after the skills its
+fixes change, such as ``fix/herdr-hub-lessons``. On GitHub, the only PR
+write is one ``pde-gh-write pr create`` per batch, and the user
+approves it there. A repo whose fix PRs are on a forge opens its PR
+through the forge API instead, and the user merges it there.
 
 Fetches and pushes go to the HTTPS form of a GitHub SSH remote, as in
 ``pde-installer update``, because its timer has no SSH agent.
@@ -22,7 +23,7 @@ from pathlib import Path
 from typing import Literal
 
 from skill_fix import forge, repos
-from skill_fix.repos import Repo, RepoName, Settings, ToolError
+from skill_fix.repos import Repo, RepoName, ToolError
 
 SyncState = Literal[
     "pushed",
@@ -30,7 +31,6 @@ SyncState = Literal[
     "pr_open",
     "offline",
     "conflict",
-    "no_label",
     "scan",
     "skipped",
 ]
@@ -43,15 +43,18 @@ AUTH_FAILURE = re.compile(
     r"|Permission denied|returned error: 40[13]|Repository not found",
     re.IGNORECASE,
 )
-PR_TITLE = "fix(skills): corrections from {label}"
+PR_TITLE = "fix(skills): {name}"
+# A batch branch name lists skills up to this length; the rest become
+# "and-more", as in fix/auto-run-herdr-hub-and-more-lessons.
+BRANCH_LIMIT = 60
 # The body never changes, so a rerun of the same create command picks up
 # the waiting request instead of filing a new one.
 PR_BODY = """\
 ## Overview
 
-This PR holds one commit per correction to a skill, all made on one
-PC. Read the commits one at a time; each message says what the agent
-missed and what the fix changes.
+This PR holds one commit per correction to a skill. Read the commits
+one at a time; each message says what the agent missed and what the
+fix changes.
 
 ## Changes
 
@@ -62,6 +65,8 @@ merges.
 
 - [x] skill-fix fix rules: each commit passed them before it was made
 - [x] `ci/scan commits` on every commit before each push
+- [x] Privacy review: the skill-fix skill has each fix reviewed before
+  the user sees it
 - [ ] Tried in a session: not run; a fix takes effect after merge and
   update
 """
@@ -86,16 +91,15 @@ class SyncResult:
     request: str | None = None
 
 
-def sync_repo(repo: Repo, settings: Settings) -> SyncResult:
+def sync_repo(repo: Repo) -> SyncResult:
     """Push the fix branch and open its fix PR when none is open.
 
-    Offline, with no label, or after a refused scan, the commits wait
-    on their branch for a later sync. After the last fix PR merged,
-    fixes not in it move to a new batch branch.
+    Offline or after a refused scan, the commits wait on their branch
+    for a later sync. After the last fix PR merged, fixes not in it
+    move to a new batch branch.
 
     Args:
         repo: The repo to sync.
-        settings: This PC's settings.
 
     Returns:
         The sync's result.
@@ -111,22 +115,16 @@ def sync_repo(repo: Repo, settings: Settings) -> SyncResult:
     if not fetch_remote(repo, url):
         return SyncResult(repo.name, "offline", branch)
     main = f"{repo.remote}/main"
-    if settings.label is None:
-        waiting = repos.count_commits(repo, main) > 0
-        return SyncResult(
-            repo.name, "no_label" if waiting else "skipped", branch
-        )
-    if branch.startswith(f"{repos.BATCH_PREFIX}unset-"):
-        # Nothing was pushed under the unset name, so no remote branch moves.
-        new = repos.name_next_batch(repo, settings.label)
-        repos.run_git(repo.worktree, "branch", "-m", new)
-        branch = new
-    pr = find_pr(repo, branch)
+    # An unpushed branch never had a PR, though an older batch may
+    # have used its name.
+    pr = find_pr(repo, branch) if is_pushed(repo, branch) else None
     if pr is not None and pr["state"] == "MERGED":
-        batch = start_new_batch(repo, settings.label, pr["headRefOid"])
+        batch = start_new_batch(repo, pr["headRefOid"])
         if batch is None:
             return SyncResult(repo.name, "conflict", branch, pr["number"])
         branch, pr = batch, None
+    if not is_pushed(repo, branch) and repos.count_commits(repo, main) > 0:
+        branch = rename_for_push(repo, branch)
     if pr is not None and pr["state"] != "OPEN":
         pr = None
     number = pr["number"] if pr else None
@@ -152,7 +150,57 @@ def sync_repo(repo: Repo, settings: Settings) -> SyncResult:
         )
     if repos.count_commits(repo, main) == 0:
         return SyncResult(repo.name, "skipped", branch)
-    return open_fix_pr(repo, branch, settings.label)
+    return open_fix_pr(repo, branch)
+
+
+def is_pushed(repo: Repo, branch: str) -> bool:
+    """Return whether the remote has branch, as of the last fetch."""
+    return repos.try_git(
+        repo.worktree, "rev-parse", "--verify", f"{repo.remote}/{branch}"
+    )
+
+
+def rename_for_push(repo: Repo, branch: str) -> str:
+    """Rename an unpushed branch after its skills and return the name.
+
+    A pushed branch keeps its name until its PR merges, so later fixes
+    to other skills join it under that name.
+    """
+    new = name_batch_branch(repo, branch)
+    if new != branch:
+        repos.run_git(repo.worktree, "branch", "-m", new)
+    if new not in repos.list_saved_branches(repo):
+        repos.save_branch(repo, new)
+    return new
+
+
+def name_batch_branch(repo: Repo, current: str) -> str:
+    """Return a name for the batch from the skills its commits change.
+
+    Such as ``fix/herdr-hub-lessons``, or ``fix/herdr-hub-lessons-2``
+    when a branch or a PR, merged ones too, already took that name.
+
+    Args:
+        repo: The repo to work in.
+        current: The branch's name now, which the new name may keep.
+    """
+    skills = repos.list_batch_skills(repo) or ["skill"]
+    kept = skills[:1]
+    for skill in skills[1:]:
+        longest = f"fix/{'-'.join([*kept, skill])}-and-more-lessons"
+        if len(longest) > BRANCH_LIMIT:
+            break
+        kept.append(skill)
+    words = "-".join(kept)
+    if len(kept) < len(skills):
+        words += "-and-more"
+    stem = f"fix/{words}-lessons"
+    taken = repos.list_branch_names(repo) - {current}
+    name, number = stem, 1
+    while name in taken or find_pr(repo, name) is not None:
+        number += 1
+        name = f"{stem}-{number}"
+    return name
 
 
 def find_remote_url(repo: Repo) -> str:
@@ -283,16 +331,16 @@ def find_mergeable(repo: Repo) -> str:
     return "CONFLICTING" if result.returncode == 1 else "MERGEABLE"
 
 
-def start_new_batch(repo: Repo, label: str, merged_head: str) -> str | None:
+def start_new_batch(repo: Repo, merged_head: str) -> str | None:
     """Move the fixes made after a merged PR's head to a new batch branch.
 
     The new branch starts from the remote's ``main``, and gets only
     the commits after ``merged_head``. No PR has shown those yet, so
-    moving them rewrites no reviewed commit.
+    moving them rewrites no reviewed commit. It stays unpushed, and
+    its first push names it.
 
     Args:
         repo: The repo to work in.
-        label: This PC's label.
         merged_head: The head of the merged fix PR.
 
     Returns:
@@ -300,7 +348,7 @@ def start_new_batch(repo: Repo, label: str, merged_head: str) -> str | None:
         the old branch checked out as it was.
     """
     old = repos.read_branch(repo)
-    new = repos.name_next_batch(repo, label)
+    new = repos.UNPUSHED_BRANCH
     repos.run_git(repo.worktree, "switch", "--quiet", "-c", new)
     main = f"{repo.remote}/main"
     if repos.try_git(
@@ -313,7 +361,7 @@ def start_new_batch(repo: Repo, label: str, merged_head: str) -> str | None:
     return None
 
 
-def open_fix_pr(repo: Repo, branch: str, label: str) -> SyncResult:
+def open_fix_pr(repo: Repo, branch: str) -> SyncResult:
     """Ask pde-gh-write to open the fix PR; exit 3 means it waits.
 
     A rerun of the same command, with the same title, body and folder,
@@ -324,7 +372,7 @@ def open_fix_pr(repo: Repo, branch: str, label: str) -> SyncResult:
         ToolError: pde-gh-write is missing, refused the command, or
             the request was declined, or the forge API failed.
     """
-    title = PR_TITLE.format(label=label)
+    title = PR_TITLE.format(name=branch.removeprefix("fix/"))
     if repo.forge is not None:
         number = forge.open_pr(repo.forge, branch, title, PR_BODY)
         return SyncResult(repo.name, "pr_open", branch, number)
