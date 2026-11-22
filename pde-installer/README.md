@@ -70,7 +70,7 @@ builds, Alacritty, WezTerm, and editor/AI configuration. Client adds
 `fontconfig`, `python3`, the managed fonts, Neovim and its plugins, Node, the
 npm tools, herdr, nobs, `skill-lessons`, `skill-fix`, and the Alacritty, WezTerm,
 herdr, Neovim, and OpenCode configuration with the shared agent guidance. Its
-skills are only `obsidian-zettel`, `obsidian-daily-note`,
+skills are only `obsidian-zettel`, `obsidian-daily-note`, `daily-shutdown`,
 `plain-direct-english`, `behavior-focused-testing`, `delegate`,
 `model-routing`, and `status-updates`, and its OpenCode config leaves out
 the plan and design commands and the plan reviewer agents. Client removes those
