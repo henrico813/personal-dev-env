@@ -439,6 +439,12 @@ result it sends the phone one notification, titled
 the reason. The same result again sends nothing, even after a restart,
 since the watch keeps the last result in `hub/update-seen.json`.
 
+The watch also does what `hub restore-sidebar` does in each check,
+but sets the filter only when something was missing. Every 5 minutes
+it tags the hubs and shows the desk row on each saved machine too,
+for a machine whose Herdr runs without the `pde.hub` plugin. The
+user's Herdr lists those machines' agents through its own filter.
+
 ### clean
 
 `hub clean [--run DIR] [--dry-run]` closes the tab of each `to-close`
@@ -605,3 +611,13 @@ The steps of an auto run, in order. Each takes `--run DIR`.
   `hub board` in its first tab and a shell in its second, and moves
   it below the kanban hubs. It prints `made desk: board, then shell`
   or `desk is open`.
+- `hub restore-sidebar [--start-board]` puts back what a Herdr
+  restart drops from the agent list on this machine: the tag of each
+  hub, the desk row and the filter. It moves no workspace. With
+  `--start-board`, it also runs `hub board` in the desk's first pane
+  when that pane's shell runs nothing. It prints
+  `put back: NAMES` with each hub it tagged and `desk`, or
+  `nothing was missing`, then `started the board in the desk` or
+  `could not start the board: REASON`. The `pde.hub` Herdr plugin
+  runs it with `--start-board` when Herdr starts, and without it each
+  time Herdr detects an agent.

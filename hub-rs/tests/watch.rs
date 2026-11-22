@@ -8,7 +8,7 @@ use std::process::Command;
 use std::thread;
 use std::time::{Duration, SystemTime};
 
-use hub::external::herdr::{Agent, AgentStatus, HerdrError, Workspace};
+use hub::external::herdr::{Agent, AgentStatus, HerdrError, HubKind, Workspace};
 use hub::shared::run_folder::RunFolder;
 use hub::watch::background::start_in_background;
 use hub::watch::wait::{WaitRequest, run_wait};
@@ -20,8 +20,8 @@ use jiff::{SignedDuration, Zoned};
 use serde_json::{Value, json};
 
 use common::{
-    OpenCodeRow, TempFolder, TestTools, make_agent, make_time, read_events, read_script_calls,
-    write_opencode_db,
+    InMemoryHerdr, OpenCodeRow, TempFolder, TestTools, make_agent, make_time, read_events,
+    read_script_calls, write_opencode_db,
 };
 
 /// The worker most tests watch, named after its card as hubs name
@@ -747,6 +747,46 @@ fn run_watch_logs_herdr_error_then_continues() {
         "hub watch: herdr: no server at /run/herdr.sock\n"
     );
     assert_eq!(test_tools.herdr.marks.borrow().len(), 1);
+}
+
+/// Herdr drops every pane's tags and the desk row when its server
+/// restarts. A saved machine whose Herdr has no `pde.hub` plugin has
+/// only this watch to put them back. A hub or desk left out, here or
+/// there, stays missing from the user's "go to" list.
+#[test]
+fn run_watch_restores_dropped_hubs_and_desks() {
+    let mut test_tools = TestTools::new();
+    test_tools
+        .herdr
+        .agents
+        .push(make_agent("kanban-hub-1", AgentStatus::Idle));
+    let laptop = InMemoryHerdr {
+        agents: vec![make_agent("kanban-hub-29", AgentStatus::Idle)],
+        workspaces: vec![Workspace {
+            workspace_id: "w9".to_owned(),
+            label: "desk".to_owned(),
+        }],
+        ..InMemoryHerdr::default()
+    };
+    test_tools
+        .herdr
+        .machines
+        .insert("laptop".to_owned(), laptop);
+    let options = make_options(&test_tools, Path::new("moshi-hook"), 1);
+
+    run_watch(&test_tools.tools(), &options, &mut Vec::new()).unwrap();
+
+    assert_eq!(
+        *test_tools.herdr.tagged_hubs.borrow(),
+        [("w1:kanban-hub-1".to_owned(), HubKind::Kanban)]
+    );
+    assert_eq!(test_tools.herdr.agent_filters.get(), 1);
+    let laptop = &test_tools.herdr.machines["laptop"];
+    assert_eq!(
+        *laptop.tagged_hubs.borrow(),
+        [("w1:kanban-hub-29".to_owned(), HubKind::Kanban)]
+    );
+    assert_eq!(*laptop.desk_agents.borrow(), ["w9:p-board"]);
 }
 
 /// Writes `update.json` in the state folder, as `pde-installer update`

@@ -11,7 +11,9 @@
 //! without a hub. The watch never types into a hub's pane, so the
 //! user's own chat gets nothing from it. The phone also hears of each
 //! new failed or skipped `pde-installer update`, and of each auto run
-//! that stalls.
+//! that stalls. It puts back the hubs and the desk that a Herdr restart
+//! dropped from the sidebar's "go to" list, on this machine in every
+//! check and on saved machines every 5 minutes.
 //!
 //! Its parts live beside it. `events` keeps its own kinds of line in
 //! the run's log, `wait` keeps workers' waits, `handoff_ask` asks for
@@ -35,11 +37,11 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use jiff::{SignedDuration, Timestamp, Zoned};
 
-use crate::commands::{Outcome, auto};
+use crate::commands::{Outcome, auto, sidebar};
 use crate::external::cards::CardKey;
 use crate::external::herdr::{Agent, AgentStatus, HerdrCode, HerdrError};
 use crate::external::opencode::OpenCodeDb;
@@ -65,6 +67,10 @@ const MISSED_AFTER: Duration = Duration::from_secs(10 * 60);
 /// The oldest missed report that still sends a phone notification. Old
 /// run folders keep unread reports from hubs closed long ago.
 const PHONE_ALERT_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// How often the watch puts back the sidebar rows of saved machines.
+/// Each call to another machine's Herdr goes over SSH and takes seconds.
+const REMOTE_RESTORE_EVERY: Duration = Duration::from_secs(5 * 60);
 
 /// How often the phone hears again of a stall that lasts.
 const STALL_ALERT_EVERY: SignedDuration = SignedDuration::from_mins(60);
@@ -221,7 +227,9 @@ impl RunWorkers {
 }
 
 /// Takes the watch lock, then runs `check_once` and passes on the last
-/// update's result every `poll`. A second watch, such as one systemd
+/// update's result every `poll`. Each check also puts back the sidebar
+/// rows a Herdr restart dropped here, and those of saved machines in
+/// the first check and every `REMOTE_RESTORE_EVERY` after. A second watch, such as one systemd
 /// started while `restart_stopped_watch` started another, waits here
 /// and takes over if the first ends. Each failure goes to `log` once
 /// while it lasts, and the next check runs, so a Herdr or file failure
@@ -244,6 +252,10 @@ pub fn run_watch(
     let mut clock = IdleClock::default();
     let mut backoff = PhoneBackoff::default();
     let mut last_failures = Vec::new();
+    let mut last_remote_restore: Option<Instant> = None;
+    // Kept until the next try, so a machine that stays off is logged
+    // once.
+    let mut remote_failures = Vec::new();
     let mut checks = 0;
     while options.checks.is_none_or(|limit| checks < limit) {
         let now = Zoned::now();
@@ -251,6 +263,14 @@ pub fn run_watch(
             Ok(failures) => failures,
             Err(error) => vec![error.to_string()],
         };
+        if let Err(error) = sidebar::restore_go_to_list(tools) {
+            failures.push(format!("could not restore the sidebar: {error}"));
+        }
+        if last_remote_restore.is_none_or(|restored| restored.elapsed() >= REMOTE_RESTORE_EVERY) {
+            remote_failures = sidebar::restore_other_machines(tools);
+            last_remote_restore = Some(Instant::now());
+        }
+        failures.extend(remote_failures.iter().cloned());
         // The update's notice needs no Herdr, so it goes out while Herdr
         // is down too.
         if let Err(error) = update::pass_on_update_result(

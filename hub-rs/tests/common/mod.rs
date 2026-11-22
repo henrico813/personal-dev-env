@@ -14,8 +14,8 @@ use hub::external::cards::{
     BlockedCard, Board, BoardCounts, CardError, CardKey, CardNote, Cards, ListedCard, Mark, Stage,
 };
 use hub::external::herdr::{
-    Agent, AgentKind, AgentStart, AgentStatus, Herdr, HerdrCode, HerdrError, HubKind, NewPlace,
-    Pane, PlaceIds, ProcessInfo, Workspace,
+    Agent, AgentKind, AgentStart, AgentStatus, DeskBoard, Herdr, HerdrCode, HerdrError, HubKind,
+    NewPlace, Pane, PlaceIds, ProcessInfo, Workspace,
 };
 use hub::external::opencode::OpenCodeDb;
 use hub::external::requests::RequestFolder;
@@ -72,7 +72,11 @@ pub struct InMemoryHerdr {
     pub cleared: RefCell<Vec<String>>,
     /// Each `tag_hub_pane` call, as its pane ID and hub kind.
     pub tagged_hubs: RefCell<Vec<(String, HubKind)>>,
-    /// The workspace ID of each `show_desk_as_agent` call.
+    /// The desk workspaces whose board pane already shows in the
+    /// desk's place. `find_desk_board` names each desk's board pane
+    /// `<workspace>:p-board`.
+    pub shown_desks: Vec<String>,
+    /// The pane ID of each `show_desk_as_agent` call.
     pub desk_agents: RefCell<Vec<String>>,
     /// How many times `filter_agent_list` was called.
     pub agent_filters: Cell<usize>,
@@ -214,9 +218,17 @@ impl Herdr for InMemoryHerdr {
         Ok(())
     }
 
-    fn show_desk_as_agent(&self, workspace_id: &str) -> Result<(), HerdrError> {
+    fn find_desk_board(&self, workspace_id: &str) -> Result<DeskBoard, HerdrError> {
+        self.take_failure("find_desk_board")?;
+        Ok(DeskBoard {
+            pane_id: format!("{workspace_id}:p-board"),
+            shown: self.shown_desks.iter().any(|shown| shown == workspace_id),
+        })
+    }
+
+    fn show_desk_as_agent(&self, board_pane_id: &str) -> Result<(), HerdrError> {
         self.take_failure("show_desk_as_agent")?;
-        self.desk_agents.borrow_mut().push(workspace_id.to_owned());
+        self.desk_agents.borrow_mut().push(board_pane_id.to_owned());
         Ok(())
     }
 
@@ -334,6 +346,12 @@ impl Herdr for InMemoryHerdr {
             .unwrap_or_else(|| panic!("no double for machine {label}"));
         Box::new(machine)
     }
+
+    /// Names each label in `machines`.
+    fn list_machines(&self) -> Result<Vec<String>, HerdrError> {
+        self.take_failure("list_machines")?;
+        Ok(self.machines.keys().cloned().collect())
+    }
 }
 
 /// Lets `on_machine` return a borrowed double. Each call goes to the
@@ -375,8 +393,12 @@ impl Herdr for &InMemoryHerdr {
         (**self).tag_hub_pane(pane_id, kind)
     }
 
-    fn show_desk_as_agent(&self, workspace_id: &str) -> Result<(), HerdrError> {
-        (**self).show_desk_as_agent(workspace_id)
+    fn find_desk_board(&self, workspace_id: &str) -> Result<DeskBoard, HerdrError> {
+        (**self).find_desk_board(workspace_id)
+    }
+
+    fn show_desk_as_agent(&self, board_pane_id: &str) -> Result<(), HerdrError> {
+        (**self).show_desk_as_agent(board_pane_id)
     }
 
     fn filter_agent_list(&self) -> Result<(), HerdrError> {
@@ -425,6 +447,10 @@ impl Herdr for &InMemoryHerdr {
 
     fn on_machine(&self, label: &str) -> Box<dyn Herdr + '_> {
         (**self).on_machine(label)
+    }
+
+    fn list_machines(&self) -> Result<Vec<String>, HerdrError> {
+        (**self).list_machines()
     }
 }
 
@@ -750,7 +776,7 @@ pub fn read_events(run_path: &Path) -> Vec<Value> {
 
 /// One unfocused OpenCode agent in workspace `w1`, with pane
 /// `w1:<name>`, tab `w1:t-<name>`, state change 1, no session ID, no
-/// mark, no folders and no machine.
+/// mark, no folders, no machine and no `go_to` token.
 pub fn make_agent(name: &str, status: AgentStatus) -> Agent {
     Agent {
         name: name.to_owned(),
@@ -765,6 +791,7 @@ pub fn make_agent(name: &str, status: AgentStatus) -> Agent {
         state_seq: 1,
         folders: Vec::new(),
         machine: None,
+        go_to_tagged: false,
     }
 }
 
