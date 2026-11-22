@@ -44,6 +44,13 @@ pub(crate) enum WatchEvent {
     /// modified at `mtime_ns` waited 10 minutes while the run's hub was
     /// gone from Herdr.
     PhoneAlerted { name: String, mtime_ns: u64 },
+    /// The watch told the phone the run stalled, with no news since
+    /// `since`.
+    StallAlerted { since: Timestamp },
+    /// The watch found the quiet run ended, its cards all done or its
+    /// end brief sent, with no news since `since`, so it reads the
+    /// cards again only after new news.
+    RunEnded { since: Timestamp },
 }
 
 /// What the watch remembers of a run, folded from the log in file
@@ -58,6 +65,10 @@ pub(crate) struct WatchMemory {
     /// The `mtime_ns` of each name's last report that sent a phone
     /// notification.
     pub alerted: BTreeMap<String, u64>,
+    /// The `since` of the last stall alert, and when it went out.
+    pub stall_alerted: Option<(Timestamp, Timestamp)>,
+    /// The `since` of the last quiet run found ended.
+    pub ended_since: Option<Timestamp>,
 }
 
 /// Adds one watch event at `now` to the run's log.
@@ -93,6 +104,8 @@ pub(crate) fn load_watch_memory(run: &RunFolder) -> Result<WatchMemory, HubError
             WatchEvent::PhoneAlerted { name, mtime_ns } => {
                 memory.alerted.insert(name, mtime_ns);
             }
+            WatchEvent::StallAlerted { since } => memory.stall_alerted = Some((since, line.at)),
+            WatchEvent::RunEnded { since } => memory.ended_since = Some(since),
         }
     }
     Ok(memory)
