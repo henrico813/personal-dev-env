@@ -99,11 +99,11 @@ agent, unless the linking skill names someone else.
 1. Save the fix and clear the worktree before you show it. Every
    session on this PC shares the fix worktree, and `start` refuses
    another skill's fix while yours waits there. Save the diff to a
-   new file under `/tmp`, then drop the edits. The first line makes
-   the diff show new files, such as a new reference file. When you
-   save a fix again, `git apply --3way` has staged its earlier
-   edits. Plain `git diff` leaves staged edits out, so diff against
-   `HEAD`:
+   new file under `/tmp`, then drop the edits. The first line of the
+   block below makes the diff show new files, such as a new
+   reference file. When you save a fix again, `git apply --3way` has
+   staged its earlier edits. Plain `git diff` leaves staged edits
+   out, so diff against `HEAD`:
 
    ```bash
    git -C <worktree> add --intent-to-add .
@@ -113,20 +113,22 @@ agent, unless the linking skill names someone else.
 
    Then get the privacy review in the `pull-request` skill's
    Guardrail 5, since `commit` can push the fix. Its brief, for a
-   fresh agent, lists four things to read: the diff, the commit log,
-   the branch name and the PR text. It also has blanks in angle
-   brackets, such as `<worktree>`. Fill it in this way:
+   fresh agent, says what counts as a hit: a line that names or hints
+   at something private. It lists four things to read: the diff, the
+   commit log, the branch name and the PR text. It also has blanks in
+   angle brackets, such as `<worktree>`. Fill it in this way:
 
    - `<worktree>`: the fix worktree.
-   - The diff (item 1): give the added lines of the patch file
-     instead.
+   - The diff (item 1): give the patch file's lines that start with
+     `+` instead, without the `+++` file name lines.
    - The commit log (item 2): give the message file instead.
    - The branch name (item 3): keep it as it is.
    - The PR text (item 4): skip it. The tool writes the fix
      pull request's title and body from the same stock text each
      time, which names no PC.
-   - `<BASE>` and `<PR message file>`: leave these blanks empty.
-     Only items 1, 2 and 4 use them, and you replace or skip those.
+   - `<BASE>`, used by items 1 and 2, and `<PR message file>`, used
+     by item 4: leave both empty, since you replace or skip those
+     items.
 
    Skip three steps of the guardrail: its Testing line, its amend
    step and its term scan. The first two change a pull request's
