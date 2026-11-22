@@ -5,7 +5,7 @@
 //! `StyleCheck::find_reword_style_issues(now, reworded)` functions to
 //! understand the module.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -192,11 +192,21 @@ impl<'a> StyleCheck<'a> {
             }
             if let Some(first_word) = words.first()
                 && definition.name_check == NameCheck::WordCountAndVerb
-                && !is_verb(first_word)
             {
-                let detail = format!("\"{first_word}\" is not in the checker's verbs");
-                let outcome = Outcome::Reported(ReportNote::ReportOnly);
-                broken.push((Rule::VerbFirst, outcome, Some(detail)));
+                match classify_first_word(first_word) {
+                    FirstWord::CommonVerb => {}
+                    FirstWord::DictionaryOnly => {
+                        let detail = format!(
+                            "\"{first_word}\" is a dictionary verb, not a common one; rename it if it is a noun here"
+                        );
+                        let outcome = Outcome::Reported(ReportNote::ReportOnly);
+                        broken.push((Rule::VerbFirst, outcome, Some(detail)));
+                    }
+                    FirstWord::NotVerb => {
+                        let detail = format!("\"{first_word}\" is not an English verb");
+                        broken.push((Rule::VerbFirst, Outcome::Fails, Some(detail)));
+                    }
+                }
             }
         }
         if let Some(docstring) = &definition.docstring
@@ -335,7 +345,7 @@ impl Rule {
             }
             Self::SevenWords => "Every function name must contain at most seven words.",
             Self::VerbFirst => {
-                "Start every function and method name with a verb, except a test, a fixture or a property."
+                "`verb-first` fails a new name whose first word is no English verb, such as `path`, and only reports a verb missing from its list of common verbs, such as `card`, which may be a noun in the name."
             }
             Self::Docstring => {
                 "Give every function, method and class a docstring, tests and fixtures included."
@@ -386,36 +396,40 @@ const FILLER: [&str; 10] = [
     "seamlessly",
 ];
 
-/// Lists the verbs a function name may start with.
-const VERBS: &str = "
-    accept add allow answer append apply approve archive arm ask assert
-    assign attach audit build bump calculate call cancel capture change
-    check choose clean clear clone close collect combine commit compare
-    compile complete compute configure confirm connect consume convert copy
-    count create cut decide decode delete deliver describe detect disable
-    discard dispatch download drop dump edit emit enable encode ensure
-    enter escape evaluate exit expand expect explain export extract fail
-    fetch fill filter find finish fix flush format freeze generate get give
-    group guard handle hash help hide import include increment index init
-    insert inspect install is iter join keep kill label launch list load lock
-    log look looks make map mark match measure merge migrate mount move name
-    normalize notify open order pack pad park parse pass patch pause pick pin
-    plan poll pop post prepare preview print process produce prompt prune
-    publish pull push put queue quote raise read receive record reduce
-    refresh refund refuse register reject release reload remove rename
-    render reorder repeat replace reply report request require reserve
-    reset resolve restore resume retry return reverse review rewrite round
-    run sanitize save scan schedule score scout search seed select send serve
-    set setup show shrink skip sleep sort split start stash stop store strip
+/// Lists the verbs that start a function name with no note. Any other
+/// dictionary verb still passes, with a note.
+const COMMON_VERBS: &str = "
+    accept activate add adopt allow answer append apply approve archive
+    arm ask assert assign attach audit build bump calculate call cancel
+    capture change check choose clean clear clone close collect combine
+    commit compare compile complete compute configure confirm connect
+    consume convert copy count create cut decide decode delete deliver
+    describe detect disable discard dispatch download draw drop dump edit
+    emit enable encode ensure enter escape evaluate exit expand expect
+    explain export extract fail fetch fill filter find finish fix flush
+    follow forget format freeze gather generate get give group guard
+    handle hash help hide hold import include increment index init insert
+    inspect install is iter join judge jump keep kill label launch list
+    load lock log look looks make map mark match measure merge migrate
+    mount move name need normalize notify open order owe pack pad park
+    parse pass patch pause pick pin plan poll pop post prepare press
+    preview print process produce prompt prune publish pull push put queue
+    quit quote raise read receive record reduce refresh refund refuse
+    register reject release reload remove rename render reorder repeat
+    replace reply report request require reserve reset resolve restore
+    resume retry return reverse review rewrite round run sanitize save
+    scan schedule score scout scroll search seed select send serve set
+    setup show shrink skip sleep sort split start stash stop store strip
     submit subscribe summarize swap switch sync take teardown tell test
     trace track transform transition translate trim truncate try undo
-    unlock unpack update upgrade upload use validate verify view visit wait
-    walk warn watch wrap write yield
+    unlock unpack update upgrade upload use validate verify view visit
+    wait walk warn watch wrap write yield
 ";
 
 /// Lists the words that start a question or a conversion, such as `to_json`.
-const QUESTION_OR_CONVERSION_WORDS: [&str; 8] =
-    ["as", "can", "from", "has", "into", "should", "to", "was"];
+const QUESTION_OR_CONVERSION_WORDS: [&str; 10] = [
+    "as", "can", "from", "has", "into", "may", "must", "should", "to", "was",
+];
 
 /// Lists the headings that stand in for the plain paragraph a docstring needs.
 const INVENTED_HEADINGS: [&str; 7] = [
@@ -427,6 +441,15 @@ const INVENTED_HEADINGS: [&str; 7] = [
     "Why it matters",
     "Why this matters",
 ];
+
+/// Holds every single-word verb in WordNet, so a real verb missing from
+/// `COMMON_VERBS`, such as `gauge`, is never refused.
+static DICTIONARY_VERBS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    include_str!("english_verbs.txt")
+        .lines()
+        .filter(|line| !line.starts_with('#'))
+        .collect()
+});
 
 static FILLER_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     FILLER
@@ -746,16 +769,72 @@ fn split_name_words(name: &str) -> Vec<String> {
     words
 }
 
-/// Returns true for a known verb or question word, or a verb after `re` or
-/// `un`, such as `rebuild`.
-fn is_verb(word: &str) -> bool {
+/// Says how sure the verb-first rule is that a name's first word is a verb.
+#[derive(Debug, PartialEq)]
+enum FirstWord {
+    /// Marks a common verb or a question word, such as `parse` or `is`.
+    CommonVerb,
+    /// Marks a word only the dictionary calls a verb, such as `card`, which
+    /// may be a noun in the name.
+    DictionaryOnly,
+    NotVerb,
+}
+
+/// Sorts a name's first word, in any of its forms, such as `needs` and
+/// `matched`, or after `re` or `un`, such as `rebuild`.
+fn classify_first_word(word: &str) -> FirstWord {
     let word = word.to_lowercase();
-    let is_known = |word: &str| VERBS.split_whitespace().any(|verb| verb == word);
-    is_known(&word)
-        || QUESTION_OR_CONVERSION_WORDS.contains(&word.as_str())
-        || ["re", "un"]
-            .iter()
-            .any(|prefix| word.strip_prefix(prefix).is_some_and(is_known))
+    if QUESTION_OR_CONVERSION_WORDS.contains(&word.as_str()) {
+        return FirstWord::CommonVerb;
+    }
+    let forms = list_verb_stems(&word);
+    let is_common = |stem: &String| COMMON_VERBS.split_whitespace().any(|verb| verb == stem);
+    if forms.iter().any(is_common) {
+        FirstWord::CommonVerb
+    } else if forms
+        .iter()
+        .any(|stem| DICTIONARY_VERBS.contains(stem.as_str()))
+    {
+        FirstWord::DictionaryOnly
+    } else {
+        FirstWord::NotVerb
+    }
+}
+
+/// Returns the possible verb stems of `word`, with `word` itself first, so
+/// `stopped` gives `stop` and `unpacks` gives `pack`.
+fn list_verb_stems(word: &str) -> Vec<String> {
+    let mut stems = vec![word.to_owned()];
+    for (ending, replacement) in [
+        ("ies", "y"),
+        ("es", ""),
+        ("s", ""),
+        ("ed", ""),
+        ("ed", "e"),
+        ("ing", ""),
+        ("ing", "e"),
+    ] {
+        if let Some(stem) = word.strip_suffix(ending) {
+            stems.push(format!("{stem}{replacement}"));
+            // A doubled last letter, as in `stopped` or `running`, is one letter in the verb.
+            let letters: Vec<char> = stem.chars().collect();
+            if let [start @ .., before, last] = letters.as_slice()
+                && replacement.is_empty()
+                && before == last
+            {
+                stems.push(start.iter().chain([before]).collect());
+            }
+        }
+    }
+    let unprefixed: Vec<String> = stems
+        .iter()
+        .flat_map(|stem| ["re", "un"].map(|prefix| stem.strip_prefix(prefix)))
+        .flatten()
+        .filter(|stem| !stem.is_empty())
+        .map(str::to_owned)
+        .collect();
+    stems.extend(unprefixed);
+    stems
 }
 
 /// Returns the last part of a name, as prose writes it, so `Cart.Total`,
@@ -944,11 +1023,11 @@ mod tests {
                 (
                     "verb-first",
                     "answer.go",
-                    go("func Total() {}\n"),
+                    go("func Ledger() {}\n"),
                     vec![(
                         Rule::VerbFirst,
-                        Outcome::Reported(ReportNote::ReportOnly),
-                        "\"Total\" is not in the checker's verbs".to_owned(),
+                        Outcome::Fails,
+                        "\"Ledger\" is not an English verb".to_owned(),
                     )],
                 ),
                 (
@@ -1034,6 +1113,22 @@ mod tests {
                             String::new(),
                         ),
                     ],
+                ),
+                (
+                    "rust-seven-words",
+                    "lib.rs",
+                    "fn save_the_answer_to_the_store_right_now() {}\n".to_owned(),
+                    vec![(Rule::SevenWords, Outcome::Fails, "8 words".to_owned())],
+                ),
+                (
+                    "rust-verb-first",
+                    "lib.rs",
+                    "struct Store;\n\nimpl Store {\n    fn session_path(&self) {}\n}\n".to_owned(),
+                    vec![(
+                        Rule::VerbFirst,
+                        Outcome::Fails,
+                        "\"session\" is not an English verb".to_owned(),
+                    )],
                 ),
             ];
 
@@ -1152,8 +1247,43 @@ mod tests {
             assert_eq!(find_in_new_file("lib.rs", source), []);
         }
 
-        /// `find_file_style_issues` must not ask for a verb at the start of a test, getter, constructor or framework method name.
-        /// Otherwise an agent would be told to put a verb on a name that must not have one.
+        /// `find_file_style_issues` must sort a name's first word into a verb in any form, a verb only the dictionary knows, or no verb.
+        /// Otherwise a real verb such as `gauge` would be refused, or a noun-first name such as `path_for` would pass.
+        #[test]
+        fn verb_first_sorts_words_by_dictionary() {
+            let noted =
+                "\"gauge\" is a dictionary verb, not a common one; rename it if it is a noun here";
+            let cases = [
+                ("verb-form", "fn needs_wrapping() {}\n", vec![]),
+                ("doubled-letter", "fn stopped_jobs() {}\n", vec![]),
+                ("re-prefix", "fn rewrap_lines() {}\n", vec![]),
+                (
+                    "dictionary-verb",
+                    "fn gauge_load() {}\n",
+                    vec![(
+                        Rule::VerbFirst,
+                        Outcome::Reported(ReportNote::ReportOnly),
+                        noted.to_owned(),
+                    )],
+                ),
+                (
+                    "not-a-verb",
+                    "fn path_for() {}\n",
+                    vec![(
+                        Rule::VerbFirst,
+                        Outcome::Fails,
+                        "\"path\" is not an English verb".to_owned(),
+                    )],
+                ),
+            ];
+
+            for (case, source, expected) in cases {
+                assert_eq!(find_in_new_file("lib.rs", source), expected, "{case}");
+            }
+        }
+
+        /// `find_file_style_issues` must not ask for a verb on a test, getter, constructor, framework or trait method name, but must still ask on a Rust method whose body shows no getter.
+        /// Otherwise an agent would put a verb on a name that must not have one, or call any `&self` method a getter.
         #[test]
         fn skips_verb_rule_on_conventional_names() {
             let go = |code: &str| format!("package review\n\n{code}");
@@ -1186,13 +1316,65 @@ class Store:
 def database():
     """Opens an empty one."""
 "#;
+            let rust = r#"use std::path::{Path, PathBuf};
+
+pub struct Store {
+    path: PathBuf,
+    width: usize,
+    session: String,
+    item: String,
+    depth: Box<usize>,
+}
+
+impl Iterator for Store {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<usize> {
+        None
+    }
+}
+
+impl Store {
+    pub fn new() -> Self {
+        todo!()
+    }
+
+    pub fn with_session(session: String) -> Self {
+        todo!()
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn width(&self) -> usize {
+        self.width
+    }
+
+    pub fn session(&self) -> String {
+        self.session.clone()
+    }
+
+    pub fn item(&self) -> &str {
+        self.item.as_str()
+    }
+
+    pub fn depth(&self) -> usize {
+        *self.depth
+    }
+}
+
+fn main() {}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn session_survives_restart() {}
+}
+"#;
             let not_a_verb = |word: &str| {
-                let detail = format!("\"{word}\" is not in the checker's verbs");
-                vec![(
-                    Rule::VerbFirst,
-                    Outcome::Reported(ReportNote::ReportOnly),
-                    detail,
-                )]
+                let detail = format!("\"{word}\" is not an English verb");
+                vec![(Rule::VerbFirst, Outcome::Fails, detail)]
             };
             let cases = [
                 (
@@ -1214,16 +1396,29 @@ def database():
                     vec![],
                 ),
                 (
-                    "go-testify-needs-verb",
+                    "go-testimony-needs-verb",
                     "answer_test.go",
-                    go("func Testify() {}\n"),
-                    not_a_verb("Testify"),
+                    go("func Testimony() {}\n"),
+                    not_a_verb("Testimony"),
                 ),
                 (
                     "python-framework-names",
                     "answer.py",
                     python.to_owned(),
                     vec![],
+                ),
+                (
+                    "rust-conventional-names",
+                    "lib.rs",
+                    rust.to_owned(),
+                    vec![],
+                ),
+                (
+                    "rust-computed-getter-needs-verb",
+                    "lib.rs",
+                    "struct Store {\n    root: PathBuf,\n}\n\nimpl Store {\n    fn path(&self) -> PathBuf {\n        self.root.join(\"store\")\n    }\n}\n"
+                        .to_owned(),
+                    not_a_verb("path"),
                 ),
             ];
 
