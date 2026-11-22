@@ -7,6 +7,7 @@ use jiff::civil::{Date, Time};
 use jiff::tz::TimeZone;
 
 use super::machine::FeedLine;
+use crate::external::cards::CardKey;
 use crate::shared::HubError;
 use crate::shared::run_folder::RunFolder;
 
@@ -45,6 +46,16 @@ pub(crate) fn read_events(
     }
     events.sort_by_key(|event| std::cmp::Reverse(event.at));
     Ok(events)
+}
+
+/// Returns the key of the card an event is about, from the first word
+/// that starts with a key, such as `demo-kb-001-build` in
+/// `demo-kb-001-build reported`. A session whose name holds no key,
+/// such as a hub, gives `None`.
+pub(crate) fn find_event_card(event: &AwayEvent) -> Option<CardKey> {
+    event.text.split_whitespace().find_map(|word| {
+        CardKey::find_in_name(word.trim_start_matches(|letter: char| !letter.is_alphanumeric()))
+    })
 }
 
 /// Returns the events after `since`, the start of the user's visit, or
@@ -150,5 +161,31 @@ mod tests {
                 ("23:50", "closed old-search (card done)"),
             ]
         );
+    }
+
+    /// AWAY rows are free text. A report row starts with the worker's
+    /// name, and a parked line puts the key in brackets. A bracket left
+    /// on the key hides the card the row is about.
+    #[test]
+    fn find_event_card_reads_first_key_word() {
+        let cases = [
+            ("demo-kb-001-build reported", Some("DEMO-KB-001")),
+            (
+                "parked api-build (DEMO-KB-010 in-review)",
+                Some("DEMO-KB-010"),
+            ),
+        ];
+
+        for (text, expected) in cases {
+            let event = AwayEvent {
+                at: Timestamp::UNIX_EPOCH,
+                time: "10:40".to_owned(),
+                text: text.to_owned(),
+            };
+
+            let card = find_event_card(&event);
+
+            assert_eq!(card.as_ref().map(CardKey::as_str), expected, "{text}");
+        }
     }
 }

@@ -6,7 +6,7 @@
 use ratatui::style::Color;
 
 use super::queue::{CardLine, Queue, SessionRow};
-use crate::external::cards::{CardNote, Stage};
+use crate::external::cards::{CardKey, CardNote, Stage};
 use crate::shared::lifecycle::Lifecycle;
 
 /// The board's groups, in screen order.
@@ -119,6 +119,8 @@ pub(super) struct Item {
     /// It is a card key, a question title, a session name or the
     /// problem.
     pub id: String,
+    /// The row's words, after its card key when it has a card, such as
+    /// `DEMO-KB-001 Faster search`.
     pub text: String,
     /// A short word for the row's right end, such as `DevEnv` for the
     /// project folder of a card or of a question's card.
@@ -169,7 +171,7 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
         .enumerate()
         .map(|(index, question)| Item {
             id: question.title.clone(),
-            text: question.title.clone(),
+            text: put_card_key_first(Some(&question.key), &question.title),
             tag: question.project.clone(),
             status: Status::You,
             target: Target::Question(index),
@@ -182,7 +184,10 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
             .enumerate()
             .map(|(index, session)| Item {
                 id: session.name.clone(),
-                text: format!("{}  {}", session.name, session.why),
+                text: put_card_key_first(
+                    CardKey::find_in_name(&session.name).as_ref(),
+                    &format!("{}  {}", session.name, session.why),
+                ),
                 tag: "worker".to_owned(),
                 status: Status::You,
                 target: Target::Session(index),
@@ -373,17 +378,24 @@ pub(super) fn describe_card(card: &CardLine, note: Option<&CardNote>) -> Vec<Str
     lines
 }
 
-/// Returns a card's row, its title with its project folder as the tag.
-/// `sessions` give the states of its workers.
+/// Returns `words` after the card key, such as `DEMO-KB-001 Faster
+/// search`. Words that already start with the key, as a question title
+/// may, come back unchanged, and so do words with no key.
+pub(super) fn put_card_key_first(key: Option<&CardKey>, words: &str) -> String {
+    match key {
+        Some(key) if words.is_empty() => key.as_str().to_owned(),
+        Some(key) if words.starts_with(key.as_str()) => words.to_owned(),
+        Some(key) => format!("{} {words}", key.as_str()),
+        None => words.to_owned(),
+    }
+}
+
+/// Returns a card's row, its key and title with its project folder as
+/// the tag. `sessions` give the states of its workers.
 fn build_card_item(index: usize, card: &CardLine, sessions: &[SessionRow]) -> Item {
-    let text = if card.title.is_empty() {
-        card.key.as_str().to_owned()
-    } else {
-        card.title.clone()
-    };
     Item {
         id: card.key.as_str().to_owned(),
-        text,
+        text: put_card_key_first(Some(&card.key), &card.title),
         tag: card.project.clone(),
         status: decide_card_status(card, sessions),
         target: Target::Card(index),
@@ -452,5 +464,30 @@ mod tests {
             .find(|(group, _)| *group == Group::InReview)
             .unwrap();
         assert_eq!(in_review[0].status, Status::Run);
+    }
+
+    /// A question title often starts with its card's key already, and a
+    /// phone row cannot spare the room for it twice. A session name in
+    /// lower case, such as `demo-kb-001-build`, is not the key, so the
+    /// key still goes first.
+    #[test]
+    fn put_card_key_first_keeps_existing_key() {
+        let key: CardKey = "DEMO-KB-001".parse().unwrap();
+        let cases = [
+            (
+                "DEMO-KB-001: Deploy tonight?",
+                "DEMO-KB-001: Deploy tonight?",
+            ),
+            (
+                "demo-kb-001-build reported",
+                "DEMO-KB-001 demo-kb-001-build reported",
+            ),
+        ];
+
+        for (words, expected) in cases {
+            let text = put_card_key_first(Some(&key), words);
+
+            assert_eq!(text, expected, "{words}");
+        }
     }
 }
