@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import secrets
 import subprocess
 import tempfile
 import urllib.parse
@@ -20,13 +19,15 @@ from typing import Literal
 
 RepoName = Literal["personal", "extra"]
 SKILLS_DIRS: dict[RepoName, str] = {"personal": "ai/skills", "extra": "skills"}
-BATCH_PREFIX = "fix/skill-fixes-"
+# A batch's branch until its first push, which renames it after the
+# skills it changes. This name never reaches a remote.
+UNPUSHED_BRANCH = "fix/skill-fixes-unpushed"
 HELD_PREFIX = "fix/skill-fixes-held-"
 # No remote has this name, so a plain git push of a held branch fails.
 NO_REMOTE = "skill-fix-held-never-pushed"
-# The local git config key that holds this clone's batch ID.
-BATCH_ID_KEY = "skill-fix.batchid"
-BATCH_ID = re.compile(r"[0-9a-f]{6}")
+# The local git config key that holds each name a batch branch was
+# given, newest last.
+BRANCH_KEY = "skill-fix.branch"
 SKILL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 # A fetch or push that hangs must not hold an agent's command forever.
 GIT_TIMEOUT = 120
@@ -306,8 +307,9 @@ def find_remote(checkout: Path) -> str:
 def ensure_worktree(repo: Repo) -> str:
     """Add the fix worktree on first use and return its branch.
 
-    A new worktree checks out the highest batch branch, local or on
-    the remote, else a new ``-1`` branch from the remote's ``main``.
+    A new worktree checks out the unpushed batch branch, else the
+    newest saved batch branch, local or on the remote, else a new
+    unpushed branch from the remote's ``main``.
 
     Args:
         repo: The repo to work in.
@@ -319,12 +321,13 @@ def ensure_worktree(repo: Repo) -> str:
         return read_branch(repo)
     # A worktree folder deleted by hand stays registered until a prune.
     run_git(repo.checkout, "worktree", "prune")
-    batch_id = read_batch_id(repo)
-    numbers = list_batch_numbers(repo, batch_id)
-    branch = f"{BATCH_PREFIX}{batch_id}-{max(numbers, default=1)}"
+    branch = UNPUSHED_BRANCH
+    saved = list_saved_branches(repo)
+    if not has_local_branch(repo, branch) and saved:
+        branch = saved[-1]
     repo.worktree.parent.mkdir(parents=True, exist_ok=True)
     where = str(repo.worktree)
-    if try_git(repo.checkout, "rev-parse", "--verify", f"refs/heads/{branch}"):
+    if has_local_branch(repo, branch):
         run_git(repo.checkout, "worktree", "add", "--quiet", where, branch)
     elif try_git(
         repo.checkout, "rev-parse", "--verify", f"{repo.remote}/{branch}"
@@ -340,6 +343,7 @@ def ensure_worktree(repo: Repo) -> str:
             f"{repo.remote}/{branch}",
         )
     else:
+        branch = UNPUSHED_BRANCH
         run_git(
             repo.checkout,
             "worktree",
@@ -359,49 +363,71 @@ def has_worktree(repo: Repo) -> bool:
     return (repo.worktree / ".git").exists()
 
 
+def has_local_branch(repo: Repo, branch: str) -> bool:
+    """Return whether the checkout has a local branch of this name."""
+    return try_git(
+        repo.checkout, "rev-parse", "--verify", f"refs/heads/{branch}"
+    )
+
+
 def read_branch(repo: Repo) -> str:
     """Return the branch checked out in the fix worktree."""
     return run_git(repo.worktree, "symbolic-ref", "--short", "HEAD").strip()
 
 
-def read_batch_id(repo: Repo) -> str:
-    """Return this clone's batch ID, making and saving one on first use.
+def list_saved_branches(repo: Repo) -> list[str]:
+    """Return each name a batch branch was given on this clone, oldest first.
 
-    Fix branches and PR titles are public, so they carry this random
-    ID in place of anything that names the PC. The ID lives in the
-    checkout's local git config, which its fix worktree shares.
+    The names live in the checkout's local git config, which its fix
+    worktree shares, so a name stays used after its branch is deleted.
     """
-    result = call_git(repo.checkout, ["config", "--get", BATCH_ID_KEY])
-    batch_id = result.stdout.strip()
-    if BATCH_ID.fullmatch(batch_id):
-        return batch_id
-    batch_id = secrets.token_hex(3)
-    run_git(repo.checkout, "config", "--local", BATCH_ID_KEY, batch_id)
-    return batch_id
+    result = call_git(repo.checkout, ["config", "--get-all", BRANCH_KEY])
+    return result.stdout.split()
 
 
-def list_batch_numbers(repo: Repo, batch_id: str) -> list[int]:
-    """Return the batch numbers of this ID's branches, local or remote."""
+def save_branch(repo: Repo, branch: str) -> None:
+    """Record branch as the newest name a batch branch was given."""
+    run_git(repo.checkout, "config", "--local", "--add", BRANCH_KEY, branch)
+
+
+def list_branch_names(repo: Repo) -> set[str]:
+    """Return every branch name in use: local, on the remote or saved."""
     output = run_git(
         repo.checkout,
         "for-each-ref",
         "--format=%(refname)",
-        f"refs/heads/{BATCH_PREFIX}{batch_id}-*",
-        f"refs/remotes/{repo.remote}/{BATCH_PREFIX}{batch_id}-*",
+        "refs/heads/",
+        f"refs/remotes/{repo.remote}/",
     )
-    pattern = re.compile(rf"/{re.escape(BATCH_PREFIX + batch_id)}-(\d+)$")
-    return [
-        int(match.group(1))
-        for match in map(pattern.search, output.splitlines())
-        if match
-    ]
+    names = set(list_saved_branches(repo))
+    for ref in output.splitlines():
+        for prefix in ("refs/heads/", f"refs/remotes/{repo.remote}/"):
+            if ref.startswith(prefix):
+                names.add(ref.removeprefix(prefix))
+    return names
 
 
-def name_next_batch(repo: Repo) -> str:
-    """Return the branch name one batch past this clone's highest."""
-    batch_id = read_batch_id(repo)
-    number = max(list_batch_numbers(repo, batch_id), default=0) + 1
-    return f"{BATCH_PREFIX}{batch_id}-{number}"
+def list_batch_skills(repo: Repo) -> list[str]:
+    """Return the skills the branch's commits change, first changed first.
+
+    Only commits the remote's ``main`` lacks count.
+    """
+    output = run_git(
+        repo.worktree,
+        "log",
+        "--reverse",
+        "--format=",
+        "--name-only",
+        f"{repo.remote}/main..HEAD",
+    )
+    prefix = f"{repo.skills_dir}/"
+    skills: list[str] = []
+    for path in output.splitlines():
+        if path.startswith(prefix):
+            skill = path.removeprefix(prefix).split("/")[0]
+            if skill not in skills:
+                skills.append(skill)
+    return skills
 
 
 def list_changed_paths(repo: Repo) -> list[str]:

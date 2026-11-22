@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import re
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -20,7 +20,7 @@ from conftest import (
     write_tool,
 )
 
-BRANCH = "fix/skill-fixes-a1b2c3-1"
+BRANCH = "fix/demo-lessons"
 SSH_URL = "git@github.com:owner/repo.git"
 HTTPS_URL = "https://github.com/owner/repo.git"
 
@@ -51,6 +51,24 @@ def use_ssh_remote(repos: Repos, target: str) -> None:
         HTTPS_URL,
     )
     run_git(repos.checkout, "config", "--global", "core.sshCommand", "false")
+
+
+def commit_skills(repos: Repos, *skills: str) -> None:
+    """Add the fix worktree and commit a new SKILL.md for each skill."""
+    run_git(
+        repos.checkout,
+        "worktree",
+        "add",
+        "--quiet",
+        "-b",
+        "fix/skill-fixes-unpushed",
+        str(repos.worktree),
+        "github/main",
+    )
+    for skill in skills:
+        write(repos.worktree / f"ai/skills/{skill}/SKILL.md", f"# {skill}\n")
+        run_git(repos.worktree, "add", ".")
+        run_git(repos.worktree, "commit", "--quiet", "-m", f"fix({skill}): x")
 
 
 def list_branches(repos: Repos) -> str:
@@ -215,7 +233,7 @@ class TestSync:
         assert requests[0] == requests[1]
         assert requests[0].startswith(
             f"pr create --base main --head {BRANCH} "
-            "--title fix(skills): corrections in batch a1b2c3-1 --body-file "
+            "--title fix(skills): demo-lessons --body-file "
         )
         pushed = run_git(
             repos.remote, "rev-list", "--count", f"main..{BRANCH}"
@@ -225,7 +243,7 @@ class TestSync:
     def test_sync_renames_old_branch_before_push(
         self, fix: Callable[..., Reply], repos: Repos
     ) -> None:
-        """An unpushed branch with an older name is pushed under the ID.
+        """An unpushed branch with an older name is pushed under its skills.
 
         Older versions named branches after a PC label. Branch names are
         public, so such a name must never reach the remote.
@@ -249,21 +267,67 @@ class TestSync:
         )
         assert list_branches(repos) == f"{BRANCH}\nmain"
 
-    def test_start_uses_saved_random_batch_id(
-        self, run: Run, repos: Repos
+    def test_branch_name_lists_each_changed_skill(
+        self, fix: Callable[..., Reply], repos: Repos
     ) -> None:
-        """A clone with no batch ID gets a random one and keeps it.
+        """A batch that changes two skills names both, first changed first.
 
-        A new ID on each run would split one PC's fixes across several
-        pull requests.
+        The name tells the user which skills a fix PR changes before
+        they open it.
         """
-        run_git(repos.checkout, "config", "--unset", "skill-fix.batchid")
+        commit_skills(repos, "tidy")
+
+        reply = fix()
+
+        assert reply.body["branch"] == "fix/tidy-demo-lessons", reply.body
+        assert list_branches(repos) == "fix/tidy-demo-lessons\nmain"
+
+    def test_long_branch_name_ends_in_and_more(
+        self, fix: Callable[..., Reply], repos: Repos
+    ) -> None:
+        """Skills that would pass 60 characters become "and-more".
+
+        A branch name that lists every skill of a large batch would be
+        too long to read.
+        """
+        commit_skills(
+            repos, "tidy", "plant-watering-schedule", "seed-catalog-cleanup"
+        )
+
+        reply = fix()
+
+        assert reply.body["branch"] == (
+            "fix/tidy-plant-watering-schedule-and-more-lessons"
+        )
+
+    def test_branch_skips_name_of_merged_pr(
+        self, fix: Callable[..., Reply], repos: Repos
+    ) -> None:
+        """A name a merged PR used gets a number, even with its branch gone.
+
+        GitHub deletes a merged branch, and a new branch of the same
+        name would be taken for that merged PR and never get its own.
+        """
+        save_pr(repos.home, BRANCH, number=5, state="MERGED", headRefOid="x")
+
+        reply = fix()
+
+        assert reply.body["branch"] == f"{BRANCH}-2", reply.body
+
+    def test_new_worktree_returns_to_pushed_branch(
+        self, fix: Callable[..., Reply], run: Run, repos: Repos
+    ) -> None:
+        """A worktree deleted by hand comes back on the pushed batch branch.
+
+        A fresh unpushed branch would start a second batch and a second
+        fix PR while the first one is still open.
+        """
+        fix()
+        shutil.rmtree(repos.worktree)
 
         reply = run("start", "demo")
 
-        batch_id = run_git(repos.checkout, "config", "skill-fix.batchid")
-        assert re.fullmatch(r"[0-9a-f]{6}", batch_id)
-        assert reply.body["branch"] == f"fix/skill-fixes-{batch_id}-1"
+        assert reply.body["branch"] == BRANCH, reply.body
 
     def test_sync_after_merge_starts_new_batch(
         self, fix: Callable[..., Reply], repos: Repos
@@ -283,7 +347,7 @@ class TestSync:
 
         reply = fix()
 
-        new = "fix/skill-fixes-a1b2c3-2"
+        new = f"{BRANCH}-2"
         assert (reply.body["branch"], reply.body["sync"]) == (
             new,
             "pr_waiting",
