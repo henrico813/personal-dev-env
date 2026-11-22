@@ -39,10 +39,10 @@ A hit is a line that names or hints at:
   rules, files or limits. It counts even when it says "some PCs" or
   "one machine" and names none.
 - a job: the user's company, clients or job projects, or any word
-  that ties the text to a job, such as "office", "shift",
-  "colleague", "boss" or "work" in the sense of a job. It counts when
-  it is one part of a longer name, such as a skill or branch name, and
-  even when it names no company.
+  used in its job sense, such as "office", "shift", "colleague",
+  "boss" or "work". It is a hit on its own, even when it names no
+  company and nothing else in the text mentions a job. It counts when
+  it is one part of a longer name, such as a skill or branch name.
 - a private vault, note or project that is not in this repository.
 - personal information, such as a person's name, email, address,
   health or money.

@@ -317,7 +317,9 @@ plan's notes.
   the session that built it. The auto hub starts that session by
   `herdr-handoff` when the work comes, such as the user's feedback
   or a held pull request's parent merging. The session reads the PR
-  folder's `status.txt`, the plan and common.md.
+  folder's `status.txt`, the plan and common.md. A session for a held
+  pull request also follows the steps that Your last report puts on
+  its item's page.
 - Every later change, whether a fix, a quality pass or a parent's new
   commit, goes through the same loop: a new planner revises the plan,
   fresh reviewers give it a plan review, you run the design check,

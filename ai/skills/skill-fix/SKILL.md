@@ -180,8 +180,9 @@ the table below says:
   "Fix committed; it reaches every PC after you merge the fix PR."
   When `sync` is not `pushed`, `pr_open` or `pr_waiting`, act on it
   as [references/replies.md](references/replies.md) says. For a
-  `conflict`, commit the resolved merge on the user's yes. Then get
-  the privacy review in `pull-request` Guardrail 5, and run
+  `conflict`, that file has you merge `main` in and resolve it. On
+  the user's yes, commit the merge. Then get the privacy review in
+  `pull-request` Guardrail 5, filled in as that file says, and run
   `skill-fix sync` only when it reports zero hits.
 - `held`: the fix holds an extra term, a word from the file that
   `extra_terms_file` in `~/.config/pde/config.json` names. It stays
