@@ -84,7 +84,7 @@ pub fn run_at(run: &RunFolder, request: AtRequest, now: &Zoned) -> Result<Outcom
     };
     let stamp = due.strftime("%Y%m%d-%H%M").to_string();
     let path = store_timed_message(run, &message, &stamp)?;
-    Ok(Outcome::line(format!(
+    Ok(Outcome::from_line(format!(
         "at {clock} to {to}: {}",
         path.display()
     )))
@@ -211,16 +211,16 @@ fn list_timed_files(run: &RunFolder) -> Result<Vec<(String, PathBuf)>, HubError>
 
 /// Reads one timed message file, or returns `None` when it is gone.
 fn read_timed_message(path: &Path) -> Result<Option<TimedMessage>, HubError> {
-    let file_error = |source: io::Error| HubError::File {
+    let wrap_file_error = |source: io::Error| HubError::File {
         path: path.to_owned(),
         source,
     };
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(source) => return Err(file_error(source)),
+        Err(source) => return Err(wrap_file_error(source)),
     };
     serde_json::from_str(&text)
         .map(Some)
-        .map_err(|error| file_error(error.into()))
+        .map_err(|error| wrap_file_error(error.into()))
 }

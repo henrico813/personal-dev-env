@@ -1,6 +1,6 @@
 //! Names the board's views, writes their help pages, and draws the
 //! text of the away, next and machine views. Read `Panel` and
-//! `machine_lines` first.
+//! `format_machine_lines` first.
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -62,7 +62,7 @@ impl Panel {
 
     /// Returns the view Tab goes to, or `None`, the glance page, after
     /// the last.
-    pub(super) fn next(self) -> Option<Panel> {
+    pub(super) fn find_next_panel(self) -> Option<Panel> {
         Panel::ALL.get(self.number()).copied()
     }
 
@@ -125,7 +125,7 @@ impl Panel {
 
 /// Returns `lines` as elements drawn in `area` from line `scroll` on,
 /// with ids such as `machine:0`. Lines scrolled off come too, hidden.
-pub(super) fn text_elements(
+pub(super) fn build_text_elements(
     panel: Panel,
     lines: &[PanelText],
     area: Rect,
@@ -136,9 +136,9 @@ pub(super) fn text_elements(
         .enumerate()
         .map(|(number, line)| {
             let id = format!("{}:{number}", panel.slug());
-            match draw::row_or_scroll(number, scroll, area) {
-                Ok(row) => draw::text_element(&id, &line.text, Rect { y: row, ..area }),
-                Err(step) => draw::text_element(&id, &line.text, area)
+            match draw::find_row_or_scroll(number, scroll, area) {
+                Ok(row) => draw::build_text_element(&id, &line.text, Rect { y: row, ..area }),
+                Err(step) => draw::build_text_element(&id, &line.text, area)
                     .hide(HiddenBy::Scroll, step.to_owned()),
             }
         })
@@ -156,7 +156,7 @@ pub(super) struct PanelText {
 
 /// Returns one row per event, such as ` 10:40 api-build reported`, cut
 /// to `width`.
-pub(super) fn away_lines(events: &[AwayEvent], width: usize) -> Vec<PanelText> {
+pub(super) fn format_away_lines(events: &[AwayEvent], width: usize) -> Vec<PanelText> {
     events
         .iter()
         .map(|event| PanelText {
@@ -170,7 +170,7 @@ pub(super) fn away_lines(events: &[AwayEvent], width: usize) -> Vec<PanelText> {
 /// Returns the NEXT lines, such as ` you: answer Deploy tonight?`, cut
 /// to `width`. The you and hub parts give at most `each` lines, so the
 /// glance page's block, with `each` 1, shows one line of each part.
-pub(super) fn next_lines(
+pub(super) fn format_next_lines(
     groups: &[(Group, Vec<Item>)],
     no_hub: bool,
     each: usize,
@@ -193,8 +193,12 @@ pub(super) fn next_lines(
 /// Returns the watch and disk gauges, then a `REPORTS` heading and
 /// one line for each of the `FEED_LENGTH` newest reports, such as
 /// `10:40 new api-build`.
-pub(super) fn machine_lines(gauges: &Gauges, feed: &[FeedLine], width: usize) -> Vec<PanelText> {
-    let row = |is_heading, is_high, text: String| PanelText {
+pub(super) fn format_machine_lines(
+    gauges: &Gauges,
+    feed: &[FeedLine],
+    width: usize,
+) -> Vec<PanelText> {
+    let make_row = |is_heading, is_high, text: String| PanelText {
         is_heading,
         is_high,
         text: fit(&text, width),
@@ -206,7 +210,12 @@ pub(super) fn machine_lines(gauges: &Gauges, feed: &[FeedLine], width: usize) ->
         || "unknown".to_owned(),
         |usage| {
             let high = if watch_high { " high" } else { "" };
-            format!("{} {}/{}{high}", gauge_bar(usage), usage.used, usage.limit)
+            format!(
+                "{} {}/{}{high}",
+                format_gauge_bar(usage),
+                usage.used,
+                usage.limit
+            )
         },
     );
     let disk = gauges.disk.map_or_else(
@@ -215,18 +224,18 @@ pub(super) fn machine_lines(gauges: &Gauges, feed: &[FeedLine], width: usize) ->
             let percent = usage.used * 100 / usage.limit.max(1);
             // `df -Pk` counts in kibibytes, so this is gibibytes.
             let free = usage.limit.saturating_sub(usage.used) / (1024 * 1024);
-            format!("{} {percent}% {free}G free", gauge_bar(usage))
+            format!("{} {percent}% {free}G free", format_gauge_bar(usage))
         },
     );
     let shown = &feed[..feed.len().min(FEED_LENGTH)];
     let mut lines = vec![
-        row(false, watch_high, format!("WATCH {watch}")),
-        row(false, false, format!("DISK  {disk}")),
-        row(true, false, format!("REPORTS {}", shown.len())),
+        make_row(false, watch_high, format!("WATCH {watch}")),
+        make_row(false, false, format!("DISK  {disk}")),
+        make_row(true, false, format!("REPORTS {}", shown.len())),
     ];
     lines.extend(shown.iter().map(|report| {
         let word = if report.unread { "new" } else { "read" };
-        row(
+        make_row(
             false,
             false,
             format!("{} {word} {}", report.at, report.name),
@@ -264,7 +273,7 @@ pub(super) fn draw_panel_text(
 
 /// Returns `GAUGE_BLOCKS` blocks filled by the share used, such as
 /// `█████████░` at 116 of 128.
-fn gauge_bar(usage: Usage) -> String {
+fn format_gauge_bar(usage: Usage) -> String {
     let filled = (usage.used * GAUGE_BLOCKS / usage.limit.max(1)).min(GAUGE_BLOCKS);
     (0..GAUGE_BLOCKS)
         .map(|block| if block < filled { '█' } else { '░' })
@@ -275,7 +284,7 @@ fn gauge_bar(usage: Usage) -> String {
 mod tests {
     use super::*;
 
-    use crate::board::view::tests::sample_queue;
+    use crate::board::view::tests::make_sample_queue;
 
     /// New OpenCode sessions crashed at 122 of 128 watch slots, so the
     /// gauge must warn from 90%, 116 of 128, and not at 115. A warning
@@ -283,7 +292,7 @@ mod tests {
     /// says `high`.
     #[test]
     fn machine_lines_mark_watch_high_at_90() {
-        let queue = sample_queue();
+        let queue = make_sample_queue();
         let below = Gauges {
             watch: Some(Usage {
                 used: 115,
@@ -292,8 +301,8 @@ mod tests {
             ..queue.gauges
         };
 
-        let high = machine_lines(&queue.gauges, &[], 40);
-        let calm = machine_lines(&below, &[], 40);
+        let high = format_machine_lines(&queue.gauges, &[], 40);
+        let calm = format_machine_lines(&below, &[], 40);
 
         assert_eq!(high[0].text, "WATCH █████████░ 116/128 high");
         assert!(high[0].is_high);
@@ -306,9 +315,9 @@ mod tests {
     /// a missing feed hides what workers just reported.
     #[test]
     fn machine_lines_show_disk_and_reports() {
-        let queue = sample_queue();
+        let queue = make_sample_queue();
 
-        let lines = machine_lines(&queue.gauges, &queue.feed, 40);
+        let lines = format_machine_lines(&queue.gauges, &queue.feed, 40);
 
         let texts: Vec<&str> = lines.iter().map(|line| line.text.as_str()).collect();
         let expected = [

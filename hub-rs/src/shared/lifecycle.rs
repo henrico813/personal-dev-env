@@ -111,7 +111,7 @@ pub(crate) struct Verdict {
 impl Verdict {
     /// Returns the why, or the state's word when the why is empty, such
     /// as `working`.
-    pub(crate) fn why_or_state(&self) -> &str {
+    pub(crate) fn pick_why_or_state(&self) -> &str {
         if self.why.is_empty() {
             self.state.word()
         } else {
@@ -216,7 +216,7 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
     if facts.reports.unread {
         return make_verdict(Lifecycle::WaitsOnHub, "unread report");
     }
-    if facts.messages.any() {
+    if facts.messages.has_any() {
         return make_verdict(Lifecycle::WaitsOnHub, "");
     }
     // Rule 6. An old hub closes only once `run_handoff` or `run_adopt`
@@ -414,35 +414,35 @@ mod tests {
     fn make_lifecycle_rows() -> Vec<Row> {
         let worker = "demo-kb-007-impl";
         let base = make_facts(worker);
-        let with_status = |status| SessionFacts {
+        let make_facts_with_status = |status| SessionFacts {
             agent: Some(Agent {
                 session_id: Some("ses_worker".to_owned()),
                 ..make_agent(worker, status)
             }),
             ..make_facts(worker)
         };
-        let with_stage = |stage| {
+        let make_facts_with_stage = |stage| {
             let mut facts = make_facts(worker);
             facts.card.as_mut().unwrap().stage = stage;
             facts
         };
-        let with_agent = |change: fn(&mut Agent)| {
+        let make_facts_with_agent = |change: fn(&mut Agent)| {
             let mut facts = make_facts(worker);
             change(facts.agent.as_mut().unwrap());
             facts
         };
-        let active_with_reports = |reports| SessionFacts {
+        let make_active_facts_with_reports = |reports| SessionFacts {
             reports,
-            ..with_stage(Stage::Active)
+            ..make_facts_with_stage(Stage::Active)
         };
-        let hub = |handed_off| SessionFacts {
+        let make_hub_facts = |handed_off| SessionFacts {
             name: "kanban-hub-16".to_owned(),
             agent: Some(make_agent("kanban-hub-16", AgentStatus::Idle)),
             card: None,
             handed_off,
             ..make_facts(worker)
         };
-        let no_card = |name: &str, ever_reported| SessionFacts {
+        let make_no_card_facts = |name: &str, ever_reported| SessionFacts {
             name: name.to_owned(),
             agent: Some(make_agent(name, AgentStatus::Idle)),
             card: None,
@@ -452,39 +452,39 @@ mod tests {
             },
             ..make_facts(worker)
         };
-        let parked = |stage| SessionFacts {
+        let make_parked_facts = |stage| SessionFacts {
             agent: None,
             parked: Some(make_parked_record(worker)),
-            ..with_stage(stage)
+            ..make_facts_with_stage(stage)
         };
         let worktree = PathBuf::from("/home/u/wt/demo-kb-007");
         vec![
             Row {
                 id: "parked",
-                facts: parked(Stage::InReview),
+                facts: make_parked_facts(Stage::InReview),
                 expected: Lifecycle::Parked,
             },
             Row {
                 id: "parked-card-done",
-                facts: parked(Stage::Done),
+                facts: make_parked_facts(Stage::Done),
                 expected: Lifecycle::ToClose,
             },
             Row {
                 id: "other-machine-idle",
-                facts: with_agent(|agent| agent.machine = Some("laptop".to_owned())),
+                facts: make_facts_with_agent(|agent| agent.machine = Some("laptop".to_owned())),
                 expected: Lifecycle::Kept(KeptReason::OtherMachine),
             },
             Row {
                 id: "blocked-card-done",
                 facts: SessionFacts {
                     agent: Some(make_agent(worker, AgentStatus::Blocked)),
-                    ..with_stage(Stage::Done)
+                    ..make_facts_with_stage(Stage::Done)
                 },
                 expected: Lifecycle::WaitsOnUser,
             },
             Row {
                 id: "marked",
-                facts: with_agent(|agent| agent.marked = true),
+                facts: make_facts_with_agent(|agent| agent.marked = true),
                 expected: Lifecycle::WaitsOnUser,
             },
             Row {
@@ -498,12 +498,12 @@ mod tests {
             },
             Row {
                 id: "working",
-                facts: with_status(AgentStatus::Working),
+                facts: make_facts_with_status(AgentStatus::Working),
                 expected: Lifecycle::Working,
             },
             Row {
                 id: "unknown",
-                facts: with_status(AgentStatus::Unknown),
+                facts: make_facts_with_status(AgentStatus::Unknown),
                 expected: Lifecycle::Working,
             },
             Row {
@@ -531,13 +531,13 @@ mod tests {
             },
             Row {
                 id: "handed-off-hub",
-                facts: hub(true),
+                facts: make_hub_facts(true),
                 expected: Lifecycle::ToClose,
             },
             Row {
                 id: "handed-off-focused",
                 facts: {
-                    let mut facts = hub(true);
+                    let mut facts = make_hub_facts(true);
                     facts.agent.as_mut().unwrap().focused = true;
                     facts
                 },
@@ -545,13 +545,13 @@ mod tests {
             },
             Row {
                 id: "other-hub",
-                facts: hub(false),
+                facts: make_hub_facts(false),
                 expected: Lifecycle::Kept(KeptReason::AnotherHub),
             },
             Row {
                 id: "handed-off",
                 facts: {
-                    let mut facts = with_stage(Stage::Active);
+                    let mut facts = make_facts_with_stage(Stage::Active);
                     facts.card.as_mut().unwrap().newer_session_live = true;
                     facts
                 },
@@ -560,7 +560,7 @@ mod tests {
             Row {
                 id: "handed-off-approval",
                 facts: {
-                    let mut facts = with_stage(Stage::Active);
+                    let mut facts = make_facts_with_stage(Stage::Active);
                     facts.card.as_mut().unwrap().newer_session_live = true;
                     facts.approval_pending = true;
                     facts
@@ -578,12 +578,12 @@ mod tests {
             },
             Row {
                 id: "never-reported",
-                facts: active_with_reports(ReportFacts::default()),
+                facts: make_active_facts_with_reports(ReportFacts::default()),
                 expected: Lifecycle::WaitsOnUser,
             },
             Row {
                 id: "read-no-reply",
-                facts: active_with_reports(ReportFacts {
+                facts: make_active_facts_with_reports(ReportFacts {
                     ever_reported: true,
                     ..ReportFacts::default()
                 }),
@@ -596,7 +596,7 @@ mod tests {
             },
             Row {
                 id: "blocked-clean",
-                facts: with_stage(Stage::Blocked),
+                facts: make_facts_with_stage(Stage::Blocked),
                 expected: Lifecycle::ToPark,
             },
             Row {
@@ -625,7 +625,7 @@ mod tests {
             },
             Row {
                 id: "review-focused",
-                facts: with_agent(|agent| agent.focused = true),
+                facts: make_facts_with_agent(|agent| agent.focused = true),
                 expected: Lifecycle::Kept(KeptReason::UserInPane),
             },
             Row {
@@ -648,37 +648,39 @@ mod tests {
                 id: "done-recent-request",
                 facts: SessionFacts {
                     filed_request_recently: true,
-                    ..with_stage(Stage::Done)
+                    ..make_facts_with_stage(Stage::Done)
                 },
                 expected: Lifecycle::Kept(KeptReason::RecentRequest),
             },
             Row {
                 id: "review-codex",
-                facts: with_agent(|agent| agent.kind = AgentKind::Other("codex".to_owned())),
+                facts: make_facts_with_agent(|agent| {
+                    agent.kind = AgentKind::Other("codex".to_owned())
+                }),
                 expected: Lifecycle::Kept(KeptReason::CannotReopen),
             },
             Row {
                 id: "review-no-session-id",
-                facts: with_agent(|agent| agent.session_id = None),
+                facts: make_facts_with_agent(|agent| agent.session_id = None),
                 expected: Lifecycle::Kept(KeptReason::CannotReopen),
             },
             Row {
                 id: "done-clean",
-                facts: with_stage(Stage::Done),
+                facts: make_facts_with_stage(Stage::Done),
                 expected: Lifecycle::ToClose,
             },
             Row {
                 id: "done-files",
                 facts: SessionFacts {
                     unsaved: Unsaved::Files(PathBuf::from("/home/u/wt/demo-kb-007")),
-                    ..with_stage(Stage::Done)
+                    ..make_facts_with_stage(Stage::Done)
                 },
                 expected: Lifecycle::Kept(KeptReason::UnsavedFiles),
             },
             Row {
                 id: "done-focused",
                 facts: {
-                    let mut facts = with_stage(Stage::Done);
+                    let mut facts = make_facts_with_stage(Stage::Done);
                     facts.agent.as_mut().unwrap().focused = true;
                     facts
                 },
@@ -688,23 +690,23 @@ mod tests {
                 id: "done-not-checked",
                 facts: SessionFacts {
                     unsaved: Unsaved::NotChecked,
-                    ..with_stage(Stage::Done)
+                    ..make_facts_with_stage(Stage::Done)
                 },
                 expected: Lifecycle::Kept(KeptReason::GitFailed),
             },
             Row {
                 id: "no-card-never-reported",
-                facts: no_card("notes", false),
+                facts: make_no_card_facts("notes", false),
                 expected: Lifecycle::Kept(KeptReason::Yours),
             },
             Row {
                 id: "no-card-report-read",
-                facts: no_card("notes", true),
+                facts: make_no_card_facts("notes", true),
                 expected: Lifecycle::ToClose,
             },
             Row {
                 id: "session-review",
-                facts: no_card("review-kanban-hub-16", true),
+                facts: make_no_card_facts("review-kanban-hub-16", true),
                 expected: Lifecycle::ToClose,
             },
         ]

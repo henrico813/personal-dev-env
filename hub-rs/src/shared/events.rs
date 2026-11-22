@@ -211,16 +211,16 @@ pub(crate) fn append_event(run: &RunFolder, event: &Event) -> Result<(), HubErro
 /// `load_memory` skips.
 pub(crate) fn append_json_line(run: &RunFolder, value: &impl Serialize) -> Result<(), HubError> {
     let log = run.path().join("events.jsonl");
-    let file_error = |source: io::Error| HubError::File {
+    let wrap_file_error = |source: io::Error| HubError::File {
         path: log.clone(),
         source,
     };
-    let mut line = serde_json::to_string(value).map_err(|error| file_error(error.into()))?;
+    let mut line = serde_json::to_string(value).map_err(|error| wrap_file_error(error.into()))?;
     line.push('\n');
     let ends_cut_off = match fs::read(&log) {
         Ok(existing) => existing.last().is_some_and(|last| *last != b'\n'),
         Err(source) if source.kind() == io::ErrorKind::NotFound => false,
-        Err(source) => return Err(file_error(source)),
+        Err(source) => return Err(wrap_file_error(source)),
     };
     if ends_cut_off {
         line.insert(0, '\n');
@@ -229,8 +229,8 @@ pub(crate) fn append_json_line(run: &RunFolder, value: &impl Serialize) -> Resul
         .create(true)
         .append(true)
         .open(&log)
-        .map_err(file_error)?;
-    file.write_all(line.as_bytes()).map_err(file_error)
+        .map_err(wrap_file_error)?;
+    file.write_all(line.as_bytes()).map_err(wrap_file_error)
 }
 
 /// Returns the first 300 characters of a reason for an event.

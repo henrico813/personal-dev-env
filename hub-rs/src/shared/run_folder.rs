@@ -386,19 +386,19 @@ pub(crate) fn take_file_lock(path: &Path) -> Result<FileLock, HubError> {
 /// Tells whether a process holds the lock on the file at `path` now,
 /// by trying it. A missing file is not locked.
 pub(crate) fn is_file_locked(path: &Path) -> Result<bool, HubError> {
-    let file_error = |source| HubError::File {
+    let wrap_file_error = |source| HubError::File {
         path: path.to_owned(),
         source,
     };
     let file = match File::open(path) {
         Ok(file) => file,
         Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(false),
-        Err(source) => return Err(file_error(source)),
+        Err(source) => return Err(wrap_file_error(source)),
     };
     match file.try_lock() {
         Ok(()) => Ok(false),
         Err(TryLockError::WouldBlock) => Ok(true),
-        Err(TryLockError::Error(source)) => Err(file_error(source)),
+        Err(TryLockError::Error(source)) => Err(wrap_file_error(source)),
     }
 }
 

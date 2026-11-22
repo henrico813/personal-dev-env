@@ -441,7 +441,7 @@ pub struct Board {
 impl Board {
     /// Returns a line such as `blocked 2, oldest 8 days`, or `None`
     /// when the list is empty.
-    pub fn blocked_line(&self) -> Option<String> {
+    pub fn format_blocked_line(&self) -> Option<String> {
         let oldest = self.blocked.iter().map(|card| card.days).max()?;
         Some(format!(
             "{} {}, oldest {}",
@@ -928,7 +928,7 @@ mod tests {
 
         let cards = parse_card_list(listing);
 
-        let card = |key: &str, stage, project: &str, title: &str| ListedCard {
+        let make_card = |key: &str, stage, project: &str, title: &str| ListedCard {
             key: key.parse().unwrap(),
             stage,
             project: project.to_owned(),
@@ -937,8 +937,8 @@ mod tests {
         assert_eq!(
             cards,
             [
-                card("DEMO-KB-004", Stage::Active, "Demo", "Fix the docs"),
-                card(
+                make_card("DEMO-KB-004", Stage::Active, "Demo", "Fix the docs"),
+                make_card(
                     "DEMO-KB-007",
                     Stage::Done,
                     "Ops",

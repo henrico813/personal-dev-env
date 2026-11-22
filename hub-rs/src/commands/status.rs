@@ -184,7 +184,11 @@ fn format_status_text(view: &StatusView) -> Vec<String> {
         Ok(board) => format!("board {}", board.counts),
         Err(reason) => format!("board: {reason}"),
     };
-    let blocked = view.board.as_ref().ok().and_then(Board::blocked_line);
+    let blocked = view
+        .board
+        .as_ref()
+        .ok()
+        .and_then(Board::format_blocked_line);
     let counts = &view.counts;
     let open = view.rows.len() - counts.parked;
     let unread = if view.unread.is_empty() {
@@ -513,11 +517,11 @@ mod tests {
 
         let printed: Value = serde_json::from_str(&format_status_json(&view)).unwrap();
 
-        let session = |name: &str,
-                       state: &str,
-                       why: &str,
-                       tokens: Option<u64>,
-                       card: Option<(&str, &str)>| {
+        let make_session = |name: &str,
+                            state: &str,
+                            why: &str,
+                            tokens: Option<u64>,
+                            card: Option<(&str, &str)>| {
             json!({
                 "name": name,
                 "state": state,
@@ -531,7 +535,7 @@ mod tests {
                 "not_sent": 0,
             })
         };
-        let mut docs_fix = session(
+        let mut docs_fix = make_session(
             "docs-fix",
             "working",
             "1 held, hand off",
@@ -539,7 +543,7 @@ mod tests {
             None,
         );
         docs_fix["held"] = json!(1);
-        let mut home = session(
+        let mut home = make_session(
             "demo-kb-012-auto",
             "kept",
             "unsaved files in /home/u/wt/demo-kb-012",
@@ -577,14 +581,14 @@ mod tests {
                 "unread": ["demo-kb-007-impl", "docs-fix"],
                 "sessions": [
                     docs_fix,
-                    session(
+                    make_session(
                         "demo-kb-007-impl",
                         "hub",
                         "unread report",
                         Some(98_000),
                         Some(("DEMO-KB-007", "active")),
                     ),
-                    session(
+                    make_session(
                         "demo-kb-009-auto",
                         "you",
                         "blocked",
@@ -592,15 +596,15 @@ mod tests {
                         Some(("DEMO-KB-009", "active")),
                     ),
                     home,
-                    session("review-kanban-hub-16", "to-close", "report read", Some(60_000), None),
-                    session(
+                    make_session("review-kanban-hub-16", "to-close", "report read", Some(60_000), None),
+                    make_session(
                         "demo-kb-090-auto",
                         "to-park",
                         "-",
                         Some(104_000),
                         Some(("DEMO-KB-090", "in-review")),
                     ),
-                    session(
+                    make_session(
                         "demo-kb-081-auto",
                         "parked",
                         "since 11-10 22:41",

@@ -397,7 +397,7 @@ mod herdr_cli {
         let screen = "  ┃  [Pasted ~1 lines]\n";
         let script = folder.write_script("herdr", screen, "", 0);
         let herdr = HerdrCli::new(script.clone(), None, folder.path().join("herdr.sock"));
-        let laptop = herdr.on_machine("laptop");
+        let laptop = herdr.clone_for_machine("laptop");
 
         let shown = laptop.read_screen("docs-fix").unwrap();
         laptop.press_enter("docs-fix").unwrap();

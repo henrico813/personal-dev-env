@@ -43,7 +43,7 @@ fn store_for_eight_pm(test_tools: &TestTools, now: &str, to: Recipients, text: &
 }
 
 /// Names one session, as `--to docs-fix` does.
-fn to_docs_fix() -> Recipients {
+fn make_docs_fix_recipients() -> Recipients {
     Recipients::Names(vec!["docs-fix".to_owned()])
 }
 
@@ -55,7 +55,7 @@ fn run_at_refuses_time_already_past() {
     let test_tools = TestTools::new();
     let request = AtRequest {
         time: "20:00".parse().unwrap(),
-        to: to_docs_fix(),
+        to: make_docs_fix_recipients(),
         file: PathBuf::from("/tmp/resume.md"),
         text: "Resume work.".to_owned(),
     };
@@ -76,11 +76,16 @@ fn run_at_refuses_time_already_past() {
 fn run_next_sends_and_announces_due_message() {
     let mut test_tools = TestTools::new();
     test_tools.herdr.agents = vec![make_agent("docs-fix", AgentStatus::Idle)];
-    store_for_eight_pm(&test_tools, PAST_NOON, to_docs_fix(), "Resume work.");
+    store_for_eight_pm(
+        &test_tools,
+        PAST_NOON,
+        make_docs_fix_recipients(),
+        "Resume work.",
+    );
     store_for_eight_pm(
         &test_tools,
         FUTURE_NOON,
-        to_docs_fix(),
+        make_docs_fix_recipients(),
         "Stop for the night.",
     );
 

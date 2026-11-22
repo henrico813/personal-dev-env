@@ -18,6 +18,9 @@ Name actions with verbs, such as `parse_config` and `write_report`. Name boolean
 queries clearly, such as `is_empty`. Ordinary getters usually omit `get_`:
 `report.title()`. Follow Rust's conversion conventions: `as_` for cheap views,
 `to_` for conversions that do work, and `into_` for ownership-consuming conversions.
+Before you keep a function name with no verb, such as a getter, load
+the `code-documentation` skill and follow its Rust rules. They decide
+when a method counts as a getter, and its comment check enforces them.
 
 For test names and behavioral test design, also load and follow the
 `behavior-focused-testing` skill. Its seven-word maximum is required.

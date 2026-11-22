@@ -117,7 +117,7 @@ impl Visits {
 
     /// Returns how long the user was away before this visit, or `None`
     /// with no saved time.
-    pub(super) fn away_for(&self) -> Option<SignedDuration> {
+    pub(super) fn measure_time_away(&self) -> Option<SignedDuration> {
         self.since.map(|since| self.started.duration_since(since))
     }
 }
@@ -160,7 +160,7 @@ mod tests {
     }
 
     /// A time on 2026-11-15, such as `09:00`, in UTC.
-    fn at(time: &str) -> Timestamp {
+    fn make_time(time: &str) -> Timestamp {
         format!("2026-11-15T{time}:00Z").parse().unwrap()
     }
 
@@ -170,14 +170,17 @@ mod tests {
     #[test]
     fn visits_saved_time_starts_next_board() {
         let state = TempState::new("seen-next-board");
-        let mut first = Visits::start(&state.path, at("09:00"));
-        first.note_input(at("09:05"));
+        let mut first = Visits::start(&state.path, make_time("09:00"));
+        first.note_input(make_time("09:05"));
 
-        first.save_last_input(at("09:06")).unwrap();
-        let next = Visits::start(&state.path, at("10:35"));
+        first.save_last_input(make_time("09:06")).unwrap();
+        let next = Visits::start(&state.path, make_time("10:35"));
 
-        assert_eq!(next.since(), Some(at("09:05")));
-        assert_eq!(next.away_for(), Some(SignedDuration::from_mins(90)));
+        assert_eq!(next.since(), Some(make_time("09:05")));
+        assert_eq!(
+            next.measure_time_away(),
+            Some(SignedDuration::from_mins(90))
+        );
     }
 
     /// While the user reads, their taps must not move the visit's start,
@@ -191,21 +194,25 @@ mod tests {
         let state = TempState::new("seen-quiet-gap");
         fs::create_dir_all(state.path.join("hub")).unwrap();
         fs::write(state.path.join(SEEN_FILE), "2026-11-15T08:00:00Z\n").unwrap();
-        let mut visits = Visits::start(&state.path, at("09:00"));
+        let mut visits = Visits::start(&state.path, make_time("09:00"));
 
-        let reading = [at("09:01"), at("09:09"), at("09:18")].map(|now| visits.note_input(now));
+        let reading = [make_time("09:01"), make_time("09:09"), make_time("09:18")]
+            .map(|now| visits.note_input(now));
         let since_while_reading = visits.since();
-        let back = visits.note_input(at("09:40"));
+        let back = visits.note_input(make_time("09:40"));
         let since_back = visits.since();
         // Another board saves a later time during the next gap.
         fs::write(state.path.join(SEEN_FILE), "2026-11-15T10:05:00Z\n").unwrap();
-        visits.note_input(at("10:20"));
+        visits.note_input(make_time("10:20"));
 
         assert_eq!(reading, [false, false, false]);
-        assert_eq!(since_while_reading, Some(at("08:00")));
+        assert_eq!(since_while_reading, Some(make_time("08:00")));
         assert!(back);
-        assert_eq!(since_back, Some(at("09:18")));
-        assert_eq!(visits.since(), Some(at("10:05")));
-        assert_eq!(visits.away_for(), Some(SignedDuration::from_mins(15)));
+        assert_eq!(since_back, Some(make_time("09:18")));
+        assert_eq!(visits.since(), Some(make_time("10:05")));
+        assert_eq!(
+            visits.measure_time_away(),
+            Some(SignedDuration::from_mins(15))
+        );
     }
 }

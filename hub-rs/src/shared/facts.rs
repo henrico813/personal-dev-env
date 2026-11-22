@@ -201,7 +201,7 @@ pub(crate) fn collect_session_facts(
         let reports = read_report_facts(&agent.name, &reported, memory);
         let report_read = reports.ever_reported && !reports.unread;
         let stage = card.as_ref().map(|card| card.stage);
-        let unsaved = if needs_git_check(&agent, stage, report_read) {
+        let unsaved = if should_check_git(&agent, stage, report_read) {
             check_card_worktrees(&agent, key.as_ref())
         } else {
             Unsaved::NotChecked
@@ -358,7 +358,7 @@ fn read_report_facts(name: &str, reported: &ReportedNames, memory: &Memory) -> R
 /// look first. Only an idle or done session on this machine needs it,
 /// and only when its card has reached the user's review or a later
 /// stage in `Stage` order, or when it has no card and a read report.
-fn needs_git_check(agent: &Agent, stage: Option<Stage>, report_read: bool) -> bool {
+fn should_check_git(agent: &Agent, stage: Option<Stage>, report_read: bool) -> bool {
     let is_free = matches!(agent.status, AgentStatus::Idle | AgentStatus::Done);
     let could_finish = match stage {
         Some(Stage::InReview | Stage::Blocked | Stage::Done | Stage::Dropped) => true,
@@ -459,32 +459,32 @@ mod tests {
             agent_session: Option<&'static str>,
             matched: bool,
         }
-        let request = |pane_id: Option<&str>, session_id: Option<&str>| PrRequest {
+        let make_request = |pane_id: Option<&str>, session_id: Option<&str>| PrRequest {
             pane_id: pane_id.map(str::to_owned),
             session_id: session_id.map(str::to_owned),
         };
         let cases = [
             Case {
                 name: "same-pane",
-                request: request(Some("w1:demo-kb-007-impl"), None),
+                request: make_request(Some("w1:demo-kb-007-impl"), None),
                 agent_session: None,
                 matched: true,
             },
             Case {
                 name: "same-session",
-                request: request(Some("w1:p9"), Some("ses_007")),
+                request: make_request(Some("w1:p9"), Some("ses_007")),
                 agent_session: Some("ses_007"),
                 matched: true,
             },
             Case {
                 name: "other-session",
-                request: request(None, Some("ses_009")),
+                request: make_request(None, Some("ses_009")),
                 agent_session: Some("ses_007"),
                 matched: false,
             },
             Case {
                 name: "neither-has-session",
-                request: request(Some("w1:p9"), None),
+                request: make_request(Some("w1:p9"), None),
                 agent_session: None,
                 matched: false,
             },

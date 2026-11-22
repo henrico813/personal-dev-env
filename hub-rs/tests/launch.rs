@@ -204,7 +204,7 @@ fn run_launch_successor_takes_over_from_caller() {
         updated_ms: 0,
         data: json!({"model": {"providerID": "claude-code", "id": "claude-opus-5-5[1m]", "variant": "high"}}),
     };
-    write_opencode_db(&test_tools.opencode_path(), &[reply]);
+    write_opencode_db(&test_tools.build_opencode_path(), &[reply]);
     let request = LaunchRequest {
         name: "demo-kb-007-impl-2".parse().unwrap(),
         handoff,
