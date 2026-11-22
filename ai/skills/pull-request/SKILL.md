@@ -54,8 +54,15 @@ steps' defaults.
    PR that needs its parent merged, tell the user and do not send the
    request. To undo a test install, install again from the default
    branch.
-5. Before Open step 4 and Update step 3, get a privacy review, since
-   what those steps push or send is public at once.
+5. Before Open step 4, Update step 3 and any other push to a pull
+   request's branch, get a privacy review, since what those steps push
+   or send is public at once.
+   - A commit that merges the base in and resolves a conflict needs
+     the review too, since the resolution adds new lines.
+   - A clean merge, one with no conflict and a stock message such as
+     "Merge main into <branch>", needs no review. It holds only the
+     base's public lines. The `herdr-hub` merge worker script pushes
+     such a merge, as Merge says.
    - Start a fresh agent on a `code-review` model, as
      `model-routing` picks, with the brief in
      [references/privacy-review.md](references/privacy-review.md).
@@ -68,9 +75,10 @@ steps' defaults.
    - Every review hit blocks the step, even one the reviewer calls
      optional or low risk.
    - Fix each hit by amending the commit that holds it: the phase
-     commit in Open, or the round's commit in Update. Neither is
-     pushed yet at this step. Fix a hit in the PR text in FILE. Then
-     run a new review with the same BASE, as the brief says, until it
+     commit in Open, the round's commit in Update, or the merge
+     commit. None is pushed yet at this step. Fix a hit in the PR text
+     in FILE, the PR message file that Open step 1 writes. Then run a
+     new review with the same BASE, as the brief says, until it
      reports zero hits.
    - Write every other Testing line before the review. Then add the
      review's line to the checks list, such as

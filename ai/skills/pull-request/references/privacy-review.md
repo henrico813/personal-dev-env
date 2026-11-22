@@ -10,6 +10,14 @@ default branch, or the parent branch in a stack. For a review round,
 the Update steps, it is `<remote>/<branch>`, the branch as last
 pushed, so a round checks only what it adds.
 
+For a commit that merges the base in and resolves a conflict, BASE is
+`<remote>/<branch>` too. Change the brief you send in three ways. In
+item 1, use `git -C <worktree> show --remerge-diff --format= HEAD`,
+which shows only the lines the resolution wrote. Add `--first-parent`
+to item 2's command. A plain diff and log would show every base line
+and commit the merge brings in, and those are public already. Leave
+out item 4, since a merge changes no PR text.
+
 ````text
 You check text that is about to go public for anything private. Edit
 nothing.
@@ -51,7 +59,7 @@ choice.
 
 Reply in this form:
 
-Lines checked: <added lines + commit and PR lines + 1 for branch>
+Lines checked: <number of lines you read in the items above>
 Hits: <number>
 <file>:<line>: "<quote>" - <what it names or hints at>
 Verdict: BLOCKED when Hits is above 0, else CLEAR
