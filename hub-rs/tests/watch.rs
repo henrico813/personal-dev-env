@@ -20,8 +20,8 @@ use jiff::{SignedDuration, Zoned};
 use serde_json::{Value, json};
 
 use common::{
-    InMemoryHerdr, OpenCodeRow, TempFolder, TestTools, make_agent, read_events, read_script_calls,
-    write_opencode_db,
+    InMemoryHerdr, OpenCodeRow, TempFolder, TestTools, make_agent, make_time, read_events,
+    read_script_calls, write_opencode_db,
 };
 
 /// The worker most tests watch, named after its card as hubs name
@@ -533,6 +533,83 @@ fn check_once_phones_only_when_hub_gone() {
             assert_eq!(call[5], "kanban-hub-1 is gone", "{case_name}");
         }
     }
+}
+
+/// Approves an auto run of one card, DEMO-KB-001, at APPROVED, such as
+/// `2026-11-20 12:00` in UTC, as `hub auto approve` writes it, with no
+/// worker started.
+fn write_approved_run(run: &RunFolder, approved: &str) {
+    fs::write(
+        run.path().join("approved.md"),
+        format!(
+            "# Auto run 3 approved\n\nApproved: {approved}\n\n# Auto run 3\n\n## Run\n\
+             - DEMO-KB-001 demo: retry\n"
+        ),
+    )
+    .unwrap();
+}
+
+/// A run once stalled for three hours while nothing told the user. A
+/// run whose card has no worker must reach the phone once the stall
+/// lasts 15 minutes, with the run and the card named, then at most once
+/// an hour, so the alert neither waits nor nags. The run is approved
+/// just before midnight, since overnight runs are the usual kind.
+#[test]
+fn check_once_phones_stall_at_most_hourly() {
+    let mut test_tools = TestTools::new();
+    let run = make_watched_run(&mut test_tools);
+    write_approved_run(&run, "2026-11-19 23:55");
+    let notifier = test_tools.write_script("moshi-hook", "", "", 0);
+    let start = make_time("2026-11-20T00:05:00+00:00[UTC]");
+
+    check_at(&test_tools, &start, &[0, 5, 30, 66]);
+
+    let calls = read_script_calls(&notifier);
+    assert_eq!(calls.len(), 2, "{calls:?}");
+    assert_eq!(calls[0][5], "Auto run 3 stalled");
+    assert_eq!(
+        calls[0][6],
+        "Stalled since 23:55: DEMO-KB-001, not started (0 of 1 cards done)"
+    );
+}
+
+/// Old run folders stay on disk for days, so a run approved more than
+/// 24 hours ago must never buzz the phone, or every old run with a card
+/// left over would alert each hour.
+#[test]
+fn check_once_ignores_stall_of_old_run() {
+    let mut test_tools = TestTools::new();
+    let run = make_watched_run(&mut test_tools);
+    write_approved_run(&run, "2026-11-19 08:00");
+    let notifier = test_tools.write_script("moshi-hook", "", "", 0);
+
+    check_at(
+        &test_tools,
+        &make_time("2026-11-20T09:00:00+00:00[UTC]"),
+        &[0],
+    );
+
+    assert!(read_script_calls(&notifier).is_empty());
+}
+
+/// After the auto hub's end brief, cards parked on a question have
+/// stopped, not stalled. The watch must not buzz the phone for such a
+/// run, or it would nag each hour after every run that ends on one.
+#[test]
+fn check_once_skips_phone_after_end_brief() {
+    let mut test_tools = TestTools::new();
+    let run = make_watched_run(&mut test_tools);
+    write_approved_run(&run, "2026-11-20 12:00");
+    fs::write(run.path().join("report-auto-hub-3.md"), "End brief\n").unwrap();
+    let notifier = test_tools.write_script("moshi-hook", "", "", 0);
+
+    check_at(
+        &test_tools,
+        &make_time("2026-11-20T13:00:00+00:00[UTC]"),
+        &[0, 66],
+    );
+
+    assert!(read_script_calls(&notifier).is_empty());
 }
 
 /// Moshi refuses pushes past its rate limit, and the phone alert is
