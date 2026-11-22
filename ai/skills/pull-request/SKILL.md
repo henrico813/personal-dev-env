@@ -54,6 +54,29 @@ steps' defaults.
    PR that needs its parent merged, tell the user and do not send the
    request. To undo a test install, install again from the default
    branch.
+5. Before Open step 4 and Update step 3, get a privacy review, since
+   what those steps push or send is public at once. Start a fresh
+   agent on a `code-review` model, as `model-routing` picks, with the
+   brief in
+   [references/privacy-review.md](references/privacy-review.md),
+   which lists what counts as a hit. It reads every added or changed
+   line, the commit messages, the branch name and the PR title and
+   body, and flags hints as well as names. A word that ties the change
+   to a job, such as "office" or "shift", is a hit even when it names
+   no company. Every review hit blocks the step, even one the
+   reviewer calls optional or low risk. Fix each hit, in Open by
+   amending the phase commit, then run a new review with the same
+   BASE, as the brief says, until it reports zero hits. Write every
+   other Testing line before the review. Then add the review's own
+   line to the checks list, such as
+   `pass privacy review: 412 lines, 0 hits`; it needs no new review.
+   In Open, step 3 already used FILE as the commit message, so also
+   run `git commit --amend -F FILE` before the push. Run the
+   repository's term scan too, when its `AGENTS.md` names one.
+   Neither check replaces the other: the scan cannot find hints in
+   plain words, and the reviewer cannot know a private name that is
+   also an ordinary word. Another review, such as a skill review,
+   does not count either.
 
 ## Discover
 
@@ -78,7 +101,8 @@ steps' defaults.
    `git fetch <remote>`
    `git reset --soft "$(git merge-base HEAD <remote>/<default>)"`
    `git commit -F FILE`
-4. Push the phase with `git push --force-with-lease -u <remote> HEAD`.
+4. Once Guardrail 5's privacy review and term scan pass, push the
+   phase with `git push --force-with-lease -u <remote> HEAD`.
    Create the description without the title:
    `tail -n +3 FILE > BODY`
    Before the first request goes out, tell the user who approves each
@@ -115,7 +139,8 @@ steps' defaults.
 3. Never rewrite a reviewed phase. Fold each round's fixes into the
    Changes lines they belong to, and update Testing with checks
    actually run, as `git-messages` item 5 says. Run fmt and lint
-   --pr on FILE, then `tail -n +3 FILE > BODY` and
+   --pr on FILE. Once Guardrail 5's privacy review and term scan
+   pass, run `tail -n +3 FILE > BODY` and
    run `pde-gh-write pr edit NUMBER --body-file BODY` and handle its
    result as in Open step 4.
 4. Push the round with `git push --force-with-lease -u <remote> HEAD`.
