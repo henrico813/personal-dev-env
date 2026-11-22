@@ -53,8 +53,8 @@ user may not be watching:
 1. Write the handoff file as Write the handoff file says.
 2. Name the new session after yours: raise the last number of your
    name by one when it ends in a number, or add `-2` when it ends
-   with no number, so `demo-kb-007-impl` becomes `demo-kb-007-impl-2`
-   and `demo-kb-007-impl-2` becomes `demo-kb-007-impl-3`.
+   with no number, so `demo-007-impl` becomes `demo-007-impl-2`
+   and `demo-007-impl-2` becomes `demo-007-impl-3`.
 3. Start it in a new tab beside yours, on your model and reasoning
    effort, as `model-routing` says for a successor. `<folder>` is the
    run folder your handoff names, else `~/.local/state/pde/handoffs`.

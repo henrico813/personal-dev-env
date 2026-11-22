@@ -24,7 +24,7 @@ use jiff::Zoned;
 use regex::Regex;
 
 use super::{Outcome, sidebar};
-use crate::external::cards::{CardKey, CardNote, ListedCard, Stage};
+use crate::external::cards::{CardKey, CardNote, KEY_PATTERN, ListedCard, Stage};
 use crate::shared::questions::read_open_questions;
 use crate::shared::run_folder::{self, RunFolder};
 use crate::shared::{HubError, Tools};
@@ -33,7 +33,7 @@ use crate::shared::{HubError, Tools};
 static RUN_TITLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^# Auto run ([0-9]+)$").unwrap());
 /// A card line of `run.md`, such as `- DEMO-KB-007 demo: retry`.
 static LISTED_CARD: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^- ([A-Z][A-Z0-9]*-KB-[0-9]{3,})\b").unwrap());
+    LazyLock::new(|| Regex::new(&format!(r"^- ({KEY_PATTERN})\b")).unwrap());
 
 /// The user's approval, as `run_auto_approve` takes it.
 pub struct AutoApproval {

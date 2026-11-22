@@ -8,9 +8,14 @@ same options.
 ---
 
 A card is the note `500 Zettelkasten/Projects/<Project>/<KEY>
-<Title>.md`. The key is the project code, `-KB-`, and a number of at
-least three digits, such as `PDEV-KB-012`. The project code comes from
-a line in the project folder's `AGENTS.md`:
+<Title>.md`. The key is the project code, a hyphen and a number of at
+least three digits, such as `PDEV-516`. Older cards keep keys such as
+`PDEV-KB-012`, which `card` still reads. A plan written for a card
+takes the card's key, so the two notes share a key. `card` counts a
+note as a card only when its `type` field is `card`. The hub and
+sweep read a new key only when its project code has exactly four
+characters, as `PDEV` has. The project code comes from a line in the
+project folder's `AGENTS.md`:
 
 ```markdown
 Project code: `PDEV`
@@ -49,7 +54,7 @@ named vault. The shape of the key and the file name comes from the
 | `card link KEY URL` | Adds a pull request URL to `prs`. |
 | `card link KEY --session [AGENT]` | Adds a Herdr agent's session to `sessions` and logs it. Without AGENT, it uses the agent in the current pane. Refuses a session already on another card, unless this card holds it too. A session that serves a second card, such as a merge worker's, logs its work there with `card note KEY2 TEXT` instead. |
 | `card delete KEY --user` | Deletes the note. Use `dropped` instead to keep a record. |
-| `card check` | Lists cards with a broken layout, an unknown stage or kind, a key two files share, a session two cards share, or an open card whose title or work type breaks a [title rule](#title-rules). Exits 1 when it finds one. |
+| `card check` | Lists cards with a broken layout, an unknown stage or kind, a key two cards share, a note named like an old `-KB-` card without `type: card`, a session two cards share, or an open card whose title or work type breaks a [title rule](#title-rules). Exits 1 when it finds one. |
 | `card name RULE VALUE...` | Prints the name a naming rule makes. The VALUEs fill the rule's fields in order, and the last field takes the rest: `card name branch feat retry uploads` prints `feat/retry-uploads`. Refuses a name the rule would not read back, such as one with an unknown branch type. Needs no vault. |
 | `card template` | Prints the Obsidian template, `001.09 Zettel-Kanban.md`. |
 
@@ -312,9 +317,12 @@ The vault is on a network drive with sync. `card` writes a note only
 when its text changes. It writes `.<KEY>.tmp` in the same folder and
 renames it over the note. If the note changed since `card` read it,
 such as a save in Obsidian, `card` reads it again and redoes its
-change once, then stops. `card new` picks the next number under the
-lock `~/.local/state/card/new.lock`. The Obsidian template takes no
-lock, so `card check` finds a key two cards share.
+change once, then stops. `card new` picks the next number while it
+holds the lock `~/.local/state/card/new.lock`. The number is one more
+than the highest number of any card or plan with the project code, old
+keys included. `card` looks for them in every folder under Projects.
+The Obsidian template takes no lock, so `card check` finds
+a key two cards share.
 
 ## Naming rules
 ---
@@ -333,11 +341,11 @@ Each rule has a `make` template, such as `{key|lower}-{role}`, and a
 ```toml
 [agent]
 make = "{key|lower}-{role}"
-parse = '^(?P<key>[a-z][a-z0-9]*-kb-[0-9]{3,})-(?P<role>[a-z0-9-]+)$'
+parse = '^(?P<key>[a-z][a-z0-9]*-(?:kb-)?[0-9]{3,})-(?P<role>[a-z0-9-]+)$'
 ```
 
-`card name agent PDEV-KB-012 build` fills that template and prints
-`pdev-kb-012-build`.
+`card name agent PDEV-516 build` fills that template and prints
+`pdev-516-build`.
 
 `card name RULE` takes the rules `card_key`, `card_file`, `plan_file`,
 `branch`, `commit_title`, `agent`, `hub` and `review_agent`. The
