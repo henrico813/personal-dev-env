@@ -154,8 +154,10 @@ pub(super) struct PanelText {
     pub text: String,
 }
 
-/// Returns one row per event, such as ` 10:40 DEMO-KB-001
-/// demo-kb-001-build reported`, cut to `width`.
+/// Returns one line per event for the AWAY block, the list of what
+/// happened while the user was away, cut to `width`. A line about a
+/// card starts with its key, such as
+/// ` 10:40 DEMO-KB-001 demo-kb-001-build reported`.
 pub(super) fn format_away_lines(events: &[AwayEvent], width: usize) -> Vec<PanelText> {
     events
         .iter()
@@ -171,10 +173,11 @@ pub(super) fn format_away_lines(events: &[AwayEvent], width: usize) -> Vec<Panel
         .collect()
 }
 
-/// Returns the NEXT lines, such as ` you: answer DEMO-KB-001 Deploy
-/// tonight?`, cut to `width`. The you and hub parts give at most `each`
-/// lines, so the glance page's block, with `each` 1, shows one line of
-/// each part.
+/// Returns the lines of the NEXT block, which says what the user and
+/// the hub do next, cut to `width`. An example is
+/// ` you: answer DEMO-KB-001 Deploy tonight?`. The `you` and `hub`
+/// parts give at most `each` lines, so the glance page, the board's
+/// first screen, shows one line of each with `each` 1.
 pub(super) fn format_next_lines(
     groups: &[(Group, Vec<Item>)],
     no_hub: bool,

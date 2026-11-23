@@ -505,11 +505,14 @@ QUEUE; from 100 columns they sit side by side.
   the user, one `then:` line counting the cards in review, and one
   `hub:` line per Todo card in `card list` order. The block shows
   the first of each; the next view shows them all.
-- Rows in AWAY, QUEUE and NEXT that are about a card put its key
-  before their words, such as `DEMO-KB-001 Faster search`. AWAY rows
-  and waiting-session QUEUE rows take it from the first word that
-  starts with a key, such as the worker name `demo-kb-001-build`. A
-  row about a hub, or a session whose name holds no key, shows none.
+- A line about a card starts with the card's key, the ID at the
+  start of the card's name, such as `DEMO-KB-001`. So the QUEUE line
+  `run  Faster search` shows as `run  DEMO-KB-001 Faster search`.
+  An AWAY line is only text, with no card field. So the board takes
+  its key from the first word that holds one, such as `DEMO-KB-001`
+  from the session name `demo-kb-001-build`. A QUEUE line of a waiting
+  session takes its key from the session name the same way. A line
+  about no card, such as `hub: no hub running`, gets none.
 - Keys 1 to 5 open full views, named away, queue, next, sessions
   and machine, each under a `< name` breadcrumb. Tab steps through
   the views and back to the glance page. A tap on a block or its
