@@ -48,6 +48,32 @@ pub(crate) struct HubLine {
     pub name: Option<String>,
     pub session_id: Option<String>,
     pub context_tokens: Option<u64>,
+    /// The hub's pane ID when Herdr gives that pane no name.
+    pub unnamed_pane: Option<String>,
+}
+
+impl HubLine {
+    /// Returns the warning for a hub pane with no name, such as
+    /// `hub pane has no name -> herdr agent rename w1:p3 NAME`.
+    pub(crate) fn format_pane_warning(&self) -> Option<String> {
+        self.unnamed_pane
+            .as_deref()
+            .map(format_unnamed_pane_warning)
+    }
+}
+
+/// Returns the hub's own agent from its pane. A pane with no name is
+/// `HubError::NotDone`, so a handoff never records an empty hub name.
+pub(crate) fn read_named_hub_agent(tools: &Tools<'_>, own_pane: &str) -> Result<Agent, HubError> {
+    let agent = tools.herdr.get_agent(own_pane)?;
+    if agent.name.is_empty() {
+        return Err(HubError::NotDone(format_unnamed_pane_warning(own_pane)));
+    }
+    Ok(agent)
+}
+
+fn format_unnamed_pane_warning(pane: &str) -> String {
+    format!("hub pane has no name -> herdr agent rename {pane} NAME")
 }
 
 /// Gathers the facts of every live session but the hub's own, and of
@@ -283,8 +309,9 @@ pub(crate) fn collect_session_facts(
     })
 }
 
-/// Reads the hub's own agent and its context. Anything that fails
-/// leaves a field `None`, so a news line still prints.
+/// Reads the hub's own agent and its context by its pane ID, so a pane
+/// with no name still gives its context. Anything that fails leaves a
+/// field `None`, so a news line still prints.
 pub(crate) fn read_hub_line(tools: &Tools<'_>) -> HubLine {
     let Some(pane) = tools.own_pane else {
         return HubLine::default();
@@ -296,10 +323,12 @@ pub(crate) fn read_hub_line(tools: &Tools<'_>) -> HubLine {
         .session_id
         .as_deref()
         .and_then(|session| tools.opencode.read_context_tokens(session).ok().flatten());
+    let named = !agent.name.is_empty();
     HubLine {
-        name: Some(agent.name),
+        name: named.then_some(agent.name),
         session_id: agent.session_id,
         context_tokens,
+        unnamed_pane: (!named).then(|| pane.to_owned()),
     }
 }
 

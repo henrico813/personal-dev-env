@@ -192,16 +192,23 @@ fn drop_own_pane(test_tools: &mut TestTools, _handoff: &Path) {
     test_tools.own_pane = None;
 }
 
+/// Herdr gives the hub's pane no name, as after its OpenCode restarts.
+fn drop_hub_name(test_tools: &mut TestTools, _handoff: &Path) {
+    test_tools.herdr.agents[0].name = String::new();
+}
+
 /// Appending to a missing handoff would create it, and the next hub
 /// would start with none of the run's state. A run folder without
-/// `rules.md` names no model to start the next hub on. Stopping before
-/// any Herdr change leaves no tab to clean up.
+/// `rules.md` names no model to start the next hub on. A hub pane with
+/// no name would record a handoff from an empty hub name. Stopping
+/// before any Herdr change leaves no tab to clean up.
 #[test]
 fn run_handoff_stops_before_starting_without_input() {
-    let cases: [(&str, InputDropper); 3] = [
+    let cases: [(&str, InputDropper); 4] = [
         ("handoff", drop_handoff_file),
         ("rules", drop_rules_file),
         ("own-pane", drop_own_pane),
+        ("unnamed-hub-pane", drop_hub_name),
     ];
 
     for (case_name, drop_input) in cases {
