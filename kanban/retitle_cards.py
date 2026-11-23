@@ -143,7 +143,8 @@ def read_changes(text: str) -> list[Change]:
 
 
 def check_changes(
-    changes: list[Change], projects: Path
+    changes: list[Change],
+    projects: Path,
 ) -> dict[str, card.Card]:
     """Find each change's card and check its type and new title.
 
@@ -167,7 +168,7 @@ def check_changes(
         if change.title is None:
             if change.work_type not in card.WORK_TYPES:
                 problems.append(
-                    f'{change.key} "{change.work_type}" is not a work type'
+                    f'{change.key} "{change.work_type}" is not a work type',
                 )
             continue
         findings = card.check_title(change.title, change.work_type, False)
@@ -207,7 +208,7 @@ def back_up_cards(cards: list[card.Card]) -> Path:
         renamed = shlex.quote(str(note.path.parent / f"{note.key} "))
         lines.append(f"rm -f -- {renamed}*.md")
         lines.append(
-            f"cp -p -- {shlex.quote(str(copy))} {shlex.quote(str(note.path))}"
+            f"cp -p -- {shlex.quote(str(copy))} {shlex.quote(str(note.path))}",
         )
     undo = backup / "undo.sh"
     undo.write_text("\n".join(lines) + "\n", encoding="utf-8")

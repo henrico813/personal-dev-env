@@ -51,7 +51,9 @@ def read_notes(projects: Path) -> dict[str, str]:
 
 
 def test_main_without_apply_only_prints_changes(
-    projects: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    projects: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Without --apply, retitle_cards prints each change and writes none.
 
@@ -62,7 +64,7 @@ def test_main_without_apply_only_prints_changes(
     capsys.readouterr()
 
     code = retitle_cards.main(
-        [str(write_list(tmp_path, LIST)), "--projects", str(projects)]
+        [str(write_list(tmp_path, LIST)), "--projects", str(projects)],
     )
 
     assert code == 0
@@ -76,7 +78,9 @@ def test_main_without_apply_only_prints_changes(
 
 
 def test_apply_sets_cards_and_undo_restores(
-    projects: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    projects: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """--apply sets each type and title, and its undo.sh puts them back.
 
@@ -90,7 +94,7 @@ def test_apply_sets_cards_and_undo_restores(
     list_file = write_list(tmp_path, LIST)
 
     code = retitle_cards.main(
-        [str(list_file), "--projects", str(projects), "--apply"]
+        [str(list_file), "--projects", str(projects), "--apply"],
     )
 
     assert code == 0
@@ -130,7 +134,7 @@ def test_main_apply_failure_still_prints_undo(
     list_file = write_list(tmp_path, LIST)
 
     code = retitle_cards.main(
-        [str(list_file), "--projects", str(projects), "--apply"]
+        [str(list_file), "--projects", str(projects), "--apply"],
     )
 
     out, err = capsys.readouterr()
@@ -204,7 +208,7 @@ def test_main_refuses_list_when_one_fails(
     list_file = write_list(tmp_path, f"{FIRST_CARD}{lines}")
 
     code = retitle_cards.main(
-        [str(list_file), "--projects", str(projects), "--apply"]
+        [str(list_file), "--projects", str(projects), "--apply"],
     )
 
     assert code == 1

@@ -184,7 +184,7 @@ VERBS = frozenset(
     stop store support swap switch sync tag take teach tell test tidy time
     track train trim try tune turn undo unify unlock update upgrade use
     validate verify wait wake warn watch wire wrap write
-    """.split()
+    """.split(),
 )
 
 WIDTH = 60
@@ -461,13 +461,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="a question, approval or failure waiting on the user",
     )
     signal.add_argument(
-        "--answered", action="store_true", help="the user's answer"
+        "--answered",
+        action="store_true",
+        help="the user's answer",
     )
     add_author(note)
     note.set_defaults(run=run_note)
 
     add = commands.add_parser(
-        "add", help="add a bullet, or a criteria checkbox, to a section"
+        "add",
+        help="add a bullet, or a criteria checkbox, to a section",
     )
     add.add_argument("key")
     add.add_argument("section", choices=WRITABLE_SECTIONS)
@@ -475,7 +478,8 @@ def build_parser() -> argparse.ArgumentParser:
     add.set_defaults(run=run_add)
 
     attach = commands.add_parser(
-        "attach", help="copy a file to attachments and embed it in Context"
+        "attach",
+        help="copy a file to attachments and embed it in Context",
     )
     attach.add_argument("key")
     attach.add_argument("file")
@@ -506,7 +510,8 @@ def build_parser() -> argparse.ArgumentParser:
     set_.set_defaults(run=run_set)
 
     link = commands.add_parser(
-        "link", help="link a plan note, a PR URL or a Herdr session"
+        "link",
+        help="link a plan note, a PR URL or a Herdr session",
     )
     link.add_argument("key")
     link.add_argument("target", nargs="?", help="plan note name, or a PR URL")
@@ -519,7 +524,8 @@ def build_parser() -> argparse.ArgumentParser:
     delete.set_defaults(run=run_delete)
 
     rekey = commands.add_parser(
-        "rekey", help="give open cards with old keys new keys"
+        "rekey",
+        help="give open cards with old keys new keys",
     )
     rekey.add_argument(
         "--apply",
@@ -598,21 +604,21 @@ def format_moves() -> str:
     """
     lines = [
         "moves (user moves need --user; the user also makes staff moves,"
-        " with --user):"
+        " with --user):",
     ]
     for (source, target), who in MOVES.items():
         lines.append(f"  {source} -> {target}: {who}")
     lines.append(
         "a stage no single move reaches takes the shortest chain of these"
         f" moves, through {', '.join(CHAIN_STAGES[:-1])} and"
-        f" {CHAIN_STAGES[-1]}, one Log line each"
+        f" {CHAIN_STAGES[-1]}, one Log line each",
     )
     lines.append(
         f"the user moves a card past the limits of {ACTIVE_LIMIT} {ACTIVE}"
-        f" and {REVIEW_LIMIT} {IN_REVIEW} with --user"
+        f" and {REVIEW_LIMIT} {IN_REVIEW} with --user",
     )
     lines.append(
-        f"a move to {BLOCKED} needs --why, naming who the card waits on"
+        f"a move to {BLOCKED} needs --why, naming who the card waits on",
     )
     lines.append("work already under way: card new --adopt STAGE --user")
     return "\n".join(lines)
@@ -644,7 +650,7 @@ def format_card_file_help() -> str:
             "sections may appear once, in any letter case:",
             f"  {', '.join(WRITABLE_SECTIONS)}",
             "Section text is copied as written, so criteria need - [ ].",
-        ]
+        ],
     )
 
 
@@ -671,27 +677,35 @@ def run_new(args: argparse.Namespace, projects: Path) -> int:
     if args.adopt and not args.user:
         raise CardError(
             "only the user adopts work already under way."
-            " Pass --user only when the user said so."
+            " Pass --user only when the user said so.",
         )
     if args.session is not None and not args.adopt:
         raise CardError(
             "--session goes with --adopt. A draft card gets its session"
-            " when it moves to active."
+            " when it moves to active.",
         )
     require_blocked_reason(args.adopt, args.why)
     if args.from_file is not None:
         new_card = read_card_file(Path(args.from_file))
     else:
         new_card = NewCard(
-            args.title, args.kind or DEFAULT_KIND, args.work_type or "", {}
+            args.title,
+            args.kind or DEFAULT_KIND,
+            args.work_type or "",
+            {},
         )
     findings = require_passing_title(
-        new_card.title.strip(), new_card.work_type, args.user
+        new_card.title.strip(),
+        new_card.work_type,
+        args.user,
     )
     stage = args.adopt or STAGES[0]
     verb = "adopted by" if args.adopt else "by"
     entry = format_log_entry(
-        stage, f"{verb} {find_author(args)}", args.user, args.why
+        stage,
+        f"{verb} {find_author(args)}",
+        args.user,
+        args.why,
     )
     session = None
     if args.session is not None:
@@ -742,14 +756,14 @@ def read_card_file(path: Path) -> NewCard:
         if heading is None:
             if line.strip() and not seen:
                 raise CardError(
-                    f"{path} has text before its first section: {line!r}"
+                    f"{path} has text before its first section: {line!r}",
                 )
             continue
         name = heading[2].lower()
         if heading[1] != "##" or name not in allowed or name in seen:
             raise CardError(
                 f"{path} has the heading {line.strip()!r}. Each section"
-                f" may appear once: {', '.join(WRITABLE_SECTIONS)}"
+                f" may appear once: {', '.join(WRITABLE_SECTIONS)}",
             )
         seen.add(name)
     sections = {
@@ -798,7 +812,8 @@ def create_card(
         number = str(find_next_number(projects, code))
         key = make_name(find_rule("card_key"), {"code": code, "n": number})
         path = folder / make_name(
-            find_rule("card_file"), {"key": key, "title": name}
+            find_rule("card_file"),
+            {"key": key, "title": name},
         )
         text = render_card(
             key=key,
@@ -894,7 +909,7 @@ def run_board(args: argparse.Namespace, projects: Path) -> int:
         print("  ".join(f"{stage} {counts[stage]}" for stage in stages))
     print(
         f"{ACTIVE} {counts[ACTIVE]} of {ACTIVE_LIMIT},"
-        f" {IN_REVIEW} {counts[IN_REVIEW]} of {REVIEW_LIMIT}"
+        f" {IN_REVIEW} {counts[IN_REVIEW]} of {REVIEW_LIMIT}",
     )
     today = date.today()
     blocked = [
@@ -1099,7 +1114,12 @@ def run_move(args: argparse.Namespace, projects: Path) -> int:
         """Check the moves against the card as it is now, then make them."""
         current = str(read_fields(text).get("stage", ""))
         chain[:] = plan_moves(
-            text, card.key, current, args.stage, args.user, projects
+            text,
+            card.key,
+            current,
+            args.stage,
+            args.user,
+            projects,
         )
         for stage in chain:
             why = args.why if stage == args.stage else None
@@ -1132,7 +1152,10 @@ def require_blocked_reason(stage: str | None, why: str | None) -> None:
 
 
 def format_log_entry(
-    stage: str, author: str, user: bool, why: str | None
+    stage: str,
+    author: str,
+    user: bool,
+    why: str | None,
 ) -> str:
     """Return a stage Log line without its date.
 
@@ -1155,7 +1178,12 @@ def format_log_entry(
 
 
 def plan_moves(
-    text: str, key: str, current: str, target: str, user: bool, projects: Path
+    text: str,
+    key: str,
+    current: str,
+    target: str,
+    user: bool,
+    projects: Path,
 ) -> list[str]:
     """Return the stages a move passes through, target last.
 
@@ -1222,7 +1250,10 @@ def find_move_chain(current: str, target: str, user: bool) -> list[str] | None:
 
 
 def format_refused_move(
-    key: str, current: str, target: str, user: bool
+    key: str,
+    current: str,
+    target: str,
+    user: bool,
 ) -> str:
     """Return the one-line reason no chain of moves reaches target.
 
@@ -1281,10 +1312,10 @@ def check_move(
         CardError: The move is not allowed, with the reason.
     """
     if (current, target) == (DRAFT, TODO) and not CHECKBOX_RE.search(
-        read_section(text, CRITERIA) or ""
+        read_section(text, CRITERIA) or "",
     ):
         raise CardError(
-            f"add a '- [ ] ...' item to {CRITERIA} before moving to {TODO}"
+            f"add a '- [ ] ...' item to {CRITERIA} before moving to {TODO}",
         )
     # Workers start todo cards, so every move into todo is checked,
     # a staff pause included.
@@ -1299,7 +1330,7 @@ def check_move(
         if count >= limit:
             raise CardError(
                 f"{count} cards are in {target}, the limit is {limit}."
-                " Ask the user which to finish first."
+                " Ask the user which to finish first.",
             )
 
 
@@ -1372,7 +1403,7 @@ def run_attach(args: argparse.Namespace, projects: Path) -> int:
     if not name:
         raise CardError(
             f"nothing is left of the name {source.name!r} once the"
-            " characters Obsidian refuses are removed"
+            " characters Obsidian refuses are removed",
         )
     attachment = card.path.parent / "attachments" / f"{card.key} {name}"
     entry = f"- ![[{attachment.name}]]"
@@ -1407,7 +1438,7 @@ def copy_to_new_file(source: Path, target: Path) -> None:
         except FileExistsError:
             raise CardError(
                 f"{target.name} is already in {target.parent.name},"
-                " rename the file and try again"
+                " rename the file and try again",
             ) from None
         try:
             with writer:
@@ -1517,7 +1548,10 @@ def split_item(line: str) -> tuple[str, str]:
 
 
 def find_item(
-    lines: list[str], key: str, section: str, number: int
+    lines: list[str],
+    key: str,
+    section: str,
+    number: int,
 ) -> tuple[int, int]:
     """Return where item ``number`` of a section starts and stops.
 
@@ -1536,7 +1570,7 @@ def find_item(
     items = list_items(lines, section)
     if not 1 <= number <= len(items):
         raise CardError(
-            f"{key} {section} has {len(items)} items, so no item {number}"
+            f"{key} {section} has {len(items)} items, so no item {number}",
         )
     return items[number - 1]
 
@@ -1565,23 +1599,27 @@ def run_set(args: argparse.Namespace, projects: Path) -> int:
         if args.value not in WORK_TYPES:
             raise CardError(f"type is one of {', '.join(WORK_TYPES)}")
         update_card(
-            card, lambda text: set_field(text, "work_type", args.value)
+            card,
+            lambda text: set_field(text, "work_type", args.value),
         )
         print(f"{card.key} type {args.value}")
         return 0
     findings = require_passing_title(
-        args.value.strip(), card.work_type, args.user
+        args.value.strip(),
+        card.work_type,
+        args.user,
     )
     name = BAD_NAME_CHARS_RE.sub("", args.value).strip()
     if not name:
         raise CardError("the title needs a letter or digit")
     new_path = card.path.with_name(
-        make_name(find_rule("card_file"), {"key": card.key, "title": name})
+        make_name(find_rule("card_file"), {"key": card.key, "title": name}),
     )
     if new_path != card.path and new_path.exists():
         raise CardError(f"{new_path.name} already exists")
     update_card(
-        card, lambda text: set_title(text, card.key, args.value.strip())
+        card,
+        lambda text: set_title(text, card.key, args.value.strip()),
     )
     if new_path != card.path:
         os.rename(card.path, new_path)
@@ -1617,11 +1655,12 @@ def run_link(args: argparse.Namespace, projects: Path) -> int:
         if holder is not None:
             raise CardError(
                 f"session ID already on {holder.key}: {session.entry}."
-                f" To log work on {card.key}, run card note {card.key} TEXT."
+                f" To log work on {card.key}, run card note {card.key} TEXT.",
             )
         today = date.today().isoformat()
         written = update_card(
-            card, lambda text: add_session(text, today, session)
+            card,
+            lambda text: add_session(text, today, session),
         )
         already = "" if written else " (already)"
         print(f"{card.key} sessions: {session.entry}{already}")
@@ -1732,21 +1771,21 @@ def run_rekey(args: argparse.Namespace, projects: Path) -> int:
         if stuck:
             raise CardError(
                 f"{', '.join(stuck)} written but not renamed; run the last"
-                " undo line, then card rekey --apply --user again"
+                " undo line, then card rekey --apply --user again",
             )
         # A card made from an old template can take a rekeyed card's old key.
         counts = Counter(card.key for card in cards)
         counts.update(old for old in old_keys if isinstance(old, str))
         if shared := sorted(key for key, count in counts.items() if count > 1):
             raise CardError(
-                f"two cards hold {', '.join(shared)} as key or old_key"
+                f"two cards hold {', '.join(shared)} as key or old_key",
             )
         new_keys = number_open_cards(projects, cards)
         if workers := find_live_workers(
-            [card for card in cards if card.key in new_keys]
+            [card for card in cards if card.key in new_keys],
         ):
             raise CardError(
-                f"live workers on {', '.join(workers)}; wait until they end"
+                f"live workers on {', '.join(workers)}; wait until they end",
             )
         renames = list_card_renames(cards, new_keys)
         relinks = list_link_changes(projects, cards, new_keys)
@@ -1757,7 +1796,7 @@ def run_rekey(args: argparse.Namespace, projects: Path) -> int:
         if not args.apply or not (renames or relinks):
             print(
                 f"{len(renames)} cards to rekey,"
-                f" {len(relinks)} notes to relink"
+                f" {len(relinks)} notes to relink",
             )
             return 0
         try:
@@ -1771,15 +1810,20 @@ def run_rekey(args: argparse.Namespace, projects: Path) -> int:
             if finished:
                 # Read again, so each link follows its card's name by old_key.
                 relinks = list_link_changes(
-                    projects, load_all_cards(projects), {}
+                    projects,
+                    load_all_cards(projects),
+                    {},
                 )
                 finished = write_rekey_changes(
-                    projects, backup, relinks, written
+                    projects,
+                    backup,
+                    relinks,
+                    written,
                 )
             if finished:
                 print(
                     f"rekeyed {len(renames)} cards,"
-                    f" relinked {len(relinks)} notes"
+                    f" relinked {len(relinks)} notes",
                 )
         finally:
             # A stop or Ctrl-C leaves the later notes alone, so undo puts
@@ -1846,7 +1890,7 @@ def find_live_workers(cards: list[Card]) -> list[str]:
         running = json.loads(proc.stdout)["result"]["agents"]
     except (OSError, subprocess.TimeoutExpired, ValueError, KeyError) as error:
         raise CardError(
-            f"herdr agent list failed ({error}), so live workers are unknown"
+            f"herdr agent list failed ({error}), so live workers are unknown",
         ) from error
     agent_rule = find_rule("agent")
     workers = []
@@ -1864,7 +1908,8 @@ def find_live_workers(cards: list[Card]) -> list[str]:
 
 
 def list_card_renames(
-    cards: list[Card], new_keys: dict[str, str]
+    cards: list[Card],
+    new_keys: dict[str, str],
 ) -> list[NoteChange]:
     """Work out each rekeyed card's new path, ``old_key`` and heading.
 
@@ -1887,7 +1932,7 @@ def list_card_renames(
             continue
         new_key = new_keys[card.key]
         new_path = card.path.with_name(
-            new_key + card.path.name[len(card.key) :]
+            new_key + card.path.name[len(card.key) :],
         )
         if new_path.exists():
             raise CardError(f"{new_path.name} already exists")
@@ -1900,7 +1945,9 @@ def list_card_renames(
 
 
 def list_link_changes(
-    projects: Path, cards: list[Card], new_keys: dict[str, str]
+    projects: Path,
+    cards: list[Card],
+    new_keys: dict[str, str],
 ) -> list[NoteChange]:
     """Work out each note whose links change, and write nothing.
 
@@ -1932,7 +1979,8 @@ def list_link_changes(
         mtime_ns = path.stat().st_mtime_ns
         text = path.read_text(encoding="utf-8")
         new_text = LINK_TARGET_RE.sub(
-            lambda link: f"[[{targets.get(link[1], link[1])}", text
+            lambda link: f"[[{targets.get(link[1], link[1])}",
+            text,
         )
         if new_text != text:
             changes.append(NoteChange(path, path, new_text, mtime_ns))
@@ -1999,7 +2047,9 @@ def write_rekey_changes(
 
 
 def write_undo_script(
-    projects: Path, backup: Path, written: list[NoteChange]
+    projects: Path,
+    backup: Path,
+    written: list[NoteChange],
 ) -> Path:
     """Write an undo.sh in the backup folder that restores the written notes.
 
@@ -2061,7 +2111,7 @@ def run_check(args: argparse.Namespace, projects: Path) -> int:
             holder = holders.setdefault(entry, card.key)
             if holder != card.key:
                 problems.append(
-                    f"{card.key} session also on {holder}: {entry}"
+                    f"{card.key} session also on {holder}: {entry}",
                 )
     for problem in problems:
         print(fit(problem))
@@ -2097,7 +2147,9 @@ def find_card_issues(card: Card) -> list[str]:
 
 
 def require_passing_title(
-    title: str, work_type: str, user: bool
+    title: str,
+    work_type: str,
+    user: bool,
 ) -> list[TitleFinding]:
     """Refuse a title that fails a rule, else return its findings.
 
@@ -2132,12 +2184,12 @@ def format_title_refusal(failing: list[TitleFinding]) -> str:
     if any(finding.rule != "T3" for finding in failing):
         lines.append(
             f"Put a verb first, at most {TITLE_LIMIT} characters,"
-            ' such as "Retry failed uploads".'
+            ' such as "Retry failed uploads".',
         )
     if any(finding.rule == "T3" for finding in failing):
         lines.append(f"Work types: {', '.join(WORK_TYPES)}.")
         lines.append(
-            "Give one with card new --type T, or card set KEY type T."
+            "Give one with card new --type T, or card set KEY type T.",
         )
     return "\n".join(lines)
 
@@ -2270,7 +2322,7 @@ def run_name(args: argparse.Namespace) -> int:
     # naming a branch or agent.
     if parse_name(rule, name) is None:
         raise CardError(
-            f"{name} does not fit the {rule.name} rule {rule.make}"
+            f"{name} does not fit the {rule.name} rule {rule.make}",
         )
     print(name)
     return 0
@@ -2575,7 +2627,9 @@ def set_field(text: str, name: str, value: str | list[str]) -> str:
 
 
 def find_field(
-    lines: list[str], end: int, name: str
+    lines: list[str],
+    end: int,
+    name: str,
 ) -> tuple[int, int] | None:
     """Return the lines a frontmatter field spans, list items included.
 
@@ -2774,7 +2828,10 @@ def update_card(card: Card, change: Callable[[str], str]) -> bool:
 
 
 def write_safely(
-    path: Path, key: str, text: str, expected_mtime_ns: int | None = None
+    path: Path,
+    key: str,
+    text: str,
+    expected_mtime_ns: int | None = None,
 ) -> bool:
     """Write a note through ``.<KEY>.tmp`` and a rename.
 
@@ -3041,7 +3098,7 @@ def find_rules_file() -> Path:
     path = Path(shown).expanduser()
     if not path.is_file():
         raise CardError(
-            f"no naming rules at {shown}: run pde-installer install"
+            f"no naming rules at {shown}: run pde-installer install",
         )
     return path
 
@@ -3071,7 +3128,7 @@ def read_rules_file(path: Path) -> dict[str, Rule]:
     if version != RULES_VERSION:
         raise CardError(
             f"{path} is version {version}; this card reads version"
-            f" {RULES_VERSION}"
+            f" {RULES_VERSION}",
         )
     for name, table in tables.items():
         if not isinstance(table, dict):
@@ -3104,13 +3161,13 @@ def build_rule(path: Path, name: str, table: dict[str, Any]) -> Rule:
         if filter_name and filter_name not in FILTERS:
             raise CardError(
                 f"{path}: rule {name} has unknown filter {filter_name};"
-                f" filters are {', '.join(FILTERS)}"
+                f" filters are {', '.join(FILTERS)}",
             )
     try:
         pattern = re.compile(parse)
     except re.error as error:
         raise CardError(
-            f"{path}: rule {name} has a bad pattern {parse!r}: {error}"
+            f"{path}: rule {name} has a bad pattern {parse!r}: {error}",
         ) from error
     return Rule(name, make, pattern)
 
@@ -3154,7 +3211,7 @@ def read_project_code(folder: Path) -> str:
     if not match:
         raise CardError(
             f"{folder.name} has no 'Project code:' line in AGENTS.md."
-            " Ask the user for one."
+            " Ask the user for one.",
         )
     return match[1]
 
@@ -3174,7 +3231,10 @@ def find_projects_folder(vault: str | None) -> Path:
     command = ["nobs", "vault", "path", *([vault] if vault else [])]
     try:
         proc = subprocess.run(
-            command, capture_output=True, text=True, timeout=20
+            command,
+            capture_output=True,
+            text=True,
+            timeout=20,
         )
     except (OSError, subprocess.TimeoutExpired) as error:
         raise CardError(f"{' '.join(command)} failed: {error}") from error
@@ -3218,7 +3278,7 @@ def find_author(args: argparse.Namespace) -> str:
         agents = json.loads(proc.stdout)["result"]["agents"]
     except (OSError, subprocess.TimeoutExpired, ValueError, KeyError) as error:
         raise CardError(
-            f"herdr agent list failed ({error}), so no author. {hint}"
+            f"herdr agent list failed ({error}), so no author. {hint}",
         ) from error
     names = [
         agent.get("name") for agent in agents if agent.get("pane_id") == pane
@@ -3247,7 +3307,10 @@ def find_agent_session(agent: str) -> AgentSession:
     command = ["herdr", "agent", "get", target]
     try:
         proc = subprocess.run(
-            command, capture_output=True, text=True, timeout=10
+            command,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
     except (OSError, subprocess.TimeoutExpired) as error:
         raise CardError(f"{' '.join(command)} failed: {error}") from error
@@ -3258,7 +3321,7 @@ def find_agent_session(agent: str) -> AgentSession:
     except (ValueError, KeyError, TypeError) as error:
         raise CardError(
             f"{' '.join(command)} gave no session:"
-            f" {(proc.stderr or proc.stdout).strip()}"
+            f" {(proc.stderr or proc.stdout).strip()}",
         ) from error
     return AgentSession(found.get("name") or target, f"{kind} {session_id}")
 
