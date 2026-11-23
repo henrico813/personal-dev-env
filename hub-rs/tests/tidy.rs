@@ -133,46 +133,70 @@ fn run_clean_dry_run_changes_nothing() {
 /// that became safe to close after the list was made must stay open,
 /// or y would close a tab the user never saw named. The listed session
 /// reported to another hub's run, since the dialog lists every hub's.
+/// An unlisted session in the listed one's tab keeps that tab too.
 #[test]
 fn run_clean_listed_keeps_unlisted_sessions_open() {
-    let mut test_tools = TestTools::new();
-    add_finished_worker(
-        &mut test_tools,
-        "demo-kb-001-impl",
-        "DEMO-KB-001",
-        Stage::Done,
-    );
-    add_finished_worker(
-        &mut test_tools,
-        "demo-kb-002-impl",
-        "DEMO-KB-002",
-        Stage::Done,
-    );
-    let other_run = test_tools.path().join("other-run");
-    fs::create_dir(&other_run).unwrap();
-    let archive = "report-demo-kb-001-impl.2214.read";
-    fs::rename(test_tools.run_path().join(archive), other_run.join(archive)).unwrap();
-    let now = make_time("2026-11-11T22:14:00+00:00[UTC]");
+    let cases = [
+        (
+            "own-tab",
+            "w1:t-demo-kb-002-impl",
+            vec!["closed demo-kb-001-impl: DEMO-KB-001 done"],
+            vec!["w1:t-demo-kb-001-impl"],
+        ),
+        (
+            "shared-tab",
+            "w1:t-demo-kb-001-impl",
+            vec![
+                "kept demo-kb-001-impl: its tab holds other work",
+                "nothing to close",
+            ],
+            Vec::new(),
+        ),
+    ];
 
-    let outcome = run_clean_listed(
-        &test_tools.tools(),
-        &test_tools.run(),
-        &["demo-kb-001-impl".to_owned()],
-        &now,
-    )
-    .unwrap();
+    for (case_name, unlisted_tab, expected_lines, expected_closed) in cases {
+        let mut test_tools = TestTools::new();
+        add_finished_worker(
+            &mut test_tools,
+            "demo-kb-001-impl",
+            "DEMO-KB-001",
+            Stage::Done,
+        );
+        add_finished_worker(
+            &mut test_tools,
+            "demo-kb-002-impl",
+            "DEMO-KB-002",
+            Stage::Done,
+        );
+        test_tools.herdr.agents[1].tab_id = unlisted_tab.to_owned();
+        let other_run = test_tools.path().join("other-run");
+        fs::create_dir(&other_run).unwrap();
+        let archive = "report-demo-kb-001-impl.2214.read";
+        fs::rename(test_tools.run_path().join(archive), other_run.join(archive)).unwrap();
+        let now = make_time("2026-11-11T22:14:00+00:00[UTC]");
 
-    assert_eq!(outcome.lines, ["closed demo-kb-001-impl: DEMO-KB-001 done"]);
-    assert_eq!(
-        *test_tools.herdr.closed_tabs.borrow(),
-        ["w1:t-demo-kb-001-impl"]
-    );
+        let outcome = run_clean_listed(
+            &test_tools.tools(),
+            &test_tools.run(),
+            &["demo-kb-001-impl".to_owned()],
+            &now,
+        )
+        .unwrap();
+
+        assert_eq!(outcome.lines, expected_lines, "{case_name}");
+        assert_eq!(
+            *test_tools.herdr.closed_tabs.borrow(),
+            expected_closed,
+            "{case_name}"
+        );
+    }
 }
 
 /// Every hub on the machine sees every Herdr agent, so `run_clean`
-/// must close only the workers of its own run. Closing another hub's
-/// finished worker, such as an auto run's, ends a session that hub
-/// still tracks, and the user loses its tab with no word from its hub.
+/// must never touch a tab with none of its run's sessions. Closing
+/// another hub's finished worker, such as an auto run's, ends a session
+/// that hub still tracks, and the user loses its tab with no word from
+/// its hub.
 #[test]
 fn run_clean_leaves_other_runs_workers_open() {
     let mut test_tools = TestTools::new();
@@ -201,6 +225,45 @@ fn run_clean_leaves_other_runs_workers_open() {
         *test_tools.herdr.closed_tabs.borrow(),
         ["w1:t-demo-kb-001-impl"]
     );
+}
+
+/// The tidy pass gets every session on the machine, but `run_clean`
+/// must leave another run's parked record to that run, even when its
+/// card is done. It must also print no `kept` line for another hub, or
+/// every clean lists every hub on the machine.
+#[test]
+fn run_clean_skips_sessions_outside_its_run() {
+    let mut test_tools = TestTools::new();
+    // The run's own done worker closes, so the lines show the pass ran.
+    add_finished_worker(
+        &mut test_tools,
+        "demo-kb-001-impl",
+        "DEMO-KB-001",
+        Stage::Done,
+    );
+    test_tools
+        .herdr
+        .agents
+        .push(make_agent("kanban-hub-2", AgentStatus::Idle));
+    test_tools
+        .cards
+        .stages
+        .insert("DEMO-KB-003".to_owned(), Stage::Done);
+    let parked = test_tools.state_folder().join("hub/parked");
+    fs::create_dir_all(&parked).unwrap();
+    let record = json!({
+        "name": "demo-kb-003-auto",
+        "session_id": "ses_003",
+        "card": "DEMO-KB-003",
+        "workspace_label": "DEMO-KB-003 auto",
+        "parked_at": "2026-11-10T22:41:00Z",
+    });
+    fs::write(parked.join("demo-kb-003-auto.json"), record.to_string()).unwrap();
+
+    let outcome = clean(&test_tools, false);
+
+    assert_eq!(outcome.lines, ["closed demo-kb-001-impl: DEMO-KB-001 done"]);
+    assert!(read_parked_record(&test_tools, "demo-kb-003-auto").is_some());
 }
 
 /// A run also knows a worker by the `notes.md` line `run_launch`
@@ -254,6 +317,90 @@ fn run_clean_closes_sessions_this_run_knows() {
         let outcome = clean(&test_tools, false);
 
         assert_eq!(outcome.lines, [case.line], "{}", case.name);
+    }
+}
+
+/// An old hub's tab can hold an agent an older run left there, which no
+/// current run knows. A done one must close with the old hub, or the tab
+/// stays open for good. A working one must keep the tab, or its turn is
+/// cut off. When the user's pane keeps the tab, the done one gets no
+/// `kept` line, since this run does not know it.
+#[test]
+fn run_clean_judges_agents_sharing_hub_tab() {
+    let cases = [
+        (
+            "done-worker",
+            AgentStatus::Idle,
+            false,
+            vec!["closed kanban-hub-3, demo-kb-002-auto: handed off, DEMO-KB-002 done"],
+            vec!["w1:t-kanban-hub-3"],
+        ),
+        (
+            "working-worker",
+            AgentStatus::Working,
+            false,
+            vec![
+                "kept kanban-hub-3: its tab holds other work",
+                "nothing to close",
+            ],
+            Vec::new(),
+        ),
+        (
+            "focused-shell",
+            AgentStatus::Idle,
+            true,
+            vec![
+                "kept kanban-hub-3: its tab holds other work",
+                "nothing to close",
+            ],
+            Vec::new(),
+        ),
+    ];
+
+    for (case_name, worker_status, focused_shell, expected_lines, expected_closed) in cases {
+        let mut test_tools = TestTools::new();
+        let folder = test_tools.path().to_owned();
+        test_tools.herdr.agents.push(Agent {
+            session_id: Some("ses_kanban-hub-3".to_owned()),
+            folders: vec![folder.clone()],
+            ..make_agent("kanban-hub-3", AgentStatus::Idle)
+        });
+        // The worker shares the old hub's tab and never reported to this run.
+        test_tools.herdr.agents.push(Agent {
+            session_id: Some("ses_demo-kb-002-auto".to_owned()),
+            tab_id: "w1:t-kanban-hub-3".to_owned(),
+            folders: vec![folder],
+            ..make_agent("demo-kb-002-auto", worker_status)
+        });
+        test_tools
+            .cards
+            .stages
+            .insert("DEMO-KB-002".to_owned(), Stage::Done);
+        test_tools
+            .cards
+            .card_notes
+            .insert("DEMO-KB-002".to_owned(), CardNote::default());
+        if focused_shell {
+            test_tools.herdr.on_list_panes = Some(Box::new(|| {
+                vec![Pane {
+                    pane_id: "w1:p-user".to_owned(),
+                    tab_id: "w1:t-kanban-hub-3".to_owned(),
+                    focused: true,
+                    has_agent: false,
+                }]
+            }));
+        }
+        let handoff = r#"{"at":"2026-11-11T22:00:00Z","event":"handoff","old":"kanban-hub-3","tab":"w1:t-kanban-hub-3","new":"kanban-hub-4"}"#;
+        fs::write(test_tools.run_path().join("events.jsonl"), handoff).unwrap();
+
+        let outcome = clean(&test_tools, false);
+
+        assert_eq!(outcome.lines, expected_lines, "{case_name}");
+        assert_eq!(
+            *test_tools.herdr.closed_tabs.borrow(),
+            expected_closed,
+            "{case_name}"
+        );
     }
 }
 

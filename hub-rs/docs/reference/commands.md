@@ -456,11 +456,15 @@ machines' agents through its own filter.
 ### clean
 
 `hub clean [--run DIR] [--dry-run]` closes the tab of each `to-close`
-session and parks each `to-park` session. It acts only on the
-sessions of DIR's run: those `hub launch` started from DIR, those
-that reported to DIR, and the old hubs DIR handed off from. Another
-hub's sessions stay open and get no `closed`, `parked` or `kept`
-line. Only `clean` and `park` close tabs.
+session and parks each `to-park` session. It acts only on tabs that
+hold a session of DIR's run: those `hub launch` started from DIR,
+those that reported to DIR, and the old hubs DIR handed off from. A
+tab with none of them stays open. A finished `to-close` session of
+another run closes with a tab it shares with DIR's sessions, and the
+`closed` line names it. Any other agent there keeps the tab. Another
+run's sessions get no `parked` line, and a `kept` line only when the
+planned close of a tab they share stops. Only `clean` and `park`
+close tabs.
 
 - `closed NAME: WHY` and `parked NAME: KEY in-review`.
 - `forgot NAME`: a parked session that is live again.
