@@ -156,7 +156,7 @@ pub(super) struct PanelText {
 
 /// Returns one line per event for the AWAY block, the list of what
 /// happened while the user was away, cut to `width`. A line about a
-/// card starts with its key, such as
+/// card starts with its card key, such as
 /// ` 10:40 DEMO-KB-001 demo-kb-001-build reported`.
 pub(super) fn format_away_lines(events: &[AwayEvent], width: usize) -> Vec<PanelText> {
     events

@@ -384,8 +384,8 @@ pub(super) fn describe_card(card: &CardLine, note: Option<&CardNote>) -> Vec<Str
 /// Returns a board line's words with the card key in front, such as
 /// `DEMO-KB-001 Faster search` from `Faster search`. A card key is the
 /// ID at the start of a card's name. Words with no card, or that
-/// already start with the key, come back unchanged. Empty words give
-/// the key alone.
+/// already start with the card key, come back unchanged. Empty words
+/// give the card key alone.
 pub(super) fn put_card_key_first(key: Option<&CardKey>, words: &str) -> String {
     match key {
         Some(key) if words.is_empty() => key.as_str().to_owned(),
@@ -472,10 +472,11 @@ mod tests {
         assert_eq!(in_review[0].status, Status::Run);
     }
 
-    /// An agent's question often starts with its card's key already,
-    /// such as `DEMO-KB-001: Deploy tonight?`, and a 40-column phone
-    /// line has no room for the key twice. A session name, such as
-    /// `demo-kb-001-build`, is in lower case, so it still gets the key.
+    /// An agent's question often starts with its card key already, such
+    /// as `DEMO-KB-001: Deploy tonight?`, and a 40-column phone line has
+    /// no room for the card key twice. A session name, such as
+    /// `demo-kb-001-build`, is in lower case, so it still gets the card
+    /// key.
     #[test]
     fn put_card_key_first_keeps_existing_key() {
         let key: CardKey = "DEMO-KB-001".parse().unwrap();

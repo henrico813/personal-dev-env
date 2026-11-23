@@ -1212,7 +1212,7 @@ pub(super) mod tests {
     /// next? The phone's first screen, 40 by 16, must answer all
     /// three with no key pressed. A block cut off, or a queue row without
     /// its status word, leaves one question open. A line about a card
-    /// starts with the card's key, such as `DEMO-KB-001`, so the user
+    /// starts with its card key, such as `DEMO-KB-001`, so the user
     /// can tell which plan goes with the card.
     #[test]
     fn render_lines_glance_answers_three_questions() {

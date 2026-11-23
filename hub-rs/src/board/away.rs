@@ -50,11 +50,11 @@ pub(crate) fn read_events(
 
 /// Returns the card key in an event's text, such as `DEMO-KB-001` from
 /// `demo-kb-001-build reported`. An event has no card field, so the
-/// key comes from the first word that holds one. An event whose words
-/// hold no key gives `None`.
+/// card key comes from the first word that holds one. An event whose
+/// words hold no card key gives `None`.
 pub(crate) fn find_event_card(event: &AwayEvent) -> Option<CardKey> {
     event.text.split_whitespace().find_map(|word| {
-        // Skip a bracket before the key, since a hub's note can hold
+        // Skip a bracket before the card key, since a hub's note can hold
         // `(DEMO-KB-010 in-review)`.
         CardKey::find_in_name(word.trim_start_matches(|letter: char| !letter.is_alphanumeric()))
     })
