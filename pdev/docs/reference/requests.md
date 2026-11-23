@@ -43,10 +43,12 @@ Refused to keep a stack of PRs in order, one approval per PR:
 
 A PR in a GitHub stack merges through that API instead of `gh pr merge`,
 which GitHub refuses for it; `pde-gh-write` waits up to 25 seconds for
-the result. After a merge succeeds without `--auto`, it moves the open
-PRs based on the merged branch to the merged PR's base, except PRs in a
-GitHub stack, which GitHub moves itself. If it cannot look up the PR, it
-runs `gh pr merge` as given and moves nothing.
+the result. When a merge without `--auto` fails, it reads the PR again
+and counts the merge as done if GitHub shows it merged. After a merge
+succeeds without `--auto`, it moves the open PRs based on the merged
+branch to the merged PR's base, except PRs in a GitHub stack, which
+GitHub moves itself. If it cannot look up the PR, it runs `gh pr merge`
+as given and moves nothing.
 
 ## States
 
@@ -62,7 +64,7 @@ runs `gh pr merge` as given and moves nothing.
 
 | Code | Meaning |
 |---|---|
-| `0` | `gh` succeeded, now or in an earlier run |
+| `0` | `gh` succeeded, now or in an earlier run, or a merge call failed but GitHub then showed the PR merged |
 | `1` | This program failed, such as no real `gh` or an unreadable record, or GitHub failed or had not finished a stack merge |
 | `2` | The command or its arguments were refused |
 | `3` | No answer within 90 seconds; the runner runs `gh` once approved, so rerun only to read the result |
@@ -360,7 +362,7 @@ Record fields, with those omitted when empty marked as optional:
 | `created` | Creation time; orders the queue |
 | `updated` | Last save; expiry counts from it |
 | `state` | See [states](#states) |
-| `exit_code` | `gh`'s exit code once it ran |
+| `exit_code` | The exit code pde-gh-write returns for the run |
 | `output` (optional) | Up to 64 KiB of `gh`'s standard output and error |
 | `moshi_pid`, `runner_pid` (optional) | Process IDs of the running phone question and runner |
 | `dismissed` (optional) | Dismissed from the popup |
