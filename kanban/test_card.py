@@ -409,14 +409,9 @@ class TestMove:
         flags: list[str],
         criteria: str,
     ) -> None:
-        """A refused move fails and does not touch the note.
+        """A refused move exits 1 and leaves the note unchanged.
 
-        If the user or an agent released a card with no acceptance
-        checkbox, a worker would start with no test of when it is done,
-        also when the release is the first move of a chain. Reopening a
-        done card would let follow-up work skip a new card and its
-        checks. A blocked card with no reason would leave the user not
-        knowing whom to chase.
+        A half-applied move would leave a card in a stage its checks reject.
         """
         path = write_card(projects, KEY, stage, criteria)
         before = path.read_text()
@@ -429,13 +424,9 @@ class TestMove:
         assert path.read_text() == before
 
     def test_move_releases_draft_and_logs_agent(self, projects: Path) -> None:
-        """A move sets the stage and its date, and logs who made it.
+        """A draft moved to todo logs the agent who moved it.
 
-        The staff agent rebuilds its picture of the work from the cards
-        after a restart, so the stage and the Log must both change. The
-        board and the Base sort by stage_date, which every move updates.
-        An agent releasing a card with one checkbox must also work, and
-        the Log must name the agent, not the user.
+        The user reads the Log to see which agent released a card.
         """
         path = write_card(projects, KEY, "draft", "- [ ] Done.")
 
@@ -1662,10 +1653,7 @@ class TestTitleRules:
     ) -> None:
         """A move into or through todo refuses a failing title.
 
-        Workers start todo cards, so a worker never starts on a card
-        whose title breaks the rules. A staff pause back to todo counts
-        too, and so does an agent's release from draft, also when it is
-        the first move of a chain. The card stays as it was.
+        Workers start todo cards, so a bad title must stop before todo.
         """
         path = write_card(projects, KEY, stage, criteria, title="Some work")
         before = path.read_text()

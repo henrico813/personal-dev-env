@@ -280,6 +280,11 @@ vault. A hub never reports to a hub on another machine.
   card. A short chat holds none. A card is one piece of work, so
   sessions on the same work share one card, and its `sessions` list
   keeps each of them.
+- You may release a draft to `todo` once its Acceptance Criteria section
+  has a `- [ ]` line and its title passes the title rules; a refused
+  `card move` says why. Never add criteria yourself to release a card;
+  the user sets them. Note each release as `references/hub-brief.md`
+  says. Only the user adopts work already under way or drops a card.
 - Two limits, each across every project: 8 cards in `active` and 6
   in `in-review`, as `card board` shows. `card` refuses a move into a
   full stage unless the move has `--user`. While active has room,
@@ -309,11 +314,6 @@ vault. A hub never reports to a hub on another machine.
 - When one wake needs several card commands, such as `card note`,
   `card move` and `card add`, put them in one shell script and run it
   in one tool call.
-- Release a draft (move it to `todo`) when `card move` accepts it,
-  which needs an Acceptance Criteria checkbox and a passing title.
-  Never add the criteria yourself just to release a card the user is
-  still writing. Note each release as `references/hub-brief.md` says.
-  Only the user adopts work already under way or drops a card.
 - A card's key starts with its project's code, from the
   `Project code:` line in the project folder's `AGENTS.md`. For a
   project with none, propose the prefix its plans already use, or a

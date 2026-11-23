@@ -1280,8 +1280,6 @@ def check_move(
     Raises:
         CardError: The move is not allowed, with the reason.
     """
-    # Only a release from draft needs criteria. Paused work may be
-    # adopted work that has none yet.
     if (current, target) == (DRAFT, TODO) and not CHECKBOX_RE.search(
         read_section(text, CRITERIA) or ""
     ):

@@ -37,9 +37,11 @@ line.
 Record each draft you release under Cards in SKILL.md with a
 `hub note` line that starts `released <KEY>`. `hub brief` does not
 list them. After its own parts, add a "Released by the hub" list: one
-line for each `released` note since you last showed the brief, with
-the card's key, title and stage now. It is news for the user, not a
-question.
+line for each `released` line in `notes.md` since the last
+`brief shown` line, or in the whole file when it has none yet, with
+the card's key, title and stage now. Leave the list out when it would
+be empty. It is news for the user, not a question. Then add a
+`hub note` line `brief shown`.
 
 ## A question file
 
