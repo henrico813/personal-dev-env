@@ -48,10 +48,10 @@ pub(crate) fn read_events(
     Ok(events)
 }
 
-/// Returns the key of the card an event is about, from the first word
-/// that starts with a key, such as `demo-kb-001-build` in
-/// `demo-kb-001-build reported`. A session whose name holds no key,
-/// such as a hub, gives `None`.
+/// Returns the key of the card an AWAY event is about. The event is
+/// only text, such as `demo-kb-001-build reported`, with no card
+/// field, so the key comes from the first word that holds one: here
+/// the worker name gives `DEMO-KB-001`. A hub's event gives `None`.
 pub(crate) fn find_event_card(event: &AwayEvent) -> Option<CardKey> {
     event.text.split_whitespace().find_map(|word| {
         // A parked line puts the key after a bracket, as in

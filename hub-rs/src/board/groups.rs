@@ -112,15 +112,18 @@ impl Status {
     }
 }
 
-/// One row of a group.
+/// One line of the board's QUEUE block, such as
+/// ` you  DEMO-KB-001 Faster search  DevEnv`. It is about a card, a
+/// question an agent asked the user, a waiting session or a problem.
 #[derive(Debug)]
 pub(super) struct Item {
     /// Stays the same across reads, so the choice can follow the row.
     /// It is a card key, a question title, a session name or the
     /// problem.
     pub id: String,
-    /// The row's words, after its card key when it has a card, such as
-    /// `DEMO-KB-001 Faster search`.
+    /// The words between the line's status word and its tag, such as
+    /// `DEMO-KB-001 Faster search`. A line about a card starts with
+    /// the card's key. NEXT lines reuse these words.
     pub text: String,
     /// A short word for the row's right end, such as `DevEnv` for the
     /// project folder of a card or of a question's card.
@@ -378,9 +381,11 @@ pub(super) fn describe_card(card: &CardLine, note: Option<&CardNote>) -> Vec<Str
     lines
 }
 
-/// Returns `words` after the card key, such as `DEMO-KB-001 Faster
-/// search`. Words that already start with the key, as a question title
-/// may, come back unchanged, and so do words with no key.
+/// Returns the words of one board line with the card key in front,
+/// such as `DEMO-KB-001 Faster search` from `Faster search`. QUEUE,
+/// NEXT and AWAY lines all use it. Words with no card, or that start
+/// with the key already, such as `DEMO-KB-001: Deploy tonight?`, come
+/// back unchanged.
 pub(super) fn put_card_key_first(key: Option<&CardKey>, words: &str) -> String {
     match key {
         Some(key) if words.is_empty() => key.as_str().to_owned(),
@@ -390,8 +395,9 @@ pub(super) fn put_card_key_first(key: Option<&CardKey>, words: &str) -> String {
     }
 }
 
-/// Returns a card's row, its key and title with its project folder as
-/// the tag. `sessions` give the states of its workers.
+/// Returns the QUEUE line of one card: its key and title, with its
+/// project folder, such as `DevEnv`, as the tag. `sessions` give the
+/// states of its workers.
 fn build_card_item(index: usize, card: &CardLine, sessions: &[SessionRow]) -> Item {
     Item {
         id: card.key.as_str().to_owned(),
@@ -466,10 +472,11 @@ mod tests {
         assert_eq!(in_review[0].status, Status::Run);
     }
 
-    /// A question title often starts with its card's key already, and a
-    /// phone row cannot spare the room for it twice. A session name in
-    /// lower case, such as `demo-kb-001-build`, is not the key, so the
-    /// key still goes first.
+    /// An agent's question to the user often starts with its card's
+    /// key, such as `DEMO-KB-001: Deploy tonight?`, and a 40-column
+    /// phone line has no room for the key twice. A worker name, such as
+    /// `demo-kb-001-build`, is in lower case, so the key still goes in
+    /// front of it.
     #[test]
     fn put_card_key_first_keeps_existing_key() {
         let key: CardKey = "DEMO-KB-001".parse().unwrap();

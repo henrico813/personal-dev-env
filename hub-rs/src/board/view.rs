@@ -1211,8 +1211,9 @@ pub(super) mod tests {
     /// were away? What is in the queue, and does it run now? What comes
     /// next? The phone's first screen, 40 by 16, must answer all
     /// three with no key pressed. A block cut off, or a queue row without
-    /// its status word, leaves one question open. A row about a card
-    /// starts with its key, so the user can find the card behind it.
+    /// its status word, leaves one question open. A line about a card
+    /// starts with its key, so the user can tell which plan goes with
+    /// the card.
     #[test]
     fn render_lines_glance_answers_three_questions() {
         let mut board = Board::new(false);
