@@ -188,7 +188,7 @@ skill never edits a note. When the user approves, set
 1. For each block that has content and that `Written:` does not
    list, in the order of step 3, run `obsidian-daily-note` once with
    the block's heading and content. Skip each empty block.
-2. That skill owns the write, so its own Approval step still runs
+2. That skill owns the write, so its own approval step still runs
    for each block. Pass its question to the user, and let the user
    answer it. Its heading and content must be the draft's text, word
    for word. When they differ, stop and tell the user.
