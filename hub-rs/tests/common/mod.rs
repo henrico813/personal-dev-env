@@ -14,8 +14,8 @@ use hub::external::cards::{
     BlockedCard, Board, BoardCounts, CardError, CardKey, CardNote, Cards, ListedCard, Mark, Stage,
 };
 use hub::external::herdr::{
-    Agent, AgentKind, AgentStart, AgentStatus, DeskBoard, Herdr, HerdrCode, HerdrError, HubKind,
-    NewPlace, Pane, PlaceIds, ProcessInfo, Workspace,
+    Agent, AgentKind, AgentStart, AgentStatus, DeskBoard, Herdr, HerdrCode, HerdrError, NewPlace,
+    Pane, PaneDestination, PlaceIds, ProcessInfo, Workspace,
 };
 use hub::external::opencode::OpenCodeDb;
 use hub::external::requests::RequestFolder;
@@ -28,12 +28,15 @@ use serde_json::Value;
 
 /// Herdr, as the `Herdr` trait, with its agents and workspaces in
 /// memory. It records each prompt, Enter press, mark, clear, hub tag,
-/// desk agent, agent filter, new workspace, new tab, command run in a pane, started
-/// agent, closed tab, focus and workspace move it is asked for. Its
-/// panes are the agents' panes and those `on_list_panes` adds or
-/// changes, and an agent whose tab was closed is gone.
+/// `go_to` write, desk agent, agent filter, new workspace, new tab,
+/// command run in a pane, started agent, closed tab, focus, workspace
+/// move, pane move and tab move it is asked for. Its panes are the
+/// agents' panes and those `on_list_panes` adds or changes, and an
+/// agent whose tab was closed is gone.
 #[derive(Default)]
 pub struct InMemoryHerdr {
+    /// The agents, with an empty name for one nobody named, which only
+    /// `list_agent_panes` returns.
     pub agents: Vec<Agent>,
     /// Agents as they are once any prompt was tried, each in place of
     /// the agent with its name, such as one the user focused meanwhile.
@@ -66,18 +69,24 @@ pub struct InMemoryHerdr {
     pub program_in_front: Vec<String>,
     /// The workspaces in sidebar order, top first.
     pub workspaces: Vec<Workspace>,
+    /// Each workspace's tab IDs in tab order, by workspace ID, before
+    /// any `move_tab`. A workspace not listed has no tabs.
+    pub tabs: BTreeMap<String, Vec<String>>,
     /// Each `mark_needs_you` call, as its pane ID and states.
     pub marks: RefCell<Vec<(String, Vec<AgentStatus>)>>,
     /// The pane ID of each `clear_marks` call.
     pub cleared: RefCell<Vec<String>>,
-    /// Each `tag_hub_pane` call, as its pane ID and hub kind.
-    pub tagged_hubs: RefCell<Vec<(String, HubKind)>>,
+    /// Each `tag_hub_pane` call, as its pane ID and `go_to` value.
+    pub tagged_hubs: RefCell<Vec<(String, String)>>,
+    /// Each `set_go_to` call, as its pane ID and value, `None` for a
+    /// clear.
+    pub go_to_writes: RefCell<Vec<(String, Option<String>)>>,
     /// The desk workspaces whose board pane already shows in the
     /// desk's place. `find_desk_board` names each desk's board pane
     /// `<workspace>:p-board`.
     pub shown_desks: Vec<String>,
-    /// The pane ID of each `show_desk_as_agent` call.
-    pub desk_agents: RefCell<Vec<String>>,
+    /// Each `show_desk_as_agent` call, as its pane ID and `go_to` value.
+    pub desk_agents: RefCell<Vec<(String, String)>>,
     /// How many times `filter_agent_list` was called.
     pub agent_filters: Cell<usize>,
     /// The agent name of each `focus_agent` call.
@@ -85,6 +94,11 @@ pub struct InMemoryHerdr {
     /// Each `move_workspaces` call, as the IDs moved and the ID they
     /// went before.
     pub moves: RefCell<Vec<(Vec<String>, String)>>,
+    /// Each `move_pane` call, as the pane ID and its destination.
+    pub moved_panes: RefCell<Vec<(String, PaneDestination)>>,
+    /// Each `move_tab` call, as the tab ID and the index it goes
+    /// before. `list_tabs` gives the tabs with these moves made.
+    pub moved_tabs: RefCell<Vec<(String, usize)>>,
     /// Each `prompt` call, as the agent name and the text, failed ones
     /// included.
     pub prompts: RefCell<Vec<(String, String)>>,
@@ -153,6 +167,13 @@ impl InMemoryHerdr {
 impl Herdr for InMemoryHerdr {
     fn list_agents(&self) -> Result<Vec<Agent>, HerdrError> {
         self.take_failure("list_agents")?;
+        let mut agents = self.list_current_agents();
+        agents.retain(|agent| !agent.name.is_empty());
+        Ok(agents)
+    }
+
+    fn list_agent_panes(&self) -> Result<Vec<Agent>, HerdrError> {
+        self.take_failure("list_agent_panes")?;
         Ok(self.list_current_agents())
     }
 
@@ -210,11 +231,19 @@ impl Herdr for InMemoryHerdr {
         Ok(())
     }
 
-    fn tag_hub_pane(&self, pane_id: &str, kind: HubKind) -> Result<(), HerdrError> {
+    fn tag_hub_pane(&self, pane_id: &str, go_to: &str) -> Result<(), HerdrError> {
         self.take_failure("tag_hub_pane")?;
         self.tagged_hubs
             .borrow_mut()
-            .push((pane_id.to_owned(), kind));
+            .push((pane_id.to_owned(), go_to.to_owned()));
+        Ok(())
+    }
+
+    fn set_go_to(&self, pane_id: &str, go_to: Option<&str>) -> Result<(), HerdrError> {
+        self.take_failure("set_go_to")?;
+        self.go_to_writes
+            .borrow_mut()
+            .push((pane_id.to_owned(), go_to.map(str::to_owned)));
         Ok(())
     }
 
@@ -226,9 +255,11 @@ impl Herdr for InMemoryHerdr {
         })
     }
 
-    fn show_desk_as_agent(&self, board_pane_id: &str) -> Result<(), HerdrError> {
+    fn show_desk_as_agent(&self, board_pane_id: &str, go_to: &str) -> Result<(), HerdrError> {
         self.take_failure("show_desk_as_agent")?;
-        self.desk_agents.borrow_mut().push(board_pane_id.to_owned());
+        self.desk_agents
+            .borrow_mut()
+            .push((board_pane_id.to_owned(), go_to.to_owned()));
         Ok(())
     }
 
@@ -257,6 +288,26 @@ impl Herdr for InMemoryHerdr {
         panes.retain(|pane| !added.iter().any(|new| new.pane_id == pane.pane_id));
         panes.extend(added);
         Ok(panes)
+    }
+
+    fn list_tabs(&self, workspace_id: &str) -> Result<Vec<String>, HerdrError> {
+        self.take_failure("list_tabs")?;
+        let mut tabs = self.tabs.get(workspace_id).cloned().unwrap_or_default();
+        for (tab_id, insert_index) in self.moved_tabs.borrow().iter() {
+            let Some(source) = tabs.iter().position(|tab| tab == tab_id) else {
+                continue;
+            };
+            // As Herdr's `Workspace::move_tab`: the tab goes before
+            // `insert_index`, which shifts down once the tab leaves.
+            let target = if source < *insert_index {
+                insert_index - 1
+            } else {
+                *insert_index
+            };
+            let tab = tabs.remove(source);
+            tabs.insert(target.min(tabs.len()), tab);
+        }
+        Ok(tabs)
     }
 
     /// Fails for a pane in neither `quiet_shells` nor `program_in_front`.
@@ -337,6 +388,22 @@ impl Herdr for InMemoryHerdr {
         Ok(())
     }
 
+    fn move_pane(&self, pane_id: &str, destination: &PaneDestination) -> Result<(), HerdrError> {
+        self.take_failure("move_pane")?;
+        self.moved_panes
+            .borrow_mut()
+            .push((pane_id.to_owned(), destination.clone()));
+        Ok(())
+    }
+
+    fn move_tab(&self, tab_id: &str, index: usize) -> Result<(), HerdrError> {
+        self.take_failure("move_tab")?;
+        self.moved_tabs
+            .borrow_mut()
+            .push((tab_id.to_owned(), index));
+        Ok(())
+    }
+
     /// Returns the double in `machines` for the label, so a test reads
     /// what that machine's Herdr was asked.
     fn clone_for_machine(&self, label: &str) -> Box<dyn Herdr + '_> {
@@ -359,6 +426,10 @@ impl Herdr for InMemoryHerdr {
 impl Herdr for &InMemoryHerdr {
     fn list_agents(&self) -> Result<Vec<Agent>, HerdrError> {
         (**self).list_agents()
+    }
+
+    fn list_agent_panes(&self) -> Result<Vec<Agent>, HerdrError> {
+        (**self).list_agent_panes()
     }
 
     fn get_agent(&self, target: &str) -> Result<Agent, HerdrError> {
@@ -389,16 +460,20 @@ impl Herdr for &InMemoryHerdr {
         (**self).clear_marks(pane_id)
     }
 
-    fn tag_hub_pane(&self, pane_id: &str, kind: HubKind) -> Result<(), HerdrError> {
-        (**self).tag_hub_pane(pane_id, kind)
+    fn tag_hub_pane(&self, pane_id: &str, go_to: &str) -> Result<(), HerdrError> {
+        (**self).tag_hub_pane(pane_id, go_to)
+    }
+
+    fn set_go_to(&self, pane_id: &str, go_to: Option<&str>) -> Result<(), HerdrError> {
+        (**self).set_go_to(pane_id, go_to)
     }
 
     fn find_desk_board(&self, workspace_id: &str) -> Result<DeskBoard, HerdrError> {
         (**self).find_desk_board(workspace_id)
     }
 
-    fn show_desk_as_agent(&self, board_pane_id: &str) -> Result<(), HerdrError> {
-        (**self).show_desk_as_agent(board_pane_id)
+    fn show_desk_as_agent(&self, board_pane_id: &str, go_to: &str) -> Result<(), HerdrError> {
+        (**self).show_desk_as_agent(board_pane_id, go_to)
     }
 
     fn filter_agent_list(&self) -> Result<(), HerdrError> {
@@ -407,6 +482,10 @@ impl Herdr for &InMemoryHerdr {
 
     fn list_panes(&self) -> Result<Vec<Pane>, HerdrError> {
         (**self).list_panes()
+    }
+
+    fn list_tabs(&self, workspace_id: &str) -> Result<Vec<String>, HerdrError> {
+        (**self).list_tabs(workspace_id)
     }
 
     fn read_process_info(&self, pane_id: &str) -> Result<ProcessInfo, HerdrError> {
@@ -443,6 +522,14 @@ impl Herdr for &InMemoryHerdr {
 
     fn move_workspaces(&self, ids: &[String], before_id: &str) -> Result<(), HerdrError> {
         (**self).move_workspaces(ids, before_id)
+    }
+
+    fn move_pane(&self, pane_id: &str, destination: &PaneDestination) -> Result<(), HerdrError> {
+        (**self).move_pane(pane_id, destination)
+    }
+
+    fn move_tab(&self, tab_id: &str, index: usize) -> Result<(), HerdrError> {
+        (**self).move_tab(tab_id, index)
     }
 
     fn clone_for_machine(&self, label: &str) -> Box<dyn Herdr + '_> {
@@ -624,7 +711,8 @@ impl Cards for InMemoryCards {
 }
 
 /// Every external system for a command test. It holds the doubles and a
-/// temporary folder. The folder holds the run folder `run`; the state
+/// temporary folder, which is also the runs folder that stands in for
+/// `~/.local/state`. The folder holds the run folder `run`; the state
 /// folder `state`, with its request folder `pr-write` and parked folder
 /// `hub/parked`; and the OpenCode database `opencode.db`. The request
 /// and parked folders do not exist until a test writes to them. A test that uses
@@ -635,6 +723,8 @@ pub struct TestTools {
     pub cards: InMemoryCards,
     /// The hub's own pane, as `HERDR_PANE_ID` gives it.
     pub own_pane: Option<String>,
+    /// The hub's own session, as `OPENCODE_SESSION_ID` gives it.
+    pub own_session: Option<String>,
     opencode: OpenCodeDb,
     requests: RequestFolder,
     parked: ParkedFolder,
@@ -653,6 +743,7 @@ impl TestTools {
             herdr: InMemoryHerdr::default(),
             cards: InMemoryCards::default(),
             own_pane: None,
+            own_session: None,
             opencode: OpenCodeDb::new(folder.path().join("opencode.db")),
             requests: RequestFolder::new(state_folder.join("pr-write")),
             parked: ParkedFolder::new(state_folder.join("hub/parked")),
@@ -670,7 +761,9 @@ impl TestTools {
             requests: &self.requests,
             parked: &self.parked,
             own_pane: self.own_pane.as_deref(),
+            own_session: self.own_session.as_deref(),
             state_folder: &self.state_folder,
+            runs_folder: self.folder.path(),
             reopen_poll: Duration::ZERO,
         }
     }
@@ -811,7 +904,7 @@ pub fn make_agent(name: &str, status: AgentStatus) -> Agent {
         state_seq: 1,
         folders: Vec::new(),
         machine: None,
-        go_to_tagged: false,
+        go_to: None,
     }
 }
 

@@ -24,7 +24,7 @@ use crate::shared::events::{self, Event, EventKind, Memory};
 use crate::shared::facts::{self, CollectedFacts, HubLine};
 use crate::shared::lifecycle::{self, Lifecycle, decide_lifecycle};
 use crate::shared::messages::{self, SendOutcome};
-use crate::shared::run_folder::{FinishedSession, MinuteMark, ReportFile, RunFolder};
+use crate::shared::run_folder::{FinishedSession, MinuteMark, RecordedHub, ReportFile, RunFolder};
 use crate::shared::tidy;
 use crate::shared::{HubError, Tools};
 
@@ -126,8 +126,9 @@ struct NewsFacts<'a> {
     old_send_files: &'a [PathBuf],
 }
 
-/// Claims the watcher, takes the watcher lock, then checks every
-/// `poll` until news comes or `timeout` runs out. The news's event is
+/// Claims the watcher and records the hub that runs it, takes the
+/// watcher lock, then checks every `poll` until news comes or `timeout`
+/// runs out. The news's event is
 /// recorded before the line prints. A process killed between recording
 /// the event and printing the line loses the line. Printing the line
 /// first could instead wake the hub twice for one report.
@@ -137,6 +138,11 @@ pub fn run_next(
     options: &NextOptions,
 ) -> Result<Outcome, HubError> {
     run.claim_watcher(options.process_id)?;
+    let recorded = RecordedHub {
+        session_id: tools.own_session.map(str::to_owned),
+        pane_id: tools.own_pane.map(str::to_owned),
+    };
+    run.record_hub(&recorded)?;
     // Waits until the older watcher sees the claim and exits.
     let _lock = run.take_watcher_lock()?;
     let started = Instant::now();
