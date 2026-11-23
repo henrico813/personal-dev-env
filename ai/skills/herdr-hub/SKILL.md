@@ -381,7 +381,7 @@ without the user's answer, and no agent answers a question for the
 user. Add `Depends on:` when the question rests on an earlier
 decision, and name who made it. A question that blocks no card, such
 as which changes a session review makes, goes on a new draft card
-made with `card new <project> "<title>" --type <type>`, so every
+made with `card new <project> "<title>"`, so every
 reader finds it.
 
 Before you list a question or task as waiting, even one a handoff
