@@ -141,7 +141,8 @@ def write_card(
     text = card.set_field(text, "stage_date", stage_date)
     if criteria:
         text = text.replace(
-            "## Open Questions", f"{criteria}\n\n## Open Questions"
+            "## Open Questions",
+            f"{criteria}\n\n## Open Questions",
         )
     path = projects / "DevEnv" / f"{key} {title}.md"
     path.write_text(text)
@@ -175,7 +176,10 @@ class TestNew:
         ],
     )
     def test_new_key_follows_highest_project_number(
-        self, projects: Path, files: list[str], name: str
+        self,
+        projects: Path,
+        files: list[str],
+        name: str,
     ) -> None:
         """A new card takes one more than any card or plan of its code.
 
@@ -228,7 +232,7 @@ class TestNew:
         assert f"stage: in-review\nstage_date: {TODAY}\n" in text
         assert text.endswith(
             f"- {TODAY} in-review: adopted by general-staff for the user."
-            " PR #450 open\n"
+            " PR #450 open\n",
         )
 
     def test_new_adopt_refuses_without_user(self, projects: Path) -> None:
@@ -253,7 +257,9 @@ class TestNew:
         assert not list((projects / "DevEnv").glob("PDEV-*"))
 
     def test_new_from_copies_fields_and_sections(
-        self, projects: Path, tmp_path: Path
+        self,
+        projects: Path,
+        tmp_path: Path,
     ) -> None:
         """A --from file gives the card its title, type, kind and sections.
 
@@ -266,7 +272,13 @@ class TestNew:
         card_file.write_text(CARD_FILE)
 
         code = run_card(
-            projects, "new", "DevEnv", "--from", str(card_file), "--by", "user"
+            projects,
+            "new",
+            "DevEnv",
+            "--from",
+            str(card_file),
+            "--by",
+            "user",
         )
 
         assert code == 0
@@ -352,7 +364,11 @@ class TestMove:
         ("stage", "target", "flags", "criteria"),
         [
             pytest.param(
-                "draft", "active", [], "- Done.", id="chain-unchecked"
+                "draft",
+                "active",
+                [],
+                "- Done.",
+                id="chain-unchecked",
             ),
             pytest.param(
                 "draft",
@@ -376,7 +392,11 @@ class TestMove:
                 id="done-final",
             ),
             pytest.param(
-                "draft", "dropped", [], "- [ ] Done.", id="agent-drop"
+                "draft",
+                "dropped",
+                [],
+                "- [ ] Done.",
+                id="agent-drop",
             ),
             pytest.param(
                 "in-review",
@@ -403,7 +423,13 @@ class TestMove:
         before = path.read_text()
 
         code = run_card(
-            projects, "move", KEY, target, *flags, "--by", "general-staff"
+            projects,
+            "move",
+            KEY,
+            target,
+            *flags,
+            "--by",
+            "general-staff",
         )
 
         assert code == 1
@@ -473,7 +499,7 @@ class TestMove:
         assert f"stage: {target}\nstage_date: {TODAY}\n" in text
         assert text.endswith(
             f"- {TODAY} {steps[0]}: by hub for the user\n"
-            f"- {TODAY} {steps[1]}: by hub for the user. Looks good\n"
+            f"- {TODAY} {steps[1]}: by hub for the user. Looks good\n",
         )
         assert capsys.readouterr().out == f"{KEY} {steps[0]}\n{KEY} {target}\n"
 
@@ -527,7 +553,8 @@ class TestMove:
         assert capsys.readouterr().err == f"card: {hint}\n"
 
     def test_move_pauses_active_card_without_criteria(
-        self, projects: Path
+        self,
+        projects: Path,
     ) -> None:
         """The staff agent can pause active work, even with no criteria.
 
@@ -570,7 +597,10 @@ class TestMove:
         [
             pytest.param("todo", "active", card.ACTIVE_LIMIT, id="start"),
             pytest.param(
-                "active", "in-review", card.REVIEW_LIMIT, id="in-review"
+                "active",
+                "in-review",
+                card.REVIEW_LIMIT,
+                id="in-review",
             ),
             pytest.param("todo", "in-review", card.REVIEW_LIMIT, id="chain"),
         ],
@@ -604,7 +634,13 @@ class TestMove:
         path = write_card(projects, KEY, source, "- [ ] Done.")
 
         code = run_card(
-            projects, "move", KEY, target, *flags, "--by", "general-staff"
+            projects,
+            "move",
+            KEY,
+            target,
+            *flags,
+            "--by",
+            "general-staff",
         )
 
         assert code == (0 if moved else 1)
@@ -623,7 +659,12 @@ class TestMove:
         path = write_card(projects, KEY, "active")
 
         code = run_card(
-            projects, "move", KEY, "in-review", "--by", "general-staff"
+            projects,
+            "move",
+            KEY,
+            "in-review",
+            "--by",
+            "general-staff",
         )
 
         assert code == 0
@@ -643,7 +684,10 @@ def fake_herdr(projects: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         card.subprocess,
         "run",
         lambda command, **kwargs: subprocess.CompletedProcess(
-            command, 0, herdr_answer, ""
+            command,
+            0,
+            herdr_answer,
+            "",
         ),
     )
 
@@ -669,7 +713,7 @@ class TestSessions:
         assert 'prs: []\nsessions:\n  - "opencode ses_abc"\ntopics:' in text
         assert text.count("session: worker-1 (opencode ses_abc)") == 1
         assert text.endswith(
-            f"- {TODAY} session: worker-1 (opencode ses_abc)\n"
+            f"- {TODAY} session: worker-1 (opencode ses_abc)\n",
         )
 
     @pytest.mark.parametrize(
@@ -697,7 +741,11 @@ class TestSessions:
         ],
     )
     def test_start_with_session_records_entry(
-        self, projects: Path, stage: str, argv: list[str], stage_line: str
+        self,
+        projects: Path,
+        stage: str,
+        argv: list[str],
+        stage_line: str,
     ) -> None:
         """Starting or adopting a card with --session records the worker.
 
@@ -717,11 +765,13 @@ class TestSessions:
         assert 'sessions:\n  - "opencode ses_abc"\n' in text
         assert text.endswith(
             f"- {TODAY} {stage_line}\n"
-            f"- {TODAY} session: worker-1 (opencode ses_abc)\n"
+            f"- {TODAY} session: worker-1 (opencode ses_abc)\n",
         )
 
     def test_link_refuses_session_on_other_card(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """A session another card holds is refused, naming that card.
 
@@ -745,7 +795,9 @@ class TestSessions:
         assert other.read_text() == before
 
     def test_link_allows_session_card_already_holds(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """Relinking a session this card holds passes, even if another has it.
 
@@ -756,7 +808,9 @@ class TestSessions:
         for key in ("PDEV-KB-001", "PDEV-KB-002"):
             path = write_card(projects, key, "active")
             text = card.set_field(
-                path.read_text(), "sessions", ["opencode ses_abc"]
+                path.read_text(),
+                "sessions",
+                ["opencode ses_abc"],
             )
             path.write_text(text)
         before = path.read_text()
@@ -770,7 +824,9 @@ class TestSessions:
         assert path.read_text() == before
 
     def test_check_reports_session_on_two_cards(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """card check names both cards that hold one session.
 
@@ -781,7 +837,9 @@ class TestSessions:
         for key in ("PDEV-KB-001", "PDEV-KB-002"):
             path = write_card(projects, key, "active")
             text = card.set_field(
-                path.read_text(), "sessions", ["opencode ses_abc"]
+                path.read_text(),
+                "sessions",
+                ["opencode ses_abc"],
             )
             path.write_text(text)
 
@@ -815,7 +873,11 @@ class TestEdit:
         ],
     )
     def test_edit_changes_item_n_and_logs(
-        self, projects: Path, flags: list[str], criteria: str, note: str
+        self,
+        projects: Path,
+        flags: list[str],
+        criteria: str,
+        note: str,
     ) -> None:
         """Editing item 2 changes that item only, keeps its box, and logs it.
 
@@ -827,8 +889,9 @@ class TestEdit:
         path = write_card(projects, KEY, "todo", "- [ ] First.")
         path.write_text(
             path.read_text().replace(
-                "- [ ] First.\n", "- [x] First.\n- [ ] Second.\n- [ ] Third.\n"
-            )
+                "- [ ] First.\n",
+                "- [x] First.\n- [ ] Second.\n- [ ] Third.\n",
+            ),
         )
 
         code = run_card(
@@ -848,7 +911,9 @@ class TestEdit:
         assert text.endswith(f"- {TODAY} note (kanban-rollout-2): {note}\n")
 
     def test_show_section_numbers_items_for_edit(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """The numbers card show prints are the ones card edit takes.
 
@@ -859,8 +924,9 @@ class TestEdit:
         path = write_card(projects, KEY, "todo", "- [ ] First.")
         path.write_text(
             path.read_text().replace(
-                "- [ ] First.\n", "- [ ] First.\n  more words\n- [ ] Second.\n"
-            )
+                "- [ ] First.\n",
+                "- [ ] First.\n  more words\n- [ ] Second.\n",
+            ),
         )
 
         code = run_card(projects, "show", KEY, "--section", card.CRITERIA)
@@ -876,7 +942,9 @@ class TestShow:
     """card show finds one card by its key."""
 
     def test_show_finds_card_beside_its_plan(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """card show finds a card whose plan shares its key.
 
@@ -893,7 +961,9 @@ class TestShow:
         assert "# PDEV-005 Build the retries\n" in capsys.readouterr().out
 
     def test_show_finds_card_by_old_key(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """card show finds a rekeyed card by the key it had before.
 
@@ -914,7 +984,9 @@ class TestAttach:
     """Attaching copies a file into the project and embeds it in Context."""
 
     def test_attach_copies_file_and_embeds_it(
-        self, projects: Path, tmp_path: Path
+        self,
+        projects: Path,
+        tmp_path: Path,
     ) -> None:
         """The file lands in attachments under the key, and Context shows it.
 
@@ -942,7 +1014,10 @@ class TestAttach:
         ],
     )
     def test_attach_without_file_leaves_vault_unchanged(
-        self, projects: Path, tmp_path: Path, name: str
+        self,
+        projects: Path,
+        tmp_path: Path,
+        name: str,
     ) -> None:
         """A path with no file behind it fails before the vault changes.
 
@@ -960,7 +1035,9 @@ class TestAttach:
         assert not (projects / "DevEnv" / "attachments").exists()
 
     def test_attach_refuses_to_overwrite_existing_attachment(
-        self, projects: Path, tmp_path: Path
+        self,
+        projects: Path,
+        tmp_path: Path,
     ) -> None:
         """A second file with the same name keeps the first one intact.
 
@@ -1016,7 +1093,9 @@ class TestList:
     """The list prints one line per card, for people and for scripts."""
 
     def test_list_tabs_keeps_whole_title(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """With --tabs, a long title stays whole and the project shows.
 
@@ -1035,7 +1114,9 @@ class TestList:
         assert first_line == f"{NEW_KEY}\tdraft\tbuild\tDevEnv\t{title}"
 
     def test_list_shows_both_shapes_without_plans(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """card list shows old and new card keys, and not a plan's.
 
@@ -1061,7 +1142,9 @@ class TestBoard:
     """The board shows what waits on the user, oldest first."""
 
     def test_board_lists_in_review_oldest_first(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """In-review cards are listed by the day they entered in-review.
 
@@ -1069,10 +1152,16 @@ class TestBoard:
         or creation date would bury work that has waited longest.
         """
         write_card(
-            projects, "PDEV-KB-001", "in-review", stage_date="2026-11-05"
+            projects,
+            "PDEV-KB-001",
+            "in-review",
+            stage_date="2026-11-05",
         )
         write_card(
-            projects, "PDEV-KB-002", "in-review", stage_date="2026-11-01"
+            projects,
+            "PDEV-KB-002",
+            "in-review",
+            stage_date="2026-11-01",
         )
 
         code = run_card(projects, "board")
@@ -1080,12 +1169,13 @@ class TestBoard:
         assert code == 0
         out = capsys.readouterr().out
         assert out.index("PDEV-KB-002 2026-11-01") < out.index(
-            "PDEV-KB-001 2026-11-05"
+            "PDEV-KB-001 2026-11-05",
         )
 
-
     def test_board_prints_each_stage_limit(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """The board counts active and in-review against their own limits.
 
@@ -1102,7 +1192,9 @@ class TestBoard:
         assert "active 1 of 8, in-review 2 of 6\n" in capsys.readouterr().out
 
     def test_board_prints_blocked_lines_hub_reads(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """The board prints the blocked lines the hub parses.
 
@@ -1112,7 +1204,10 @@ class TestBoard:
         old reason sends the user to chase the wrong team.
         """
         write_card(
-            projects, "PDEV-KB-001", "in-review", stage_date="2026-11-02"
+            projects,
+            "PDEV-KB-001",
+            "in-review",
+            stage_date="2026-11-02",
         )
         path = write_card(projects, "PDEV-KB-003", "in-review")
         for target, why in [
@@ -1121,10 +1216,16 @@ class TestBoard:
             ("blocked", ["--why", "platform team's review"]),
         ]:
             run_card(
-                projects, "move", "PDEV-KB-003", target, *why, "--by", "hub"
+                projects,
+                "move",
+                "PDEV-KB-003",
+                target,
+                *why,
+                "--by",
+                "hub",
             )
         path.write_text(
-            card.set_field(path.read_text(), "stage_date", "2026-10-30")
+            card.set_field(path.read_text(), "stage_date", "2026-10-30"),
         )
         write_card(projects, "PDEV-KB-009", "blocked")
         capsys.readouterr()
@@ -1184,14 +1285,20 @@ class TestHandEditedCard:
         path.write_text(HAND_EDITED)
 
         code = run_card(
-            projects, "move", KEY, "in-review", "--by", "general-staff"
+            projects,
+            "move",
+            KEY,
+            "in-review",
+            "--by",
+            "general-staff",
         )
 
         assert code == 0
         assert "stage: in-review\n" in path.read_text()
 
     def test_update_card_keeps_concurrent_hand_edit(
-        self, projects: Path
+        self,
+        projects: Path,
     ) -> None:
         """A save in Obsidian while card works survives card's change.
 
@@ -1209,8 +1316,9 @@ class TestHandEditedCard:
                 saved = True
                 path.write_text(
                     text.replace(
-                        "## Open Questions", "Hand edit.\n\n## Open Questions"
-                    )
+                        "## Open Questions",
+                        "Hand edit.\n\n## Open Questions",
+                    ),
                 )
                 # Some file systems keep coarse times, so force a change.
                 os.utime(path, ns=(1, 1))
@@ -1223,7 +1331,9 @@ class TestHandEditedCard:
         assert text.endswith("- added by card\n")
 
     def test_check_reports_card_note_without_type(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """card check names an old-shape card note that lost its type.
 
@@ -1232,7 +1342,7 @@ class TestHandEditedCard:
         with no message. card check is where the user finds it.
         """
         (projects / "DevEnv" / f"{KEY} Lost type.md").write_text(
-            f"# {KEY} Lost type\n"
+            f"# {KEY} Lost type\n",
         )
 
         code = run_card(projects, "check")
@@ -1255,7 +1365,8 @@ class TestNamingRules:
         ],
     )
     def test_make_name_round_trips_shared_cases(
-        self, case: dict[str, Any]
+        self,
+        case: dict[str, Any],
     ) -> None:
         """Each rule makes the name the shared cases list and reads it back.
 
@@ -1310,7 +1421,8 @@ class TestNamingRules:
         assert capsys.readouterr().out == "pdev-kb-012-build\n"
 
     def test_name_prints_branch_from_values(
-        self, capsys: pytest.CaptureFixture[str]
+        self,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """card name fills fields in order, and the last takes the rest.
 
@@ -1325,7 +1437,8 @@ class TestNamingRules:
         assert capsys.readouterr().out == "feat/retry-uploads\n"
 
     def test_name_refuses_value_rule_cannot_read(
-        self, capsys: pytest.CaptureFixture[str]
+        self,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """card name refuses a name its own rule would not read back.
 
@@ -1337,7 +1450,7 @@ class TestNamingRules:
 
         assert code == 1
         assert capsys.readouterr().err.startswith(
-            "card: nope/retry does not fit the branch rule"
+            "card: nope/retry does not fit the branch rule",
         )
 
     def test_template_embeds_rule_patterns(self) -> None:
@@ -1403,20 +1516,28 @@ class TestTitleRules:
             pytest.param("Hubs read the approval state", [], id="noun-first"),
             pytest.param("Fix: board rows drift", ["T2"], id="verb-label"),
             pytest.param(
-                "Fix the DEMO-KB-004 board rows", ["T3"], id="card-key"
+                "Fix the DEMO-KB-004 board rows",
+                ["T3"],
+                id="card-key",
             ),
             pytest.param(
-                "Close DEMO-41 after the merge", ["T3"], id="plan-key"
+                "Close DEMO-41 after the merge",
+                ["T3"],
+                id="plan-key",
             ),
             pytest.param(
-                "Fix the board rows (DEMO-KB-004)", ["T3"], id="wrapped-key"
+                "Fix the board rows (DEMO-KB-004)",
+                ["T3"],
+                id="wrapped-key",
             ),
             pytest.param("Fix board rows.", ["T4"], id="period"),
             pytest.param("Fix the #board rows", ["T4"], id="link-character"),
         ],
     )
     def test_check_title_fails_each_broken_rule(
-        self, title: str, rules: list[str]
+        self,
+        title: str,
+        rules: list[str],
     ) -> None:
         """check_title fails exactly the rules a title breaks.
 
@@ -1429,7 +1550,9 @@ class TestTitleRules:
         assert [finding.rule for finding in findings] == rules
 
     def test_new_refuses_title_listing_every_finding(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """card new writes no card for a failing title and lists each finding.
 
@@ -1458,7 +1581,9 @@ class TestTitleRules:
         )
 
     def test_new_accepts_noun_title_without_type(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """An agent's card new takes any first word and needs no type.
 
@@ -1480,7 +1605,8 @@ class TestTitleRules:
         )
 
     def test_set_title_refuses_failing_title_unchanged(
-        self, projects: Path
+        self,
+        projects: Path,
     ) -> None:
         """card set refuses a failing title and leaves the note as it was.
 
@@ -1496,7 +1622,9 @@ class TestTitleRules:
         assert path.read_text() == before
 
     def test_check_lists_open_cards_failing_titles(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """card check lists each failing rule of an open card's title.
 
@@ -1511,15 +1639,18 @@ class TestTitleRules:
 
         assert code == 1
         assert capsys.readouterr().out == (
-            "PDEV-KB-001 T4 form: ends with a period\n"
-            "1 problems in 3 cards\n"
+            "PDEV-KB-001 T4 form: ends with a period\n1 problems in 3 cards\n"
         )
 
     @pytest.mark.parametrize(
         ("stage", "target", "flags", "criteria"),
         [
             pytest.param(
-                "active", "todo", ["--why", "paused"], "", id="pause"
+                "active",
+                "todo",
+                ["--why", "paused"],
+                "",
+                id="pause",
             ),
             pytest.param("draft", "todo", [], "- [ ] Done.", id="release"),
             pytest.param("draft", "active", [], "- [ ] Done.", id="chain"),
@@ -1546,6 +1677,7 @@ class TestTitleRules:
         assert code == 1
         assert path.read_text() == before
         assert capsys.readouterr().err.startswith("card: title refused:\n")
+
 
 @pytest.fixture
 def herdr_agents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -1574,10 +1706,13 @@ def write_rekey_vault(projects: Path) -> None:
     """
     first = write_card(projects, KEY, "draft")
     first.write_text(
-        card.set_field(first.read_text(), "sessions", ["opencode ses_abc"])
+        card.set_field(first.read_text(), "sessions", ["opencode ses_abc"]),
     )
     second = write_card(
-        projects, "PDEV-KB-002", "todo", title="Retry failed uploads"
+        projects,
+        "PDEV-KB-002",
+        "todo",
+        title="Retry failed uploads",
     )
     second.write_text(second.read_text() + "See [[PDEV-KB-001]].\n")
     write_card(projects, "PDEV-KB-003", "done", title="Old done work")
@@ -1586,7 +1721,7 @@ def write_rekey_vault(projects: Path) -> None:
     (projects / "DevEnv" / "PDEV-410 Plan the retries.md").write_text(PLAN)
     (projects / "DevEnv" / "Links.md").write_text(
         "[[PDEV-KB-001]], [[PDEV-KB-002 Retry failed uploads|uploads]]"
-        " and [[PDEV-KB-003 Old done work]]\n"
+        " and [[PDEV-KB-003 Old done work]]\n",
     )
 
 
@@ -1630,7 +1765,9 @@ class TestRekey:
     """card rekey gives open cards with old keys new keys."""
 
     def test_dry_run_prints_keys_writes_nothing(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """Without --apply, rekey prints old and new keys and writes nothing.
 
@@ -1692,7 +1829,9 @@ class TestRekey:
         assert "See [[PDEV-411]].\n" in retry
 
     def test_undo_script_restores_every_note(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """The printed undo.sh puts every renamed and relinked note back.
 
@@ -1733,7 +1872,9 @@ class TestRekey:
         assert read_tree(projects) == edited
 
     def test_second_apply_finishes_stopped_run(
-        self, projects: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        projects: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """A second --apply after a stop renames the rest and fixes links.
 
@@ -1776,7 +1917,9 @@ class TestRekey:
         assert "See [[PDEV-411]].\n" in retry.read_text()
 
     def test_second_apply_finishes_stopped_relink(
-        self, projects: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        projects: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """A second --apply after a stop while relinking rewrites the links.
 
@@ -1809,7 +1952,7 @@ class TestRekey:
                         "name": "pdev-kb-002-build",
                         "agent": "opencode",
                         "agent_session": {"value": "ses_xyz"},
-                    }
+                    },
                 ),
                 {},
                 "live workers on PDEV-KB-002 (pdev-kb-002-build)",
@@ -1822,7 +1965,7 @@ class TestRekey:
                         "name": "worker-1",
                         "agent": "opencode",
                         "agent_session": {"value": "ses_abc"},
-                    }
+                    },
                 ),
                 {},
                 "live workers on PDEV-KB-001 (worker-1)",
@@ -1847,8 +1990,9 @@ class TestRekey:
                 format_agent_list(),
                 {
                     "Other/PDEV-400 Kanban demo.md": HAND_EDITED.replace(
-                        "prs: []\n", "prs: []\nold_key: PDEV-KB-002\n"
-                    )
+                        "prs: []\n",
+                        "prs: []\nold_key: PDEV-KB-002\n",
+                    ),
                 },
                 "two cards hold PDEV-KB-002",
                 id="old-key-reused",
@@ -1858,8 +2002,9 @@ class TestRekey:
                 format_agent_list(),
                 {
                     "Other/PDEV-KB-005 Kanban demo.md": HAND_EDITED.replace(
-                        "prs: []\n", "prs: []\nold_key: PDEV-KB-005\n"
-                    )
+                        "prs: []\n",
+                        "prs: []\nold_key: PDEV-KB-005\n",
+                    ),
                 },
                 "PDEV-KB-005 written but not renamed",
                 id="stuck-card",
@@ -1963,13 +2108,15 @@ class TestMerged:
         assert text.endswith(
             f"- {TODAY} in-review: by card merged for the user\n"
             f"- {TODAY} done: by card merged for the user."
-            f" {MERGED_PR} merged\n"
+            f" {MERGED_PR} merged\n",
         )
         out = capsys.readouterr().out
         assert out == f"{KEY} active -> in-review -> done\n"
 
     def test_matches_pr_in_any_spelling_only(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """A merge moves the card linking its PR and no card linking another.
 
@@ -2051,12 +2198,14 @@ class TestMerged:
         assert "stage: active\n" in text
         assert text.endswith(
             f"- {TODAY} note (card merged): {MERGED_PR} merged,"
-            f" but the card stays active: {reason}\n"
+            f" but the card stays active: {reason}\n",
         )
         assert capsys.readouterr().out == f"{KEY} stays active: {reason}\n"
 
     def test_rerun_logs_why_card_stays_once(
-        self, projects: Path, pr_states: Path
+        self,
+        projects: Path,
+        pr_states: Path,
     ) -> None:
         """A second run for the same merge leaves a held card unchanged.
 
@@ -2075,7 +2224,9 @@ class TestMerged:
         assert path.read_text() == before
 
     def test_moves_other_cards_when_gh_fails(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """One card's gh failure still lets the next card move, and exits 1.
 
@@ -2100,7 +2251,10 @@ class TestMerged:
 
     @pytest.mark.parametrize("stage", ["done", "dropped"])
     def test_skips_done_or_dropped_exits_zero(
-        self, projects: Path, capsys: pytest.CaptureFixture[str], stage: str
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+        stage: str,
     ) -> None:
         """A merge that no open card links changes nothing and exits 0.
 
