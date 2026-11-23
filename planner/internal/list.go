@@ -93,7 +93,7 @@ func runList(args []string, stdout io.Writer, stderr io.Writer) int {
 
 	if root == "" {
 		var err error
-		if root, err = defaultProjectsDir(); err != nil {
+		if root, err = findDefaultProjectsDir(); err != nil {
 			reportError(stderr, "list", newPlannerCLIError(PlannerReadInputError, err,
 				"cannot find the vault Projects folder; pass --dir PROJECTS_DIR"))
 			return 1
@@ -161,7 +161,7 @@ func runList(args []string, stdout io.Writer, stderr io.Writer) int {
 // When nobs fails, the error ends with its stderr, such as "no default vault;
 // pass a NAME or run nobs vault default NAME", because the exit status alone
 // does not say how to fix it.
-func defaultProjectsDir() (string, error) {
+func findDefaultProjectsDir() (string, error) {
 	out, err := exec.Command("nobs", "vault", "path").Output()
 	if err != nil {
 		var exit *exec.ExitError
@@ -278,7 +278,7 @@ func renderPlans(w io.Writer, root string, view plansView) {
 		}
 		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n",
 			plan.Status,
-			orDash(frontmatterString(plan.Frontmatter, "date_created")), file)
+			replaceEmptyWithDash(readFrontmatterString(plan.Frontmatter, "date_created")), file)
 	}
 	_ = tw.Flush()
 }
@@ -296,13 +296,13 @@ func renderPlanDetails(w io.Writer, view plansView) {
 			if field.Key == "status" {
 				value = plan.Status
 			}
-			_, _ = fmt.Fprintf(tw, "  %s\t%s\n", field.Key, orDash(frontmatterDisplay(value)))
+			_, _ = fmt.Fprintf(tw, "  %s\t%s\n", field.Key, replaceEmptyWithDash(formatFrontmatterValue(value)))
 		}
 	}
 	_ = tw.Flush()
 }
 
-func frontmatterDisplay(value any) string {
+func formatFrontmatterValue(value any) string {
 	switch v := value.(type) {
 	case nil:
 		return ""
@@ -321,7 +321,7 @@ func frontmatterDisplay(value any) string {
 	}
 }
 
-func orDash(s string) string {
+func replaceEmptyWithDash(s string) string {
 	if s == "" {
 		return "-"
 	}
@@ -364,7 +364,7 @@ func listPlans(root string) ([]planSummary, error) {
 			frontmatterOrder = append(frontmatterOrder, frontmatterField{Key: key, Value: fm[key]})
 		}
 		plans = append(plans, planSummary{
-			Project: project, Path: path, Title: markdownTitle(body, path),
+			Project: project, Path: path, Title: findMarkdownTitle(body, path),
 			Status: normalizePlanStatus(fm["status"]), Frontmatter: fm,
 			FrontmatterOrder: frontmatterOrder,
 		})
@@ -432,7 +432,7 @@ func unquoteYAML(value string) string {
 	return value
 }
 
-func markdownTitle(body, path string) string {
+func findMarkdownTitle(body, path string) string {
 	for _, line := range strings.Split(body, "\n") {
 		if strings.HasPrefix(line, "# ") {
 			return strings.TrimSpace(strings.TrimPrefix(line, "# "))
@@ -441,7 +441,7 @@ func markdownTitle(body, path string) string {
 	return strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 }
 
-func frontmatterString(fm map[string]any, key string) string {
+func readFrontmatterString(fm map[string]any, key string) string {
 	if s, ok := fm[key].(string); ok {
 		return s
 	}

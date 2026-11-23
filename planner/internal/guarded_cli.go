@@ -150,7 +150,7 @@ func guardedFailure(stderr io.Writer, code string, err error) int {
 	} else {
 		_, _ = fmt.Fprintf(stderr, "planner: %s: %s\n", code, message)
 	}
-	if code == plannerCode(PlannerUsageError) {
+	if code == nameErrorCode(PlannerUsageError) {
 		return 2
 	}
 	return 1
@@ -160,10 +160,10 @@ func runGuardedInspect(args []string, stdout, stderr io.Writer) int {
 	name, opts, err := parseGuardedArgs(args,
 		"--target --repo --base-commit --code-out --print", "--before")
 	if err != nil {
-		return guardedFailure(stderr, plannerCode(PlannerUsageError), err)
+		return guardedFailure(stderr, nameErrorCode(PlannerUsageError), err)
 	}
 	if field := opts["--print"]; field != "" && field != "edit_expect" {
-		return guardedFailure(stderr, plannerCode(PlannerUsageError),
+		return guardedFailure(stderr, nameErrorCode(PlannerUsageError),
 			fmt.Errorf("unsupported inspect print field %q (supported: edit_expect)", field))
 	}
 	result, err := guardedInspect(guardedInspectOptions{
@@ -194,7 +194,7 @@ func runGuardedPatch(args []string, stdout, stderr io.Writer) int {
 		"--target --expect --after-file --diff-file --repo --base-commit",
 		"--dry-run --diff")
 	if err != nil {
-		return guardedFailure(stderr, plannerCode(PlannerUsageError), err)
+		return guardedFailure(stderr, nameErrorCode(PlannerUsageError), err)
 	}
 	result, err := guardedPatch(guardedPatchOptions{
 		PlanPath:   name,
@@ -228,12 +228,12 @@ func runGuardedCheck(args []string, stdout, stderr io.Writer) int {
 	const usage = "usage: planner check <plan.md> [--repo DIR] [--base-commit COMMIT] [--json-errors]"
 	name, opts, err := parseGuardedArgs(args, "--repo --base-commit", "")
 	if err != nil {
-		return guardedFailure(stderr, plannerCode(PlannerUsageError), err)
+		return guardedFailure(stderr, nameErrorCode(PlannerUsageError), err)
 	}
 	// check still reads Markdown only. Reject a JSON plan path with the usage
 	// error the old plain check gave, rather than a confusing decode failure.
 	if strings.HasSuffix(strings.ToLower(name), ".json") {
-		return guardedFailure(stderr, plannerCode(PlannerUsageError),
+		return guardedFailure(stderr, nameErrorCode(PlannerUsageError),
 			fmt.Errorf("planner check no longer accepts JSON plan input: %s", usage))
 	}
 	result, err := guardedCheck(guardedCheckOptions{
@@ -254,7 +254,7 @@ func runGuardedExport(args []string, stdout, stderr io.Writer) int {
 	name, opts, err := parseGuardedArgs(args,
 		"--repo --base-commit --out --through", "")
 	if err != nil {
-		return guardedFailure(stderr, plannerCode(PlannerUsageError), err)
+		return guardedFailure(stderr, nameErrorCode(PlannerUsageError), err)
 	}
 	result, err := guardedExport(guardedExportOptions{
 		PlanPath: name, Repo: opts["--repo"], BaseCommit: opts["--base-commit"],

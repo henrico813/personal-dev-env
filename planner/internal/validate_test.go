@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func validPlan() Plan {
+func makeValidPlan() Plan {
 	return Plan{
 		Title:    "Planner validation rules",
 		Overview: "Add goal-count and goal-length validation for rendered plans.",
@@ -34,7 +34,7 @@ func validPlan() Plan {
 }
 
 func TestValidatePlanAcceptsGoalLimits(t *testing.T) {
-	plan := validPlan()
+	plan := makeValidPlan()
 	plan.DefinitionOfDone.Goals = make([]ChecklistItem, MaxDoDGoals)
 	for i := range plan.DefinitionOfDone.Goals {
 		plan.DefinitionOfDone.Goals[i] = ChecklistItem{Text: strings.Repeat("a", MaxDoDGoalLength)}
@@ -46,7 +46,7 @@ func TestValidatePlanAcceptsGoalLimits(t *testing.T) {
 }
 
 func TestValidatePlanRejectsTooManyGoals(t *testing.T) {
-	plan := validPlan()
+	plan := makeValidPlan()
 	plan.DefinitionOfDone.Goals = make([]ChecklistItem, MaxDoDGoals+1)
 	for i := range plan.DefinitionOfDone.Goals {
 		plan.DefinitionOfDone.Goals[i] = ChecklistItem{Text: "short goal"}
@@ -62,7 +62,7 @@ func TestValidatePlanRejectsTooManyGoals(t *testing.T) {
 }
 
 func TestValidatePlanRejectsGoalLongerThanLimit(t *testing.T) {
-	plan := validPlan()
+	plan := makeValidPlan()
 	plan.DefinitionOfDone.Goals = []ChecklistItem{{Text: strings.Repeat("a", MaxDoDGoalLength+1)}}
 
 	err := ValidatePlan(plan)
@@ -75,7 +75,7 @@ func TestValidatePlanRejectsGoalLongerThanLimit(t *testing.T) {
 }
 
 func TestValidatePlanRejectsInvalidGoalStatus(t *testing.T) {
-	plan := validPlan()
+	plan := makeValidPlan()
 	plan.DefinitionOfDone.Goals = []ChecklistItem{{Text: "goal", Status: "started"}}
 	if err := ValidatePlan(plan); err == nil {
 		t.Fatal("expected error for invalid goal status")
@@ -83,7 +83,7 @@ func TestValidatePlanRejectsInvalidGoalStatus(t *testing.T) {
 }
 
 func TestValidatePlanRejectsEmptyGoalText(t *testing.T) {
-	plan := validPlan()
+	plan := makeValidPlan()
 	plan.DefinitionOfDone.Goals = []ChecklistItem{{Text: "  "}}
 	if err := ValidatePlan(plan); err == nil {
 		t.Fatal("expected error for empty goal text")
@@ -91,7 +91,7 @@ func TestValidatePlanRejectsEmptyGoalText(t *testing.T) {
 }
 
 func TestValidatePlanRejectsEmptyVerificationItemText(t *testing.T) {
-	plan := validPlan()
+	plan := makeValidPlan()
 	plan.Verification = &Verification{
 		Automated: []ChecklistItem{{Text: ""}},
 		Manual:    []ChecklistItem{{Text: "m"}},
@@ -102,7 +102,7 @@ func TestValidatePlanRejectsEmptyVerificationItemText(t *testing.T) {
 }
 
 func TestValidatePlanRejectsInvalidVerificationItemStatus(t *testing.T) {
-	plan := validPlan()
+	plan := makeValidPlan()
 	plan.Verification = &Verification{
 		Automated: []ChecklistItem{{Text: "a", Status: "invalid"}},
 		Manual:    []ChecklistItem{{Text: "m"}},
@@ -114,7 +114,7 @@ func TestValidatePlanRejectsInvalidVerificationItemStatus(t *testing.T) {
 
 func TestValidatePlanLengthMessagesIncludeActual(t *testing.T) {
 	t.Run("goals_count", func(t *testing.T) {
-		plan := validPlan()
+		plan := makeValidPlan()
 		plan.DefinitionOfDone.Goals = make([]ChecklistItem, MaxDoDGoals+2)
 		for i := range plan.DefinitionOfDone.Goals {
 			plan.DefinitionOfDone.Goals[i] = ChecklistItem{Text: fmt.Sprintf("goal-%d", i)}
@@ -129,7 +129,7 @@ func TestValidatePlanLengthMessagesIncludeActual(t *testing.T) {
 	})
 
 	t.Run("goal_length", func(t *testing.T) {
-		plan := validPlan()
+		plan := makeValidPlan()
 		plan.DefinitionOfDone.Goals = []ChecklistItem{{Text: strings.Repeat("a", MaxDoDGoalLength+1)}}
 		err := ValidatePlan(plan)
 		if err == nil {
@@ -221,7 +221,7 @@ func TestValidatePlanRejectsNewLengthCaps(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			plan := validPlan()
+			plan := makeValidPlan()
 			tc.mutate(&plan)
 			err := ValidatePlan(plan)
 			if err == nil {
@@ -238,7 +238,7 @@ func TestValidatePlanRejectsNewLengthCaps(t *testing.T) {
 // State text that fits on its own.
 func TestCurrentStateLimitIgnoresBaseLine(t *testing.T) {
 	baseLine := "Base commit: " + strings.Repeat("a", 40) + "\n"
-	plan := validPlan()
+	plan := makeValidPlan()
 
 	plan.DefinitionOfDone.CurrentState = baseLine + strings.Repeat("c", MaxCurrentStateLength)
 	if err := ValidatePlan(plan); err != nil {
@@ -277,7 +277,7 @@ func TestModuleShapeLimitStopsAtSubsection(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			plan := validPlan()
+			plan := makeValidPlan()
 			plan.DefinitionOfDone.ModuleShape = tc.moduleShape
 
 			err := ValidatePlan(plan)
@@ -294,7 +294,7 @@ func TestModuleShapeLimitStopsAtSubsection(t *testing.T) {
 }
 
 func TestValidatePlanAllReportsAllViolations(t *testing.T) {
-	plan := validPlan()
+	plan := makeValidPlan()
 	plan.Title = ""
 	plan.Overview = strings.Repeat("o", MaxOverviewLength+1)
 	plan.DefinitionOfDone.Narrative = strings.Repeat("n", MaxDoDNarrativeLength+1)
@@ -330,7 +330,7 @@ func TestValidatePlanAllReportsAllViolations(t *testing.T) {
 }
 
 func TestValidatePlanAllReturnsEmptyOnValidPlan(t *testing.T) {
-	if errs := ValidatePlanAll(validPlan()); len(errs) != 0 {
+	if errs := ValidatePlanAll(makeValidPlan()); len(errs) != 0 {
 		t.Fatalf("expected no violations, got %+v", errs)
 	}
 }
@@ -375,7 +375,7 @@ func TestValidatePlanFilenameShapeMatrix(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			plan := validPlan()
+			plan := makeValidPlan()
 			plan.Implementation[0].FileChanges[0].Filename = tc.filename
 
 			err := ValidatePlan(plan)

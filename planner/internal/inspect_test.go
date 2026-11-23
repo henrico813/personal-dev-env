@@ -61,7 +61,7 @@ func TestParseMarkdownRoundTripFromRenderPlan(t *testing.T) {
 }
 
 func TestInspectViewEmitsUpdateDiffExpect(t *testing.T) {
-	plan := twoStepPlan()
+	plan := makeTwoStepPlan()
 	md, err := RenderPlan(plan)
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
@@ -369,7 +369,7 @@ func TestParseMarkdownAllowsEmptyImplementationSection(t *testing.T) {
 // Before planner knew the agent notes, it read them as part of
 // Verification, so a checkbox in the notes became a manual check.
 func TestAgentNotesStayOutOfVerification(t *testing.T) {
-	md, err := RenderPlan(minimalPlan())
+	md, err := RenderPlan(makeMinimalPlan())
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
@@ -394,7 +394,7 @@ func TestAgentNotesStayOutOfVerification(t *testing.T) {
 // Notes put before Verification must get an error saying they go
 // last, not the parser's "invalid section span".
 func TestAgentNotesMustComeLast(t *testing.T) {
-	md, err := RenderPlan(minimalPlan())
+	md, err := RenderPlan(makeMinimalPlan())
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
@@ -429,7 +429,7 @@ func TestParseMarkdownRejectsCRLF(t *testing.T) {
 
 func TestSectionBodyRejectsDividerNotAfterHeading(t *testing.T) {
 	input := "## Overview\nJunk before divider\n---\n\nBody"
-	_, _, err := sectionBody(input, Span{Start: 0, End: len(input)})
+	_, _, err := extractSectionBody(input, Span{Start: 0, End: len(input)})
 	if err == nil {
 		t.Fatal("expected error for misplaced divider")
 	}
@@ -437,7 +437,7 @@ func TestSectionBodyRejectsDividerNotAfterHeading(t *testing.T) {
 
 func TestSectionBodyAllowsThematicBreakInContent(t *testing.T) {
 	input := "## Overview\n---\n\nText\n\n---\n\nMore after thematic break"
-	body, _, err := sectionBody(input, Span{Start: 0, End: len(input)})
+	body, _, err := extractSectionBody(input, Span{Start: 0, End: len(input)})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

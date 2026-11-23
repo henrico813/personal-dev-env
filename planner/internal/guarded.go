@@ -20,7 +20,7 @@ import (
 
 // Guarded-specific failure codes. Shared categories (USAGE, READ_INPUT,
 // DECODE_INPUT, VALIDATE_INPUT, WRITE_OUTPUT) are defined in errors.go, and the
-// guarded emitter reads their registered names through plannerCode.
+// guarded emitter reads their registered names through nameErrorCode.
 const (
 	codeSourceCheck        = "SOURCE_CHECK"
 	codePatchInput         = "PATCH_INPUT"
@@ -34,18 +34,18 @@ const (
 	codeBaseCommitRequired = "BASE_COMMIT_REQUIRED"
 )
 
-// plannerCode returns the registered string for a shared PlannerErrorCode.
-func plannerCode(code PlannerErrorCode) string { return plannerErrorCodeNames[code] }
+// Returns the registered string for a shared PlannerErrorCode.
+func nameErrorCode(code PlannerErrorCode) string { return plannerErrorCodeNames[code] }
 
-// usageError tags an invalid option combination as USAGE without involving the
+// Tags an invalid option combination as USAGE without involving the
 // CLI flag grammar, so each options type can validate itself.
-func usageError(message string) error {
-	return &planpatch.Error{Code: plannerCode(PlannerUsageError), Cause: errors.New(message)}
+func newUsageError(message string) error {
+	return &planpatch.Error{Code: nameErrorCode(PlannerUsageError), Cause: errors.New(message)}
 }
 
-// codedError tags an untagged error with a default code. Errors that already
+// Tags an untagged error with a default code. Errors that already
 // carry a planpatch code keep it so a specific failure is not flattened.
-func codedError(code string, err error) error {
+func tagWithDefaultCode(code string, err error) error {
 	var patchErr *planpatch.Error
 	if errors.As(err, &patchErr) {
 		return err
@@ -68,9 +68,9 @@ type guardedInspectOptions struct {
 func (o guardedInspectOptions) validate() error {
 	switch {
 	case o.Target == "":
-		return usageError("--target is required")
+		return newUsageError("--target is required")
 	case o.Before && o.CodeOut == "":
-		return usageError("--before requires --code-out")
+		return newUsageError("--before requires --code-out")
 	}
 	return nil
 }
@@ -100,15 +100,15 @@ func guardedInspect(opts guardedInspectOptions) (guardedInspectResult, error) {
 	}
 	raw, err := readGuardedInput(opts.PlanPath)
 	if err != nil {
-		return result, codedError(plannerCode(PlannerReadInputError), err)
+		return result, tagWithDefaultCode(nameErrorCode(PlannerReadInputError), err)
 	}
 	parsed, err := ParseMarkdown(string(raw))
 	if err != nil {
-		return result, codedError(plannerCode(PlannerDecodeInputError), err)
+		return result, tagWithDefaultCode(nameErrorCode(PlannerDecodeInputError), err)
 	}
 	step, change, selector, err := selectedChange(parsed, opts.Target)
 	if err != nil {
-		return result, codedError(plannerCode(PlannerUsageError), err)
+		return result, tagWithDefaultCode(nameErrorCode(PlannerUsageError), err)
 	}
 	repo, baseCommit, err := resolveRepoAndBaseCommit(opts.Repo, opts.BaseCommit, parsed.Plan)
 	if err != nil {
@@ -129,9 +129,9 @@ func guardedInspect(opts guardedInspectOptions) (guardedInspectResult, error) {
 		result.Diff = selected.Diff
 		return result, nil
 	}
-	s, err := sessionBefore(repo, baseCommit, parsed.Plan, step, change)
+	s, err := openSessionBefore(repo, baseCommit, parsed.Plan, step, change)
 	if err != nil {
-		return result, codedError(codeSourceCheck, err)
+		return result, tagWithDefaultCode(codeSourceCheck, err)
 	}
 	defer s.Close()
 	if !opts.Before {
@@ -141,12 +141,12 @@ func guardedInspect(opts guardedInspectOptions) (guardedInspectResult, error) {
 			Diff:     []byte(selected.Diff),
 		})
 		if err != nil {
-			return result, codedError(codeSourceCheck, err)
+			return result, tagWithDefaultCode(codeSourceCheck, err)
 		}
 	}
 	file, err := s.Read(selected.Filename)
 	if err != nil {
-		return result, codedError(codeSourceCheck, err)
+		return result, tagWithDefaultCode(codeSourceCheck, err)
 	}
 	var code []byte
 	exists := file != nil
@@ -160,7 +160,7 @@ func guardedInspect(opts guardedInspectOptions) (guardedInspectResult, error) {
 		result.CodeState = "before_selected_change"
 	}
 	if err := writeNewScratch(opts.CodeOut, code); err != nil {
-		return result, codedError(plannerCode(PlannerWriteOutputError), err)
+		return result, tagWithDefaultCode(nameErrorCode(PlannerWriteOutputError), err)
 	}
 	result.CodeOut = opts.CodeOut
 	return result, nil
@@ -184,11 +184,11 @@ type guardedPatchOptions struct {
 func (o guardedPatchOptions) validate() error {
 	switch {
 	case o.Target == "":
-		return usageError("--target is required")
+		return newUsageError("--target is required")
 	case o.Expect == "":
-		return usageError("--expect is required")
+		return newUsageError("--expect is required")
 	case (o.AfterFile == "") == (o.DiffFile == ""):
-		return usageError("exactly one of --after-file and --diff-file is required")
+		return newUsageError("exactly one of --after-file and --diff-file is required")
 	}
 	return nil
 }
@@ -216,15 +216,15 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 	}
 	raw, err := readGuardedInput(opts.PlanPath)
 	if err != nil {
-		return result, codedError(plannerCode(PlannerReadInputError), err)
+		return result, tagWithDefaultCode(nameErrorCode(PlannerReadInputError), err)
 	}
 	parsed, err := ParseMarkdown(string(raw))
 	if err != nil {
-		return result, codedError(plannerCode(PlannerDecodeInputError), err)
+		return result, tagWithDefaultCode(nameErrorCode(PlannerDecodeInputError), err)
 	}
 	step, change, selector, err := selectedChange(parsed, opts.Target)
 	if err != nil {
-		return result, codedError(plannerCode(PlannerUsageError), err)
+		return result, tagWithDefaultCode(nameErrorCode(PlannerUsageError), err)
 	}
 	repo, baseCommit, err := resolveRepoAndBaseCommit(opts.Repo, opts.BaseCommit, parsed.Plan)
 	if err != nil {
@@ -240,22 +240,22 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 		}
 	}
 	selected := parsed.Plan.Implementation[step].FileChanges[change]
-	s, err := sessionBefore(repo, baseCommit, parsed.Plan, step, change)
+	s, err := openSessionBefore(repo, baseCommit, parsed.Plan, step, change)
 	if err != nil {
-		return result, codedError(codeSourceCheck, err)
+		return result, tagWithDefaultCode(codeSourceCheck, err)
 	}
 	defer s.Close()
 	var replacement []byte
 	if opts.AfterFile != "" {
 		before, err := s.Read(selected.Filename)
 		if err != nil {
-			return result, codedError(codeSourceCheck, err)
+			return result, tagWithDefaultCode(codeSourceCheck, err)
 		}
 		var after *planpatch.File
 		if opts.AfterFile != os.DevNull {
 			data, err := readGuardedInput(opts.AfterFile)
 			if err != nil {
-				return result, codedError(plannerCode(PlannerReadInputError), err)
+				return result, tagWithDefaultCode(nameErrorCode(PlannerReadInputError), err)
 			}
 			mode := "100644"
 			if before != nil {
@@ -266,19 +266,19 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 				matchesBefore = bytes.Equal(data, before.Data)
 			}
 			if strings.TrimSpace(selected.Diff) == "PLACEHOLDER" && matchesBefore {
-				return result, codedError(codePatchInput, errors.New(
+				return result, tagWithDefaultCode(codePatchInput, errors.New(
 					"after-file is identical to the --before file from inspect; edit it first"))
 			}
 			after = &planpatch.File{Data: data, Mode: mode}
 		}
 		replacement, err = planpatch.Generate(selected.Filename, before, after)
 		if err != nil {
-			return result, codedError(codePatchInput, err)
+			return result, tagWithDefaultCode(codePatchInput, err)
 		}
 	} else {
 		replacement, err = readGuardedInput(opts.DiffFile)
 		if err != nil {
-			return result, codedError(codePatchInput, err)
+			return result, tagWithDefaultCode(codePatchInput, err)
 		}
 	}
 	// Apply the edited change on top of the base commit and every earlier change.
@@ -289,16 +289,16 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 		Filename: selected.Filename,
 		Diff:     replacement,
 	}); err != nil {
-		return result, codedError(codeSourceCheck, err)
+		return result, tagWithDefaultCode(codeSourceCheck, err)
 	}
 	span := parsed.DiffContents[step][change]
 	updated, err := planpatch.ReplaceDiff(raw, span.Start, span.End, replacement)
 	if err != nil {
-		return result, codedError(codePlanEdit, err)
+		return result, tagWithDefaultCode(codePlanEdit, err)
 	}
 	candidate, err := ParseMarkdown(string(updated))
 	if err != nil {
-		return result, codedError(plannerCode(PlannerDecodeInputError), err)
+		return result, tagWithDefaultCode(nameErrorCode(PlannerDecodeInputError), err)
 	}
 	if !reflect.DeepEqual(expectedPlan(parsed.Plan, step, change, replacement), candidate.Plan) {
 		return result, &planpatch.Error{
@@ -308,14 +308,14 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 	}
 	changed := !bytes.Equal(raw, updated)
 	if err := validateGuardedPlan(candidate.Plan); err != nil {
-		return result, codedError(codeValidateResult, err)
+		return result, tagWithDefaultCode(codeValidateResult, err)
 	}
 	if opts.Diff && changed {
 		preview, err := planpatch.Generate("plan.md",
 			&planpatch.File{Data: raw, Mode: "100644"},
 			&planpatch.File{Data: updated, Mode: "100644"})
 		if err != nil {
-			return result, codedError(codePatchInput, err)
+			return result, tagWithDefaultCode(codePatchInput, err)
 		}
 		result.Preview = preview
 	} else if opts.Diff {
@@ -323,7 +323,7 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 	}
 	if !opts.DryRun && changed {
 		if err := planpatch.WriteIfUnchanged(opts.PlanPath, raw, updated); err != nil {
-			return result, codedError(plannerCode(PlannerWriteOutputError), err)
+			return result, tagWithDefaultCode(nameErrorCode(PlannerWriteOutputError), err)
 		}
 	}
 	result.Path = opts.PlanPath
@@ -366,7 +366,7 @@ func findOutsidePlanReferences(repo, baseCommit string, changes []planpatch.Chan
 	for _, item := range deleted {
 		needles := []string{item.deletedPath, filepath.Base(item.deletedPath)}
 		for _, needle := range needles {
-			rows, err := gitReferenceRows(repo, baseCommit, needle)
+			rows, err := findGitReferenceRows(repo, baseCommit, needle)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -408,7 +408,7 @@ type referenceRow struct {
 	line       int
 }
 
-func gitReferenceRows(repo, baseCommit, needle string) ([]referenceRow, error) {
+func findGitReferenceRows(repo, baseCommit, needle string) ([]referenceRow, error) {
 	cmd := exec.Command("git", "--literal-pathspecs", "-C", repo, "grep", "-n", "-F", "-e", needle, baseCommit, "--")
 	output, err := cmd.Output()
 	if err != nil {
@@ -474,16 +474,16 @@ func guardedCheck(opts guardedCheckOptions) (guardedCheckResult, error) {
 	var result guardedCheckResult
 	raw, err := readGuardedInput(opts.PlanPath)
 	if err != nil {
-		return result, codedError(plannerCode(PlannerReadInputError), err)
+		return result, tagWithDefaultCode(nameErrorCode(PlannerReadInputError), err)
 	}
 	parsed, err := ParseMarkdown(string(raw))
 	if err != nil {
 		// Reuse the markdown decoder's wrapped-doc subject and recovery hint so
 		// check reports the same guidance as the other read commands.
-		return result, plannerMarkdownDecodeError(raw, err)
+		return result, newMarkdownDecodeError(raw, err)
 	}
 	if err := validateGuardedPlan(parsed.Plan); err != nil {
-		return result, codedError(plannerCode(PlannerValidateInputError), err)
+		return result, tagWithDefaultCode(nameErrorCode(PlannerValidateInputError), err)
 	}
 	repo, baseCommit, err := resolveRepoAndBaseCommit(opts.Repo, opts.BaseCommit, parsed.Plan)
 	if err != nil {
@@ -492,7 +492,7 @@ func guardedCheck(opts guardedCheckOptions) (guardedCheckResult, error) {
 	changes := orderedChanges(parsed.Plan)
 	session, err := planpatch.ApplyToBase(repo, baseCommit, changes)
 	if err != nil {
-		return result, codedError(codeSourceCheck, err)
+		return result, tagWithDefaultCode(codeSourceCheck, err)
 	}
 	defer session.Close()
 	result.PlanSHA256 = fmt.Sprintf("%x", sha256.Sum256(raw))
@@ -504,7 +504,7 @@ func guardedCheck(opts guardedCheckOptions) (guardedCheckResult, error) {
 	result.BehaviorChecked = false
 	warnings, omitted, err := findOutsidePlanReferences(repo, baseCommit, changes)
 	if err != nil {
-		return result, codedError(codeSourceCheck, err)
+		return result, tagWithDefaultCode(codeSourceCheck, err)
 	}
 	result.ReferencesOutsidePlan = warnings
 	result.ReferencesOutsidePlanOmitted = omitted
@@ -529,24 +529,24 @@ type guardedExportResult struct {
 func guardedExport(opts guardedExportOptions) (guardedExportResult, error) {
 	var result guardedExportResult
 	if opts.Out == "" {
-		return result, usageError("--out is required")
+		return result, newUsageError("--out is required")
 	}
 	if _, err := os.Lstat(opts.Out); err == nil {
-		return result, codedError(plannerCode(PlannerWriteOutputError),
+		return result, tagWithDefaultCode(nameErrorCode(PlannerWriteOutputError),
 			fmt.Errorf("--out %s already exists; choose a new directory", opts.Out))
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return result, codedError(plannerCode(PlannerReadInputError), err)
+		return result, tagWithDefaultCode(nameErrorCode(PlannerReadInputError), err)
 	}
 	raw, err := readGuardedInput(opts.PlanPath)
 	if err != nil {
-		return result, codedError(plannerCode(PlannerReadInputError), err)
+		return result, tagWithDefaultCode(nameErrorCode(PlannerReadInputError), err)
 	}
 	parsed, err := ParseMarkdown(string(raw))
 	if err != nil {
-		return result, plannerMarkdownDecodeError(raw, err)
+		return result, newMarkdownDecodeError(raw, err)
 	}
 	if err := validateGuardedPlan(parsed.Plan); err != nil {
-		return result, codedError(plannerCode(PlannerValidateInputError), err)
+		return result, tagWithDefaultCode(nameErrorCode(PlannerValidateInputError), err)
 	}
 	repo, baseCommit, err := resolveRepoAndBaseCommit(opts.Repo, opts.BaseCommit, parsed.Plan)
 	if err != nil {
@@ -556,39 +556,39 @@ func guardedExport(opts guardedExportOptions) (guardedExportResult, error) {
 	if opts.Through != "" {
 		steps, err = strconv.Atoi(opts.Through)
 		if err != nil || steps < 1 || steps > len(parsed.Plan.Implementation) {
-			return result, usageError(fmt.Sprintf(
+			return result, newUsageError(fmt.Sprintf(
 				"--through must be a step number from 1 to %d", len(parsed.Plan.Implementation)))
 		}
 	}
 	changes := orderedChanges(Plan{Implementation: parsed.Plan.Implementation[:steps]})
 	session, err := planpatch.ApplyToBase(repo, baseCommit, changes)
 	if err != nil {
-		return result, codedError(codeSourceCheck, err)
+		return result, tagWithDefaultCode(codeSourceCheck, err)
 	}
 	defer session.Close()
 	if _, err := os.Lstat(opts.Out); err == nil {
-		return result, codedError(plannerCode(PlannerWriteOutputError),
+		return result, tagWithDefaultCode(nameErrorCode(PlannerWriteOutputError),
 			fmt.Errorf("--out %s already exists; choose a new directory", opts.Out))
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return result, codedError(plannerCode(PlannerReadInputError), err)
+		return result, tagWithDefaultCode(nameErrorCode(PlannerReadInputError), err)
 	}
 	parent := filepath.Dir(opts.Out)
 	temp, err := os.MkdirTemp(parent, ".planner-export-*")
 	if err != nil {
-		return result, codedError(plannerCode(PlannerWriteOutputError), err)
+		return result, tagWithDefaultCode(nameErrorCode(PlannerWriteOutputError), err)
 	}
 	defer func() { _ = os.RemoveAll(temp) }()
 	if err := session.Export(temp); err != nil {
-		return result, codedError(plannerCode(PlannerWriteOutputError), err)
+		return result, tagWithDefaultCode(nameErrorCode(PlannerWriteOutputError), err)
 	}
 	if _, err := os.Lstat(opts.Out); err == nil {
-		return result, codedError(plannerCode(PlannerWriteOutputError),
+		return result, tagWithDefaultCode(nameErrorCode(PlannerWriteOutputError),
 			fmt.Errorf("--out %s already exists; choose a new directory", opts.Out))
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return result, codedError(plannerCode(PlannerReadInputError), err)
+		return result, tagWithDefaultCode(nameErrorCode(PlannerReadInputError), err)
 	}
 	if err := os.Rename(temp, opts.Out); err != nil {
-		return result, codedError(plannerCode(PlannerWriteOutputError), err)
+		return result, tagWithDefaultCode(nameErrorCode(PlannerWriteOutputError), err)
 	}
 	result = guardedExportResult{Out: opts.Out, BaseCommit: baseCommit,
 		Steps: steps, Changes: len(changes)}
@@ -618,7 +618,7 @@ func resolveRepoAndBaseCommit(flagRepo, flagBaseCommit string, plan Plan) (repo,
 	repo = flagRepo
 	if repo == "" {
 		if repo, err = os.Getwd(); err != nil {
-			return "", "", codedError(plannerCode(PlannerReadInputError), err)
+			return "", "", tagWithDefaultCode(nameErrorCode(PlannerReadInputError), err)
 		}
 	}
 	return repo, baseCommit, nil
@@ -700,11 +700,10 @@ func orderedChanges(plan Plan) []planpatch.Change {
 	return out
 }
 
-// sessionBefore starts from the base commit and applies every change
-// before (step, change), returning an open session just before the selected
-// change. The caller owns the session and must Close it. Comparison is by parsed
+// Applies every change before (step, change) to the base commit and returns
+// the open session, which the caller must Close. Comparison is by parsed
 // indices, so a selector with leading zeros selects the same change.
-func sessionBefore(repo, baseCommit string, plan Plan, step, change int) (*planpatch.Session, error) {
+func openSessionBefore(repo, baseCommit string, plan Plan, step, change int) (*planpatch.Session, error) {
 	s, err := planpatch.Open(repo, baseCommit)
 	if err != nil {
 		return nil, err
