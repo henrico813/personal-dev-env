@@ -295,9 +295,7 @@ impl Serialize for Finding {
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Rule {
-    /// Marks a comment that goes against the user's decision for its name. A
-    /// changed comment whose approved texts all differ fails. An unchanged one
-    /// that differs, or whose name was cut, is only reported.
+    /// Marks a changed comment whose name has approved texts, none equal to its text.
     Approved,
     /// Marks an approved comment the branch removed while its code stays.
     ApprovedRemoved,
