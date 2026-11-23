@@ -1902,3 +1902,217 @@ class TestRekey:
         assert code == 1
         assert reason in capsys.readouterr().err
         assert read_tree(projects) == before
+
+
+MERGED_PR = "https://github.com/me/repo/pull/7"
+OTHER_PR = "https://github.com/me/repo/pull/8"
+
+
+@pytest.fixture
+def pr_states(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A gh on PATH that prints each PR's state from the returned file.
+
+    Each line of the file is ``URL STATE``, and the file starts empty.
+    For a URL not in the file, gh fails, as it does for a PR it cannot
+    find.
+    """
+    states = tmp_path / "pr-states.txt"
+    states.write_text("")
+    gh = tmp_path / "gh-bin" / "gh"
+    gh.parent.mkdir()
+    script = """#!/bin/sh
+awk -v url="$3" '$1 == url {print $2; found = 1} END {exit !found}' STATES \\
+    || { echo "no pull request $3" >&2; exit 1; }
+"""
+    gh.write_text(script.replace("STATES", shlex.quote(str(states))))
+    gh.chmod(0o755)
+    path = f"{gh.parent}{os.pathsep}{os.environ['PATH']}"
+    monkeypatch.setenv("PATH", path)
+    return states
+
+
+def link_prs(path: Path, *urls: str) -> None:
+    """Set a card note's prs field to the URLs, as card link would."""
+    path.write_text(card.set_field(path.read_text(), "prs", list(urls)))
+
+
+@pytest.mark.usefixtures("pr_states")
+class TestMerged:
+    """card merged moves the cards of a merged PR to done, or logs why not."""
+
+    def test_moves_card_through_review_to_done(
+        self,
+        projects: Path,
+        pr_states: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A merge moves an active card to done once all its PRs merged.
+
+        The merge is the user's approval, so the Log shows the user's move
+        through in-review and names the merged PR.
+        """
+        path = write_card(projects, KEY, "active", "- [x] Done.")
+        link_prs(path, MERGED_PR, OTHER_PR)
+        pr_states.write_text(f"{OTHER_PR} MERGED\n")
+
+        code = run_card(projects, "merged", MERGED_PR)
+
+        assert code == 0
+        text = path.read_text()
+        assert f"stage: done\nstage_date: {TODAY}\n" in text
+        assert text.endswith(
+            f"- {TODAY} in-review: by card merged for the user\n"
+            f"- {TODAY} done: by card merged for the user."
+            f" {MERGED_PR} merged\n"
+        )
+        out = capsys.readouterr().out
+        assert out == f"{KEY} active -> in-review -> done\n"
+
+    def test_matches_pr_in_any_spelling_only(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A merge moves the card linking its PR and no card linking another.
+
+        Done is final, so a card moved by another PR's merge would close
+        unfinished work. The argument and the card each spell the PR
+        another way, and must still match.
+        """
+        path = write_card(projects, KEY, "active", "- [x] Done.")
+        link_prs(path, "http://GitHub.com/Me/Repo/pull/7/files")
+        others = [
+            write_card(projects, "PDEV-KB-002", "active", "- [x] Done."),
+            write_card(projects, "PDEV-KB-003", "active", "- [x] Done."),
+        ]
+        link_prs(others[0], "https://github.com/me/repo/pull/70")
+        link_prs(others[1], "https://github.com/me/other/pull/7")
+        before = [other.read_text() for other in others]
+        spelled = "HTTPS://www.github.com/me/REPO/pull/7#x"
+
+        code = run_card(projects, "merged", spelled)
+
+        assert code == 0
+        assert "stage: done\n" in path.read_text()
+        assert [other.read_text() for other in others] == before
+        out = capsys.readouterr().out
+        assert out == f"{KEY} active -> in-review -> done\n"
+
+    @pytest.mark.parametrize(
+        ("criteria", "states", "reason"),
+        [
+            pytest.param(
+                "- [x] Done.",
+                f"{OTHER_PR} OPEN\n",
+                f"{OTHER_PR} is open",
+                id="other-pr-open",
+            ),
+            pytest.param(
+                "- [x] Done.",
+                f"{OTHER_PR} CLOSED\n",
+                f"{OTHER_PR} is closed",
+                id="other-pr-closed",
+            ),
+            pytest.param(
+                "- [x] Done.\n- [ ] Tested.",
+                f"{OTHER_PR} MERGED\n",
+                "1 unticked in Acceptance Criteria",
+                id="criteria-unticked",
+            ),
+            pytest.param(
+                "- [x] Done.\n- [/] Tested.\n* [ ] Read.",
+                f"{OTHER_PR} MERGED\n",
+                "2 unticked in Acceptance Criteria",
+                id="criteria-other-marks",
+            ),
+        ],
+    )
+    def test_logs_why_card_stays(
+        self,
+        projects: Path,
+        pr_states: Path,
+        capsys: pytest.CaptureFixture[str],
+        criteria: str,
+        states: str,
+        reason: str,
+    ) -> None:
+        """A card with work left keeps its stage, and its Log says what.
+
+        Done is final, so moving such a card would close unfinished work
+        with no further check. The note tells the user what still holds
+        the card.
+        """
+        path = write_card(projects, KEY, "active", criteria)
+        link_prs(path, MERGED_PR, OTHER_PR)
+        pr_states.write_text(states)
+
+        code = run_card(projects, "merged", MERGED_PR)
+
+        assert code == 0
+        text = path.read_text()
+        assert "stage: active\n" in text
+        assert text.endswith(
+            f"- {TODAY} note (card merged): {MERGED_PR} merged,"
+            f" but the card stays active: {reason}\n"
+        )
+        assert capsys.readouterr().out == f"{KEY} stays active: {reason}\n"
+
+    def test_rerun_logs_why_card_stays_once(
+        self, projects: Path, pr_states: Path
+    ) -> None:
+        """A second run for the same merge leaves a held card unchanged.
+
+        A user reruns the command after a gh failure or a timeout, and each
+        rerun would otherwise add the same note to every held card.
+        """
+        path = write_card(projects, KEY, "active", "- [x] Done.")
+        link_prs(path, MERGED_PR, OTHER_PR)
+        pr_states.write_text(f"{OTHER_PR} OPEN\n")
+        run_card(projects, "merged", MERGED_PR)
+        before = path.read_text()
+
+        code = run_card(projects, "merged", MERGED_PR)
+
+        assert code == 0
+        assert path.read_text() == before
+
+    def test_moves_other_cards_when_gh_fails(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """One card's gh failure still lets the next card move, and exits 1.
+
+        Nothing runs the command again on its own, so a card skipped after
+        another card's failure would stay open until someone moves it by
+        hand.
+        """
+        # KEY sorts first, so its failure comes before the other card.
+        failing = write_card(projects, KEY, "active", "- [x] Done.")
+        link_prs(failing, MERGED_PR, OTHER_PR)
+        path = write_card(projects, "PDEV-KB-002", "active", "- [x] Done.")
+        link_prs(path, MERGED_PR)
+        before = failing.read_text()
+
+        code = run_card(projects, "merged", MERGED_PR)
+
+        assert code == 1
+        assert failing.read_text() == before
+        assert "stage: done\n" in path.read_text()
+        out = capsys.readouterr().out
+        assert out == "PDEV-KB-002 active -> in-review -> done\n"
+
+    @pytest.mark.parametrize("stage", ["done", "dropped"])
+    def test_skips_done_or_dropped_exits_zero(
+        self, projects: Path, capsys: pytest.CaptureFixture[str], stage: str
+    ) -> None:
+        """A merge that no open card links changes nothing and exits 0.
+
+        A done card is final and a dropped one was given up, so a later
+        merge must not write to either.
+        """
+        path = write_card(projects, KEY, stage, "- [x] Done.")
+        link_prs(path, MERGED_PR)
+        before = path.read_text()
+
+        code = run_card(projects, "merged", MERGED_PR)
+
+        assert code == 0
+        assert path.read_text() == before
+        assert capsys.readouterr().out == f"no open card links {MERGED_PR}\n"
