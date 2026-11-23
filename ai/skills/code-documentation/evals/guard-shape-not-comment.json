@@ -1,0 +1,15 @@
+{
+  "id": "guard-shape-not-comment",
+  "source": "the user's correction that a misread input check needed a clearer shape, not a comment",
+  "rule": "Code that explains itself",
+  "correction": true,
+  "prompt": "You review a pull request in a Python repository. Reply with only your review findings, one per item, each naming the file and line it is about.\n\nThe pull request adds auth/session.py:\n\n```python\n1  def open_session(token=None, user=None, password=None):\n2      if token:\n3          return session_from_token(token)\n4      if not user or not password:\n5          raise ValueError(\"give a token, or a user and password\")\n6      return session_from_login(user, password)\n```\n\nA teammate left this note on line 4: \"Does this let a caller pass only a user? The error says or.\"\n\nThe check is correct: a caller must pass a token, or both a user and a password.\n",
+  "pass": [
+    "(?i)\\buser and password\\b"
+  ],
+  "judge": [
+    "Does the answer propose rewriting the check in open_session so that each accepted set of inputs leads to its own return, such as testing `user and password` and returning before the raise, rather than only adding a comment or saying no change is needed?"
+  ],
+  "good": "auth/session.py:4 The check is correct, but its `or` reads like the \"or\" in the error message, which is why the teammate misread it. Give each choice its own return instead of adding a comment:\n\n```python\nif token:\n    return session_from_token(token)\nif user and password:\n    return session_from_login(user, password)\nraise ValueError(\"give a token, or a user and password\")\n```",
+  "bad": "auth/session.py:4 The check is correct, but the teammate misread it. Add a comment above it: `# Both user and password are required when no token is given.` That makes clear the caller needs user and password together."
+}

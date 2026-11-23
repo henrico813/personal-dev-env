@@ -17,6 +17,41 @@ for that reader without labeling them as a beginner or junior in source text.
 This skill sets the cross-language baseline. Follow stricter language,
 framework, safety, and repository requirements when they apply.
 
+## Code that explains itself
+
+Make the code answer a reader's questions first, through its names
+and its shape. A comment holds only what the code cannot say, such as
+why it exists or what can go wrong. When code can be read two ways,
+change its shape rather than add a comment.
+
+For example, a function takes `a`, or both `b` and `c`:
+
+```python
+if a:
+    return use_a(a)
+if not b or not c:
+    raise ValueError("pass a, or b and c")
+return use_bc(b, c)
+```
+
+The guard is correct, but its `or` reads like the "or" in the error
+message, so a reader may think either `b` or `c` is enough. This
+version is clearer, since each choice gets its own return:
+
+```python
+if a:
+    return use_a(a)
+if b and c:
+    return use_bc(b, c)
+raise ValueError("pass a, or b and c")
+```
+
+When a comment spends most of its words on how the code works, rather
+than why it exists or what can go wrong, simplify the code instead.
+Split it, name its steps, or move setup into named helpers. Long tests
+need this most often. In review-only work, report each place that
+needs a clearer shape instead of changing the code.
+
 ## Edit gate
 
 Unless documentation is required by an applicable language or repository rule,
@@ -58,11 +93,7 @@ Use the smallest explanation that lets the reader work safely.
   local context.
 
 Do not turn a large function into a wall of prose.
-
-When a comment spends most of its words on how the code works, rather
-than why it exists or what can go wrong, simplify the code instead.
-Split it, name its steps, or move setup into named helpers. Tests are
-the usual case. In review-only work, report it.
+Simplify the code first, as "Code that explains itself" says.
 
 ## Write plain, direct English
 
@@ -380,42 +411,10 @@ comment in the code.
 ## Comment checker
 
 For Go, Python or Rust files whose comments you write or review, run
-the review tool's comment check in the repository:
-
-```bash
-glimmer check-comments --base <commit your task started from>
-```
-
-Without `--base`, it checks the changes since the branch start, where
-the branch split from main. If your harness lists the MCP tool
-`check_comments`, perhaps with a prefix, use it instead, with `dir`
-set to the checkout's absolute path and `base` to that commit. Both
-give the same JSON.
-
-It checks every Go, Python and Rust file the branch changed, and
-writes nothing. Act on its JSON:
-
-- `result.failures`: fix each one, then run the check again. Each
-  names its `rule` and quotes that rule's `sentence` from this skill.
-- `result.reported`: list each one in your final message, and edit
-  its text only as step 5 of Editing and review allows. Its `note`
-  says why it does not fail: `approved` text, `existing` text from
-  before your task, a license `header`, or a `report_only` rule.
-- `result.unsupported`: changed files the check cannot read. Check
-  their comments and function names yourself.
-- `error`: the check did not run. Do what its `message` says, such
-  as fixing a file that does not parse.
-
-Act on each failure by its rule:
-
-- `approved`: you changed a comment the owner approved. Put back the
-  owner's text, or ask to change it as the `comment-review` skill
-  says.
-- `approved-removed`: you removed a comment the owner approved, and
-  its code stays. Put the comment back.
-- `filler` or `avoided-word`: fix the sentence. `avoid` in the
-  approvals file gives the word to use instead.
-- Any other rule: rename the function or fix the comment.
+the review tool's comment check in the repository, as
+[references/comment-checker.md](references/comment-checker.md) says.
+Read it before the first run, for how to act on each finding. Fix
+each failure and run the check again until none is left.
 
 `verb-first` fails a new name whose first word is no English verb,
 such as `path`, and only reports a verb missing from its list of
@@ -423,12 +422,6 @@ common verbs, such as `card`, which may be a noun in the name.
 `restated-name` is reported, never failed. Rename the function when
 its word is a noun, or when the call fails the caller test in
 "Function names". Otherwise list it in your final message.
-
-Run the check again until `result.failures` is empty. `next` is then
-`make_feedback_request_list`, even when findings are reported. Never
-edit approved text to get past a failure. A function you renamed
-keeps its comment without a failure, and the owner is asked about
-that comment as a new one, so you list no renames.
 
 If `glimmer` is not on `PATH`, say in your final message
 that the comment check did not run, and check these rules yourself.
@@ -471,6 +464,8 @@ one counts as old, with or without `git mv`.
 
 Before declaring source or test work complete, check:
 
+- each check and branch reads one way from its names and shape, and
+  no comment explains how code works that a clearer shape could show
 - changed documentation is still accurate
 - important behavior does not require unnecessary tracing
 - new prose does not merely repeat the code
