@@ -54,6 +54,48 @@ steps' defaults.
    PR that needs its parent merged, tell the user and do not send the
    request. To undo a test install, install again from the default
    branch.
+5. Before Open step 4, Update step 3 and any other push to a pull
+   request's branch, get a privacy review, since what those steps push
+   or send is public at once.
+   - A commit that merges the base in and resolves a conflict needs
+     the review too, since the resolution adds new lines.
+   - A clean merge, one with no conflict and a stock message such as
+     "Merge main into <branch>", needs no review. It holds only the
+     base's public lines. The `herdr-hub` merge worker script pushes
+     such a merge, as Merge says.
+   - Start a fresh agent on a `code-review` model, as
+     `model-routing` picks, with the brief in
+     [references/privacy-review.md](references/privacy-review.md).
+     The brief lists what counts as a hit. The agent reads every
+     added or changed line, the commit messages, the branch name and
+     the PR title and body.
+   - A line that only hints at a private thing is a hit, just as one
+     that names it. A word used in its job sense, such as
+     "office" or "shift", is a hit on its own. It needs no company
+     name and no other job detail in the change.
+   - Every review hit blocks the step, even one the reviewer calls
+     optional or low risk. A reviewer may stray from the brief's
+     reply form. Each line its reply points to is still a hit, such
+     as one it offers an optional wording change for, even when the
+     reply says the change is safe. Fix it and get a new review.
+   - Fix each hit by amending the commit that holds it: the phase
+     commit in Open, the round's commit in Update, or the merge
+     commit. None is pushed yet at this step. Fix a hit in the PR text
+     in FILE, the PR message file that Open step 1 writes. Then run a
+     new review with the same BASE, as the brief says, until it
+     reports zero hits.
+   - Write every other Testing line before the review. Then add the
+     review's line to the checks list, such as
+     `pass privacy review: 412 lines, 0 hits`. Adding that one line
+     needs no new review, since it holds only the review's count.
+   - In Open, step 3 made the phase commit from FILE. Run
+     `git commit --amend -F FILE` before the push, so the commit
+     message gets the new Testing line too.
+   - Run the repository's term scan when its `AGENTS.md` names one.
+     Neither check replaces the other: the scan cannot find hints in
+     plain words, and the reviewer cannot know a private name that
+     is also an ordinary word. Another review, such as a skill
+     review, does not count either.
 
 ## Discover
 
@@ -78,7 +120,8 @@ steps' defaults.
    `git fetch <remote>`
    `git reset --soft "$(git merge-base HEAD <remote>/<default>)"`
    `git commit -F FILE`
-4. Push the phase with `git push --force-with-lease -u <remote> HEAD`.
+4. Once Guardrail 5's privacy review and term scan pass, push the
+   phase with `git push --force-with-lease -u <remote> HEAD`.
    Create the description without the title:
    `tail -n +3 FILE > BODY`
    Before the first request goes out, tell the user who approves each
@@ -115,7 +158,8 @@ steps' defaults.
 3. Never rewrite a reviewed phase. Fold each round's fixes into the
    Changes lines they belong to, and update Testing with checks
    actually run, as `git-messages` item 5 says. Run fmt and lint
-   --pr on FILE, then `tail -n +3 FILE > BODY` and
+   --pr on FILE. Once Guardrail 5's privacy review and term scan
+   pass, run `tail -n +3 FILE > BODY` and
    run `pde-gh-write pr edit NUMBER --body-file BODY` and handle its
    result as in Open step 4.
 4. Push the round with `git push --force-with-lease -u <remote> HEAD`.

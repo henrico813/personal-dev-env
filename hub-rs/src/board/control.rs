@@ -38,7 +38,7 @@ pub fn dump_board(
     time_zone: &TimeZone,
     size: ScreenSize,
 ) -> Result<Outcome, HubError> {
-    let mut board = read_only_board(tools);
+    let mut board = make_read_only_board(tools);
     board.show_reading(Ok(read_queue(tools, hubs, time_zone)?));
     let dump = board.dump(size.columns, size.rows, None);
     Ok(Outcome {
@@ -67,7 +67,7 @@ pub fn control_board(
     output: &mut dyn Write,
 ) -> Result<Outcome, HubError> {
     let done = Outcome { lines: Vec::new() };
-    let mut board = read_only_board(tools);
+    let mut board = make_read_only_board(tools);
     board.show_reading(Ok(read_queue(tools, hubs, time_zone)?));
     if !write_dump(output, &board.dump(size.columns, size.rows, None))? {
         return Ok(done);
@@ -84,7 +84,7 @@ pub fn control_board(
         let event = parse_step(step, &board)
             .map_err(|reason| HubError::Usage(format!("line {}: {reason}", number + 1)))?;
         let dump = match board.handle_input(&event) {
-            Step::Quit => quit_dump(step),
+            Step::Quit => make_quit_dump(step),
             Step::Refresh => {
                 let reading = read_queue(tools, hubs, time_zone).map_err(|error| error.to_string());
                 board.show_reading(reading);
@@ -118,10 +118,10 @@ pub fn control_board(
 
 /// Returns a board with no colors whose AWAY starts at the time the
 /// live board saved, for screens that never save it.
-pub(super) fn read_only_board(tools: &Tools<'_>) -> Board {
+pub(super) fn make_read_only_board(tools: &Tools<'_>) -> Board {
     let mut board = Board::new(false);
     let visits = Visits::start(tools.state_folder, Timestamp::now());
-    board.show_visit(visits.since(), visits.away_for());
+    board.show_visit(visits.since(), visits.measure_time_away());
     board
 }
 
@@ -151,7 +151,7 @@ pub(super) fn answer_sent_step(
     let dump = if going {
         board.dump_drawn(Some(step.to_owned()))
     } else {
-        quit_dump(step)
+        make_quit_dump(step)
     };
     Ok((going, to_json(&dump)?))
 }
@@ -162,7 +162,7 @@ pub(super) fn answer_sent_step(
 fn parse_step(step: &str, board: &Board) -> Result<Event, String> {
     let (verb, rest) = step.split_once(' ').unwrap_or((step, ""));
     let rest = rest.trim();
-    let mouse = |kind, column, row| {
+    let make_mouse_event = |kind, column, row| {
         Event::Mouse(MouseEvent {
             kind,
             column,
@@ -174,15 +174,15 @@ fn parse_step(step: &str, board: &Board) -> Result<Event, String> {
         "tap" => {
             let tap = MouseEventKind::Down(MouseButton::Left);
             if let Some((column, row)) = parse_place(rest) {
-                return Ok(mouse(tap, column, row));
+                return Ok(make_mouse_event(tap, column, row));
             }
-            let elements = board.elements();
+            let elements = board.collect_elements();
             let element = elements
                 .iter()
                 .find(|element| element.id == rest)
                 .ok_or_else(|| format!("the screen shows no {rest}"))?;
             match (element.place, &element.hiding) {
-                (Some(place), _) => Ok(mouse(tap, place.column, place.row)),
+                (Some(place), _) => Ok(make_mouse_event(tap, place.column, place.row)),
                 (None, Some(hiding)) => Err(format!(
                     "{rest} is hidden by {}; send {} first",
                     hiding.hidden_by.word(),
@@ -195,8 +195,8 @@ fn parse_step(step: &str, board: &Board) -> Result<Event, String> {
             .map(Event::Key)
             .ok_or_else(|| format!("{rest} is not a key such as q, tab, esc or ctrl-c")),
         "wheel" => match rest {
-            "up" => Ok(mouse(MouseEventKind::ScrollUp, 0, 0)),
-            "down" => Ok(mouse(MouseEventKind::ScrollDown, 0, 0)),
+            "up" => Ok(make_mouse_event(MouseEventKind::ScrollUp, 0, 0)),
+            "down" => Ok(make_mouse_event(MouseEventKind::ScrollDown, 0, 0)),
             _ => Err(format!("wheel takes up or down, not {rest}")),
         },
         _ => Err(format!("{step} is not a tap, press or wheel step")),
@@ -234,7 +234,7 @@ fn parse_key(name: &str) -> Option<KeyEvent> {
 }
 
 /// Returns the screen after `step` quit the board.
-fn quit_dump(step: &str) -> ScreenDump {
+fn make_quit_dump(step: &str) -> ScreenDump {
     ScreenDump {
         step: Some(step.to_owned()),
         page: "quit",
@@ -250,17 +250,17 @@ fn write_dump(output: &mut dyn Write, dump: &ScreenDump) -> Result<bool, HubErro
     match written {
         Ok(()) => Ok(true),
         Err(error) if error.kind() == ErrorKind::BrokenPipe => Ok(false),
-        Err(source) => Err(output_error(source)),
+        Err(source) => Err(wrap_output_error(source)),
     }
 }
 
 /// Returns `dump` as one line of JSON.
 fn to_json(dump: &ScreenDump) -> Result<String, HubError> {
-    serde_json::to_string(dump).map_err(|error| output_error(io::Error::from(error)))
+    serde_json::to_string(dump).map_err(|error| wrap_output_error(io::Error::from(error)))
 }
 
 /// Wraps a failure to write standard output for `main` to print.
-fn output_error(source: io::Error) -> HubError {
+fn wrap_output_error(source: io::Error) -> HubError {
     HubError::File {
         path: PathBuf::from("standard output"),
         source,

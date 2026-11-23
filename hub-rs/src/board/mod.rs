@@ -148,7 +148,7 @@ pub fn run_board(
     // terminal, `exit_if_stuck` ends the process instead.
     let stop = Arc::new(AtomicBool::new(false));
     for signal in [SIGTERM, SIGHUP, SIGINT] {
-        signal_hook::flag::register(signal, Arc::clone(&stop)).map_err(terminal_error)?;
+        signal_hook::flag::register(signal, Arc::clone(&stop)).map_err(wrap_terminal_error)?;
     }
     let socket = listener
         .as_ref()
@@ -170,9 +170,9 @@ pub fn run_board(
     // https://no-color.org asks.
     let color = std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty());
     let mut board = Board::new(color);
-    board.show_visit(visits.since(), visits.away_for());
-    let mut screen = Screen::start().map_err(terminal_error)?;
-    screen.draw(&mut board).map_err(terminal_error)?;
+    board.show_visit(visits.since(), visits.measure_time_away());
+    let mut screen = Screen::start().map_err(wrap_terminal_error)?;
+    screen.draw(&mut board).map_err(wrap_terminal_error)?;
     'board: while !stop.load(Ordering::Relaxed) {
         let mut changed = false;
         while let Ok((key, note)) = notes.try_recv() {
@@ -201,8 +201,8 @@ pub fn run_board(
                 }
             }
         }
-        if event::poll(POLL).map_err(terminal_error)? {
-            let input = event::read().map_err(terminal_error)?;
+        if event::poll(POLL).map_err(wrap_terminal_error)? {
+            let input = event::read().map_err(wrap_terminal_error)?;
             // Steps an agent sends through `--listen` do not count as
             // the user's, and neither does a resize.
             if matches!(input, event::Event::Key(_) | event::Event::Mouse(_)) {
@@ -220,7 +220,7 @@ pub fn run_board(
                     control::answer_sent_step(&mut board, &sent.text, |board, step| {
                         let going = follow_step(step, board, &jobs, &cards, &note_sender);
                         if going {
-                            screen.draw(board).map_err(terminal_error)?;
+                            screen.draw(board).map_err(wrap_terminal_error)?;
                         }
                         Ok(going)
                     })?;
@@ -231,7 +231,7 @@ pub fn run_board(
             }
         }
         if changed {
-            screen.draw(&mut board).map_err(terminal_error)?;
+            screen.draw(&mut board).map_err(wrap_terminal_error)?;
         }
     }
     drop(screen);
@@ -250,7 +250,7 @@ pub fn run_board(
 fn note_user_input(visits: &mut Visits, board: &mut Board) {
     let now = Timestamp::now();
     if visits.note_input(now) {
-        board.show_visit(visits.since(), visits.away_for());
+        board.show_visit(visits.since(), visits.measure_time_away());
     }
     if let Err(error) = visits.save_if_due(now) {
         board.show_status(format!("last use not saved: {error}"));
@@ -270,7 +270,7 @@ pub fn print_board(
     time_zone: &TimeZone,
     size: ScreenSize,
 ) -> Result<Outcome, HubError> {
-    let mut board = control::read_only_board(tools);
+    let mut board = control::make_read_only_board(tools);
     board.show_reading(Ok(read_queue(tools, hubs, time_zone)?));
     Ok(Outcome {
         lines: board.render_lines(size.columns, size.rows),
@@ -410,7 +410,7 @@ fn read_card_aside(
 }
 
 /// Wraps a terminal read or write failure for `main` to print.
-fn terminal_error(source: io::Error) -> HubError {
+fn wrap_terminal_error(source: io::Error) -> HubError {
     HubError::File {
         path: PathBuf::from("the terminal"),
         source,

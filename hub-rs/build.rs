@@ -53,7 +53,7 @@ fn watch_git_refs() {
 /// or `None` outside a git checkout or before the first tag.
 fn describe_hub_tag() -> Option<String> {
     let describe = run_git(&["describe", "--tags", "--match", "hub-v*"])?;
-    version::version_from_describe(&describe)
+    version::parse_version_from_describe(&describe)
 }
 
 /// Returns what `git` printed with `args`, trimmed, or `None` when it

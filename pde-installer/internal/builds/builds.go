@@ -577,15 +577,6 @@ func (m Manager) runPlayerCheck(name string, player wallpaperPlayer) error {
 	return err
 }
 
-// Status reports whether a built binary is installed.
-func (m Manager) Status(name string) string {
-	status, err := m.Probe(name)
-	if err != nil {
-		return "error"
-	}
-	return status
-}
-
 // Probe reports build state without hiding filesystem errors.
 func (m Manager) Probe(name string) (string, error) {
 	path := filepath.Join(m.Home, ".local", "bin", name)

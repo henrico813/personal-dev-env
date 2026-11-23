@@ -10,14 +10,14 @@ pub fn run_flag(tools: &Tools<'_>, name: &AgentName) -> Result<Outcome, HubError
     tools
         .herdr
         .mark_needs_you(&agent.pane_id, choose_marked_states(agent.status))?;
-    Ok(Outcome::line(format!("flagged {}", name.as_str())))
+    Ok(Outcome::from_line(format!("flagged {}", name.as_str())))
 }
 
 /// Removes the "needs you" mark from the session's pane.
 pub fn run_unflag(tools: &Tools<'_>, name: &AgentName) -> Result<Outcome, HubError> {
     let agent = tools.herdr.get_agent(name.as_str())?;
     tools.herdr.clear_marks(&agent.pane_id)?;
-    Ok(Outcome::line(format!("unflagged {}", name.as_str())))
+    Ok(Outcome::from_line(format!("unflagged {}", name.as_str())))
 }
 
 /// Returns the states that show the mark. A blocked session gets it
