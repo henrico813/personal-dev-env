@@ -76,8 +76,15 @@ func runMerge(rec approval.Record, gh string, output io.Writer) int {
 	} else {
 		code = mergePlain(rec, gh, pr, output)
 	}
+	auto := slices.Contains(rec.Args, "--auto")
+	// GitHub can answer a merge call with an error, such as HTTP 502, after it
+	// merged the PR.
+	if code != 0 && code != exitRejected && !auto && isPRMerged(gh, rec, pr.Number) {
+		fmt.Fprintf(output, "pde-gh-write: GitHub shows #%d as merged after all\n", pr.Number)
+		code = 0
+	}
 	// With --auto, gh succeeds before the PR merges.
-	if code == 0 && !slices.Contains(rec.Args, "--auto") {
+	if code == 0 && !auto {
 		moveDependents(rec, gh, pr, output)
 	}
 	return code
@@ -355,4 +362,11 @@ func mergePlain(rec approval.Record, gh string, pr mergePR, output io.Writer) in
 		fmt.Fprintf(output, "pde-gh-write: merged #%d with gh pr merge\n", pr.Number)
 	}
 	return code
+}
+
+// Reports whether GitHub shows the PR as merged, and false when the lookup fails.
+func isPRMerged(gh string, rec approval.Record, number int) bool {
+	var view struct{ State string }
+	err := readGHJSON(gh, rec.Directory, rec.Repo, &view, "pr", "view", strconv.Itoa(number), "--json", "state")
+	return err == nil && view.State == "MERGED"
 }
