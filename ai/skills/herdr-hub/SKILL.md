@@ -280,20 +280,20 @@ vault. A hub never reports to a hub on another machine.
   card. A short chat holds none. A card is one piece of work, so
   sessions on the same work share one card, and its `sessions` list
   keeps each of them.
-- You may release a draft to `todo` once `card` finds a `- [ ]` line
-  in its Acceptance Criteria section and accepts its title; a refused
-  `card move` says why. Never add criteria yourself to release a card;
-  the user sets them. Note each release as `references/hub-brief.md`
-  says. Only the user adopts work already under way or drops a card.
-- Two limits, each across every project: 8 cards in `active` and 6
-  in `in-review`, as `card board` shows. `card` refuses a move into a
-  full stage unless the move has `--user`. While active has room,
-  start the oldest todo card, or the one the user names. Pass
-  `--user` past a limit only when the user says so. When in-review is
-  full, leave a finished card in `active` and tell the user its work
-  waits on them. When work is over a limit, propose which cards to
-  pause, and let the user decide. If `card` refuses a move the limits
-  allow, other than a release, pass `--user` and say so in `--why`.
+- You may release a draft to `todo` once it has a `- [ ]` line under
+  Acceptance Criteria and its title passes `card`'s title rules; a
+  refusal says why. Never add criteria yourself to release a card; the
+  user sets them. Note each release as `references/hub-brief.md` says.
+  Only the user adopts work already under way or drops a card.
+- Two limits, each across every project: 8 cards in `active` and 6 in
+  `in-review`, as `card board` shows. `card` refuses a move into a full
+  stage unless the move has `--user`. While active has room, start the
+  oldest todo card, or the one the user names. Pass `--user` past a
+  limit only when the user says so. When in-review is full, leave a
+  finished card in `active` and tell the user its work waits on them.
+  When work is over a limit, propose which cards to pause, and let the
+  user decide. If `card` refuses a move for a reason other than a limit
+  or a release's criteria or title, pass `--user` and say so in `--why`.
 - Move a card to `in-review` as soon as its work waits only on the user,
   such as an open pull request or a plan or question for the user,
   even when more work follows. When the user has answered or
