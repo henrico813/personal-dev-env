@@ -283,15 +283,20 @@ vault. A hub never reports to a hub on another machine.
   card. A short chat holds none. A card is one piece of work, so
   sessions on the same work share one card, and its `sessions` list
   keeps each of them.
-- Two limits, each across every project: 8 cards in `active` and 6
-  in `in-review`, as `card board` shows. `card` refuses a move into a
-  full stage unless the move has `--user`. While active has room,
-  start the oldest todo card, or the one the user names. Pass
-  `--user` past a limit only when the user says so. When in-review is
-  full, leave a finished card in `active` and tell the user its work
-  waits on them. When work is over a limit, propose which cards to
-  pause, and let the user decide. If `card` refuses a move that the
-  limits allow, pass `--user` and say so in `--why`.
+- You may release a draft to `todo` once it has a `- [ ]` line under
+  Acceptance Criteria and its title passes `card`'s title rules; a
+  refused `card move` prints why. Never add criteria yourself to release
+  a card; the user sets them. Only the user adopts running work or drops
+  a card. Note each release as `references/hub-brief.md` says.
+- Two limits, each across every project: 8 cards in `active` and 6 in
+  `in-review`, as `card board` shows. `card` refuses a move into a full
+  stage unless the move has `--user`. While active has room, start the
+  oldest todo card, or the one the user names. Pass `--user` past a
+  limit only when the user says so. When in-review is full, leave a
+  finished card in `active` and tell the user its work waits on them.
+  When work is over a limit, propose which cards to pause, and let the
+  user decide. If `card` refuses a move for a reason other than a limit
+  or a release's criteria or title, pass `--user` and say so in `--why`.
 - Move a card to `in-review` as soon as its work waits only on the user,
   such as an open pull request or a plan or question for the user,
   even when more work follows. When the user has answered or
@@ -312,11 +317,6 @@ vault. A hub never reports to a hub on another machine.
 - When one wake needs several card commands, such as `card note`,
   `card move` and `card add`, put them in one shell script and run it
   in one tool call.
-- Only the user moves a card from `draft` to `todo`, adopts work
-  already under way, or drops a card. Never release a card the user
-  described in a sentence: it stays in `draft` until the user has
-  refined it. Refining can take time and happen in any session; the
-  card keeps where it stands.
 - A card's key starts with its project's code, from the
   `Project code:` line in the project folder's `AGENTS.md`. For a
   project with none, propose the prefix its plans already use, or a

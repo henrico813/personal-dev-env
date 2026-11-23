@@ -35,6 +35,16 @@ the `Recommended:` choice; its reason and other lines after the reply
 line. Number them, and hold any past `Q9`, as "Question numbers" in
 `status-updates` says.
 
+When you release a draft, as SKILL.md's Cards section allows, record it
+with a `hub note` line that starts `released KEY`. `hub brief` does not
+list them. After `hub brief`'s own parts, add a "Released by the hub"
+list. It covers the `released` lines in `notes.md` after the last
+`brief shown` line, or all of them when there is no `brief shown` line
+yet. Each list line holds the card's key and its current title and
+stage. Take the title and stage from `card show KEY`. Leave the list out
+when it would be empty. It is news for the user, not a question. Then
+add a `hub note` line `brief shown`.
+
 ## A question file
 
 A `hub ask <key> <question file>` file looks like this:

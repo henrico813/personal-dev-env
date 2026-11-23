@@ -76,7 +76,8 @@ user where it is, its counts and the decisions it needs.
   the user already reviewed the work and it waits only on people
   outside the user's team; its `--why` names them, as Cards in
   SKILL.md says. Never propose `draft` for running
-  work: a draft card is one the user has not released yet.
+  work: a draft card is not released yet, so its work has not
+  started.
 - For each session, propose its next step from step 6: keep, hand off
   or pause. Propose pause when the user wants it closed. Past 150k
   tokens of context, propose keep for an OpenCode session outside the
