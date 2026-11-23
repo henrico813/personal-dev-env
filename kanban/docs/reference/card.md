@@ -32,9 +32,9 @@ named vault. The shape of the key and the file name comes from the
 
 | Command | What it does |
 | --- | --- |
-| `card new PROJECT TITLE --type T [--kind K] [--user] [--why TEXT]` | Makes a card in `draft` and prints its name. `--type` gives the [work type](#frontmatter) and has no default. Refuses a title or work type that breaks a [title rule](#title-rules). |
-| `card new PROJECT --from FILE [--user] [--why TEXT]` | Makes a card in `draft` with the title, work type, kind and section text from FILE, laid out as `card new --help` shows. Refuses any other heading, a repeated heading, and text before the first heading, so no line is lost. |
-| `card new PROJECT TITLE --type T --adopt STAGE --user [--why TEXT] [--session [AGENT]]` | Makes a card straight in `active`, `in-review` or `blocked`, for work already under way. `blocked` needs `--why`. `--session` also records the agent's session, as `card link --session` does, but skips its check for a session on another card. |
+| `card new PROJECT TITLE [--kind K] [--user] [--why TEXT]` | Makes a card in `draft` and prints its name. Refuses a title that breaks a [title rule](#title-rules). |
+| `card new PROJECT --from FILE [--user] [--why TEXT]` | Makes a card in `draft` with the title, kind and section text from FILE, laid out as `card new --help` shows. Refuses any other heading, a repeated heading, and text before the first heading, so no line is lost. |
+| `card new PROJECT TITLE --adopt STAGE --user [--why TEXT] [--session [AGENT]]` | Makes a card straight in `active`, `in-review` or `blocked`, for work already under way. `blocked` needs `--why`. `--session` also records the agent's session, as `card link --session` does, but skips its check for a session on another card. |
 | `card list [--stage S] [--project P] [--kind K] [--tabs]` | Prints one line per card: key, stage, kind and title, in stage order. A long line is cut to 60 characters. With `--tabs`, each line holds the key, stage, kind, project folder and whole title, split by tabs, for scripts such as `hub board`. |
 | `card board` | Prints the count per stage, active and in-review each against its limit, and the in-review cards by `stage_date`, oldest first. When a card is blocked, it also prints their count and the oldest wait, and lists them, longest wait first, with days waited and the reason. See [Board](#board). |
 | `card show KEY [--section S]` | Prints the whole card, or one section with its items numbered from 1. |
@@ -48,15 +48,14 @@ named vault. The shape of the key and the file name comes from the
 | `card attach KEY FILE` | Copies FILE to `attachments/<KEY> <file name>` in the card's project folder and adds a `![[...]]` line to Context. Refuses a missing file and never overwrites an attachment. |
 | `card edit KEY SECTION N TEXT` | Replaces the words of item N, as `card show KEY --section SECTION` numbers it. A checkbox or bullet stays, with its tick. Logs the old words. |
 | `card edit KEY SECTION N --remove` | Removes item N and logs its words. |
-| `card set KEY title VALUE [--user]` | Changes the title heading and renames the file. Refuses a title that breaks a [title rule](#title-rules), and any title while the card's work type breaks T3. |
+| `card set KEY title VALUE` | Changes the title heading and renames the file. Refuses a title that breaks a [title rule](#title-rules). |
 | `card set KEY kind VALUE` | Changes the kind. |
-| `card set KEY type VALUE` | Changes the work type. Refuses a value that is not a work type. |
 | `card link KEY PLAN` | Adds `[[PLAN]]` to `plans`. |
 | `card link KEY URL` | Adds a pull request URL to `prs`. |
 | `card link KEY --session [AGENT]` | Adds a Herdr agent's session to `sessions` and logs it. Without AGENT, it uses the agent in the current pane. Refuses a session already on another card, unless this card holds it too. A session that serves a second card, such as a merge worker's, logs its work there with `card note KEY2 TEXT` instead. |
 | `card delete KEY --user` | Deletes the note. Use `dropped` instead to keep a record. |
 | `card rekey [--apply --user]` | Gives each open card with an old key, such as `PDEV-KB-012`, the next new key of its project, such as `PDEV-523`. It prints one `OLD NEW` line per card and one `relink PATH` line per note whose links change. Done and dropped cards keep their keys. Without `--apply`, it writes nothing. `--apply` needs `--user`. It prints its backup folder under `~/.local/state/card`, backs up each note before writing it, renames the cards and adds `old_key`, then points links in every note under Projects to the new names, and prints an `undo` command. Undo puts the notes the rekey wrote back as they were before it, so it drops any edit made to them since. After two runs, run the newer undo command first. It stops at a note that changed since it read it, still printing the undo command; run rekey again to finish, or run the undo command. Refuses while a Herdr agent on this computer works on one of the cards, by its name or a session in `sessions`, when Herdr cannot list its agents, when two cards hold one key as key or `old_key`, when a new name is taken, or when a card was written but not renamed; then run the last undo command and rekey again. A second run renames the cards still on old keys and fixes links still on their old names. |
-| `card check` | Lists cards with a broken layout, an unknown stage or kind, a key two cards share, a note named like an old `-KB-` card without `type: card`, a session two cards share, or an open card whose title or work type breaks a [title rule](#title-rules). Exits 1 when it finds one. |
+| `card check` | Lists cards with a broken layout, an unknown stage or kind, a key two cards share, a note named like an old `-KB-` card without `type: card`, a session two cards share, or an open card whose title breaks a [title rule](#title-rules). Exits 1 when it finds one. |
 | `card name RULE VALUE...` | Prints the name a naming rule makes. The VALUEs fill the rule's fields in order, and the last field takes the rest: `card name branch feat retry uploads` prints `feat/retry-uploads`. Refuses a name the rule would not read back, such as one with an unknown branch type. Needs no vault. |
 | `card template` | Prints the Obsidian template, `001.09 Zettel-Kanban.md`. |
 
@@ -137,19 +136,15 @@ check.
 ## Title rules
 ---
 
-A title reads like a commit title, and its start fits a row of the
-hub board on a phone. `card` checks the title alone, without the
-key, and T3 checks the card's work type.
+A title reads like a commit title, with no label or key. `card`
+checks the title alone, without the card's own key.
 
 | Rule | Fails when |
 | --- | --- |
 | T1 length | The title is over 50 characters. |
-| T2 verb | The first word, without a `:` or `,` after it, is not in `VERBS` in `card.py`. With `--user`, it only reports. |
-| T3 type | The card's `work_type` is missing or not a work type. It fails even with `--user`. |
-| T4 label | One of the first three words ends in `:`, such as `Board:`. |
-| T5 key | A word is a card or plan key in any case, such as `DEMO-KB-004`, `DEMO-41` or `ISO-8601`. |
-| T6 form | The title starts with a lower-case letter, ends with a period, or holds a character Obsidian refuses in file names: `\ / : * ? " < > \| # ^ [ ]`. A label's colon counts for T4 only. |
-| T7 cut | Never fails. It shows the title as a hub board queue row does on a 40-column screen: a title over 27 characters keeps its first 26 and gains `~`. |
+| T2 label | One of the first three words ends in `:`, such as `Board:`. |
+| T3 key | A word is a card or plan key in any case, such as `DEMO-KB-004`, `DEMO-41` or `ISO-8601`. |
+| T4 form | The title starts with a lower-case letter, ends with a period, or holds a character Obsidian refuses in file names: `\ / : * ? " < > \| # ^ [ ]`. A label's colon counts for T2 only. |
 
 `card new` and `card set KEY title` refuse a title that breaks a
 rule, and list every broken rule at once:
@@ -157,34 +152,14 @@ rule, and list every broken rule at once:
 ```text
 card: title refused:
   T1 length: 53 characters, at most 50
-  T2 verb: "Hubs" is not in the verb list
-Put a verb first, at most 50 characters, such as "Retry failed uploads".
+  T2 label: "Board:"
+Write it as a commit title of at most 50 characters, such as "Retry failed uploads".
 ```
 
-When T3 fails, the refusal ends with the work types and the commands
-that give one:
-
-```text
-Work types: feat, fix, docs, refactor, chore, research.
-Give one with card new --type T, or card set KEY type T.
-```
-
-The verb hint shows only when a rule other than T3 fails.
-
-When a title passes, `card new` and `card set` print the card's name,
-then each finding that only reports, one per line, such as
-`T7 cut: Retry a failed upload twic~`. `card check` lists every
-broken rule of each card not in `done` or `dropped`. Each move into
-`todo` refuses a title that breaks a rule, also when it is one step
-of a chain. `card new`, `card set` and `card move` pass their
-`--user` to T2; `card check` never does.
-
-To give many cards their work types and titles at once, write them in
-a list and run `python3 kanban/retitle_cards.py LIST`. The script's
-docstring shows the list's lines. It prints the changes and writes
-nothing. With `--apply`, it backs up each card it changes, changes it
-with `card set`, and prints an `undo:` command that puts the cards
-back.
+When a title passes, `card new` and `card set` print only the card's
+name. `card check` lists every broken rule of each card not in `done`
+or `dropped`. Each move into `todo` refuses a title that breaks a
+rule, also when it is one step of a chain. `--user` skips no rule.
 
 ## Board
 ---
@@ -232,7 +207,6 @@ stage_date: 2026-11-06
 template_version: 1
 project: DevEnv
 kind: build
-work_type: feat
 date_created: 2026-11-06
 plans: []
 prs: []
@@ -250,7 +224,6 @@ topics:
 | `template_version` | The layout version, now 1. |
 | `project` | The project folder name. |
 | `kind` | `build` ends in a change to code, config or the running setup; `research` ends in a document or a decision. |
-| `work_type` | The kind of change, as in a commit title: `feat`, `fix`, `docs`, `refactor`, `chore` or `research`. `card new --type` or `card set KEY type` sets it. |
 | `date_created` | The day the card was made. |
 | `plans` | Links to plan notes, added by `card link`. |
 | `prs` | Pull request URLs, added by `card link`. |

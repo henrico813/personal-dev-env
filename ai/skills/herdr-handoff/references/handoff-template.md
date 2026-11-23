@@ -41,7 +41,9 @@ that the new session does not repeat a mistake.>
 
 ## What the user decided
 
-1. <Each decision, in the user's words where the wording matters.>
+1. <Each decision, in the user's words where the wording matters.
+   For an answer to a question, add where the user gave it and the
+   question's Q number, such as "(Q3)".>
 
 ## Your work
 
@@ -58,15 +60,28 @@ waiting on the user.>
 ## Questions for the user
 
 <Each open question word for word, with its Q number, its choices, the
-choice this session recommends and why. Name where the user may have
-answered each one, such as a session's pane or a card. The new
-session first checks each one there and in the card's Decisions, and
-drops each one the user already answered or made moot. It asks the
-rest first, with the same Q numbers, since the user's replies name
-questions by these numbers. It asks in the short form of the
-`status-updates` skill, which says what a Q number is. When the
-handoff names a report file, the new session writes them there in
-full instead, as Coordination says.>
+choice this session recommends and why, and its `Open:` line, as step
+4 of "Write the handoff file" in SKILL.md says. Name where the user
+may have answered each one, such as a session's pane or a card.>
+
+Before you ask a question below, look for the user's reply in the
+card's Decisions and in each place the question names. Each
+question's `Open:` line names the places the last session checked,
+and the time it checked them.
+
+- In a place the `Open:` line names, read only what came after that
+  time.
+- Read each other place in full. Read in full too a place that shows
+  no times, since you cannot tell what is new there.
+
+Drop each question the user answered or made moot. A plain reply can
+settle a question, as "Questions for the user" in the `herdr-hub`
+skill says. Ask the rest first, with the same Q numbers, in the short form of the `status-updates` skill,
+since the user's replies name questions by these numbers. Give no Q
+number listed in What the user decided to a new question until its
+batch ends, as "Question numbers" in that skill says. When this
+handoff names a report file, write the questions there in full
+instead, as Coordination says.
 
 ## Coordination
 

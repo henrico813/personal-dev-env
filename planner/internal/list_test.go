@@ -20,25 +20,25 @@ func writeNote(t *testing.T, path, content string) {
 	}
 }
 
-func issue(status, date string) string {
+func makeIssue(status, date string) string {
 	return "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: " + status +
 		"\nproject: X\ndate_created: " + date + "\ntopics: []\n---\n\n# Title\n"
 }
 
-func projectsFixture(t *testing.T) string {
+func makeProjectsFixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	writeNote(t, filepath.Join(root, "DevEnv", "TASK-001 Planning.md"), issue("planning", "2026-01-02"))
-	writeNote(t, filepath.Join(root, "DevEnv", "TASK-002 Active.md"), issue("in-progress", "2026-01-03"))
-	writeNote(t, filepath.Join(root, "DevEnv", "TASK-003 Completed.md"), issue("completed", "2026-01-04"))
-	writeNote(t, filepath.Join(root, "DevEnv", "TASK-004 Refused.md"), issue("wontdo", "2026-01-05"))
-	writeNote(t, filepath.Join(root, "DevEnv", "TASK-005 Unknown.md"), issue("mystery", "2026-01-06"))
+	writeNote(t, filepath.Join(root, "DevEnv", "TASK-001 Planning.md"), makeIssue("planning", "2026-01-02"))
+	writeNote(t, filepath.Join(root, "DevEnv", "TASK-002 Active.md"), makeIssue("in-progress", "2026-01-03"))
+	writeNote(t, filepath.Join(root, "DevEnv", "TASK-003 Completed.md"), makeIssue("completed", "2026-01-04"))
+	writeNote(t, filepath.Join(root, "DevEnv", "TASK-004 Refused.md"), makeIssue("wontdo", "2026-01-05"))
+	writeNote(t, filepath.Join(root, "DevEnv", "TASK-005 Unknown.md"), makeIssue("mystery", "2026-01-06"))
 	writeNote(t, filepath.Join(root, "DevEnv", "DESIGN-Thing.md"), "---\ntags: []\n---\n# Design\n")
 	writeNote(t, filepath.Join(root, "DevEnv", "Notes.md"), "# No frontmatter\n")
-	writeNote(t, filepath.Join(root, "Garden", "GARD-001 Done.md"), issue("done", "2026-02-01"))
+	writeNote(t, filepath.Join(root, "Garden", "GARD-001 Done.md"), makeIssue("done", "2026-02-01"))
 	writeNote(t, filepath.Join(root, "Empty", "Notes.md"), "# Just notes\n")
-	writeNote(t, filepath.Join(root, ".obsidian", "hidden.md"), issue("open", "2026-01-01"))
-	writeNote(t, filepath.Join(root, "loose.md"), issue("open", "2026-01-01"))
+	writeNote(t, filepath.Join(root, ".obsidian", "hidden.md"), makeIssue("open", "2026-01-01"))
+	writeNote(t, filepath.Join(root, "loose.md"), makeIssue("open", "2026-01-01"))
 	return root
 }
 
@@ -62,7 +62,7 @@ func runListJSON(t *testing.T, args ...string) string {
 // plain notes, Obsidian data, or loose root files. Fixed status columns replaced
 // the unreadable per-spelling counts; unknown appears only when used.
 func TestListJSONCountsIncludedIssues(t *testing.T) {
-	root := projectsFixture(t)
+	root := makeProjectsFixture(t)
 	var view projectsView
 	if err := json.Unmarshal([]byte(runListJSON(t, "--dir", root)), &view); err != nil {
 		t.Fatalf("overview JSON: %v", err)
@@ -99,7 +99,7 @@ func TestListJSONCountsIncludedIssues(t *testing.T) {
 // Agents filter by normalized state, while the source spelling stays in
 // frontmatter so normalization does not lose note data.
 func TestListJSONNormalizesIssueAliases(t *testing.T) {
-	root := projectsFixture(t)
+	root := makeProjectsFixture(t)
 	var view plansView
 	if err := json.Unmarshal([]byte(runListJSON(t, "devenv", "--dir", root)), &view); err != nil {
 		t.Fatalf("project JSON: %v", err)
@@ -130,7 +130,7 @@ func TestListJSONNormalizesIssueAliases(t *testing.T) {
 // which looked like a real answer. Known aliases must still filter across
 // projects.
 func TestListStatusAliasAndInvalidInput(t *testing.T) {
-	root := projectsFixture(t)
+	root := makeProjectsFixture(t)
 	var view plansView
 	if err := json.Unmarshal([]byte(runListJSON(t, "--status", "completed", "--dir", root)), &view); err != nil {
 		t.Fatalf("status JSON: %v", err)
@@ -158,7 +158,7 @@ func TestListStatusAliasAndInvalidInput(t *testing.T) {
 // check. JSON loses object-key order, and review found no-match JSON exited 0
 // while the human view exited 2.
 func TestListDetailPreservesOrderAndParity(t *testing.T) {
-	root := projectsFixture(t)
+	root := makeProjectsFixture(t)
 	var view plansView
 	if err := json.Unmarshal([]byte(runListJSON(t, "DevEnv", "task-003", "--dir", root)), &view); err != nil {
 		t.Fatalf("detail JSON: %v", err)
@@ -190,9 +190,9 @@ func TestListDetailPreservesOrderAndParity(t *testing.T) {
 	}
 }
 
-// fakeNobs puts a shell script named nobs alone on PATH, so these tests never
+// Puts a shell script named nobs alone on PATH, so these tests never
 // run a real nobs or read a real vault. CI has no nobs.
-func fakeNobs(t *testing.T, script string) {
+func installFakeNobs(t *testing.T, script string) {
 	t.Helper()
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "nobs"), []byte("#!/bin/sh\n"+script+"\n"), 0o755); err != nil {
@@ -206,8 +206,8 @@ func fakeNobs(t *testing.T, script string) {
 // "nobs vault path default" asks for a vault named default, which fails.
 func TestListFindsProjectsThroughNobs(t *testing.T) {
 	vault := t.TempDir()
-	writeNote(t, filepath.Join(vault, vaultProjectsSubdir, "DevEnv", "TASK-001 Planning.md"), issue("open", "2026-01-02"))
-	fakeNobs(t, `[ "$*" = "vault path" ] || { echo "unexpected arguments: $*" >&2; exit 2; }
+	writeNote(t, filepath.Join(vault, vaultProjectsSubdir, "DevEnv", "TASK-001 Planning.md"), makeIssue("open", "2026-01-02"))
+	installFakeNobs(t, `[ "$*" = "vault path" ] || { echo "unexpected arguments: $*" >&2; exit 2; }
 echo '`+vault+`'`)
 
 	var view projectsView
@@ -223,7 +223,7 @@ echo '`+vault+`'`)
 // On a computer with no default vault, the exit status alone ("exit status 2")
 // does not say what to do; nobs's message names the command that fixes it.
 func TestListErrorShowsNobsStderr(t *testing.T) {
-	fakeNobs(t, `echo "no default vault; pass a NAME or run nobs vault default NAME" >&2
+	installFakeNobs(t, `echo "no default vault; pass a NAME or run nobs vault default NAME" >&2
 exit 2`)
 
 	exit, _, stderr := executeList()

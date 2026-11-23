@@ -12,22 +12,22 @@ import (
 	"pdev/internal/approvaltest"
 )
 
-// A fake gh that answers lookups with fixed JSON and logs every other call. It
-// saves the merge-async body next to the call log, with .put added to the
-// name.
-func fakeStackGH(t *testing.T, prView, graphql, mergeStep, result string) (calls string) {
+// A fake gh that runs steps first, then answers lookups with fixed JSON and
+// logs every other call. It saves the merge-async body next to the call log,
+// with .put added to the name.
+func fakeStackGH(t *testing.T, prView, graphql, mergeStep, result string, steps ...string) (calls string) {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	approvaltest.Replace(t, &mergePoll, 10*time.Millisecond)
 	approvaltest.Replace(t, &answerTimeout, 0)
 	discardStderr(t)
-	_, calls = approvaltest.FakeGH(t, `case "$*" in
+	_, calls = approvaltest.FakeGH(t, append(steps, `case "$*" in
 "pr view"*) echo '`+prView+`' ;;
 "api graphql"*) echo '`+graphql+`' ;;
 "api --method PUT"*) cat > "$log.put"; `+mergeStep+` ;;
 "api repos/"*) echo '`+result+`' ;;
 *) echo "$*" >> "$log" ;;
-esac`)
+esac`)...)
 	return calls
 }
 
@@ -153,6 +153,71 @@ func TestMergeStackedFailureReportedWithoutMoves(t *testing.T) {
 			}
 			if log := readCalls(t, calls); strings.Contains(log, "pr edit") {
 				t.Errorf("a PR moved after the failed merge:\n%s", log)
+			}
+		})
+	}
+}
+
+// GitHub once answered a merge with HTTP 502 after merging the PR, and the
+// request failed with its dependent PR left on the merged branch. A failed
+// merge call must count as a merge only when GitHub then shows the PR merged.
+func TestMergeFailureFollowsPRState(t *testing.T) {
+	plainGraphQL := strings.Replace(lowestGraphQL, `"stack":{"baseRefName":"main"}`, `"stack":null`, 1)
+	badGateway := `echo 'HTTP 502: Bad Gateway' >&2; exit 1`
+	merged := `echo '{"state":"MERGED"}'; exit 0`
+	cases := []struct {
+		name      string
+		graphql   string
+		mergeStep string
+		lookup    string
+		code      int
+	}{
+		{
+			name:    "plain merge went through",
+			graphql: plainGraphQL,
+			lookup:  merged,
+			code:    0,
+		},
+		{
+			name:    "plain merge did not",
+			graphql: plainGraphQL,
+			lookup:  `echo '{"state":"OPEN"}'; exit 0`,
+			code:    1,
+		},
+		{
+			name:    "PR closed, not merged",
+			graphql: plainGraphQL,
+			lookup:  `echo '{"state":"CLOSED"}'; exit 0`,
+			code:    1,
+		},
+		{
+			name:    "state lookup fails",
+			graphql: plainGraphQL,
+			lookup:  "exit 1",
+			code:    1,
+		},
+		{
+			name:      "stacked merge went through",
+			graphql:   lowestGraphQL,
+			mergeStep: badGateway,
+			lookup:    merged,
+			code:      0,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := fakeStackGH(t, lowestView, tc.graphql, tc.mergeStep, "",
+				`if [ "$1 $2" = 'pr merge' ]; then `+badGateway+`; fi`,
+				`if [ "$*" = 'pr view 502 --json state' ]; then `+tc.lookup+`; fi`,
+			)
+			args := []string{"pr", "merge", "502", "--squash"}
+			requestAndAnswer(t, args, approval.StateApproved)
+
+			code := requestWrite(args)
+
+			moved := strings.Contains(readCalls(t, calls), "pr edit 509 --base main")
+			if code != tc.code || moved != (tc.code == 0) {
+				t.Errorf("merge returned %d with #509 moved %v, want %d and moved only on success", code, moved, tc.code)
 			}
 		})
 	}

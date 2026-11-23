@@ -49,7 +49,7 @@ use crate::shared::events::{self as hub_events, Event, EventKind, Memory};
 use crate::shared::lifecycle;
 use crate::shared::messages::{self, Delivery, MessageCounts, Target};
 use crate::shared::questions::read_open_questions;
-use crate::shared::run_folder::{self, ReportedNames, RunFolder};
+use crate::shared::run_folder::{self, RecordedHub, ReportedNames, RunFolder};
 use crate::shared::{HubError, Tools};
 use events::{WatchEvent, WatchMemory, append_watch_event, load_watch_memory};
 use wait::WaitFile;
@@ -82,7 +82,7 @@ const STALL_ALERT_MAX_AGE: SignedDuration = SignedDuration::from_hours(24);
 
 /// The start of each run folder's name. The herdr-hub and auto-run
 /// skills make run folders as `~/.local/state/herdr-hub.XXXXXX`.
-const RUN_PREFIX: &str = "herdr-hub.";
+pub(crate) const RUN_PREFIX: &str = "herdr-hub.";
 
 /// The watch's folder in the state folder, which holds its lock and its
 /// log.
@@ -227,9 +227,9 @@ impl RunWorkers {
 }
 
 /// Takes the watch lock, then runs `check_once` and passes on the last
-/// update's result every `poll`. Each check also puts back the sidebar
-/// rows a Herdr restart dropped here, and those of saved machines in
-/// the first check and every `REMOTE_RESTORE_EVERY` after. A second watch, such as one systemd
+/// update's result every `poll`. Each check also sets this machine's
+/// sidebar rows again, and fills in those of saved machines in the
+/// first check and every `REMOTE_RESTORE_EVERY` after. A second watch, such as one systemd
 /// started while `restart_stopped_watch` started another, waits here
 /// and takes over if the first ends. Each failure goes to `log` once
 /// while it lasts, and the next check runs, so a Herdr or file failure
@@ -263,7 +263,7 @@ pub fn run_watch(
             Ok(failures) => failures,
             Err(error) => vec![error.to_string()],
         };
-        if let Err(error) = sidebar::restore_go_to_list(tools) {
+        if let Err(error) = sidebar::sync_go_to_list(tools) {
             failures.push(format!("could not restore the sidebar: {error}"));
         }
         if last_remote_restore.is_none_or(|restored| restored.elapsed() >= REMOTE_RESTORE_EVERY) {
@@ -865,14 +865,15 @@ fn is_idle(agent: &Agent) -> bool {
 /// Names the hub that runs this command as the run's hub, then starts
 /// `hub watch run` in the background unless a watch already runs on
 /// this machine. The name goes to `events.jsonl`, so the watch serves
-/// this run from its next check.
+/// this run from its next check. The hub's session also goes to the
+/// run folder, where the sidebar finds the front hub.
 ///
 /// # Errors
 ///
 /// `HubError::NotDone` when the run folder is not one the watch reads,
 /// when no hub agent is found, and when the watch cannot start.
-/// Herdr's failures, and `HubError::File` when the event log cannot be
-/// written.
+/// Herdr's failures, and `HubError::File` when the event log or the
+/// recorded hub cannot be written.
 pub fn run_watch_start(
     tools: &Tools<'_>,
     run: &RunFolder,
@@ -887,6 +888,11 @@ pub fn run_watch_start(
             start.runs_folder.display()
         )));
     }
+    let recorded = RecordedHub {
+        session_id: start.session_id.clone(),
+        pane_id: tools.own_pane.map(str::to_owned),
+    };
+    run.record_hub(&recorded)?;
     let hub = find_hub_agent(tools, start.session_id.as_deref())?;
     let started = WatchEvent::WatchStarted {
         hub: hub.name.clone(),

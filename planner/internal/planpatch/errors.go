@@ -32,6 +32,6 @@ func (e *Error) Error() string { return e.Cause.Error() }
 
 func (e *Error) Unwrap() error { return e.Cause }
 
-func failure(code, format string, args ...any) error {
+func newFailure(code, format string, args ...any) error {
 	return &Error{Code: code, Cause: fmt.Errorf(format, args...)}
 }

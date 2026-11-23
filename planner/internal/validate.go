@@ -63,7 +63,7 @@ func walkValidationRules(plan Plan) []ValidationError {
 		if strings.TrimSpace(goal.Text) == "" {
 			add(field+".text", fmt.Sprintf("%s.text is required", field), 0)
 		}
-		if !validStatus(goal.Status) {
+		if !isValidStatus(goal.Status) {
 			add(field+".status", fmt.Sprintf("%s.status %q is invalid", field, goal.Status), 0)
 		}
 		if got := utf8.RuneCountInString(goal.Text); got > MaxDoDGoalLength {
@@ -106,7 +106,7 @@ func walkValidationRules(plan Plan) []ValidationError {
 			} else if got := utf8.RuneCountInString(item.Text); got > MaxVerificationItemTextLength {
 				add(field+".text", fmt.Sprintf("%s.text must be no more than %d characters (got %d)", field, MaxVerificationItemTextLength, got), got)
 			}
-			if !validStatus(item.Status) {
+			if !isValidStatus(item.Status) {
 				add(field+".status", fmt.Sprintf("%s.status %q is invalid", field, item.Status), 0)
 			}
 		}
@@ -117,7 +117,7 @@ func walkValidationRules(plan Plan) []ValidationError {
 			} else if got := utf8.RuneCountInString(item.Text); got > MaxVerificationItemTextLength {
 				add(field+".text", fmt.Sprintf("%s.text must be no more than %d characters (got %d)", field, MaxVerificationItemTextLength, got), got)
 			}
-			if !validStatus(item.Status) {
+			if !isValidStatus(item.Status) {
 				add(field+".status", fmt.Sprintf("%s.status %q is invalid", field, item.Status), 0)
 			}
 		}
@@ -235,8 +235,8 @@ func VerifyRenderedText(rendered string, plan Plan) error {
 	return nil
 }
 
-// validStatus is the single source of truth for allowed runtime statuses.
+// Reports whether s is allowed; no other code lists the runtime statuses.
 // Unchecked items are represented as empty status.
-func validStatus(s ChecklistStatus) bool {
+func isValidStatus(s ChecklistStatus) bool {
 	return s == "" || s == StatusDone
 }

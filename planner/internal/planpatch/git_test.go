@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func gitOK(t *testing.T, repo string, args ...string) string {
+func mustRunGit(t *testing.T, repo string, args ...string) string {
 	t.Helper()
 	raw, err := runGit(repo, nil, args...)
 	if err != nil {
@@ -20,23 +20,23 @@ func gitOK(t *testing.T, repo string, args ...string) string {
 	return strings.TrimSpace(string(raw))
 }
 
-func sourceRepo(t *testing.T) (string, string) {
+func makeSourceRepo(t *testing.T) (string, string) {
 	t.Helper()
 	repo := t.TempDir()
-	gitOK(t, repo, "init", "--quiet", "--template=")
+	mustRunGit(t, repo, "init", "--quiet", "--template=")
 	if err := os.WriteFile(filepath.Join(repo, "foo.txt"), []byte("A\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	gitOK(t, repo, "add", "--", "foo.txt")
+	mustRunGit(t, repo, "add", "--", "foo.txt")
 	// Newer Git starts detached maintenance after a commit. Its lock file can
 	// appear in a test's snapshot and vanish later, failing the comparison.
-	gitOK(t, repo, "-c", "maintenance.auto=false", "-c", "user.name=Planner Test",
+	mustRunGit(t, repo, "-c", "maintenance.auto=false", "-c", "user.name=Planner Test",
 		"-c", "user.email=planner@example.invalid",
 		"-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "base commit")
-	return repo, gitOK(t, repo, "rev-parse", "HEAD")
+	return repo, mustRunGit(t, repo, "rev-parse", "HEAD")
 }
 
-func text(data string) *File { return &File{Data: []byte(data), Mode: "100644"} }
+func newTextFile(data string) *File { return &File{Data: []byte(data), Mode: "100644"} }
 
 func generated(t *testing.T, before, after *File) Change {
 	t.Helper()
@@ -47,7 +47,7 @@ func generated(t *testing.T, before, after *File) Change {
 	return Change{Target: "implementation[1].file_changes[1]", Filename: "foo.txt", Diff: diff}
 }
 
-func failureCode(t *testing.T, err error) string {
+func readFailureCode(t *testing.T, err error) string {
 	t.Helper()
 	var patchErr *Error
 	if !errors.As(err, &patchErr) {
@@ -56,7 +56,7 @@ func failureCode(t *testing.T, err error) string {
 	return patchErr.Code
 }
 
-func snapshot(t *testing.T, root string) map[string][32]byte {
+func hashFiles(t *testing.T, root string) map[string][32]byte {
 	t.Helper()
 	files := map[string][32]byte{}
 	err := filepath.WalkDir(root, func(name string, d os.DirEntry, err error) error {
@@ -88,7 +88,7 @@ func snapshot(t *testing.T, root string) map[string][32]byte {
 // user's checkout, index, and untracked files alone. Without both rules, coupled
 // edits fail and validation can silently disturb the working tree.
 func TestApplyUsesPriorStepsOnly(t *testing.T) {
-	repo, baseCommit := sourceRepo(t)
+	repo, baseCommit := makeSourceRepo(t)
 	local := []byte("unrelated local edit\n")
 	if err := os.WriteFile(filepath.Join(repo, "foo.txt"), local, 0644); err != nil {
 		t.Fatal(err)
@@ -97,9 +97,9 @@ func TestApplyUsesPriorStepsOnly(t *testing.T) {
 		[]byte("keep me"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	before := snapshot(t, repo)
-	first := generated(t, text("A\n"), text("B\n"))
-	second := generated(t, text("B\n"), text("C\n"))
+	before := hashFiles(t, repo)
+	first := generated(t, newTextFile("A\n"), newTextFile("B\n"))
+	second := generated(t, newTextFile("B\n"), newTextFile("C\n"))
 	second.Target = "implementation[2].file_changes[1]"
 	// Ambient Git variables must not redirect the private index or worktree.
 	t.Setenv("GIT_INDEX_FILE", filepath.Join(repo, ".git", "index"))
@@ -115,10 +115,10 @@ func TestApplyUsesPriorStepsOnly(t *testing.T) {
 	if err == nil {
 		session.Close()
 		t.Fatal("accepted out-of-order apply")
-	} else if failureCode(t, err) != CodePatchNotApplicable {
+	} else if readFailureCode(t, err) != CodePatchNotApplicable {
 		t.Fatalf("wrong-order apply: %v", err)
 	}
-	after := snapshot(t, repo)
+	after := hashFiles(t, repo)
 	if len(before) != len(after) {
 		t.Fatal("source file set changed")
 	}
@@ -138,13 +138,13 @@ func TestGenerateRoundTripsContentAndExistence(t *testing.T) {
 		name          string
 		before, after *File
 	}{
-		{"normal", text("A\n"), text("B\n")},
-		{"no final newline", text("A"), text("B")},
-		{"blank final line", text("A\n"), text("A\n\n")},
-		{"new empty", nil, text("")},
-		{"new file", nil, text("B\n")},
-		{"deleted file", text("A\n"), nil},
-		{"deleted empty", text(""), nil},
+		{"normal", newTextFile("A\n"), newTextFile("B\n")},
+		{"no final newline", newTextFile("A"), newTextFile("B")},
+		{"blank final line", newTextFile("A\n"), newTextFile("A\n\n")},
+		{"new empty", nil, newTextFile("")},
+		{"new file", nil, newTextFile("B\n")},
+		{"deleted file", newTextFile("A\n"), nil},
+		{"deleted empty", newTextFile(""), nil},
 		{"executable",
 			&File{Data: []byte("A\n"), Mode: "100755"},
 			&File{Data: []byte("B\n"), Mode: "100755"}},
@@ -152,7 +152,7 @@ func TestGenerateRoundTripsContentAndExistence(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			change := generated(t, tc.before, tc.after)
-			s, err := emptySession("sha1")
+			s, err := newEmptySession("sha1")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -184,8 +184,8 @@ func TestGenerateRoundTripsContentAndExistence(t *testing.T) {
 // Each case checks the exact error code, because callers branch on the code
 // instead of matching Git's changing error text.
 func TestRejectBadPatchUndeclaredPaths(t *testing.T) {
-	repo, baseCommit := sourceRepo(t)
-	good := generated(t, text("A\n"), text("B\n"))
+	repo, baseCommit := makeSourceRepo(t)
+	good := generated(t, newTextFile("A\n"), newTextFile("B\n"))
 	cases := []struct {
 		name     string
 		change   Change
@@ -218,7 +218,7 @@ func TestRejectBadPatchUndeclaredPaths(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			before := snapshot(t, repo)
+			before := hashFiles(t, repo)
 			session, err := ApplyToBase(repo, baseCommit, []Change{tc.change})
 			if session != nil {
 				session.Close()
@@ -226,10 +226,10 @@ func TestRejectBadPatchUndeclaredPaths(t *testing.T) {
 			if err == nil {
 				t.Fatal("accepted invalid patch")
 			}
-			if got := failureCode(t, err); got != tc.wantCode {
+			if got := readFailureCode(t, err); got != tc.wantCode {
 				t.Fatalf("code = %q, want %q: %v", got, tc.wantCode, err)
 			}
-			after := snapshot(t, repo)
+			after := hashFiles(t, repo)
 			for name, hash := range before {
 				if after[name] != hash {
 					t.Fatalf("failure modified %s", name)
@@ -251,16 +251,16 @@ func TestGeneratedPatchHandlesSeparatedHunks(t *testing.T) {
 	before := strings.Join(lines, "\n") + "\n"
 	lines[10], lines[2180] = "*** End Patch", "```"
 	after := strings.Join(lines, "\n") + "\n"
-	change := generated(t, text(before), text(after))
+	change := generated(t, newTextFile(before), newTextFile(after))
 	if got := bytes.Count(change.Diff, []byte("\n@@")); got != 2 {
 		t.Fatalf("expected two bounded hunks, got %d", got)
 	}
-	s, err := emptySession("sha1")
+	s, err := newEmptySession("sha1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if err := s.Apply(generated(t, nil, text(before))); err != nil {
+	if err := s.Apply(generated(t, nil, newTextFile(before))); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Apply(change); err != nil {
@@ -281,7 +281,7 @@ func TestGeneratedPatchHandlesSeparatedHunks(t *testing.T) {
 // so a caller can tell a wrong argument shape from a commit the repository does
 // not have.
 func TestOpenRejectsNonCommitBaseCommit(t *testing.T) {
-	repo, _ := sourceRepo(t)
+	repo, _ := makeSourceRepo(t)
 	cases := []struct {
 		name, baseCommit, wantCode string
 	}{
@@ -295,7 +295,7 @@ func TestOpenRejectsNonCommitBaseCommit(t *testing.T) {
 			if err == nil {
 				t.Fatalf("accepted base commit %q", tc.baseCommit)
 			}
-			if got := failureCode(t, err); got != tc.wantCode {
+			if got := readFailureCode(t, err); got != tc.wantCode {
 				t.Fatalf("code = %q, want %q: %v", got, tc.wantCode, err)
 			}
 		})
@@ -314,7 +314,7 @@ func TestValidatePathRejectsUnsupported(t *testing.T) {
 	for _, name := range rejected {
 		if err := ValidatePath(name); err == nil {
 			t.Fatalf("accepted %q", name)
-		} else if got := failureCode(t, err); got != CodeUnsupportedPath {
+		} else if got := readFailureCode(t, err); got != CodeUnsupportedPath {
 			t.Fatalf("code for %q = %q, want %q", name, got, CodeUnsupportedPath)
 		}
 	}
@@ -335,7 +335,7 @@ func TestGenerateRejectsUnsupportedInput(t *testing.T) {
 		before, after *File
 		wantCode      string
 	}{
-		{"binary bytes", nil, text("a\x00b"), CodePatchUnsupported},
+		{"binary bytes", nil, newTextFile("a\x00b"), CodePatchUnsupported},
 		{"symlink mode", nil, &File{Data: []byte("target"), Mode: "120000"}, CodePatchUnsupported},
 		{"unsupported mode", nil, &File{Data: []byte("x"), Mode: "100600"}, CodePatchUnsupported},
 		{"both absent", nil, nil, CodePatchNoChange},
@@ -346,7 +346,7 @@ func TestGenerateRejectsUnsupportedInput(t *testing.T) {
 			if err == nil {
 				t.Fatal("accepted unsupported input")
 			}
-			if got := failureCode(t, err); got != tc.wantCode {
+			if got := readFailureCode(t, err); got != tc.wantCode {
 				t.Fatalf("code = %q, want %q: %v", got, tc.wantCode, err)
 			}
 		})

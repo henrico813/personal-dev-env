@@ -43,7 +43,7 @@ func recordAnswer(rec approval.Record, choice string) (approval.Record, error) {
 		return rec, err
 	}
 	if rec.State == approval.StateApproved {
-		rec = ensureRunner(rec)
+		rec = approval.EnsureRunner(rec, runnerStart)
 	}
 	clearRecordMarker(rec)
 	return rec, nil

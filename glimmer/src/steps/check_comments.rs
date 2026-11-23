@@ -13,7 +13,7 @@ use crate::shared::approvals::{self, Approvals, DecisionMatch};
 use crate::shared::comments::{self, FileComments};
 use crate::shared::git::{self, CommitId};
 use crate::shared::review_session;
-use crate::shared::style_rules::{Finding, Outcome, Rule, StyleCheck, TextAtBase};
+use crate::shared::style_rules::{Finding, Outcome, ReportNote, Rule, StyleCheck, TextAtBase};
 use crate::shared::{Error, ErrorCode};
 
 /// Returns step 2's failures and reported findings for changes since `base`,
@@ -84,6 +84,7 @@ pub fn check_comments(
             }
             // Git's diff numbers only the disk copy's lines, and agents edit that copy.
             if is_on_disk {
+                reported.extend(find_unchanged_against_decisions(&approvals, &now, &before));
                 let changed_lines = git::list_changed_lines(dir, &base, file)?;
                 for finding in style_check.find_file_style_issues(&now, &changed_lines) {
                     match finding.outcome {
@@ -143,6 +144,34 @@ fn find_changed_approved_texts(
         }
     }
     failures
+}
+
+/// Returns a reported finding for each comment the branch did not change whose
+/// approved texts differ from it, or whose name the user cut. The review leaves
+/// these out, so an agent can ask about one with a change request.
+fn find_unchanged_against_decisions(
+    approvals: &Approvals,
+    now: &FileComments,
+    before: &FileComments,
+) -> Vec<Finding> {
+    now.comments
+        .iter()
+        .filter(|comment| before.has_same(comment))
+        .filter(|comment| {
+            matches!(
+                approvals.compare(comment),
+                DecisionMatch::DiffersFromApproved | DecisionMatch::WasCut
+            )
+        })
+        .map(|comment| Finding {
+            file: comment.file.clone(),
+            name: comment.name.clone(),
+            line: comment.line,
+            rule: Rule::Approved,
+            outcome: Outcome::Reported(ReportNote::Existing),
+            detail: None,
+        })
+        .collect()
 }
 
 fn find_removed_approved_comments(

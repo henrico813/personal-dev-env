@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"pde-installer/internal/fsutil"
 	"pde-installer/internal/manifest"
 	"pde-installer/internal/run"
 	"pde-installer/internal/testfile"
@@ -87,8 +88,8 @@ func TestNPMCacheCleanupPreservesRollback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Reconcile() error = %v", err)
 	}
-	if err := journal.Commit(); err != nil {
-		t.Fatalf("Commit() error = %v", err)
+	if err := fsutil.CommitJournals(journal); err != nil {
+		t.Fatalf("CommitJournals() error = %v", err)
 	}
 	before, err := os.ReadFile(logPath)
 	if err != nil {

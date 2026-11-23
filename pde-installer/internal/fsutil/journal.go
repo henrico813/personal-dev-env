@@ -224,14 +224,6 @@ func (j *Journal) Revert(cause error) error {
 	return cause
 }
 
-// Commit marks success before removing backups and temporary paths.
-func (j *Journal) Commit() error {
-	if err := j.markCommitted(); err != nil {
-		return err
-	}
-	return j.finishCommit()
-}
-
 // CommitJournals durably commits every journal before cleaning any backup.
 func CommitJournals(journals ...*Journal) error {
 	active, err := activeJournals(journals)
