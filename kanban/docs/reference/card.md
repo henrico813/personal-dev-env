@@ -53,6 +53,7 @@ named vault. The shape of the key and the file name comes from the
 | `card link KEY PLAN` | Adds `[[PLAN]]` to `plans`. |
 | `card link KEY URL` | Adds a pull request URL to `prs`. |
 | `card link KEY --session [AGENT]` | Adds a Herdr agent's session to `sessions` and logs it. Without AGENT, it uses the agent in the current pane. Refuses a session already on another card, unless this card holds it too. A session that serves a second card, such as a merge worker's, logs its work there with `card note KEY2 TEXT` instead. |
+| `card merged URL` | Moves each open card whose `prs` holds URL to `done`, or logs why it stays. See [Moves](#moves). |
 | `card delete KEY --user` | Deletes the note. Use `dropped` instead to keep a record. |
 | `card rekey [--apply --user]` | Gives each open card with an old key, such as `PDEV-KB-012`, the next new key of its project, such as `PDEV-523`. It prints one `OLD NEW` line per card and one `relink PATH` line per note whose links change. Done and dropped cards keep their keys. Without `--apply`, it writes nothing. `--apply` needs `--user`. It prints its backup folder under `~/.local/state/card`, backs up each note before writing it, renames the cards and adds `old_key`, then points links in every note under Projects to the new names, and prints an `undo` command. Undo puts the notes the rekey wrote back as they were before it, so it drops any edit made to them since. After two runs, run the newer undo command first. It stops at a note that changed since it read it, still printing the undo command; run rekey again to finish, or run the undo command. Refuses while a Herdr agent on this computer works on one of the cards, by its name or a session in `sessions`, when Herdr cannot list its agents, when two cards hold one key as key or `old_key`, when a new name is taken, or when a card was written but not renamed; then run the last undo command and rekey again. A second run renames the cards still on old keys and fixes links still on their old names. |
 | `card check` | Lists cards with a broken layout, an unknown stage or kind, a key two cards share, a note named like an old `-KB-` card without `type: card`, a session two cards share, or an open card whose title breaks a [title rule](#title-rules). Exits 1 when it finds one. |
@@ -73,6 +74,7 @@ items, though each edit adds a note line to the Log.
 `--by NAME` gives one; otherwise `card` uses the name of the Herdr
 agent in its pane. With neither, `card` stops. The user passes
 `--by user`.
+`card merged` needs neither; its Log lines name `card merged`.
 
 `--session AGENT` takes a Herdr agent name or pane. `card` reads the
 agent's kind and session id from `herdr agent get AGENT`, such as
@@ -132,6 +134,20 @@ checkbox, so paused work with no criteria can still go back to
 each counted across every project. `blocked` cards count against
 neither. Adoption skips the limits and the Acceptance Criteria
 check.
+
+`card merged URL` runs after a merge the user approved, so it moves
+cards to `done` as the user's move. It looks at each open card whose
+`prs` holds URL. Two spellings of one pull request match, such as
+`http` against `https`, or a URL ending in `/files`. A card moves
+only when every Acceptance Criteria box is ticked and gh, the GitHub
+CLI, says each other pull request in `prs` merged. It moves along
+the chain `card move --user` takes, so `active` goes through
+`in-review`. Otherwise the card keeps its stage, and a Log note says
+what holds it; a rerun for the same merge adds no second note. When
+gh fails or a card cannot be written, it leaves that card unchanged,
+goes on to the next and exits 1. A pull request counts only when its
+URL is in `prs`, which `card link KEY URL` adds; nothing adds it when
+the pull request opens.
 
 ## Title rules
 ---
@@ -279,6 +295,8 @@ Each line starts with `- YYYY-MM-DD`. Text in brackets is optional.
 | `card note --needs-you` | `needs-you: TEXT` |
 | `card note --answered` | `answered: TEXT` |
 | `card note` | `note (NAME): TEXT` |
+| `card merged` | `STAGE: by card merged for the user[. URL merged]` |
+| `card merged`, card stays | `note (card merged): URL merged, but the card stays STAGE: REASONS` |
 | `card edit` | `note (NAME): replaced SECTION item N, was "OLD"` or `note (NAME): removed SECTION item N, "OLD"` |
 | `--session` | `session: NAME (KIND SESSION_ID)` |
 | the Obsidian template | `draft: by the user in Obsidian` |

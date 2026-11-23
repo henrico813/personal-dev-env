@@ -71,6 +71,10 @@ Everything else it handles itself or leaves alone.
   way, with `card new --adopt active`, `--adopt in-review` or
   `--adopt blocked`. The staff agent passes `--user` only
   after the user said so in this session.
+- `card merged URL`, run after a merge the user approved, moves each
+  open card that links the PR to `done` as the user's move, or logs
+  what still holds it. The staff agent does not ask the user to
+  accept a card that `card merged` moved.
 - The staff agent moves `draft -> todo` when the card has an
   Acceptance Criteria checkbox and a passing title, and names those
   cards in its next situation report. It moves `todo -> active`

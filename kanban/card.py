@@ -36,6 +36,7 @@ Usage::
     card set KEY title|kind VALUE
     card link KEY PLAN|PR_URL
     card link KEY --session [AGENT]    record a Herdr agent's session
+    card merged PR_URL                 move cards linking it to done
     card delete KEY --user
     card rekey [--apply --user]        new keys for open old-key cards
     card check                         cards with a broken layout or title
@@ -174,6 +175,12 @@ FIELD_RE = re.compile(r"^([A-Za-z_][\w-]*):(.*)$")
 LIST_ITEM_RE = re.compile(r"^\s+-\s+(.*)$")
 HEADING_RE = re.compile(r"^(#{1,2})\s+(.*?)\s*$")
 CHECKBOX_RE = re.compile(r"^\s*- \[[ xX]\] \S", re.M)
+UNTICKED_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)]) \[[^xX\]]\] \S", re.M)
+# A GitHub pull request URL, maybe followed by a page such as /files.
+PR_URL_RE = re.compile(
+    r"^(?:https?://)?(?:www\.)?github\.com/([^/\s]+)/([^/\s]+)/pull/(\d+)",
+    re.IGNORECASE,
+)
 # A section item's bullet or checkbox, then its words.
 ITEM_PREFIX_RE = re.compile(r"^(- \[[ xX]\] |[-*] )?(.*)$")
 # Characters Obsidian refuses in file names, plus link syntax.
@@ -459,6 +466,16 @@ def build_parser() -> argparse.ArgumentParser:
     link.add_argument("target", nargs="?", help="plan note name, or a PR URL")
     add_session_option(link, "")
     link.set_defaults(run=run_link)
+
+    merged = commands.add_parser(
+        "merged",
+        help="move the cards linking a merged PR to done",
+        description="A card moves only when all its PRs merged and all its"
+        " Acceptance Criteria are ticked. Otherwise it stays, and its Log"
+        " says why; when gh fails, it stays unchanged.",
+    )
+    merged.add_argument("url", help="the merged PR's URL")
+    merged.set_defaults(run=run_merged)
 
     delete = commands.add_parser("delete", help="remove a card note")
     delete.add_argument("key")
@@ -1232,6 +1249,161 @@ def check_move(
                 f"{count} cards are in {target}, the limit is {limit}."
                 " Ask the user which to finish first."
             )
+
+
+def run_merged(args: argparse.Namespace, projects: Path) -> int:
+    """Move each open card that links a merged PR to done, or log why not.
+
+    A merge is the user's approval, so the move is the user's and an
+    active card passes through in-review. One card's failure leaves
+    that card as it was, and the other cards still go.
+
+    Args:
+        args: The parsed arguments.
+        projects: The vault's Projects folder.
+
+    Returns:
+        The exit code, 1 when gh failed or a card could not be written.
+    """
+    merged = normalize_pr_url(args.url)
+    cards = [
+        card
+        for card in load_all_cards(projects)
+        if card.stage not in (DONE, DROPPED)
+        and merged in list_card_prs(card.text)
+    ]
+    if not cards:
+        print(f"no open card links {merged}")
+        return 0
+    code = 0
+    for card in cards:
+        try:
+            print(apply_merge_to_card(card, merged, projects))
+        except (CardError, OSError) as error:
+            print(f"card: {card.key} unchanged: {error}", file=sys.stderr)
+            code = 1
+    return code
+
+
+def apply_merge_to_card(card: Card, merged: str, projects: Path) -> str:
+    """Move a card to done after its PR merged, or add a Log note why not.
+
+    The merged PR needs no gh call. The card stays when gh says another
+    of its PRs has not merged, when an Acceptance Criteria box is not
+    ticked, or when the move rules refuse a move of the chain.
+
+    Args:
+        card: An open card that links the merged PR.
+        merged: The merged PR's URL, normalized.
+        projects: The vault's Projects folder, for the move rules.
+
+    Returns:
+        The line to print, such as ``PDEV-5 active -> in-review -> done``.
+
+    Raises:
+        CardError: gh failed, or the note kept changing.
+    """
+    unmerged = []
+    for url in list_card_prs(card.text):
+        if url != merged and (state := read_pr_state(url)) != "MERGED":
+            unmerged.append(f"{url} is {state.lower()}")
+    today = date.today().isoformat()
+    author = "by card merged"
+    line = ""
+
+    def change(text: str) -> str:
+        """Check the card as it is now, then move it or log why not."""
+        nonlocal line
+        current = str(read_fields(text).get("stage", ""))
+        waits = list(unmerged)
+        criteria = read_section(text, CRITERIA) or ""
+        if unticked := len(UNTICKED_RE.findall(criteria)):
+            waits.append(f"{unticked} unticked in {CRITERIA}")
+        chain: list[str] = []
+        if not waits:
+            try:
+                chain = plan_moves(
+                    text, card.key, current, DONE, True, projects
+                )
+            except CardError as error:
+                waits.append(str(error))
+        if waits:
+            line = f"{card.key} stays {current}: {', '.join(waits)}"
+            note = (
+                f"note (card merged): {merged} merged, but the card stays"
+                f" {current}: {', '.join(waits)}"
+            )
+            # A rerun for the same merge must not add the same note again.
+            if (read_section(text, "Log") or "").rstrip().endswith(note):
+                return text
+            return add_to_section(text, "Log", f"- {today} {note}")
+        for stage in chain:
+            why = f"{merged} merged" if stage == DONE else None
+            entry = format_log_entry(stage, author, True, why)
+            text = add_to_section(text, "Log", f"- {today} {entry}")
+        line = f"{card.key} {' -> '.join([current, *chain])}"
+        text = set_field(text, "stage", DONE)
+        return set_field(text, "stage_date", today)
+
+    update_card(card, change)
+    return line
+
+
+def normalize_pr_url(url: str) -> str:
+    """Return a PR URL in one form, so two spellings of it match.
+
+    ``http://GitHub.com/Me/Repo/pull/7/files#top`` becomes
+    ``https://github.com/me/repo/pull/7``. Any other URL only loses its
+    ``#...`` part and a trailing slash.
+
+    Args:
+        url: A PR URL as given or as stored in ``prs``.
+
+    Returns:
+        The normalized URL.
+    """
+    url = url.strip()
+    if match := PR_URL_RE.match(url):
+        owner, repo, number = match.groups()
+        return f"https://github.com/{owner}/{repo}/pull/{number}".lower()
+    return url.split("#")[0].rstrip("/")
+
+
+def list_card_prs(text: str) -> list[str]:
+    """Return the PR URLs in a card's ``prs`` field, normalized, each once.
+
+    Args:
+        text: The card text.
+
+    Returns:
+        The URLs in field order.
+    """
+    urls = as_list(read_fields(text).get("prs"))
+    return list(dict.fromkeys(normalize_pr_url(url) for url in urls))
+
+
+def read_pr_state(url: str) -> str:
+    """Ask gh for a pull request's state.
+
+    Args:
+        url: The pull request URL.
+
+    Returns:
+        The state, such as MERGED, OPEN or CLOSED.
+
+    Raises:
+        CardError: gh failed or took longer than 5 seconds.
+    """
+    command = ["gh", "pr", "view", url, "--json", "state", "--jq", ".state"]
+    try:
+        proc = subprocess.run(
+            command, capture_output=True, text=True, timeout=5
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise CardError(f"{' '.join(command)} failed: {error}") from error
+    if proc.returncode != 0:
+        raise CardError(f"{' '.join(command)} failed: {proc.stderr.strip()}")
+    return proc.stdout.strip()
 
 
 def run_note(args: argparse.Namespace, projects: Path) -> int:
