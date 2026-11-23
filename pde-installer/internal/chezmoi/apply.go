@@ -147,15 +147,6 @@ func (m Manager) Apply() (*fsutil.Journal, error) {
 	return journal, nil
 }
 
-// Status reports whether the managed home configuration has drifted.
-func (m Manager) Status() string {
-	status, err := m.Probe()
-	if err != nil {
-		return "unavailable"
-	}
-	return status
-}
-
 // Probe reports configuration drift without hiding command failures.
 func (m Manager) Probe() (string, error) {
 	proxy := filepath.Join(m.AquaRoot, "bin", "chezmoi")
