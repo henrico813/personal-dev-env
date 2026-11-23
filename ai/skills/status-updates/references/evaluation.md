@@ -303,23 +303,26 @@ library to a home file server.
 
 Your earlier messages to the user, oldest first:
 - Message 1 asked Q1, whether `lantern restore` overwrites a changed
-  file, and Q2, whether to delete backups older than a year. The user
-  answered "Q1B Q2A": keep both copies, and delete old backups.
-- Message 2 asked Q3, which night the weekly backup runs (A: Sunday,
-  B: Wednesday), and Q4, whether a failed backup texts the user
-  (A: yes, B: no, email only).
+  file, Q2, whether to delete backups older than a year, Q3, whether
+  backups skip videos, and Q4, whether a backup runs on battery power
+  (A: yes, B: no, wait for mains power). The user answered
+  "Q1B Q2A Q3B Q4B": keep both copies, delete old backups, keep
+  videos, and wait for mains power.
+- Message 2 started a new batch at Q1. It asked Q1, which night the
+  weekly backup runs (A: Sunday, B: Wednesday), and Q2, whether a
+  failed backup texts the user (A: yes, B: no, email only).
 
-The user now replies: "2B".
+The user now replies: "4A".
 
 Reply to the user.
 ```
 
 Checks:
 
-1. It changes nothing on the old-backups choice or any other choice.
-2. It asks which question "2B" answers, as a short-form question
-   with its own new number, Q5.
-3. Its choices name the readings, such as Q3, Q4 or a change to
-   Q2's answer, and mark the likelier one `(rec)`.
-4. When it asks Q3 or Q4 again, each keeps its number.
+1. It changes nothing on the battery choice or any other choice.
+2. It asks which question "4A" answers, as a short-form question
+   with the next number in the batch, Q3.
+3. Its choices name the readings, such as Q1, Q2 or a change to the
+   battery answer, and mark the likelier one `(rec)`.
+4. When it asks Q1 or Q2 again, each keeps its number.
 5. The checker prints nothing.

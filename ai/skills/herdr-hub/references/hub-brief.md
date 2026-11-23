@@ -1,7 +1,7 @@
-# What hub brief prints
+# What hub brief prints and hub ask takes
 
 Read this when you run `hub brief` to bring the user what waits on
-them.
+them, or when you write a question for `hub ask`.
 
 Its first line is `board active A of 8, in-review R of 6; K questions`.
 When cards are blocked, a `blocked W, oldest D days`
@@ -32,7 +32,8 @@ the user.
 Show `reviews.md` as printed, and each question in the short form of
 `status-updates`: its title's words, question, then key; `(rec)` on
 the `Recommended:` choice; its reason and other lines after the reply
-line.
+line. Number them, and hold any past `Q9`, as "Question numbers" in
+`status-updates` says.
 
 ## A question file
 
@@ -48,3 +49,11 @@ A `hub ask <key> <question file>` file looks like this:
     Recommended: A, since you want to test it in the morning.
     If no reply: nothing deploys; the worker goes on with its tests.
     Depends on: your rule of 2026-11-09 to test it in the morning.
+
+## What hub ask refuses and marks
+
+`hub ask` refuses a question with a part missing. It also refuses a
+card that already waits on the user, since a card shows one open
+question. Keep the next question for that card in `notes.md`, and ask
+it with `hub ask` right after `hub answer`. `hub ask` marks the card
+needs-you, so `hub status` shows the card's sessions as `you`.
