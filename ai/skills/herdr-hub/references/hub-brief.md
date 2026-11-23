@@ -34,6 +34,13 @@ Show `reviews.md` as printed, and each question in the short form of
 the `Recommended:` choice; its reason and other lines after the reply
 line.
 
+Record each draft you release under Cards in SKILL.md with a
+`hub note` line that starts `released <KEY>`. `hub brief` does not
+list them. After its own parts, add a "Released by the hub" list: one
+line for each `released` note since you last showed the brief, with
+the card's key, title and stage now. It is news for the user, not a
+question.
+
 ## A question file
 
 A `hub ask <key> <question file>` file looks like this:

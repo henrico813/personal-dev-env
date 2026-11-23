@@ -64,14 +64,17 @@ Everything else it handles itself or leaves alone.
 ## Who decides what
 ---
 
-- The user decides design, what starts next, and whether finished work
-  is accepted. Only the user makes these moves: `draft -> todo`,
-  `active -> draft`, `in-review -> active`, `in-review -> done`, and any
-  move to or from `dropped`. Only the user adopts work already under
+- The user decides design and whether finished work is accepted.
+  Only the user makes these moves: `active -> draft`,
+  `in-review -> active`, `in-review -> done`, and any move to or from
+  `dropped`. Only the user adopts work already under
   way, with `card new --adopt active`, `--adopt in-review` or
   `--adopt blocked`. The staff agent passes `--user` only
   after the user said so in this session.
-- The staff agent moves `todo -> active` when a worker starts,
+- The staff agent moves `draft -> todo` when the card has an
+  Acceptance Criteria checkbox and a passing title, and names those
+  cards in its next situation report. It moves `todo -> active`
+  when a worker starts,
   `active -> in-review` when a worker reports ready with a PR or other
   evidence, `active -> todo` when work is paused, with `--why`
   naming its handoff, and `todo -> draft` when a card has a gap.

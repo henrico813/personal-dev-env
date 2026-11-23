@@ -287,8 +287,8 @@ vault. A hub never reports to a hub on another machine.
   `--user` past a limit only when the user says so. When in-review is
   full, leave a finished card in `active` and tell the user its work
   waits on them. When work is over a limit, propose which cards to
-  pause, and let the user decide. If `card` refuses a move that the
-  limits allow, pass `--user` and say so in `--why`.
+  pause, and let the user decide. If `card` refuses a move the limits
+  allow, other than a release, pass `--user` and say so in `--why`.
 - Move a card to `in-review` as soon as its work waits only on the user,
   such as an open pull request or a plan or question for the user,
   even when more work follows. When the user has answered or
@@ -309,11 +309,11 @@ vault. A hub never reports to a hub on another machine.
 - When one wake needs several card commands, such as `card note`,
   `card move` and `card add`, put them in one shell script and run it
   in one tool call.
-- Only the user moves a card from `draft` to `todo`, adopts work
-  already under way, or drops a card. Never release a card the user
-  described in a sentence: it stays in `draft` until the user has
-  refined it. Refining can take time and happen in any session; the
-  card keeps where it stands.
+- Release a draft (move it to `todo`) when `card move` accepts it,
+  which needs an Acceptance Criteria checkbox and a passing title.
+  Never add the criteria yourself just to release a card the user is
+  still writing. Note each release as `references/hub-brief.md` says.
+  Only the user adopts work already under way or drops a card.
 - A card's key starts with its project's code, from the
   `Project code:` line in the project folder's `AGENTS.md`. For a
   project with none, propose the prefix its plans already use, or a

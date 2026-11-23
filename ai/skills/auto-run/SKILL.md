@@ -115,8 +115,9 @@ The user's rules for every run:
    It exits 3, with one problem per line, when the list fails its
    check.
    A card the user picks may be todo, active or in-review. A card the
-   user wants that is still a draft stays out until the
-   user moves it to todo, or tells you to.
+   user wants that is still a draft goes under `## Left out` until it
+   reaches todo. `herdr-hub`'s Cards section says when you may
+   release it. After a release, sort the card again from step 2.
 6. Find out when the user is away, and each of the user's rules that
    ends at a set time, such as a model limit until a quota resets.
    Ask the user when you do not know. Then send the briefing, by

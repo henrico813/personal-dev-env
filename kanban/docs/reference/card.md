@@ -86,7 +86,7 @@ agent's kind and session id from `herdr agent get AGENT`, such as
 | Stage | Meaning |
 | --- | --- |
 | `draft` | Context and Acceptance Criteria are still being written. |
-| `todo` | The user released it; it waits for a free work slot. |
+| `todo` | The user or an agent released it; it waits for a free work slot. |
 | `active` | A worker plans and builds it, or does the research. |
 | `in-review` | The worker finished; it waits for the user to accept. |
 | `blocked` | It waits only on people outside the team, such as another team's reviewers. It has no limit. |
@@ -99,7 +99,7 @@ agent's kind and session id from `herdr agent get AGENT`, such as
 | Move | Who | Needs |
 | --- | --- | --- |
 | new card -> `draft` | user or staff | |
-| `draft` -> `todo` | user | an Acceptance Criteria checkbox and a title that passes the [title rules](#title-rules) |
+| `draft` -> `todo` | user or staff | an Acceptance Criteria checkbox and a title that passes the [title rules](#title-rules) |
 | `todo` -> `draft` | user or staff | |
 | `todo` -> `active` | staff; the user past the active limit | a free slot, unless `--user` |
 | `active` -> `todo` | staff | work paused; `--why` names its handoff; a title that passes the [title rules](#title-rules) |

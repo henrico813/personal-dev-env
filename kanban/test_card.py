@@ -241,9 +241,9 @@ class TestNew:
     def test_new_adopt_refuses_without_user(self, projects: Path) -> None:
         """Adopting work fails, and writes no card, without --user.
 
-        Adoption skips the user's release to todo. If an agent could
-        adopt on its own, work would reach active that the user never
-        agreed to.
+        Adoption skips the criteria check and the stage limits. If an
+        agent could adopt on its own, work would reach active with no
+        test of when it is done.
         """
         code = run_card(
             projects,
@@ -366,14 +366,21 @@ class TestMove:
         ("stage", "target", "flags", "criteria"),
         [
             pytest.param(
-                "draft", "active", ["--user"], "- Done.", id="chain-unchecked"
+                "draft", "active", [], "- Done.", id="chain-unchecked"
+            ),
+            pytest.param(
+                "draft",
+                "todo",
+                [],
+                "- Done.",
+                id="todo-without-checkbox",
             ),
             pytest.param(
                 "draft",
                 "todo",
                 ["--user"],
                 "- Done.",
-                id="todo-without-checkbox",
+                id="user-todo-without-checkbox",
             ),
             pytest.param(
                 "done",
@@ -381,6 +388,9 @@ class TestMove:
                 ["--user"],
                 "- [ ] Done.",
                 id="done-final",
+            ),
+            pytest.param(
+                "draft", "dropped", [], "- [ ] Done.", id="agent-drop"
             ),
             pytest.param(
                 "in-review",
@@ -401,11 +411,12 @@ class TestMove:
     ) -> None:
         """A refused move fails and does not touch the note.
 
-        A card released with no acceptance checkbox would take the
-        release decision away from the user, also when the release is
-        the first move of a chain. Reopening a done card would let
-        follow-up work skip the user's release. A blocked card with no
-        reason would leave the user not knowing whom to chase.
+        If the user or an agent released a card with no acceptance
+        checkbox, a worker would start with no test of when it is done,
+        also when the release is the first move of a chain. Reopening a
+        done card would let follow-up work skip a new card and its
+        checks. A blocked card with no reason would leave the user not
+        knowing whom to chase.
         """
         path = write_card(projects, KEY, stage, criteria)
         before = path.read_text()
@@ -417,13 +428,14 @@ class TestMove:
         assert code == 1
         assert path.read_text() == before
 
-    def test_move_updates_stage_fields_and_log(self, projects: Path) -> None:
+    def test_move_releases_draft_and_logs_agent(self, projects: Path) -> None:
         """A move sets the stage and its date, and logs who made it.
 
         The staff agent rebuilds its picture of the work from the cards
         after a restart, so the stage and the Log must both change. The
         board and the Base sort by stage_date, which every move updates.
-        The user releasing a card with one checkbox must also work.
+        An agent releasing a card with one checkbox must also work, and
+        the Log must name the agent, not the user.
         """
         path = write_card(projects, KEY, "draft", "- [ ] Done.")
 
@@ -432,19 +444,16 @@ class TestMove:
             "move",
             KEY,
             "todo",
-            "--user",
             "--why",
             "Clear enough",
             "--by",
-            "user",
+            "hub",
         )
 
         assert code == 0
         text = path.read_text()
         assert f"stage: todo\nstage_date: {TODAY}\n" in text
-        assert text.endswith(
-            f"- {TODAY} todo: by user for the user. Clear enough\n"
-        )
+        assert text.endswith(f"- {TODAY} todo: by hub. Clear enough\n")
 
     @pytest.mark.parametrize(
         ("source", "target", "steps"),
@@ -1632,21 +1641,36 @@ class TestTitleRules:
             "1 problems in 3 cards\n"
         )
 
+    @pytest.mark.parametrize(
+        ("stage", "target", "flags", "criteria"),
+        [
+            pytest.param(
+                "active", "todo", ["--why", "paused"], "", id="pause"
+            ),
+            pytest.param("draft", "todo", [], "- [ ] Done.", id="release"),
+            pytest.param("draft", "active", [], "- [ ] Done.", id="chain"),
+        ],
+    )
     def test_move_to_todo_refuses_failing_title(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+        stage: str,
+        target: str,
+        flags: list[str],
+        criteria: str,
     ) -> None:
-        """A move into todo refuses a failing title and leaves the card.
+        """A move into or through todo refuses a failing title.
 
         Workers start todo cards, so a worker never starts on a card
         whose title breaks the rules. A staff pause back to todo counts
-        too.
+        too, and so does an agent's release from draft, also when it is
+        the first move of a chain. The card stays as it was.
         """
-        path = write_card(projects, KEY, "active", title="Some work")
+        path = write_card(projects, KEY, stage, criteria, title="Some work")
         before = path.read_text()
 
-        code = run_card(
-            projects, "move", KEY, "todo", "--why", "paused", "--by", "hub"
-        )
+        code = run_card(projects, "move", KEY, target, *flags, "--by", "hub")
 
         assert code == 1
         assert path.read_text() == before

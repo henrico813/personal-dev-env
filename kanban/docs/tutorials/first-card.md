@@ -60,7 +60,7 @@ Use the key `card new` printed for you.
 ---
 
 Releasing a card moves it from `draft` to `todo`, which tells the
-staff agent the card may start. Only you can release a card, and
+staff agent the card may start. You or an agent can release a card.
 `card` refuses until Acceptance Criteria holds at least one `- [ ]`
 line and the title passes the
 [title rules](../reference/card.md#title-rules).
