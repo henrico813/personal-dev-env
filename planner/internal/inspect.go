@@ -74,13 +74,13 @@ func ParseMarkdown(input string) (ParseResult, error) {
 	titleLine := strings.SplitN(body, "\n", 2)[0]
 	plan.Title = strings.TrimSpace(strings.TrimPrefix(titleLine, "# "))
 
-	overviewBody, _, err := sectionBody(input, sectionSpans["Overview"])
+	overviewBody, _, err := extractSectionBody(input, sectionSpans["Overview"])
 	if err != nil {
 		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
 	plan.Overview = strings.TrimSpace(overviewBody)
 
-	dodBody, _, err := sectionBody(input, sectionSpans["Definition of Done"])
+	dodBody, _, err := extractSectionBody(input, sectionSpans["Definition of Done"])
 	if err != nil {
 		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
@@ -90,7 +90,7 @@ func ParseMarkdown(input string) (ParseResult, error) {
 	}
 	plan.DefinitionOfDone = parsedDoD
 
-	implBody, implBodyStart, err := sectionBody(input, sectionSpans["Implementation"])
+	implBody, implBodyStart, err := extractSectionBody(input, sectionSpans["Implementation"])
 	if err != nil {
 		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
@@ -101,7 +101,7 @@ func ParseMarkdown(input string) (ParseResult, error) {
 	}
 	plan.Implementation = steps
 
-	verificationBody, _, err := sectionBody(input, sectionSpans["Verification"])
+	verificationBody, _, err := extractSectionBody(input, sectionSpans["Verification"])
 	if err != nil {
 		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
@@ -321,7 +321,7 @@ func findTopLevelSections(input string) (map[string]Span, error) {
 	return spans, nil
 }
 
-func sectionBody(input string, span Span) (string, int, error) {
+func extractSectionBody(input string, span Span) (string, int, error) {
 	if span.Start < 0 || span.End > len(input) || span.Start >= span.End {
 		return "", 0, fmt.Errorf("invalid section span")
 	}
@@ -629,7 +629,7 @@ func parseFence(line string) (string, bool) {
 	return string(runes[:i]), true
 }
 
-func rawAt(raw string, span Span) string {
+func sliceRawAt(raw string, span Span) string {
 	if span.Start < 0 || span.End > len(raw) || span.Start >= span.End {
 		return ""
 	}
