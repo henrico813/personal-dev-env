@@ -411,10 +411,12 @@ Act on each failure by its rule:
   approvals file gives the word to use instead.
 - Any other rule: rename the function or fix the comment.
 
-`verb-first` and `restated-name` are reported, never failed. Rename
-the function when the word is not a verb, or when the call fails
-the caller test in "Function names". Otherwise keep the name and list
-the finding in your final message.
+`verb-first` fails a new name whose first word is no English verb,
+such as `path`, and only reports a verb missing from its list of
+common verbs, such as `card`, which may be a noun in the name.
+`restated-name` is reported, never failed. Rename the function when
+its word is a noun, or when the call fails the caller test in
+"Function names". Otherwise list it in your final message.
 
 Run the check again until `result.failures` is empty. `next` is then
 `make_feedback_request_list`, even when findings are reported. Never
@@ -462,6 +464,12 @@ so add one. Leave docstrings on old functions you did not touch for
 a separate change. A function moved from a deleted file into a new
 one counts as old, with or without `git mv`.
 
+## Rust rules
+
+In Rust, start every function and method name with a verb too; read
+[references/rust-names.md](references/rust-names.md) before you keep a
+name with no verb. `check-comments` checks this and the word limit.
+
 ## Completion check
 
 Before declaring source or test work complete, check:
@@ -478,9 +486,8 @@ Before declaring source or test work complete, check:
   its caller writes it
 - each tool name you add says its job in whole words, without the
   project's own name or prefix
-- for Go, Python or Rust files, `check-comments` reports no
-  failures, and each `verb-first` finding is renamed or, for a real
-  verb, listed in your final message
+- for Go, Python or Rust files, `check-comments` reports no failures,
+  and each reported name is renamed or listed in your final message
 
 Fix supported in-scope issues once. Do not start an open-ended prose polishing
 loop.

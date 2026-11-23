@@ -139,7 +139,7 @@ pub(super) enum Target {
 impl Target {
     /// Returns the word before an item's id in its element id, such as
     /// `card` in `card:DEMO-KB-007`.
-    pub(super) fn kind_word(self) -> &'static str {
+    pub(super) fn pick_kind_word(self) -> &'static str {
         match self {
             Target::Card(_) => "card",
             Target::Question(_) => "question",
@@ -154,13 +154,13 @@ impl Target {
 /// group of cards waiting on people outside the team only when it
 /// holds a card.
 pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
-    let cards_at = |stage: Stage| -> Vec<Item> {
+    let list_cards_at = |stage: Stage| -> Vec<Item> {
         queue
             .cards
             .iter()
             .enumerate()
             .filter(|(_, card)| card.stage == stage)
-            .map(|(index, card)| card_item(index, card, &queue.sessions))
+            .map(|(index, card)| build_card_item(index, card, &queue.sessions))
             .collect()
     };
     let mut needs_you: Vec<Item> = queue
@@ -207,11 +207,11 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
     }
     groups.extend([
         (Group::NeedsYou, needs_you),
-        (Group::Active, cards_at(Stage::Active)),
-        (Group::InReview, cards_at(Stage::InReview)),
-        (Group::Blocked, cards_at(Stage::Blocked)),
-        (Group::Todo, cards_at(Stage::Todo)),
-        (Group::Draft, cards_at(Stage::Draft)),
+        (Group::Active, list_cards_at(Stage::Active)),
+        (Group::InReview, list_cards_at(Stage::InReview)),
+        (Group::Blocked, list_cards_at(Stage::Blocked)),
+        (Group::Todo, list_cards_at(Stage::Todo)),
+        (Group::Draft, list_cards_at(Stage::Draft)),
     ]);
     // Most boards have no card waiting on people outside the team,
     // and a phone has few rows.
@@ -241,7 +241,7 @@ pub(super) struct NextLines {
 /// idle cards and cards needing the user's review. A card whose worker
 /// waits on the user is left out, since that worker is already a row
 /// of the `Needs you` group.
-pub(super) fn glance_items(groups: &[(Group, Vec<Item>)]) -> Vec<(Group, &Item)> {
+pub(super) fn pick_glance_items(groups: &[(Group, Vec<Item>)]) -> Vec<(Group, &Item)> {
     let order = [
         Status::Problem,
         Status::You,
@@ -266,7 +266,7 @@ pub(super) fn glance_items(groups: &[(Group, Vec<Item>)]) -> Vec<(Group, &Item)>
 /// each with the group that holds its first row, where a tap on it
 /// jumps. A status with no row is left out.
 pub(super) fn count_statuses(groups: &[(Group, Vec<Item>)]) -> Vec<(Status, usize, Group)> {
-    let shown = glance_items(groups);
+    let shown = pick_glance_items(groups);
     COUNTED
         .into_iter()
         .filter_map(|status| {
@@ -280,13 +280,13 @@ pub(super) fn count_statuses(groups: &[(Group, Vec<Item>)]) -> Vec<(Status, usiz
 /// Returns the NEXT lines from the groups. `no_hub` is true when no hub
 /// ran at the read.
 pub(super) fn write_next_lines(groups: &[(Group, Vec<Item>)], no_hub: bool) -> NextLines {
-    let items = |wanted: Group| {
+    let find_items = |wanted: Group| {
         groups
             .iter()
             .find(|(group, _)| *group == wanted)
             .map_or(&[][..], |(_, items)| items)
     };
-    let mut you: Vec<String> = items(Group::NeedsYou)
+    let mut you: Vec<String> = find_items(Group::NeedsYou)
         .iter()
         .map(|item| match item.target {
             Target::Question(_) => format!("you: answer {}", item.text),
@@ -301,12 +301,12 @@ pub(super) fn write_next_lines(groups: &[(Group, Vec<Item>)], no_hub: bool) -> N
         };
         you.push(format!("you: {none}"));
     }
-    let then = match items(Group::InReview).len() {
+    let then = match find_items(Group::InReview).len() {
         0 => "then: no reviews".to_owned(),
         1 => "then: review 1 card".to_owned(),
         count => format!("then: review {count} cards"),
     };
-    let mut hub: Vec<String> = items(Group::Todo)
+    let mut hub: Vec<String> = find_items(Group::Todo)
         .iter()
         .map(|item| format!("hub: start {}", item.text))
         .collect();
@@ -364,7 +364,7 @@ pub(super) fn describe_card(card: &CardLine, note: Option<&CardNote>) -> Vec<Str
     let Some(note) = note else {
         return lines;
     };
-    lines.extend(next_step(note).map(|step| format!("next: {step}")));
+    lines.extend(find_next_step(note).map(|step| format!("next: {step}")));
     lines.extend(note.prs.iter().cloned());
     if !note.criteria.is_empty() {
         lines.push(String::new());
@@ -375,7 +375,7 @@ pub(super) fn describe_card(card: &CardLine, note: Option<&CardNote>) -> Vec<Str
 
 /// Returns a card's row, its title with its project folder as the tag.
 /// `sessions` give the states of its workers.
-fn card_item(index: usize, card: &CardLine, sessions: &[SessionRow]) -> Item {
+fn build_card_item(index: usize, card: &CardLine, sessions: &[SessionRow]) -> Item {
     let text = if card.title.is_empty() {
         card.key.as_str().to_owned()
     } else {
@@ -385,7 +385,7 @@ fn card_item(index: usize, card: &CardLine, sessions: &[SessionRow]) -> Item {
         id: card.key.as_str().to_owned(),
         text,
         tag: card.project.clone(),
-        status: card_status(card, sessions),
+        status: decide_card_status(card, sessions),
         target: Target::Card(index),
     }
 }
@@ -393,7 +393,7 @@ fn card_item(index: usize, card: &CardLine, sessions: &[SessionRow]) -> Item {
 /// Returns a card's status from its workers' states. A worker that
 /// waits on the user wins over one at work, and one at work wins over
 /// the card needing the user's review.
-fn card_status(card: &CardLine, sessions: &[SessionRow]) -> Status {
+fn decide_card_status(card: &CardLine, sessions: &[SessionRow]) -> Status {
     let states: Vec<Lifecycle> = card
         .workers
         .iter()
@@ -416,7 +416,7 @@ fn card_status(card: &CardLine, sessions: &[SessionRow]) -> Status {
 /// Returns the card's newest `next:` Log line, else a step from its
 /// newest PR link or first plan. A link alone cannot tell a merged PR
 /// from an open one, so the hub's `next:` line wins.
-fn next_step(note: &CardNote) -> Option<String> {
+fn find_next_step(note: &CardNote) -> Option<String> {
     if let Some(step) = &note.next_step {
         return Some(step.clone());
     }
@@ -434,14 +434,14 @@ fn next_step(note: &CardNote) -> Option<String> {
 mod tests {
     use super::*;
 
-    use crate::board::view::tests::sample_queue;
+    use crate::board::view::tests::make_sample_queue;
 
     /// A worker that runs on a card needing the user's review, such as
     /// one fixing review comments, means the card is in work now. Shown
     /// as `rev`, it would look like it waits for the user's review.
     #[test]
     fn build_groups_marks_working_review_card_run() {
-        let mut queue = sample_queue();
+        let mut queue = make_sample_queue();
         let docs_fix = queue.sessions.iter_mut().find(|row| row.name == "docs-fix");
         docs_fix.unwrap().state = Lifecycle::Working;
 

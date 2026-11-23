@@ -133,14 +133,14 @@ pub fn run_launch(
     // The error lists each step that finished, so the hub redoes only
     // the rest by hand.
     let mut done = vec![format!("started {name}")];
-    let partly_done = |done: &[String], error: HubError| HubError::PartlyDone {
+    let make_partly_done_error = |done: &[String], error: HubError| HubError::PartlyDone {
         done: done.join(", "),
         error: Box::new(error),
     };
     tools
         .herdr
         .prompt(name, &make_handoff_prompt(&handoff))
-        .map_err(|error| partly_done(&done, error.into()))?;
+        .map_err(|error| make_partly_done_error(&done, error.into()))?;
     done.push("sent the handoff prompt".to_owned());
     let mut lines = vec![format!("started {name} ({}) on {model}", ids.root_pane_id)];
     if let SessionPlace::Workspace { label } = &place {
@@ -151,12 +151,12 @@ pub fn run_launch(
         tools
             .cards
             .add_note(key, &note)
-            .map_err(|error| partly_done(&done, error.into()))?;
+            .map_err(|error| make_partly_done_error(&done, error.into()))?;
         done.push("added the card note".to_owned());
         tools
             .cards
             .link_session(key, name)
-            .map_err(|error| partly_done(&done, error.into()))?;
+            .map_err(|error| make_partly_done_error(&done, error.into()))?;
         done.push("linked the session".to_owned());
     }
     let note = format!(
@@ -165,7 +165,7 @@ pub fn run_launch(
         handoff.display()
     );
     run.append_note_line(&note, now)
-        .map_err(|error| partly_done(&done, error))?;
+        .map_err(|error| make_partly_done_error(&done, error))?;
     done.push("wrote the notes line".to_owned());
     if let Some(caller) = &caller {
         // A marked session waits on the user, so `run_clean` would keep
@@ -175,11 +175,11 @@ pub fn run_launch(
         tools
             .herdr
             .clear_marks(&caller.pane_id)
-            .map_err(|error| partly_done(&done, error.into()))?;
+            .map_err(|error| make_partly_done_error(&done, error.into()))?;
         done.push(format!("cleared the mark of {}", caller.name));
         if let Some(session) = &caller.session_id {
             handoff_ask::stop_asking(tools.state_folder, session)
-                .map_err(|error| partly_done(&done, error))?;
+                .map_err(|error| make_partly_done_error(&done, error))?;
             done.push(format!("stopped the handoff asks to {}", caller.name));
         }
     }

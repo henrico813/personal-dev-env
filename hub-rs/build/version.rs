@@ -5,7 +5,7 @@
 /// Returns `0.3.0` for the tag `hub-v0.3.0`, and `0.3.0+4.g1a2b3c4`
 /// for a build four commits past it at commit `1a2b3c4`. Returns `None`
 /// when the text does not start with `hub-v`.
-pub fn version_from_describe(describe: &str) -> Option<String> {
+pub fn parse_version_from_describe(describe: &str) -> Option<String> {
     let rest = describe.strip_prefix("hub-v")?;
     // Past a tag, `git describe` appends `-<commits>-g<hash>`.
     match rest.rsplitn(3, '-').collect::<Vec<_>>()[..] {

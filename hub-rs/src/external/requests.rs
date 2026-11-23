@@ -76,7 +76,7 @@ impl SavedRequest {
 
     /// Returns how long a pending request has before pde-gh-write lets
     /// it expire, or `None` when it is not pending or has no time.
-    pub fn time_left(&self, now: Timestamp) -> Option<SignedDuration> {
+    pub fn find_time_left(&self, now: Timestamp) -> Option<SignedDuration> {
         let changed = self.changed.filter(|_| self.state == "pending")?;
         Some(REQUEST_EXPIRY - now.duration_since(changed))
     }

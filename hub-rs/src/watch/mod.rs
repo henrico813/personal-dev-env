@@ -219,7 +219,7 @@ struct RunWorkers {
 impl RunWorkers {
     /// Tells whether NAME works for this run, because it reported in
     /// it, got a message through it or waits in it.
-    fn claims(&self, memory: &Memory, name: &str) -> bool {
+    fn has_worker(&self, memory: &Memory, name: &str) -> bool {
         self.reported.any.contains(name)
             || memory.last_delivered.contains_key(name)
             || self.open_waits.contains(name)
@@ -381,7 +381,7 @@ pub fn check_once(
     {
         let mut claims: Vec<_> = read_runs
             .iter()
-            .filter(|(watched, workers)| workers.claims(&watched.memory, &agent.name))
+            .filter(|(watched, workers)| workers.has_worker(&watched.memory, &agent.name))
             .collect();
         // The herdr-hub skill names a card's worker after its card, and
         // a new worker may not have reported yet. With no run claiming
@@ -480,7 +480,7 @@ fn prod_if_stalled(
 ) -> Result<(), HubError> {
     let should_prod = !prodded.contains(&(agent.name.clone(), agent.state_seq))
         && !workers.reported.unread.contains(&agent.name)
-        && owes_report(&watched.run, &watched.memory, &agent.name)?;
+        && is_report_owed(&watched.run, &watched.memory, &agent.name)?;
     let held_count = count_held(&workers.held, &agent.name);
     if should_prod && prod_worker(tools, agent, held_count, STALL_PROD)? {
         record_prod(&watched.run, agent, "stalled", now)?;
@@ -570,7 +570,7 @@ fn count_held(held: &BTreeMap<String, MessageCounts>, name: &str) -> usize {
 /// Tells whether a worker owes the hub a report. It does when it never
 /// reported, or when a message reached it after its last report. A
 /// worker that reported and got nothing since waits on the hub.
-fn owes_report(run: &RunFolder, memory: &Memory, name: &str) -> Result<bool, HubError> {
+fn is_report_owed(run: &RunFolder, memory: &Memory, name: &str) -> Result<bool, HubError> {
     let Some(reported) = run.find_newest_report_time(name)? else {
         return Ok(true);
     };
@@ -807,7 +807,7 @@ fn find_watched_runs(
     agents: &[Agent],
     failures: &mut Vec<String>,
 ) -> Result<Vec<WatchedRun>, HubError> {
-    let file_error = |source| HubError::File {
+    let wrap_file_error = |source| HubError::File {
         path: runs_folder.to_owned(),
         source,
     };
@@ -815,11 +815,11 @@ fn find_watched_runs(
         Ok(entries) => entries,
         // No state folder means no hub ever ran here.
         Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(source) => return Err(file_error(source)),
+        Err(source) => return Err(wrap_file_error(source)),
     };
     let mut runs = Vec::new();
     for entry in entries {
-        let path = entry.map_err(file_error)?.path();
+        let path = entry.map_err(wrap_file_error)?.path();
         if !is_run_folder_name(&path) {
             continue;
         }
@@ -893,14 +893,14 @@ pub fn run_watch_start(
     };
     append_watch_event(run, started, now)?;
     if is_watch_running(tools.state_folder)? {
-        return Ok(Outcome::line(format!(
+        return Ok(Outcome::from_line(format!(
             "hub watch runs; it watches the workers of {}",
             hub.name
         )));
     }
     start_watch_process(tools.state_folder, &start.program)
         .map_err(|reason| HubError::NotDone(format!("hub watch run did not start: {reason}")))?;
-    Ok(Outcome::line(format!(
+    Ok(Outcome::from_line(format!(
         "hub watch started; it watches the workers of {}",
         hub.name
     )))

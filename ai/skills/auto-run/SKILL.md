@@ -379,7 +379,8 @@ hub has sent its end brief; wait for that brief, then run it again.
     request whose parent merged, a child's comment review once its
     parent's is answered, parking the children of a declined request,
     or an answer to a parked question, as step 8 says. A session for
-    a held pull request follows its item's page.
+    a held pull request follows its item's page, where pr-loop.md's
+    Your last report puts the steps.
 
 ## References
 
@@ -387,8 +388,11 @@ hub has sent its end brief; wait for that brief, then run it again.
   as the auto hub at step 3, which copies it to `common.md`, the
   run's rules file.
 - [references/pr-loop.md](references/pr-loop.md): read as a worker,
-  for the loop each pull request goes through, its review tiers and
-  the plans that wait for the user's plan review.
+  for each pull request's loop, review tiers, the privacy review
+  before each push and the plans that wait for the user's plan review.
+  A session that resumes a held pull request reads it first: its Your
+  last report gives the steps after the parent merges, with a privacy
+  review before the push and another before ship.sh.
 - [references/build.md](references/build.md): read as a worker, for
   the commands each step of the loop runs.
 - [references/prompts.md](references/prompts.md): read as a worker,

@@ -76,7 +76,7 @@ impl TidyOutcome {
     /// Returns the line `run_clean` prints, such as
     /// `parked demo-kb-007-impl: DEMO-KB-007 in-review`. A dry run says
     /// `would close`, `would park` and `would forget`.
-    pub(crate) fn line(&self, dry_run: bool) -> String {
+    pub(crate) fn format_line(&self, dry_run: bool) -> String {
         let pick = |done: &str, planned: &str| if dry_run { planned } else { done }.to_owned();
         match self {
             TidyOutcome::Closed { names, why } => {
@@ -297,7 +297,7 @@ fn apply_tidy_action(
     panes: &[Pane],
     now: &Zoned,
 ) -> Vec<TidyOutcome> {
-    let kept = |name: &str, reason: String| TidyOutcome::Kept {
+    let make_kept_outcome = |name: &str, reason: String| TidyOutcome::Kept {
         name: name.to_owned(),
         reason,
     };
@@ -309,10 +309,12 @@ fn apply_tidy_action(
                     card: card.clone(),
                 },
                 Ok(ParkOutcome::Stays(verdict)) => {
-                    kept(&facts.name, verdict.why_or_state().to_owned())
+                    make_kept_outcome(&facts.name, verdict.pick_why_or_state().to_owned())
                 }
-                Ok(ParkOutcome::TabInUse) => kept(&facts.name, TAB_HOLDS_WORK.to_owned()),
-                Err(error) => kept(&facts.name, error.to_string()),
+                Ok(ParkOutcome::TabInUse) => {
+                    make_kept_outcome(&facts.name, TAB_HOLDS_WORK.to_owned())
+                }
+                Err(error) => make_kept_outcome(&facts.name, error.to_string()),
             };
             vec![outcome]
         }
@@ -324,13 +326,13 @@ fn apply_tidy_action(
             |error| {
                 sessions
                     .iter()
-                    .map(|facts| kept(&facts.name, error.to_string()))
+                    .map(|facts| make_kept_outcome(&facts.name, error.to_string()))
                     .collect()
             },
         ),
         TidyAction::Forget { name } => match tools.parked.delete_parked_record(name) {
             Ok(()) => vec![TidyOutcome::Forgot { name: name.clone() }],
-            Err(error) => vec![kept(name, error.to_string())],
+            Err(error) => vec![make_kept_outcome(name, error.to_string())],
         },
         TidyAction::Keep { .. } => vec![describe_planned_action(action)],
     }
@@ -352,7 +354,7 @@ fn close_finished_tab(
     for facts in sessions {
         let (_, verdict) = parking::decide_fresh_lifecycle(tools, run, facts)?;
         let kept_why =
-            (verdict.state != Lifecycle::ToClose).then(|| verdict.why_or_state().to_owned());
+            (verdict.state != Lifecycle::ToClose).then(|| verdict.pick_why_or_state().to_owned());
         kept_whys.push(kept_why);
     }
     let is_free =
@@ -371,7 +373,7 @@ fn close_finished_tab(
     tools.herdr.close_tab(tab_id)?;
 
     let names: Vec<String> = sessions.iter().map(|facts| facts.name.clone()).collect();
-    let closed_but = |error: HubError| HubError::PartlyDone {
+    let make_closed_but_error = |error: HubError| HubError::PartlyDone {
         done: format!("closed {}", names.join(", ")),
         error: Box::new(error),
     };
@@ -384,9 +386,9 @@ fn close_finished_tab(
                 why: why.to_owned(),
             },
         };
-        events::append_event(run, &closed).map_err(closed_but)?;
+        events::append_event(run, &closed).map_err(make_closed_but_error)?;
         run.append_note_line(&format!("closed {name} ({why})"), now)
-            .map_err(closed_but)?;
+            .map_err(make_closed_but_error)?;
     }
     Ok(vec![TidyOutcome::Closed {
         names,
@@ -599,8 +601,8 @@ mod tests {
             kept: &'static [&'static str],
         }
         let tab = "w1:t1";
-        let worker = || make_closing_worker("demo-kb-001-impl", tab);
-        let worker_pane = || make_pane("w1:demo-kb-001-impl", tab, true);
+        let make_worker = || make_closing_worker("demo-kb-001-impl", tab);
+        let make_worker_pane = || make_pane("w1:demo-kb-001-impl", tab, true);
         let working_neighbour = {
             let (facts, _) = make_closing_worker("demo-kb-002-impl", tab);
             let verdict = Verdict {
@@ -620,17 +622,17 @@ mod tests {
         let cases = [
             Case {
                 name: "own-pane",
-                sessions: vec![worker()],
-                panes: vec![worker_pane(), make_pane("w1:p-hub", tab, false)],
+                sessions: vec![make_worker()],
+                panes: vec![make_worker_pane(), make_pane("w1:p-hub", tab, false)],
                 own_pane: Some("w1:p-hub"),
                 quiet: &["w1:p-hub"],
                 kept: &["keep demo-kb-001-impl"],
             },
             Case {
                 name: "focused-pane",
-                sessions: vec![worker()],
+                sessions: vec![make_worker()],
                 panes: vec![
-                    worker_pane(),
+                    make_worker_pane(),
                     Pane {
                         focused: true,
                         ..make_pane("w1:p8", tab, false)
@@ -642,24 +644,30 @@ mod tests {
             },
             Case {
                 name: "working-neighbour",
-                sessions: vec![worker(), working_neighbour],
-                panes: vec![worker_pane(), make_pane("w1:demo-kb-002-impl", tab, true)],
+                sessions: vec![make_worker(), working_neighbour],
+                panes: vec![
+                    make_worker_pane(),
+                    make_pane("w1:demo-kb-002-impl", tab, true),
+                ],
                 own_pane: None,
                 quiet: &[],
                 kept: &["keep demo-kb-001-impl"],
             },
             Case {
                 name: "parking-neighbour",
-                sessions: vec![worker(), parking_neighbour],
-                panes: vec![worker_pane(), make_pane("w1:demo-kb-007-impl", tab, true)],
+                sessions: vec![make_worker(), parking_neighbour],
+                panes: vec![
+                    make_worker_pane(),
+                    make_pane("w1:demo-kb-007-impl", tab, true),
+                ],
                 own_pane: None,
                 quiet: &[],
                 kept: &["keep demo-kb-001-impl", "keep demo-kb-007-impl"],
             },
             Case {
                 name: "busy-shell",
-                sessions: vec![worker()],
-                panes: vec![worker_pane(), make_pane("w1:p8", tab, false)],
+                sessions: vec![make_worker()],
+                panes: vec![make_worker_pane(), make_pane("w1:p8", tab, false)],
                 own_pane: None,
                 quiet: &[],
                 kept: &["keep demo-kb-001-impl"],

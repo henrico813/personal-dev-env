@@ -218,7 +218,7 @@ pub(crate) fn park_session(
     }
     tools.herdr.close_tab(&agent.tab_id)?;
 
-    let parked_but = |error: HubError| HubError::PartlyDone {
+    let make_parked_but_error = |error: HubError| HubError::PartlyDone {
         done: format!("parked {name}"),
         error: Box::new(error),
     };
@@ -230,13 +230,14 @@ pub(crate) fn park_session(
             tab: agent.tab_id,
         },
     };
-    events::append_event(run, &parked).map_err(parked_but)?;
+    events::append_event(run, &parked).map_err(make_parked_but_error)?;
     let note = format!("parked {name} ({} in-review)", card.key.as_str());
-    run.append_note_line(&note, now).map_err(parked_but)?;
+    run.append_note_line(&note, now)
+        .map_err(make_parked_but_error)?;
     tools
         .cards
         .add_note(&card.key, &format!("parked {name}"))
-        .map_err(|error| parked_but(error.into()))?;
+        .map_err(|error| make_parked_but_error(error.into()))?;
     Ok(ParkOutcome::Parked(record.card))
 }
 
@@ -265,7 +266,7 @@ pub(crate) fn reopen_session(
     now: &Zoned,
 ) -> Result<(), HubError> {
     let name = record.name.as_str();
-    let not_sent = |reason: &str| HubError::NotSent {
+    let make_not_sent_error = |reason: &str| HubError::NotSent {
         name: name.to_owned(),
         reason: reason.to_owned(),
     };
@@ -278,7 +279,7 @@ pub(crate) fn reopen_session(
         Err(error) => return Err(error.into()),
     }
     let Some(folder) = tools.opencode.find_session(&record.session_id)? else {
-        return Err(not_sent("the session is not in the database"));
+        return Err(make_not_sent_error("the session is not in the database"));
     };
     let place = NewPlace {
         label: name.to_owned(),
@@ -311,7 +312,7 @@ pub(crate) fn reopen_session(
         if started.pane_id == ids.root_pane_id {
             let _ = tools.herdr.close_tab(&started.tab_id);
         }
-        return Err(not_sent(reason));
+        return Err(make_not_sent_error(reason));
     }
     tools.parked.delete_parked_record(name)?;
     let reopened = Event {

@@ -67,16 +67,22 @@ merge request. The line before `exit:` says what happened:
   After the model stops, run the edit job's check script yourself, as
   `model-routing` says. The script runs `git diff --check` to catch
   leftover conflict markers, then the merge worker's test command.
-  The script commits with your message and pushes only when both
-  pass. Write the message as `git-messages` says. The script writes a
-  summary that ends in `done`. A broken resolution then never reaches
-  the pull request's branch.
+  The script commits with your message only when both pass. It pushes
+  nothing, so the privacy review below runs before the push. Write the
+  message as `git-messages` says. The script writes a summary that
+  ends in `done`. A broken resolution then never reaches the pull
+  request's branch.
 
-  When the summary ends in `done`, start a new merge worker with a
-  new folder, since no merge request went out. When the check fails,
-  or the new merge worker reports a conflict again, count it as a
-  failed check. Retry and step up as `model-routing` says. A retry
-  starts with `git merge --abort` in the branch's worktree.
+  When the summary ends in `done`, get the privacy review that
+  `pull-request` Guardrail 5 asks for a merge commit. Push the merge
+  from the branch's worktree with `git push <remote> HEAD` only when
+  that review reports zero hits. Then start a new merge worker with a
+  new folder. It runs the merge checks on the pushed merge and sends
+  the merge request, which the first worker never sent. When the check
+  script fails, or the new merge worker reports a conflict again,
+  count it as a failed check. Retry and step up as `model-routing`
+  says. A retry starts with `git merge --abort` in the branch's
+  worktree.
 - `result: not ready: ...`: bring the problems it names to the user
   with the pull request's review entry.
 - Any other line, such as a declined request or an `error:` line:

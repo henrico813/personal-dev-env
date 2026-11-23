@@ -52,7 +52,7 @@ fn make_handoff_tools() -> (TestTools, PathBuf) {
 /// and a later one at `xhigh`, as when the user switches effort later.
 fn write_first_reply(test_tools: &TestTools, effort: &str) {
     write_opencode_db(
-        &test_tools.opencode_path(),
+        &test_tools.build_opencode_path(),
         &[
             OpenCodeRow {
                 session: "ses_new",

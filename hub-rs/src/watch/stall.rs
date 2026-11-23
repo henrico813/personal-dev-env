@@ -213,13 +213,13 @@ pub(crate) fn find_quiet_run(
         });
     }
     let names = run.list_reported_names()?.any;
-    for name in names.iter().filter(|name| names_run_card(name, keys)) {
+    for name in names.iter().filter(|name| is_run_card_name(name, keys)) {
         if let Some(reported) = run.find_newest_report_time(name)? {
             since = since.max(to_timestamp(reported));
         }
     }
     for (name, delivered) in &memory.last_delivered {
-        if names_run_card(name, keys) {
+        if is_run_card_name(name, keys) {
             since = since.max(*delivered);
         }
     }
@@ -286,7 +286,7 @@ pub(crate) fn judge_quiet_run(
 
 /// Tells whether NAME, such as `demo-kb-002-auto-2`, names a card of
 /// the run.
-fn names_run_card(name: &str, keys: &[CardKey]) -> bool {
+fn is_run_card_name(name: &str, keys: &[CardKey]) -> bool {
     CardKey::find_in_name(name).is_some_and(|found| keys.contains(&found))
 }
 

@@ -352,7 +352,7 @@ fn check_once_marks_blocked_worker() {
 /// Writes a new OpenCode database in which each session's newest reply
 /// holds this many tokens of context.
 fn write_context(test_tools: &TestTools, sessions: &[(&str, u64)]) {
-    let path = test_tools.opencode_path();
+    let path = test_tools.build_opencode_path();
     let _ = fs::remove_file(&path);
     let rows: Vec<OpenCodeRow> = sessions
         .iter()
@@ -628,7 +628,7 @@ fn check_once_retries_refused_alert_after_backoff() {
     let mut clock = IdleClock::default();
     let mut backoff = PhoneBackoff::default();
     let tools = test_tools.tools();
-    let at_minute = |minutes: i64, seconds: i64| {
+    let make_time_at_minute = |minutes: i64, seconds: i64| {
         Zoned::now()
             .checked_add(SignedDuration::from_mins(minutes) + SignedDuration::from_secs(seconds))
             .unwrap()
@@ -639,7 +639,7 @@ fn check_once_retries_refused_alert_after_backoff() {
         &options,
         &mut clock,
         &mut backoff,
-        &at_minute(11, 0),
+        &make_time_at_minute(11, 0),
     )
     .unwrap();
     test_tools.write_script("moshi-hook", "", "", 0);
@@ -648,7 +648,7 @@ fn check_once_retries_refused_alert_after_backoff() {
         &options,
         &mut clock,
         &mut backoff,
-        &at_minute(11, 5),
+        &make_time_at_minute(11, 5),
     )
     .unwrap();
     let calls_while_held = read_script_calls(&refusing).len();
@@ -658,7 +658,7 @@ fn check_once_retries_refused_alert_after_backoff() {
         &options,
         &mut clock,
         &mut backoff,
-        &at_minute(16, 5),
+        &make_time_at_minute(16, 5),
     )
     .unwrap();
 

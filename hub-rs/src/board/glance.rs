@@ -3,7 +3,7 @@
 //! in the queue, and does it run now? What comes next? Each block
 //! is cut to the rows that fit, and a tap on it opens its view. Below
 //! 100 columns the blocks are stacked; from 100 on they sit side by
-//! side. Read `draw_glance` and `glance_elements` first.
+//! side. Read `draw_glance` and `build_glance_elements` first.
 
 use jiff::{SignedDuration, Timestamp};
 use ratatui::Frame;
@@ -80,31 +80,41 @@ struct Block {
 /// Draws the glance page over `area`.
 pub(super) fn draw_glance(frame: &mut Frame, area: Rect, glance: &Glance<'_>) {
     let parts = split_glance(area);
-    frame.render_widget(Paragraph::new(top_line(glance)), parts.top);
+    frame.render_widget(Paragraph::new(format_top_line(glance)), parts.top);
     let bold = Style::new().add_modifier(Modifier::BOLD);
     for (panel, block_area) in BLOCKS.into_iter().zip(parts.blocks) {
         let block = cut_block(panel, glance, block_area);
         let mut lines = vec![TextLine::styled(block.heading, bold)];
         lines.extend(block.shown);
         if let Some(hidden) = block.more {
-            lines.push(TextLine::styled(more_words(hidden), draw::dim()));
+            lines.push(TextLine::styled(
+                format_more_words(hidden),
+                draw::pick_dim_style(),
+            ));
         }
         frame.render_widget(Paragraph::new(lines), block_area);
     }
     for gap in parts.gaps {
         let bars = vec![TextLine::from(GAP); usize::from(gap.height)];
-        frame.render_widget(Paragraph::new(bars).style(draw::dim()), gap);
+        frame.render_widget(Paragraph::new(bars).style(draw::pick_dim_style()), gap);
     }
-    frame.render_widget(Paragraph::new(hint_text()).style(draw::dim()), parts.hint);
+    frame.render_widget(
+        Paragraph::new(format_hint_text()).style(draw::pick_dim_style()),
+        parts.hint,
+    );
 }
 
 /// Returns the glance page's elements as `draw_glance` drew them in
 /// `area`. Every line of a block opens its view on a tap. The rows a
 /// block cuts come after its last line, hidden, with the tap that opens
 /// the block as the step that shows them.
-pub(super) fn glance_elements(area: Rect, glance: &Glance<'_>) -> Vec<Element> {
+pub(super) fn build_glance_elements(area: Rect, glance: &Glance<'_>) -> Vec<Element> {
     let parts = split_glance(area);
-    let mut elements = vec![draw::text_element("status", &top_line(glance), parts.top)];
+    let mut elements = vec![draw::build_text_element(
+        "status",
+        &format_top_line(glance),
+        parts.top,
+    )];
     for (panel, block_area) in BLOCKS.into_iter().zip(parts.blocks) {
         // A screen too short for the block draws none of it.
         if block_area.height == 0 {
@@ -112,7 +122,7 @@ pub(super) fn glance_elements(area: Rect, glance: &Glance<'_>) -> Vec<Element> {
         }
         let block = cut_block(panel, glance, block_area);
         let slug = panel.slug();
-        let opens = |id: &str, kind, text: &str, row: usize| {
+        let make_open_element = |id: &str, kind, text: &str, row: usize| {
             let offset = u16::try_from(row).unwrap_or(u16::MAX);
             let place = Rect {
                 y: block_area.y.saturating_add(offset),
@@ -122,10 +132,10 @@ pub(super) fn glance_elements(area: Rect, glance: &Glance<'_>) -> Vec<Element> {
                 kind,
                 tap: Some("open"),
                 action: Action::Open(panel),
-                ..draw::text_element(id, text, place)
+                ..draw::build_text_element(id, text, place)
             }
         };
-        elements.push(opens(
+        elements.push(make_open_element(
             &format!("block:{slug}"),
             Kind::Heading,
             &block.heading,
@@ -133,32 +143,42 @@ pub(super) fn glance_elements(area: Rect, glance: &Glance<'_>) -> Vec<Element> {
         ));
         for (number, line) in block.shown.iter().enumerate() {
             let id = format!("{slug}:{number}");
-            elements.push(opens(&id, Kind::Text, &draw::line_text(line), number + 1));
+            elements.push(make_open_element(
+                &id,
+                Kind::Text,
+                &draw::join_line_text(line),
+                number + 1,
+            ));
         }
         if let Some(hidden) = block.more {
             let more_row = block.shown.len() + 1;
             let more_id = format!("more:{slug}");
-            elements.push(opens(&more_id, Kind::More, &more_words(hidden), more_row));
+            elements.push(make_open_element(
+                &more_id,
+                Kind::More,
+                &format_more_words(hidden),
+                more_row,
+            ));
         }
         let show = format!("tap block:{slug}");
         for (number, line) in block.hidden.iter().enumerate() {
             let id = format!("{slug}:{}", block.shown.len() + number);
-            let element = opens(&id, Kind::Text, &draw::line_text(line), 0);
+            let element = make_open_element(&id, Kind::Text, &draw::join_line_text(line), 0);
             elements.push(element.hide(HiddenBy::More, show.clone()));
         }
     }
     let mut column = parts.hint.x;
     for (id, words, action) in HINT {
-        let element = draw::text_element(id, words, parts.hint);
+        let element = draw::build_text_element(id, words, parts.hint);
         elements.push(Element {
             tap: Some("open"),
             action,
             place: element.place.map(|place| move_place(place, column, words)),
             ..element
         });
-        column += draw::width_of(words) + draw::width_of(HINT_GAP);
+        column += draw::measure_width(words) + draw::measure_width(HINT_GAP);
     }
-    let quit = draw::text_element("quit", QUIT_HINT, parts.hint);
+    let quit = draw::build_text_element("quit", QUIT_HINT, parts.hint);
     elements.push(Element {
         place: quit.place.map(|place| move_place(place, column, QUIT_HINT)),
         ..quit
@@ -170,14 +190,14 @@ pub(super) fn glance_elements(area: Rect, glance: &Glance<'_>) -> Vec<Element> {
 fn move_place(place: Place, column: u16, words: &str) -> Place {
     Place {
         column,
-        width: draw::width_of(words),
+        width: draw::measure_width(words),
         ..place
     }
 }
 
 /// Returns the top line, such as `away 1h29m · read 10:42 0.6s`, with
 /// the board's status last.
-fn top_line(glance: &Glance<'_>) -> String {
+fn format_top_line(glance: &Glance<'_>) -> String {
     match glance.away_for {
         Some(away_for) => format!("away {} · {}", format_span(away_for), glance.status),
         None => glance.status.to_owned(),
@@ -185,7 +205,7 @@ fn top_line(glance: &Glance<'_>) -> String {
 }
 
 /// Returns the bottom line, `? help  4 sessions  5 machine  q quit`.
-fn hint_text() -> String {
+fn format_hint_text() -> String {
     let mut parts: Vec<&str> = HINT.iter().map(|(_, words, _)| *words).collect();
     parts.push(QUIT_HINT);
     parts.join(HINT_GAP)
@@ -195,7 +215,7 @@ fn hint_text() -> String {
 fn split_glance(area: Rect) -> Parts {
     let [top, body, hint] = draw::split_screen(area);
     if area.width >= WIDE_COLUMNS {
-        let gap = Constraint::Length(draw::width_of(GAP));
+        let gap = Constraint::Length(draw::measure_width(GAP));
         let fill = Constraint::Fill(1);
         let [away, gap_1, queue, gap_2, next] =
             Layout::horizontal([fill, gap, fill, gap, fill]).areas(body);
@@ -223,7 +243,7 @@ fn split_glance(area: Rect) -> Parts {
 /// `+ N more`. A block with room for its heading alone shows only that.
 fn cut_block(panel: Panel, glance: &Glance<'_>, area: Rect) -> Block {
     let width = usize::from(area.width);
-    let mut shown = block_rows(panel, glance, width);
+    let mut shown = list_block_rows(panel, glance, width);
     let room = usize::from(area.height).saturating_sub(1);
     let mut more = None;
     let mut hidden = Vec::new();
@@ -232,7 +252,7 @@ fn cut_block(panel: Panel, glance: &Glance<'_>, area: Rect) -> Block {
         more = (room > 0).then_some(hidden.len());
     }
     Block {
-        heading: heading_line(panel, glance, width),
+        heading: format_heading_line(panel, glance, width),
         shown,
         more,
         hidden,
@@ -241,7 +261,7 @@ fn cut_block(panel: Panel, glance: &Glance<'_>, area: Rect) -> Block {
 
 /// Returns a block's heading, such as `QUEUE  2 run · 1 you`, with its
 /// key, such as `[2]`, at the right end of `width`.
-fn heading_line(panel: Panel, glance: &Glance<'_>, width: usize) -> String {
+fn format_heading_line(panel: Panel, glance: &Glance<'_>, width: usize) -> String {
     let words = match (panel, glance.queue) {
         (Panel::Away, Some(queue)) => {
             let count = away::find_events_since(&queue.events, glance.since).len();
@@ -257,23 +277,28 @@ fn heading_line(panel: Panel, glance: &Glance<'_>, width: usize) -> String {
 
 /// Returns every row of `panel`'s block, before any cut. A block with
 /// nothing to show has one dim row that says why.
-fn block_rows(panel: Panel, glance: &Glance<'_>, width: usize) -> Vec<TextLine<'static>> {
-    let dim_row = |words: &str| vec![TextLine::styled(format!(" {words}"), draw::dim())];
+fn list_block_rows(panel: Panel, glance: &Glance<'_>, width: usize) -> Vec<TextLine<'static>> {
+    let dim_row = |words: &str| {
+        vec![TextLine::styled(
+            format!(" {words}"),
+            draw::pick_dim_style(),
+        )]
+    };
     let Some(queue) = glance.queue else {
         return dim_row("reading");
     };
     let rows: Vec<TextLine<'static>> = match panel {
         Panel::Away => {
-            panels::away_lines(away::find_events_since(&queue.events, glance.since), width)
+            panels::format_away_lines(away::find_events_since(&queue.events, glance.since), width)
                 .into_iter()
                 .map(|line| TextLine::raw(line.text))
                 .collect()
         }
-        Panel::Queue => groups::glance_items(glance.groups)
+        Panel::Queue => groups::pick_glance_items(glance.groups)
             .into_iter()
-            .map(|(_, item)| draw::item_line(item, width, glance.color))
+            .map(|(_, item)| draw::format_item_line(item, width, glance.color))
             .collect(),
-        Panel::Next => panels::next_lines(glance.groups, queue.no_hub, 1, width)
+        Panel::Next => panels::format_next_lines(glance.groups, queue.no_hub, 1, width)
             .into_iter()
             .map(|line| TextLine::raw(line.text))
             .collect(),
@@ -290,6 +315,6 @@ fn block_rows(panel: Panel, glance: &Glance<'_>, width: usize) -> Vec<TextLine<'
 }
 
 /// Returns a block's `+ N more` line.
-fn more_words(hidden: usize) -> String {
+fn format_more_words(hidden: usize) -> String {
     format!("   + {hidden} more")
 }
