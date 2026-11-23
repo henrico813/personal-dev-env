@@ -170,13 +170,17 @@ agent, unless the linking skill names someone else.
    edit the fix, save it again as items 1 and 5 say, and show the new
    diff.
    When the user says no, delete every round's patch file.
-5. A new review round starts each time a fix goes back for changes,
-   such as for the privacy review's hits, a change the user asks for,
-   a `refused` reply, a failed `git apply`, or the findings of the
-   `skill-development` skill's "Review a skill change" section, from
-   reviewers that you or a hub started. Edit the fix as the step that
-   sent it back says; for those findings, edit it as item 4 says for
-   a change. In each round after the first:
+5. A new review round starts each time a fix goes back for changes.
+   Edit the fix as the place listed for its reason says:
+   - The privacy review's hits: item 1.
+   - A change the user asks for: item 4.
+   - A `refused` reply: the table in step 4.
+   - A failed `git apply`: item 3.
+   - The findings of the `skill-development` skill's "Review a skill
+     change" section, from reviewers that you or a hub started: item
+     4, as for a change the user asks for.
+
+   In each round after the first:
    - Save the round to a new patch file, such as
      `/tmp/<skill>-fix-2.patch`, so that a `diff` of it against
      `/tmp/<skill>-fix-1.patch` shows the change. From then on, "the
