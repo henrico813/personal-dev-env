@@ -16,7 +16,7 @@ import (
 // npm must install the versions assigned by the manifest.
 func TestNPMUsesManifestVersions(t *testing.T) {
 	t.Parallel()
-	for _, spec := range packages() {
+	for _, spec := range listPackages() {
 		item, ok := manifest.Find(spec.Name, manifest.NPM)
 		if !ok || spec.Version != item.Version {
 			t.Errorf("package %q version = %q, want %q", spec.Name, spec.Version, item.Version)
@@ -65,7 +65,7 @@ func TestNPMCacheCleanupPreservesRollback(t *testing.T) {
 
 	root := manager.Root()
 	writeNPMFile(t, filepath.Join(root, "previous"), "old root\n", 0o644)
-	for _, spec := range packages() {
+	for _, spec := range listPackages() {
 		writeNPMFile(t, filepath.Join(home, ".local", "bin", spec.Binary), "old "+spec.Binary+"\n", 0o755)
 	}
 
@@ -75,11 +75,11 @@ func TestNPMCacheCleanupPreservesRollback(t *testing.T) {
 	}
 	assertNPMInstall(t, manager)
 	assertNoNPMCache(t, home)
-	if err := journal.Rollback(); err != nil {
-		t.Fatalf("Rollback() error = %v", err)
+	if err := journal.RollBack(); err != nil {
+		t.Fatalf("RollBack() error = %v", err)
 	}
 	assertNPMFile(t, filepath.Join(root, "previous"), "old root\n")
-	for _, spec := range packages() {
+	for _, spec := range listPackages() {
 		assertNPMFile(t, filepath.Join(home, ".local", "bin", spec.Binary), "old "+spec.Binary+"\n")
 	}
 
@@ -116,8 +116,8 @@ func TestNPMCacheCleanupPreservesRollback(t *testing.T) {
 	if len(journal.Changes) == 0 {
 		t.Fatal("changed lock did not rerun npm")
 	}
-	if err := journal.Rollback(); err != nil {
-		t.Fatalf("changed lock Rollback() error = %v", err)
+	if err := journal.RollBack(); err != nil {
+		t.Fatalf("changed lock RollBack() error = %v", err)
 	}
 }
 
@@ -127,7 +127,7 @@ func writeNPMFixture(t *testing.T, path, logPath string) {
 	fmt.Fprintf(&script, "#!/bin/sh\nset -eu\nprintf '%%s\\n' \"$*\" >> %q\n", logPath)
 	script.WriteString("mkdir -p \"$npm_config_cache\"\nprintf '%s\\n' cache > \"$npm_config_cache/content\"\n")
 	script.WriteString("[ \"$1\" = ci ] || exit 0\nmkdir -p node_modules/.bin\n")
-	for _, spec := range packages() {
+	for _, spec := range listPackages() {
 		metadata := filepath.Join("node_modules", filepath.FromSlash(spec.Name), "package.json")
 		binary := filepath.Join("node_modules", ".bin", spec.Binary)
 		fmt.Fprintf(&script, "mkdir -p %q\nprintf '%%s\\n' '{\"version\":\"%s\"}' > %q\n", filepath.Dir(metadata), spec.Version, metadata)
@@ -138,13 +138,13 @@ func writeNPMFixture(t *testing.T, path, logPath string) {
 
 func assertNPMInstall(t *testing.T, manager Manager) {
 	t.Helper()
-	for _, spec := range packages() {
-		version, err := manager.Version(spec.Name)
+	for _, spec := range listPackages() {
+		version, err := manager.ReadVersion(spec.Name)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if version != spec.Version {
-			t.Errorf("Version(%q) = %q, want %q", spec.Name, version, spec.Version)
+			t.Errorf("ReadVersion(%q) = %q, want %q", spec.Name, version, spec.Version)
 		}
 		launcher := filepath.Join(manager.Home, ".local", "bin", spec.Binary)
 		target, err := os.Readlink(launcher)

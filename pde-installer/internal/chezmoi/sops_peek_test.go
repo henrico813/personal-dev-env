@@ -128,7 +128,7 @@ func runSopsPeek(t *testing.T, args ...string) (string, string, error) {
 echo "$@" >"$FAKE_SOPS_DIR/args"
 cat "$FAKE_SOPS_DIR/plain.json"
 `)
-	script := filepath.Join(repoRoot(t), "chezmoi", "dot_local", "bin", "executable_pde-sops-peek")
+	script := filepath.Join(findRepoRoot(t), "chezmoi", "dot_local", "bin", "executable_pde-sops-peek")
 	command := exec.Command("sh", append([]string{script}, args...)...)
 	command.Dir = dir
 	command.Env = append(command.Environ(),

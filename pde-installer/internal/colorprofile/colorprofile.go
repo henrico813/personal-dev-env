@@ -12,8 +12,8 @@ const (
 	ValidValues            = "tokyo-night, everforest-dark, or gruvbox-dark"
 )
 
-// All returns every supported color profile.
-func All() []Profile {
+// Returns every supported color profile.
+func List() []Profile {
 	return []Profile{TokyoNight, EverforestDark, GruvboxDark}
 }
 
@@ -27,7 +27,7 @@ func Parse(value string) (Profile, error) {
 
 // Valid reports whether the profile selects a supported visual theme.
 func (selected Profile) Valid() bool {
-	for _, supported := range All() {
+	for _, supported := range List() {
 		if selected == supported {
 			return true
 		}

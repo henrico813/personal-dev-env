@@ -106,7 +106,7 @@ func toRemovalTarget(target string) string {
 // still exist, then reload systemd, or the public service survives the apply.
 func TestCleanupScriptDisablesWebUnits(t *testing.T) {
 	home := t.TempDir()
-	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), fakeSystemctlScript("0", ""))
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), makeFakeSystemctlScript("0", ""))
 
 	output, err := runCleanupScript(t, home, "full", []string{"PATH=" + filepath.Join(home, ".local", "bin") + ":" + os.Getenv("PATH")})
 	if err != nil {
@@ -129,7 +129,7 @@ func TestCleanupScriptDisablesWebUnits(t *testing.T) {
 // enabled the failed unit must still be removed, with a warning.
 func TestCleanupScriptContinuesAfterDisableFailure(t *testing.T) {
 	home := t.TempDir()
-	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), fakeSystemctlScript("0", "opencode-web-health.timer"))
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), makeFakeSystemctlScript("0", "opencode-web-health.timer"))
 	writeUserUnitFile(t, home, "opencode-web-health.timer")
 	failedLink := writeWantsSymlink(t, home, "timers.target.wants", "opencode-web-health.timer")
 
@@ -172,7 +172,7 @@ func TestCleanupScriptSkipsWithoutSystemd(t *testing.T) {
 // alone, and warn that the running service may need a manual stop.
 func TestCleanupScriptSkipsWithoutUserManager(t *testing.T) {
 	home := t.TempDir()
-	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), fakeSystemctlScript("1", ""))
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), makeFakeSystemctlScript("1", ""))
 	writeUserUnitFile(t, home, "opencode-web.service")
 	writeUserUnitFile(t, home, "opencode-web-health.timer")
 	webLink := writeWantsSymlink(t, home, "default.target.wants", "opencode-web.service")
@@ -217,7 +217,7 @@ func TestCleanupScriptSkipsTerminalProfile(t *testing.T) {
 // operator that the credential file still exists and needs manual removal.
 func TestCleanupScriptNoticesServerEnv(t *testing.T) {
 	home := t.TempDir()
-	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), fakeSystemctlScript("0", ""))
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), makeFakeSystemctlScript("0", ""))
 	writeApplyFile(t, filepath.Join(home, ".config", "opencode", "server.env"), "OPENCODE_SERVER_USERNAME=opencode\n")
 
 	output, err := runCleanupScript(t, home, "full", []string{"PATH=" + filepath.Join(home, ".local", "bin") + ":" + os.Getenv("PATH")})
@@ -229,7 +229,7 @@ func TestCleanupScriptNoticesServerEnv(t *testing.T) {
 	}
 }
 
-func fakeSystemctlScript(showEnvironmentExit, failDisableUnit string) string {
+func makeFakeSystemctlScript(showEnvironmentExit, failDisableUnit string) string {
 	script := `#!/bin/sh
 printf '%s\n' "$*" >>"$HOME/systemctl-calls"
 case "$*" in

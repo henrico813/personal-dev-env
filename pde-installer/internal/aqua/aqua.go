@@ -20,7 +20,7 @@ type tool struct {
 	version string
 }
 
-func checksum(architecture string) (string, bool) {
+func findChecksum(architecture string) (string, bool) {
 	switch architecture {
 	case "amd64":
 		return "d6f920201c71fb42881af51f8f63c3f06da778b38399248b2c777a288ebe3884", true
@@ -31,9 +31,9 @@ func checksum(architecture string) (string, bool) {
 	}
 }
 
-func tools(selected profile.Profile) []tool {
+func listTools(selected profile.Profile) []tool {
 	var result []tool
-	for _, item := range manifest.ByOwnerFor(selected, manifest.Aqua) {
+	for _, item := range manifest.GroupByOwnerFor(selected, manifest.Aqua) {
 		if item.Name == "aqua" {
 			continue
 		}
@@ -74,7 +74,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	if !ok {
 		return nil, fmt.Errorf("aqua is missing from manifest")
 	}
-	checksum, ok := checksum(runtime.GOARCH)
+	checksum, ok := findChecksum(runtime.GOARCH)
 	if runtime.GOOS != "linux" || !ok {
 		return nil, fmt.Errorf("unsupported Aqua platform %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
@@ -107,7 +107,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	if err := fsutil.GuardHome(m.home, parent, m.root); err != nil {
 		return nil, err
 	}
-	current, err := m.current(wanted)
+	current, err := m.isCurrent(wanted)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +198,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	return journal, nil
 }
 
-func (m Manager) current(wanted state) (bool, error) {
+func (m Manager) isCurrent(wanted state) (bool, error) {
 	data, err := os.ReadFile(filepath.Join(m.root, ".pde-state.json"))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -213,8 +213,8 @@ func (m Manager) current(wanted state) (bool, error) {
 	if _, status, err := m.Probe(); err != nil || status != "current" {
 		return false, err
 	}
-	for _, candidate := range tools(m.profile) {
-		if _, status, err := m.ToolProbe(candidate.name, candidate.version); err != nil || status != "current" {
+	for _, candidate := range listTools(m.profile) {
+		if _, status, err := m.ProbeTool(candidate.name, candidate.version); err != nil || status != "current" {
 			return false, err
 		}
 	}
@@ -222,11 +222,11 @@ func (m Manager) current(wanted state) (bool, error) {
 }
 
 func pinState(config, checksums string) (state, error) {
-	configHash, err := fsutil.FileSHA256(config)
+	configHash, err := fsutil.HashFileSHA256(config)
 	if err != nil {
 		return state{}, fmt.Errorf("hash Aqua config: %w", err)
 	}
-	checksumsHash, err := fsutil.FileSHA256(checksums)
+	checksumsHash, err := fsutil.HashFileSHA256(checksums)
 	if err != nil {
 		return state{}, fmt.Errorf("hash Aqua checksums: %w", err)
 	}
@@ -256,8 +256,8 @@ func (m Manager) Probe() (string, string, error) {
 	return installed, "outdated", nil
 }
 
-// ToolProbe reports a tool version without hiding probe errors.
-func (m Manager) ToolProbe(name, version string) (string, string, error) {
+// Reports a tool version without hiding probe errors.
+func (m Manager) ProbeTool(name, version string) (string, string, error) {
 	binaryNames := map[string]string{
 		"ripgrep": "rg",
 		"bottom":  "btm",

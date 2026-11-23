@@ -89,7 +89,7 @@ func TestExtractZipRejectsPathTraversal(t *testing.T) {
 
 // A failed activation must restore the previous destination.
 func TestJournalRestoresActivation(t *testing.T) {
-	home, config := journalTestConfig(t)
+	home, config := newJournalTestConfig(t)
 	destination := filepath.Join(home, "destination")
 	stage := filepath.Join(home, "stage")
 	writeTestFile(t, destination, "old")
@@ -101,7 +101,7 @@ func TestJournalRestoresActivation(t *testing.T) {
 	if err := journal.Activate(stage, destination); err != nil {
 		t.Fatal(err)
 	}
-	if err := journal.Rollback(); err != nil {
+	if err := journal.RollBack(); err != nil {
 		t.Fatal(err)
 	}
 	assertTestFile(t, destination, "old")
@@ -110,7 +110,7 @@ func TestJournalRestoresActivation(t *testing.T) {
 
 // Recorded changes must preserve the user's previous file.
 func TestJournalRestoresRecordedChanges(t *testing.T) {
-	home, config := journalTestConfig(t)
+	home, config := newJournalTestConfig(t)
 	destination := filepath.Join(home, "destination")
 	backup := filepath.Join(home, "backup")
 	writeTestFile(t, destination, "old")
@@ -127,7 +127,7 @@ func TestJournalRestoresRecordedChanges(t *testing.T) {
 	if err := os.WriteFile(destination, []byte("new"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := journal.Rollback(); err != nil {
+	if err := journal.RollBack(); err != nil {
 		t.Fatal(err)
 	}
 	assertTestFile(t, destination, "old")
@@ -136,7 +136,7 @@ func TestJournalRestoresRecordedChanges(t *testing.T) {
 
 // Successful changes must remove backups and temporary files.
 func TestJournalRemovesCommittedCleanup(t *testing.T) {
-	home, config := journalTestConfig(t)
+	home, config := newJournalTestConfig(t)
 	destination := filepath.Join(home, "destination")
 	stage := filepath.Join(home, "stage")
 	cleanup := filepath.Join(home, "cleanup")
@@ -165,12 +165,12 @@ func TestJournalRemovesCommittedCleanup(t *testing.T) {
 
 // Recovery must handle interruption before activation starts.
 func TestJournalRecoversBeforeActivation(t *testing.T) {
-	home, config := journalTestConfig(t)
+	home, config := newJournalTestConfig(t)
 	destination := filepath.Join(home, "destination")
 	stage := filepath.Join(home, "stage")
 	writeTestFile(t, destination, "old")
 	writeTestFile(t, stage, "new")
-	journal := interruptedJournal(t, config, stage, destination)
+	journal := makeInterruptedJournal(t, config, stage, destination)
 	if err := journal.persist(); err != nil {
 		t.Fatal(err)
 	}
@@ -189,12 +189,12 @@ func TestJournalRecoversBeforeActivation(t *testing.T) {
 
 // Recovery must handle interruption during an atomic exchange.
 func TestJournalRecoversDuringActivation(t *testing.T) {
-	home, config := journalTestConfig(t)
+	home, config := newJournalTestConfig(t)
 	destination := filepath.Join(home, "destination")
 	stage := filepath.Join(home, "stage")
 	writeTestFile(t, destination, "old")
 	writeTestFile(t, stage, "new")
-	journal := interruptedJournal(t, config, stage, destination)
+	journal := makeInterruptedJournal(t, config, stage, destination)
 	if err := journal.persist(); err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestJournalRecoversDuringActivation(t *testing.T) {
 
 // Recovery must restore changes when the process exits early.
 func TestJournalRecoversAfterActivation(t *testing.T) {
-	home, config := journalTestConfig(t)
+	home, config := newJournalTestConfig(t)
 	destination := filepath.Join(home, "destination")
 	stage := filepath.Join(home, "stage")
 	writeTestFile(t, destination, "old")
@@ -231,7 +231,7 @@ func TestJournalRecoversAfterActivation(t *testing.T) {
 
 // Recovery must safely finish a rollback started earlier.
 func TestJournalResumesInterruptedRollback(t *testing.T) {
-	home, config := journalTestConfig(t)
+	home, config := newJournalTestConfig(t)
 	destination := filepath.Join(home, "destination")
 	stage := filepath.Join(home, "stage")
 	writeTestFile(t, destination, "old")
@@ -243,7 +243,7 @@ func TestJournalResumesInterruptedRollback(t *testing.T) {
 	if err := journal.Activate(stage, destination); err != nil {
 		t.Fatal(err)
 	}
-	if err := Rollback(destination, stage); err != nil {
+	if err := RestoreBackup(destination, stage); err != nil {
 		t.Fatal(err)
 	}
 	if err := RecoverJournals(config); err != nil {
@@ -255,7 +255,7 @@ func TestJournalResumesInterruptedRollback(t *testing.T) {
 
 // Recovery must finish cleanup after a successful commit.
 func TestJournalFinishesCommittedCleanup(t *testing.T) {
-	home, config := journalTestConfig(t)
+	home, config := newJournalTestConfig(t)
 	destination := filepath.Join(home, "destination")
 	stage := filepath.Join(home, "stage")
 	cleanup := filepath.Join(home, "cleanup")
@@ -287,7 +287,7 @@ func TestJournalFinishesCommittedCleanup(t *testing.T) {
 }
 
 func TestJournalsCommitTogether(t *testing.T) {
-	home, config := journalTestConfig(t)
+	home, config := newJournalTestConfig(t)
 	first := activateTestJournal(t, config, filepath.Join(home, "first"))
 	second := activateTestJournal(t, config, filepath.Join(home, "second"))
 	if err := CommitJournals(first, &Journal{}, second); err != nil {
@@ -308,7 +308,7 @@ func TestJournalGroupRecoveryCommitsAll(t *testing.T) {
 		{name: "all", marked: 2},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			home, config := journalTestConfig(t)
+			home, config := newJournalTestConfig(t)
 			journals := []*Journal{
 				activateTestJournal(t, config, filepath.Join(home, "first")),
 				activateTestJournal(t, config, filepath.Join(home, "second")),
@@ -332,7 +332,7 @@ func TestJournalGroupRecoveryCommitsAll(t *testing.T) {
 }
 
 func TestJournalGroupResumesCleanup(t *testing.T) {
-	home, config := journalTestConfig(t)
+	home, config := newJournalTestConfig(t)
 	first := activateTestJournal(t, config, filepath.Join(home, "first"))
 	second := activateTestJournal(t, config, filepath.Join(home, "second"))
 	groupPath, err := writeCommitGroup([]*Journal{first, second})
@@ -359,7 +359,7 @@ func TestJournalGroupResumesCleanup(t *testing.T) {
 }
 
 func TestJournalRecoveryRollsAllBack(t *testing.T) {
-	home, config := journalTestConfig(t)
+	home, config := newJournalTestConfig(t)
 	activateTestJournal(t, config, filepath.Join(home, "first"))
 	activateTestJournal(t, config, filepath.Join(home, "second"))
 	if err := RecoverJournals(config); err != nil {
@@ -377,7 +377,7 @@ func TestJournalsIgnoreEmptyEntries(t *testing.T) {
 }
 
 func TestJournalRejectsUnsafeCommitGroup(t *testing.T) {
-	home, config := journalTestConfig(t)
+	home, config := newJournalTestConfig(t)
 	if err := os.MkdirAll(config.Directory, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +397,7 @@ func TestJournalRejectsUnsafeCommitGroup(t *testing.T) {
 
 // Stored journal data must never bypass HOME protection.
 func TestJournalRejectsOutsidePaths(t *testing.T) {
-	home, config := journalTestConfig(t)
+	home, config := newJournalTestConfig(t)
 	if err := os.MkdirAll(config.Directory, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -415,14 +415,14 @@ func TestJournalRejectsOutsidePaths(t *testing.T) {
 	}
 }
 
-func journalTestConfig(t *testing.T) (string, JournalConfig) {
+func newJournalTestConfig(t *testing.T) (string, JournalConfig) {
 	t.Helper()
 	home := t.TempDir()
 	config := JournalConfig{Home: home, Directory: filepath.Join(home, "journals")}
 	return home, config
 }
 
-func interruptedJournal(t *testing.T, config JournalConfig, stage, destination string) *Journal {
+func makeInterruptedJournal(t *testing.T, config JournalConfig, stage, destination string) *Journal {
 	t.Helper()
 	journal, err := NewJournal(config)
 	if err != nil {

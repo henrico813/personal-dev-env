@@ -37,7 +37,7 @@ func list(config config, runner run.Runner) error {
 		npmManager = npm.New(config.Home, config.RepoRoot, runner)
 		directManager = direct.New(config.Home, runner)
 		var directToolsErr error
-		directTools, directToolsErr = direct.Tools()
+		directTools, directToolsErr = direct.ListTools()
 		if directToolsErr != nil {
 			return fmt.Errorf("read direct tool metadata: %w", directToolsErr)
 		}
@@ -58,7 +58,7 @@ func list(config config, runner run.Runner) error {
 	if _, err := fmt.Fprintln(runner.Out(), "OWNER\tITEM\tREQUESTED\tINSTALLED\tSTATUS"); err != nil {
 		return fmt.Errorf("write list heading: %w", err)
 	}
-	for _, item := range manifest.ItemsFor(config.Profile, config.Desktop) {
+	for _, item := range manifest.ListItemsFor(config.Profile, config.Desktop) {
 		requested, installed, state := item.Version, "", "missing"
 		switch item.Owner {
 		case manifest.Ubuntu:
@@ -70,13 +70,13 @@ func list(config config, runner run.Runner) error {
 			if item.Name == "aqua" {
 				installed, state = aquaInstalled, aquaState
 			} else {
-				installed, state, err = aquaManager.ToolProbe(item.Name, requested)
+				installed, state, err = aquaManager.ProbeTool(item.Name, requested)
 				if err != nil {
 					return fmt.Errorf("read %s status: %w", item.Name, err)
 				}
 			}
 		case manifest.NPM:
-			installed, err = npmManager.Version(item.Name)
+			installed, err = npmManager.ReadVersion(item.Name)
 			if err != nil && !os.IsNotExist(err) {
 				return fmt.Errorf("read %s status: %w", item.Name, err)
 			}
@@ -109,7 +109,7 @@ func list(config config, runner run.Runner) error {
 			for _, tool := range directTools {
 				if tool.Name == item.Name {
 					isTool = true
-					installed, state, err = directManager.ToolProbe(item.Name)
+					installed, state, err = directManager.ProbeTool(item.Name)
 					if err != nil {
 						return fmt.Errorf("read %s status: %w", item.Name, err)
 					}
@@ -119,7 +119,7 @@ func list(config config, runner run.Runner) error {
 			if isTool {
 				break
 			}
-			for _, font := range direct.Fonts() {
+			for _, font := range direct.ListFonts() {
 				if font.Name == item.Name {
 					state, err = directManager.Probe(font)
 					if err != nil {

@@ -37,7 +37,7 @@ func TestColorProfileResolution(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			home := t.TempDir()
 			if test.config != "" {
-				home = profileHome(t, test.config)
+				home = makeProfileHome(t, test.config)
 			}
 			got, err := resolveColorProfile(home, test.request)
 			if test.failure != "" {

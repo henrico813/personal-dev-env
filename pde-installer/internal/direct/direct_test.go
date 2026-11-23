@@ -30,7 +30,7 @@ func TestFontProbeReturnsFilesystemErrors(t *testing.T) {
 	if err := os.WriteFile(blockingPath, []byte("blocked"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := New(home, run.Runner{}).Probe(Fonts()[0])
+	_, err := New(home, run.Runner{}).Probe(ListFonts()[0])
 	if err == nil {
 		t.Fatal("Probe() error = nil")
 	}
@@ -39,12 +39,12 @@ func TestFontProbeReturnsFilesystemErrors(t *testing.T) {
 func TestToolsMapSupportedArchitectures(t *testing.T) {
 	t.Parallel()
 	for _, architecture := range []string{"amd64", "arm64"} {
-		tools, err := toolsForPlatform("linux", architecture)
+		tools, err := listToolsForPlatform("linux", architecture)
 		if err != nil {
-			t.Fatalf("toolsForPlatform(%q) error = %v", architecture, err)
+			t.Fatalf("listToolsForPlatform(%q) error = %v", architecture, err)
 		}
 		if len(tools) != 8 {
-			t.Fatalf("toolsForPlatform(%q) count = %d", architecture, len(tools))
+			t.Fatalf("listToolsForPlatform(%q) count = %d", architecture, len(tools))
 		}
 		for _, tool := range tools {
 			if tool.ReleasesURL != "" {
@@ -60,8 +60,8 @@ func TestToolsMapSupportedArchitectures(t *testing.T) {
 func TestToolsRejectUnsupportedPlatforms(t *testing.T) {
 	t.Parallel()
 	for _, platform := range [][2]string{{"darwin", "amd64"}, {"linux", "386"}} {
-		if _, err := toolsForPlatform(platform[0], platform[1]); err == nil {
-			t.Errorf("toolsForPlatform(%q, %q) error = nil", platform[0], platform[1])
+		if _, err := listToolsForPlatform(platform[0], platform[1]); err == nil {
+			t.Errorf("listToolsForPlatform(%q, %q) error = nil", platform[0], platform[1])
 		}
 	}
 }
@@ -83,7 +83,7 @@ func TestToolVersionsRequireBoundaries(t *testing.T) {
 
 func TestToolsActivateAndRollBack(t *testing.T) {
 	home := t.TempDir()
-	archive := toolArchive(t, "fixture-1.2.3", "fixture", "1.2.3")
+	archive := buildToolArchive(t, "fixture-1.2.3", "fixture", "1.2.3")
 	digest := sha256.Sum256(archive)
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		_, _ = response.Write(archive)
@@ -110,8 +110,8 @@ func TestToolsActivateAndRollBack(t *testing.T) {
 	if err != nil || strings.TrimSpace(string(output)) != "fixture 1.2.3" {
 		t.Fatalf("fixture output = %q, %v", output, err)
 	}
-	if err := journal.Rollback(); err != nil {
-		t.Fatalf("Rollback() error = %v", err)
+	if err := journal.RollBack(); err != nil {
+		t.Fatalf("RollBack() error = %v", err)
 	}
 	assertDirectFile(t, oldRoot, "old root\n")
 	assertDirectFile(t, oldLauncher, "old launcher\n")
@@ -119,7 +119,7 @@ func TestToolsActivateAndRollBack(t *testing.T) {
 
 func TestRootArchiveToolInstallsLaunchers(t *testing.T) {
 	home := t.TempDir()
-	archive := toolArchive(t, "", "moshi-hook", "v0.4.20")
+	archive := buildToolArchive(t, "", "moshi-hook", "v0.4.20")
 	digest := sha256.Sum256(archive)
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		_, _ = response.Write(archive)
@@ -148,7 +148,7 @@ func TestRootArchiveToolInstallsLaunchers(t *testing.T) {
 // pinned moshi-hook can go missing from the CDN.
 func TestLatestToolInstallsNewestRelease(t *testing.T) {
 	home := t.TempDir()
-	archive := toolArchive(t, "", "moshi-hook", "9.0.0")
+	archive := buildToolArchive(t, "", "moshi-hook", "9.0.0")
 	tool, _ := serveLatestTool(t, archive, sha256.Sum256(archive))
 
 	manager := New(home, run.Runner{})
@@ -164,10 +164,10 @@ func TestLatestToolInstallsNewestRelease(t *testing.T) {
 // itself without reaching the CDN, or each pin change would undo its updates.
 func TestLatestToolKeepsSelfUpdatedBinary(t *testing.T) {
 	home := t.TempDir()
-	archive := toolArchive(t, "", "moshi-hook", "9.0.0")
+	archive := buildToolArchive(t, "", "moshi-hook", "9.0.0")
 	moshi, cdn := serveLatestTool(t, archive, sha256.Sum256(archive))
 	pinned := func(version string) Tool {
-		archive := toolArchive(t, "fixture-"+version, "fixture", version)
+		archive := buildToolArchive(t, "fixture-"+version, "fixture", version)
 		digest := sha256.Sum256(archive)
 		server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 			_, _ = response.Write(archive)
@@ -205,7 +205,7 @@ func TestLatestToolKeepsSelfUpdatedBinary(t *testing.T) {
 // against a corrupt or swapped archive.
 func TestLatestToolRejectsChecksumMismatch(t *testing.T) {
 	home := t.TempDir()
-	archive := toolArchive(t, "", "moshi-hook", "9.0.0")
+	archive := buildToolArchive(t, "", "moshi-hook", "9.0.0")
 	tool, _ := serveLatestTool(t, archive, sha256.Sum256([]byte("other archive")))
 
 	_, err := New(home, run.Runner{}).reconcileTools([]Tool{tool})
@@ -219,7 +219,7 @@ func TestLatestToolRejectsChecksumMismatch(t *testing.T) {
 // next install replaces one that does not run.
 func TestLatestToolReplacesBrokenBinary(t *testing.T) {
 	home := t.TempDir()
-	archive := toolArchive(t, "", "moshi-hook", "9.0.0")
+	archive := buildToolArchive(t, "", "moshi-hook", "9.0.0")
 	tool, _ := serveLatestTool(t, archive, sha256.Sum256(archive))
 	manager := New(home, run.Runner{})
 	if _, err := manager.reconcileTools([]Tool{tool}); err != nil {
@@ -282,7 +282,7 @@ func TestToolCleanupPreservesRollback(t *testing.T) {
 				Directory: "fixture", Binary: "fixture", VersionPrefix: "fixture ",
 				Links: []string{"fixture"}, VersionArgs: []string{"--version"}, Kind: archiveTool,
 			},
-			archive: toolArchive(t, "fixture-1.2.3", "fixture", "1.2.3"),
+			archive: buildToolArchive(t, "fixture-1.2.3", "fixture", "1.2.3"),
 			removed: []string{"fixture.tar.gz"},
 		},
 		{
@@ -293,7 +293,7 @@ func TestToolCleanupPreservesRollback(t *testing.T) {
 				Target: "x86_64-unknown-linux-gnu", Links: []string{"cargo", "rustc", "rustdoc"},
 				VersionArgs: []string{"--version"}, Kind: rustTool,
 			},
-			archive: rustInstallerArchive(t, "1.2.3"),
+			archive: buildRustInstallerArchive(t, "1.2.3"),
 			removed: []string{"rust.tar.gz", "rust-installer"},
 		},
 	}
@@ -323,8 +323,8 @@ func TestToolCleanupPreservesRollback(t *testing.T) {
 			}
 			assertNoDirectArtifacts(t, home, test.removed)
 
-			if err := journal.Rollback(); err != nil {
-				t.Fatalf("Rollback() error = %v", err)
+			if err := journal.RollBack(); err != nil {
+				t.Fatalf("RollBack() error = %v", err)
 			}
 			assertDirectFile(t, oldRoot, "old root\n")
 			assertDirectFile(t, oldLauncher, "old "+tool.Binary+"\n")
@@ -344,19 +344,19 @@ func TestOfficialToolsInstall(t *testing.T) {
 	if err := journal.Commit(); err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
-	tools, err := Tools()
+	tools, err := ListTools()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, tool := range tools {
-		installed, state, err := manager.ToolProbe(tool.Name)
+		installed, state, err := manager.ProbeTool(tool.Name)
 		if err != nil || state != "current" || tool.Version != "" && installed != tool.Version {
-			t.Errorf("ToolProbe(%q) = %q, %q, %v", tool.Name, installed, state, err)
+			t.Errorf("ProbeTool(%q) = %q, %q, %v", tool.Name, installed, state, err)
 		}
 	}
 }
 
-func toolArchive(t *testing.T, root, name, version string) []byte {
+func buildToolArchive(t *testing.T, root, name, version string) []byte {
 	t.Helper()
 	var compressed bytes.Buffer
 	zipper := gzip.NewWriter(&compressed)
@@ -389,7 +389,7 @@ func toolArchive(t *testing.T, root, name, version string) []byte {
 	return compressed.Bytes()
 }
 
-func rustInstallerArchive(t *testing.T, version string) []byte {
+func buildRustInstallerArchive(t *testing.T, version string) []byte {
 	t.Helper()
 	script := fmt.Sprintf(`#!/bin/sh
 set -eu

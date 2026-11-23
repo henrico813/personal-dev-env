@@ -30,9 +30,9 @@ func TestAquaProbeReturnsCommandErrors(t *testing.T) {
 // Missing Aqua tools must not be reported as current.
 func TestAquaProbeReportsMissingTool(t *testing.T) {
 	t.Parallel()
-	_, status, err := New(t.TempDir(), t.TempDir(), "full", run.Runner{}).ToolProbe("fd", "v8.3.1")
+	_, status, err := New(t.TempDir(), t.TempDir(), "full", run.Runner{}).ProbeTool("fd", "v8.3.1")
 	if err != nil || status != "missing" {
-		t.Fatalf("ToolProbe() = _, %q, %v", status, err)
+		t.Fatalf("ProbeTool() = _, %q, %v", status, err)
 	}
 }
 
@@ -61,11 +61,11 @@ func TestProfileAquaPackages(t *testing.T) {
 				}
 			}
 			var expectedPackages []string
-			for _, item := range manifest.ByOwnerFor(selected, manifest.Aqua) {
+			for _, item := range manifest.GroupByOwnerFor(selected, manifest.Aqua) {
 				if item.Name == "aqua" || item.Name == "ya" {
 					continue
 				}
-				repository := aquaRepository(t, item.Name)
+				repository := findAquaRepository(t, item.Name)
 				expectedPackages = append(expectedPackages, repository+"@"+item.Version)
 			}
 			if !reflect.DeepEqual(packages, expectedPackages) {
@@ -82,14 +82,14 @@ func TestProfileAquaChecksums(t *testing.T) {
 			_, checksumsName := selected.AquaFiles()
 			checksumsPath := filepath.Join("..", "..", "..", "chezmoi", "dot_config", "aquaproj-aqua", checksumsName)
 			ids := readChecksumIDs(t, checksumsPath)
-			if !checksumContains(ids, "registries/github_content/github.com/aquaproj/aqua-registry/v4.550.0") {
+			if !containsChecksumFragment(ids, "registries/github_content/github.com/aquaproj/aqua-registry/v4.550.0") {
 				t.Fatal("standard registry checksum is missing")
 			}
-			for _, item := range manifest.ByOwnerFor(selected, manifest.Aqua) {
+			for _, item := range manifest.GroupByOwnerFor(selected, manifest.Aqua) {
 				if item.Name == "aqua" || item.Name == "ya" || item.Name == "gopls" {
 					continue
 				}
-				repository := aquaRepository(t, item.Name)
+				repository := findAquaRepository(t, item.Name)
 				fragment := "github.com/" + repository + "/" + item.Version
 				matches := func(architectures ...string) bool {
 					for _, id := range ids {
@@ -112,7 +112,7 @@ func TestProfileAquaChecksums(t *testing.T) {
 	}
 }
 
-func aquaRepository(t *testing.T, name string) string {
+func findAquaRepository(t *testing.T, name string) string {
 	t.Helper()
 	repositories := map[string]string{
 		"fd": "sharkdp/fd", "fzf": "junegunn/fzf", "ripgrep": "BurntSushi/ripgrep", "bat": "sharkdp/bat",
@@ -152,7 +152,7 @@ func readChecksumIDs(t *testing.T, path string) []string {
 	return ids
 }
 
-func checksumContains(ids []string, fragment string) bool {
+func containsChecksumFragment(ids []string, fragment string) bool {
 	for _, id := range ids {
 		if strings.Contains(id, fragment) {
 			return true
@@ -162,7 +162,7 @@ func checksumContains(ids []string, fragment string) bool {
 }
 
 func TestYaziProvidesYaExecutable(t *testing.T) {
-	candidates := tools("terminal")
+	candidates := listTools("terminal")
 	count := 0
 	for _, candidate := range candidates {
 		if candidate.name == "ya" {
@@ -206,9 +206,9 @@ func TestToolProbeUsesPackageBinaries(t *testing.T) {
 			binary := filepath.Join(home, ".local", "share", "aquaproj-aqua", "pkgs", filepath.FromSlash(test.path))
 			script := "#!/bin/sh\n[ \"$1\" = \"" + test.argument + "\" ] || exit 9\nprintf '%s\\n' '" + test.output + "'\n"
 			testfile.WriteExecutable(t, binary, script)
-			installed, status, err := New(home, t.TempDir(), "full", run.Runner{}).ToolProbe(test.name, test.version)
+			installed, status, err := New(home, t.TempDir(), "full", run.Runner{}).ProbeTool(test.name, test.version)
 			if err != nil || status != "current" || !strings.Contains(installed, test.output) {
-				t.Fatalf("ToolProbe() = %q, %q, %v", installed, status, err)
+				t.Fatalf("ProbeTool() = %q, %q, %v", installed, status, err)
 			}
 		})
 	}
