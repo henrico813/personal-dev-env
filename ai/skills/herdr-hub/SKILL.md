@@ -340,12 +340,12 @@ you make any card.
   [references/sidebar-names.md](references/sidebar-names.md) when
   the name is wrong, or to place or rename a card's worker.
 - `hub handoff`, `hub adopt` and `hub auto now` move every hub's
-  workspace on this machine into one block at the top of the sidebar.
-  `hub gather` makes the same move when the user runs it.
-  The user presses `ctrl+b shift+h`, or runs `hub go`, to show the
-  next hub in sidebar order, wrapping to the first.
+  workspace on this machine to the top of the sidebar, as `hub gather`
+  does. The user presses `ctrl+b shift+h`, or runs `hub go`, to show
+  the next hub in sidebar order, wrapping to the first.
 - The workspace labelled `desk` is the user's. Never open a tab or pane
-  in it or start an agent there.
+  in it or start an agent there. Use `hub desk add` and `hub desk rm`
+  only when the user asks; to put a session in front of them, flag it.
 - No name holds a status word, such as done, paused or waiting.
   Herdr's state and the "needs you" mark show status.
 
