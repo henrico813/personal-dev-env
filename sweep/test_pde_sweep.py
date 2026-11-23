@@ -293,6 +293,40 @@ class TestMergeNoSessionCards:
         assert cards == [("A-KB-1", "active"), ("B-KB-2", "in-review")]
 
 
+class TestFindCardPrUrls:
+    """A card's pull requests come from its front matter only."""
+
+    @pytest.mark.parametrize(
+        "card_text",
+        [
+            pytest.param(
+                '---\nprs:\n  - "https://github.com/o/r/pull/7"\n'
+                "--- \nSee https://github.com/o/r/pull/9\n",
+                id="closing-line-with-spaces",
+            ),
+            pytest.param(
+                "---\nsummary: split ---\nprs:\n"
+                '  - "https://github.com/o/r/pull/7"\n'
+                "---\nSee https://github.com/o/r/pull/9\n",
+                id="value-ending-in-dashes",
+            ),
+        ],
+    )
+    def test_ends_front_matter_where_kanban_does(
+        self, card_text: str
+    ) -> None:
+        """The front matter ends at the first later line that is just ---.
+
+        kanban reads card fields with this rule, and allows spaces after
+        the ---. Splitting on the text '---\\n' read body links past a
+        closing line with a space after it and stopped at a value ending
+        in ---, so sweep judged a review card by the wrong pull requests.
+        """
+        urls = pde_sweep.find_card_pr_urls(card_text)
+
+        assert urls == ["https://github.com/o/r/pull/7"]
+
+
 class TestRun:
     """The whole sweep, run as the timer runs it, with fake tools."""
 
