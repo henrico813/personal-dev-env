@@ -1,23 +1,54 @@
 //! Runs `hub flag` and `hub unflag`, the sidebar's "needs you" mark.
 
-use super::Outcome;
+use super::{Outcome, sidebar};
 use crate::external::herdr::AgentStatus;
 use crate::shared::{AgentName, HubError, Tools};
 
 /// Shows "needs you" in place of the session's state in the sidebar.
-pub fn run_flag(tools: &Tools<'_>, name: &AgentName) -> Result<Outcome, HubError> {
+/// With `on_this_machine`, it then sets the "go to" list again.
+pub fn run_flag(
+    tools: &Tools<'_>,
+    name: &AgentName,
+    on_this_machine: bool,
+) -> Result<Outcome, HubError> {
     let agent = tools.herdr.get_agent(name.as_str())?;
     tools
         .herdr
         .mark_needs_you(&agent.pane_id, choose_marked_states(agent.status))?;
-    Ok(Outcome::from_line(format!("flagged {}", name.as_str())))
+    let mut outcome = Outcome::from_line(format!("flagged {}", name.as_str()));
+    outcome
+        .lines
+        .extend(refresh_go_to_list(tools, on_this_machine));
+    Ok(outcome)
 }
 
-/// Removes the "needs you" mark from the session's pane.
-pub fn run_unflag(tools: &Tools<'_>, name: &AgentName) -> Result<Outcome, HubError> {
+/// Removes the "needs you" mark from the session's pane. With
+/// `on_this_machine`, it then sets the "go to" list again.
+pub fn run_unflag(
+    tools: &Tools<'_>,
+    name: &AgentName,
+    on_this_machine: bool,
+) -> Result<Outcome, HubError> {
     let agent = tools.herdr.get_agent(name.as_str())?;
     tools.herdr.clear_marks(&agent.pane_id)?;
-    Ok(Outcome::from_line(format!("unflagged {}", name.as_str())))
+    let mut outcome = Outcome::from_line(format!("unflagged {}", name.as_str()));
+    outcome
+        .lines
+        .extend(refresh_go_to_list(tools, on_this_machine));
+    Ok(outcome)
+}
+
+/// Sets the "go to" list again, so the mark's change shows even when
+/// Herdr lost the filter and no `hub watch` runs. Returns a warning
+/// line when that fails, since the mark is already set. With
+/// `--machine` it does nothing, since that machine's run folders, which
+/// name its front hub, are out of reach.
+fn refresh_go_to_list(tools: &Tools<'_>, on_this_machine: bool) -> Option<String> {
+    if !on_this_machine {
+        return None;
+    }
+    let error = sidebar::sync_go_to_list(tools).err()?;
+    Some(format!("could not set the go to list: {error}"))
 }
 
 /// Returns the states that show the mark. A blocked session gets it

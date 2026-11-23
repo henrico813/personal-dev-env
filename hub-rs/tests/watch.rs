@@ -8,7 +8,7 @@ use std::process::Command;
 use std::thread;
 use std::time::{Duration, SystemTime};
 
-use hub::external::herdr::{Agent, AgentStatus, HerdrError, HubKind, Workspace};
+use hub::external::herdr::{Agent, AgentStatus, HerdrError, Workspace};
 use hub::shared::run_folder::RunFolder;
 use hub::watch::background::start_in_background;
 use hub::watch::wait::{WaitRequest, run_wait};
@@ -749,19 +749,21 @@ fn run_watch_logs_herdr_error_then_continues() {
     assert_eq!(test_tools.herdr.marks.borrow().len(), 1);
 }
 
-/// Herdr drops every pane's tags and the desk row when its server
-/// restarts. A saved machine whose Herdr has no `pde.hub` plugin has
-/// only this watch to put them back. A hub or desk left out, here or
-/// there, stays missing from the user's "go to" list.
-#[test]
-fn run_watch_restores_dropped_hubs_and_desks() {
+/// Runs one watch check on this machine, with `kanban-hub-1`, and a
+/// saved machine `laptop` whose Herdr has no `pde.hub` plugin, with
+/// `kanban-hub-29`, `laptop_agents` and a desk.
+fn run_watch_with_laptop(laptop_agents: Vec<Agent>) -> TestTools {
     let mut test_tools = TestTools::new();
     test_tools
         .herdr
         .agents
         .push(make_agent("kanban-hub-1", AgentStatus::Idle));
     let laptop = InMemoryHerdr {
-        agents: vec![make_agent("kanban-hub-29", AgentStatus::Idle)],
+        agents: [
+            vec![make_agent("kanban-hub-29", AgentStatus::Idle)],
+            laptop_agents,
+        ]
+        .concat(),
         workspaces: vec![Workspace {
             workspace_id: "w9".to_owned(),
             label: "desk".to_owned(),
@@ -773,20 +775,53 @@ fn run_watch_restores_dropped_hubs_and_desks() {
         .machines
         .insert("laptop".to_owned(), laptop);
     let options = make_options(&test_tools, Path::new("moshi-hook"), 1);
-
     run_watch(&test_tools.tools(), &options, &mut Vec::new()).unwrap();
+    test_tools
+}
+
+/// Herdr drops every pane's tags and the desk row when its server
+/// restarts. A saved machine whose Herdr has no `pde.hub` plugin has
+/// only this watch to put them back. A hub or desk left out, here or
+/// there, stays missing from the user's "go to" list. This machine,
+/// which lists saved machines, sorts first as place 0.
+#[test]
+fn run_watch_restores_dropped_hubs_and_desks() {
+    let test_tools = run_watch_with_laptop(Vec::new());
 
     assert_eq!(
         *test_tools.herdr.tagged_hubs.borrow(),
-        [("w1:kanban-hub-1".to_owned(), HubKind::Kanban)]
+        [("w1:kanban-hub-1".to_owned(), "1-hub-0".to_owned())]
     );
     assert_eq!(test_tools.herdr.agent_filters.get(), 1);
     let laptop = &test_tools.herdr.machines["laptop"];
     assert_eq!(
         *laptop.tagged_hubs.borrow(),
-        [("w1:kanban-hub-29".to_owned(), HubKind::Kanban)]
+        [("w1:kanban-hub-29".to_owned(), "1-hub-1".to_owned())]
     );
-    assert_eq!(*laptop.desk_agents.borrow(), ["w9:p-board"]);
+    assert_eq!(
+        *laptop.desk_agents.borrow(),
+        [("w9:p-board".to_owned(), "2-desk-1-00".to_owned())]
+    );
+}
+
+/// A saved machine whose own pass tagged a front hub, here one with no
+/// name, keeps it, and its older `kanban-hub-29` stays untagged.
+/// Otherwise that pass clears the tag this watch sets, and the two
+/// retag each other's hubs forever.
+#[test]
+fn run_watch_keeps_remote_front_hub() {
+    let front_hub = Agent {
+        name: String::new(),
+        pane_id: "w2:p1".to_owned(),
+        go_to: Some("1-hub-1".to_owned()),
+        ..make_agent("", AgentStatus::Idle)
+    };
+
+    let test_tools = run_watch_with_laptop(vec![front_hub]);
+
+    let laptop = &test_tools.herdr.machines["laptop"];
+    assert!(laptop.tagged_hubs.borrow().is_empty());
+    assert!(laptop.go_to_writes.borrow().is_empty());
 }
 
 /// Writes `update.json` in the state folder, as `pde-installer update`

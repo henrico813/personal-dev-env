@@ -12,7 +12,7 @@ use std::time::Duration;
 use hub::board::{self, Hubs};
 use hub::commands::at::{AtRequest, Recipients};
 use hub::commands::auto::AutoApproval;
-use hub::commands::cli::{self, AutoRunArg, AutoStep, Cli, Command, RunArg, WatchStep};
+use hub::commands::cli::{self, AutoRunArg, AutoStep, Cli, Command, DeskStep, RunArg, WatchStep};
 use hub::commands::launch::{LaunchMode, LaunchRequest};
 use hub::commands::next::NextOptions;
 use hub::commands::reports::{CardChoice, ReadRequest};
@@ -83,7 +83,8 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         )));
     }
     let home = PathBuf::from(env::var_os("HOME").unwrap_or_default());
-    let state_folder = home.join(".local/state/pde");
+    let local_state = home.join(".local/state");
+    let state_folder = local_state.join("pde");
     let owned_tools = OwnedTools {
         herdr: HerdrCli::new(
             PathBuf::from("herdr"),
@@ -95,12 +96,13 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         requests: RequestFolder::new(find_request_folder(&home)),
         parked: ParkedFolder::new(state_folder.join("hub/parked")),
         own_pane: env::var("HERDR_PANE_ID").ok(),
+        own_session: env::var("OPENCODE_SESSION_ID").ok(),
         state_folder,
+        runs_folder: local_state.clone(),
         reopen_poll: REOPEN_POLL,
     };
     let tools = owned_tools.lend();
     let hub_run = env::var_os("HUB_RUN");
-    let local_state = home.join(".local/state");
     let find_run = |run: &RunArg| {
         cli::find_run_folder(run.run.as_deref(), hub_run.as_deref(), Some(&local_state))
     };
@@ -316,13 +318,18 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
             }
             AutoStep::Now { run } => auto::run_auto_now(&tools, &find_auto_run(run)?, &now),
         },
-        Command::Flag { name } => flag::run_flag(&tools, name),
-        Command::Unflag { name } => flag::run_unflag(&tools, name),
+        Command::Flag { name } => flag::run_flag(&tools, name, cli.machine.is_none()),
+        Command::Unflag { name } => flag::run_unflag(&tools, name, cli.machine.is_none()),
         Command::Alive { session } => alive::run_alive(&tools, session, &now),
         Command::Requests { json } => requests::run_requests(&tools, *json, now.timestamp()),
         Command::Go => sidebar::run_go(&tools),
         Command::Gather => sidebar::run_gather(&tools),
-        Command::Desk => sidebar::run_desk(&tools, &home),
+        Command::Desk { step } => match step {
+            None => sidebar::run_desk(&tools, &home),
+            Some(DeskStep::Add { name }) => sidebar::run_desk_add(&tools, name),
+            Some(DeskStep::Rm { name }) => sidebar::run_desk_rm(&tools, name),
+            Some(DeskStep::Move { name, place }) => sidebar::run_desk_move(&tools, name, *place),
+        },
         Command::RestoreSidebar { start_board } => {
             sidebar::run_restore_sidebar(&tools, *start_board)
         }

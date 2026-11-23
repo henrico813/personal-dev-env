@@ -7,7 +7,7 @@ mod herdr_cli {
     use std::thread::{self, JoinHandle};
 
     use hub::external::herdr::{
-        AgentStart, AgentStatus, Herdr, HerdrCli, HerdrCode, HerdrError, HubKind, NewPlace,
+        AgentStart, AgentStatus, Herdr, HerdrCli, HerdrCode, HerdrError, NewPlace,
     };
     use serde_json::{Value, json};
 
@@ -33,7 +33,8 @@ mod herdr_cli {
     /// leaves the sidebar without the mark while `run_flag` says it is
     /// there. The agent filter finds hubs and flagged idle sessions
     /// only by these tokens, so a wrong token hides them from the user.
-    /// The hub token's value sets the row's place in the list.
+    /// The `go_to` token's value sets the row's place in the list, and
+    /// a cleared one lets a stale row drop out.
     /// A blocked session gets no token, since its mark goes away once it
     /// works again.
     #[test]
@@ -49,8 +50,9 @@ mod herdr_cli {
             .mark_needs_you("w1:p7", &[AgentStatus::Blocked])
             .unwrap();
         herdr.clear_marks("w1:p7").unwrap();
-        herdr.tag_hub_pane("w1:p7", HubKind::Kanban).unwrap();
-        herdr.tag_hub_pane("w1:p7", HubKind::Other).unwrap();
+        herdr.tag_hub_pane("w1:p7", "1-hub-0").unwrap();
+        herdr.set_go_to("w1:p7", Some("2-desk-0-00")).unwrap();
+        herdr.set_go_to("w1:p7", None).unwrap();
 
         let pane = ["pane", "report-metadata", "w1:p7", "--source", "pde-hub"];
         assert_eq!(
@@ -78,7 +80,7 @@ mod herdr_cli {
                     &pane[..],
                     &[
                         "--token",
-                        "go_to=1-kanban-hub",
+                        "go_to=1-hub-0",
                         "--state-label",
                         "working=hub busy",
                         "--state-label",
@@ -88,20 +90,8 @@ mod herdr_cli {
                     ],
                 ]
                 .concat(),
-                [
-                    &pane[..],
-                    &[
-                        "--token",
-                        "go_to=3-hub",
-                        "--state-label",
-                        "working=hub busy",
-                        "--state-label",
-                        "idle=hub free",
-                        "--state-label",
-                        "done=hub free",
-                    ],
-                ]
-                .concat(),
+                [&pane[..], &["--token", "go_to=2-desk-0-00"]].concat(),
+                [&pane[..], &["--clear-token", "go_to"]].concat(),
             ]
         );
     }
@@ -497,7 +487,7 @@ mod herdr_cli {
         let script = folder.write_script("herdr", "{}", "", 0);
         let herdr = HerdrCli::new(script.clone(), None, folder.path().join("herdr.sock"));
 
-        herdr.show_desk_as_agent("w4:p1").unwrap();
+        herdr.show_desk_as_agent("w4:p1", "2-desk-0-00").unwrap();
 
         assert_eq!(
             read_script_calls(&script),
@@ -520,7 +510,7 @@ mod herdr_cli {
                     "--source",
                     "pde-hub",
                     "--token",
-                    "go_to=2-desk",
+                    "go_to=2-desk-0-00",
                     "--state-label",
                     "idle=your desk",
                     "--state-label",

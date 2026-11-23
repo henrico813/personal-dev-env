@@ -1,11 +1,11 @@
 id = "pde.hub"
 name = "PDE hub"
-version = "0.1.0"
+version = "0.2.0"
 min_herdr_version = "0.9.1"
 platforms = ["linux"]
 
-# A Herdr restart drops the hub tags, the desk row and the agent filter.
-# hub restore-sidebar puts them back. hub calls herdr, and a Herdr server
+# A Herdr restart drops the go_to tags, the desk row and the agent filter.
+# hub restore-sidebar sets them again. hub calls herdr, and a Herdr server
 # started outside a login shell may not have ~/.local/bin on PATH.
 [[startup]]
 command = ["/bin/sh", "-c", "PATH=\"{{ .chezmoi.destDir }}/.local/bin:$PATH\" exec hub restore-sidebar --start-board"]
@@ -13,4 +13,14 @@ command = ["/bin/sh", "-c", "PATH=\"{{ .chezmoi.destDir }}/.local/bin:$PATH\" ex
 # Resumed sessions come back a few seconds after the startup hook.
 [[events]]
 on = "pane.agent_detected"
+command = ["/bin/sh", "-c", "PATH=\"{{ .chezmoi.destDir }}/.local/bin:$PATH\" exec hub restore-sidebar"]
+
+# A pane moved into or out of the desk, or a moved desk tab, changes the
+# desk's rows.
+[[events]]
+on = "pane.moved"
+command = ["/bin/sh", "-c", "PATH=\"{{ .chezmoi.destDir }}/.local/bin:$PATH\" exec hub restore-sidebar"]
+
+[[events]]
+on = "tab.moved"
 command = ["/bin/sh", "-c", "PATH=\"{{ .chezmoi.destDir }}/.local/bin:$PATH\" exec hub restore-sidebar"]
