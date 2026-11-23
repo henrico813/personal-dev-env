@@ -6,7 +6,7 @@
 use ratatui::style::Color;
 
 use super::queue::{CardLine, Queue, SessionRow};
-use crate::external::cards::{CardNote, Stage};
+use crate::external::cards::{CardKey, CardNote, Stage};
 use crate::shared::lifecycle::Lifecycle;
 
 /// The board's groups, in screen order.
@@ -112,13 +112,18 @@ impl Status {
     }
 }
 
-/// One row of a group.
+/// One line of the board's queue, the list of what waits on the user
+/// and what runs, such as ` run  DEMO-KB-001 Faster search  DevEnv`.
+/// A line is about a card, a question an agent asked the user, a
+/// waiting session or a problem.
 #[derive(Debug)]
 pub(super) struct Item {
     /// Stays the same across reads, so the choice can follow the row.
     /// It is a card key, a question title, a session name or the
     /// problem.
     pub id: String,
+    /// The words in the middle of the line, such as
+    /// `DEMO-KB-001 Faster search`.
     pub text: String,
     /// A short word for the row's right end, such as `DevEnv` for the
     /// project folder of a card or of a question's card.
@@ -169,7 +174,7 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
         .enumerate()
         .map(|(index, question)| Item {
             id: question.title.clone(),
-            text: question.title.clone(),
+            text: put_card_key_first(Some(&question.key), &question.title),
             tag: question.project.clone(),
             status: Status::You,
             target: Target::Question(index),
@@ -182,7 +187,10 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
             .enumerate()
             .map(|(index, session)| Item {
                 id: session.name.clone(),
-                text: format!("{}  {}", session.name, session.why),
+                text: put_card_key_first(
+                    CardKey::find_in_name(&session.name).as_ref(),
+                    &format!("{}  {}", session.name, session.why),
+                ),
                 tag: "worker".to_owned(),
                 status: Status::You,
                 target: Target::Session(index),
@@ -373,17 +381,27 @@ pub(super) fn describe_card(card: &CardLine, note: Option<&CardNote>) -> Vec<Str
     lines
 }
 
-/// Returns a card's row, its title with its project folder as the tag.
-/// `sessions` give the states of its workers.
+/// Returns a board line's words with the card key in front, such as
+/// `DEMO-KB-001 Faster search` from `Faster search`. A card key is the
+/// ID at the start of a card's name. Words with no card, or that
+/// already start with the card key, come back unchanged. Empty words
+/// give the card key alone.
+pub(super) fn put_card_key_first(key: Option<&CardKey>, words: &str) -> String {
+    match key {
+        Some(key) if words.is_empty() => key.as_str().to_owned(),
+        Some(key) if words.starts_with(key.as_str()) => words.to_owned(),
+        Some(key) => format!("{} {words}", key.as_str()),
+        None => words.to_owned(),
+    }
+}
+
+/// Returns the queue line of one card, such as
+/// ` run  DEMO-KB-001 Faster search  DevEnv`, where `DevEnv` is the
+/// card's project folder. `sessions` give the states of its workers.
 fn build_card_item(index: usize, card: &CardLine, sessions: &[SessionRow]) -> Item {
-    let text = if card.title.is_empty() {
-        card.key.as_str().to_owned()
-    } else {
-        card.title.clone()
-    };
     Item {
         id: card.key.as_str().to_owned(),
-        text,
+        text: put_card_key_first(Some(&card.key), &card.title),
         tag: card.project.clone(),
         status: decide_card_status(card, sessions),
         target: Target::Card(index),
@@ -452,5 +470,31 @@ mod tests {
             .find(|(group, _)| *group == Group::InReview)
             .unwrap();
         assert_eq!(in_review[0].status, Status::Run);
+    }
+
+    /// An agent's question often starts with its card key already, such
+    /// as `DEMO-KB-001: Deploy tonight?`, and a 40-column phone line has
+    /// no room for the card key twice. A session name, such as
+    /// `demo-kb-001-build`, is in lower case, so it still gets the card
+    /// key.
+    #[test]
+    fn put_card_key_first_keeps_existing_key() {
+        let key: CardKey = "DEMO-KB-001".parse().unwrap();
+        let cases = [
+            (
+                "DEMO-KB-001: Deploy tonight?",
+                "DEMO-KB-001: Deploy tonight?",
+            ),
+            (
+                "demo-kb-001-build reported",
+                "DEMO-KB-001 demo-kb-001-build reported",
+            ),
+        ];
+
+        for (words, expected) in cases {
+            let text = put_card_key_first(Some(&key), words);
+
+            assert_eq!(text, expected, "{words}");
+        }
     }
 }

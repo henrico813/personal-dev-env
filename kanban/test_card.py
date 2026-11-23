@@ -73,7 +73,6 @@ status: open
 # A file for card new --from, with one heading in lower case.
 CARD_FILE = """---
 title: Retry failed uploads
-type: feat
 kind: research
 ---
 
@@ -128,15 +127,13 @@ def write_card(
     criteria: str = "",
     stage_date: str = "2026-11-06",
     title: str = "Fix some work",
-    work_type: str = "feat",
 ) -> Path:
-    """Write a card note at a stage, with optional criteria, title and type."""
+    """Write a card note at a stage, with optional criteria and title."""
     text = card.render_card(
         key=key,
         title=title,
         project="DevEnv",
         kind="build",
-        work_type=work_type,
         today="2026-11-01",
         stage=stage,
         log_entry=f"{stage}: by user",
@@ -197,8 +194,6 @@ class TestNew:
             "new",
             "DevEnv",
             "Fix hub files drift",
-            "--type",
-            "fix",
             "--by",
             "user",
         )
@@ -219,8 +214,6 @@ class TestNew:
             "new",
             "DevEnv",
             "Old work",
-            "--type",
-            "feat",
             "--adopt",
             "in-review",
             "--user",
@@ -241,17 +234,15 @@ class TestNew:
     def test_new_adopt_refuses_without_user(self, projects: Path) -> None:
         """Adopting work fails, and writes no card, without --user.
 
-        Adoption skips the user's release to todo. If an agent could
-        adopt on its own, work would reach active that the user never
-        agreed to.
+        Adoption skips the criteria check and the stage limits. If an
+        agent could adopt on its own, work would reach active with no
+        test of when it is done.
         """
         code = run_card(
             projects,
             "new",
             "DevEnv",
             "Old work",
-            "--type",
-            "feat",
             "--adopt",
             "active",
             "--by",
@@ -281,7 +272,7 @@ class TestNew:
         assert code == 0
         path = projects / "DevEnv" / f"{NEW_KEY} Retry failed uploads.md"
         text = path.read_text()
-        assert "kind: research\nwork_type: feat\n" in text
+        assert "kind: research\n" in text
         assert card.read_section(text, "Context") == (
             "\n- Uploads fail on a slow link.\n"
         )
@@ -323,11 +314,6 @@ class TestNew:
                 ["--from", "FILE", "--kind", "build"],
                 id="kind-and-file",
             ),
-            pytest.param(
-                CARD_FILE,
-                ["--from", "FILE", "--type", "feat"],
-                id="type-and-file",
-            ),
             pytest.param(None, ["--from", "FILE"], id="missing-file"),
             pytest.param(None, [], id="no-title-or-file"),
         ],
@@ -343,8 +329,8 @@ class TestNew:
 
         A typo such as ## Criteria, or a section written twice, would
         otherwise drop that text from the card without notice, and the
-        worker would build without it. A TITLE, --kind or --type beside
-        the file leaves unclear which one the user meant. FILE in args
+        worker would build without it. A TITLE or --kind beside the file
+        leaves unclear which one the user meant. FILE in args
         stands for the card file, which is not written when file_text is
         None.
         """
@@ -366,14 +352,21 @@ class TestMove:
         ("stage", "target", "flags", "criteria"),
         [
             pytest.param(
-                "draft", "active", ["--user"], "- Done.", id="chain-unchecked"
+                "draft", "active", [], "- Done.", id="chain-unchecked"
+            ),
+            pytest.param(
+                "draft",
+                "todo",
+                [],
+                "- Done.",
+                id="todo-without-checkbox",
             ),
             pytest.param(
                 "draft",
                 "todo",
                 ["--user"],
                 "- Done.",
-                id="todo-without-checkbox",
+                id="user-todo-without-checkbox",
             ),
             pytest.param(
                 "done",
@@ -381,6 +374,9 @@ class TestMove:
                 ["--user"],
                 "- [ ] Done.",
                 id="done-final",
+            ),
+            pytest.param(
+                "draft", "dropped", [], "- [ ] Done.", id="agent-drop"
             ),
             pytest.param(
                 "in-review",
@@ -399,13 +395,9 @@ class TestMove:
         flags: list[str],
         criteria: str,
     ) -> None:
-        """A refused move fails and does not touch the note.
+        """A refused move exits 1 and leaves the note unchanged.
 
-        A card released with no acceptance checkbox would take the
-        release decision away from the user, also when the release is
-        the first move of a chain. Reopening a done card would let
-        follow-up work skip the user's release. A blocked card with no
-        reason would leave the user not knowing whom to chase.
+        A half-applied move would leave a card in a stage its checks reject.
         """
         path = write_card(projects, KEY, stage, criteria)
         before = path.read_text()
@@ -417,13 +409,10 @@ class TestMove:
         assert code == 1
         assert path.read_text() == before
 
-    def test_move_updates_stage_fields_and_log(self, projects: Path) -> None:
-        """A move sets the stage and its date, and logs who made it.
+    def test_move_releases_draft_and_logs_agent(self, projects: Path) -> None:
+        """A draft moved to todo logs the agent who moved it.
 
-        The staff agent rebuilds its picture of the work from the cards
-        after a restart, so the stage and the Log must both change. The
-        board and the Base sort by stage_date, which every move updates.
-        The user releasing a card with one checkbox must also work.
+        The user reads the Log to see which agent released a card.
         """
         path = write_card(projects, KEY, "draft", "- [ ] Done.")
 
@@ -432,19 +421,16 @@ class TestMove:
             "move",
             KEY,
             "todo",
-            "--user",
             "--why",
             "Clear enough",
             "--by",
-            "user",
+            "hub",
         )
 
         assert code == 0
         text = path.read_text()
         assert f"stage: todo\nstage_date: {TODAY}\n" in text
-        assert text.endswith(
-            f"- {TODAY} todo: by user for the user. Clear enough\n"
-        )
+        assert text.endswith(f"- {TODAY} todo: by hub. Clear enough\n")
 
     @pytest.mark.parametrize(
         ("source", "target", "steps"),
@@ -701,8 +687,6 @@ class TestSessions:
                     "new",
                     "DevEnv",
                     "Fix some work",
-                    "--type",
-                    "feat",
                     "--adopt",
                     "active",
                     "--user",
@@ -1041,9 +1025,7 @@ class TestList:
         screen, and a missing project leaves the row without its tag.
         """
         title = "Show subagent tokens and cost in the sidebar"
-        run_card(
-            projects, "new", "DevEnv", title, "--type", "feat", "--by", "user"
-        )
+        run_card(projects, "new", "DevEnv", title, "--by", "user")
         capsys.readouterr()
 
         code = run_card(projects, "list", "--tabs")
@@ -1382,30 +1364,30 @@ class TestNamingRules:
 
 
 class TestTitleRules:
-    """Titles read like commit titles, and their start fits a board row."""
+    """Titles read like commit titles, with no label or key."""
 
     @pytest.mark.parametrize(
         ("title", "rules"),
         [
             pytest.param(
                 "Uploads retry after the network drops for a minute or two",
-                ["T1", "T2"],
-                id="long-noun-first",
+                ["T1"],
+                id="long",
             ),
             pytest.param(
                 "photo wall: sort the albums and suggest better captions",
-                ["T1", "T2", "T4", "T6"],
+                ["T1", "T2", "T4"],
                 id="lower-case-label",
             ),
             pytest.param(
                 "Shopkeep: AI tags use Ledger, tested",
-                ["T2", "T4"],
+                ["T2"],
                 id="label-first",
             ),
             pytest.param(
                 "Photo app fixes from the spring album review: short"
                 " captions, plain album names",
-                ["T1", "T2", "T6"],
+                ["T1", "T4"],
                 id="late-colon",
             ),
             pytest.param(
@@ -1418,18 +1400,19 @@ class TestTitleRules:
                 ["T1"],
                 id="51-characters",
             ),
-            pytest.param("Fix: board rows drift", ["T4"], id="verb-label"),
+            pytest.param("Hubs read the approval state", [], id="noun-first"),
+            pytest.param("Fix: board rows drift", ["T2"], id="verb-label"),
             pytest.param(
-                "Fix the DEMO-KB-004 board rows", ["T5"], id="card-key"
+                "Fix the DEMO-KB-004 board rows", ["T3"], id="card-key"
             ),
             pytest.param(
-                "Close DEMO-41 after the merge", ["T5"], id="plan-key"
+                "Close DEMO-41 after the merge", ["T3"], id="plan-key"
             ),
             pytest.param(
-                "Fix the board rows (DEMO-KB-004)", ["T5"], id="wrapped-key"
+                "Fix the board rows (DEMO-KB-004)", ["T3"], id="wrapped-key"
             ),
-            pytest.param("Fix board rows.", ["T6"], id="period"),
-            pytest.param("Fix the #board rows", ["T6"], id="link-character"),
+            pytest.param("Fix board rows.", ["T4"], id="period"),
+            pytest.param("Fix the #board rows", ["T4"], id="link-character"),
         ],
     )
     def test_check_title_fails_each_broken_rule(
@@ -1437,59 +1420,13 @@ class TestTitleRules:
     ) -> None:
         """check_title fails exactly the rules a title breaks.
 
-        The bad titles have the shapes of real cards that showed cut or
-        as labels on the board. A missed rule lets such a title back, and
-        a rule that fires on a good title refuses an agent's good card.
+        The bad titles have the shapes of real cards that showed as
+        labels on the board. A missed rule lets such a title back, and a
+        rule that fires on a good title refuses an agent's good card.
         """
-        findings = card.check_title(title, "feat", False)
+        findings = card.check_title(title)
 
-        assert [finding.rule for finding in findings if finding.fails] == (
-            rules
-        )
-
-    def test_check_title_user_passes_only_verb(self) -> None:
-        """With user, an unknown first word reports and other rules fail.
-
-        The user may start a title with a verb VERBS lacks. The user's
-        title must still not start with a label or a lower-case letter.
-        """
-        findings = card.check_title(
-            "photo wall: sort the albums", "feat", True
-        )
-
-        assert [finding.rule for finding in findings if finding.fails] == [
-            "T4",
-            "T6",
-        ]
-        assert str(findings[0]) == (
-            'T2 verb: "photo" is not in the verb list (user verb)'
-        )
-
-    @pytest.mark.parametrize(
-        ("title", "shown"),
-        [
-            pytest.param(
-                "Retry a failed upload twice now",
-                "Retry a failed upload twic~",
-                id="cut",
-            ),
-            pytest.param(
-                "Retry a failed upload twice",
-                "Retry a failed upload twice",
-                id="27-characters",
-            ),
-        ],
-    )
-    def test_cut_for_board_matches_hub_row(
-        self, title: str, shown: str
-    ) -> None:
-        """cut_for_board shows a title as a hub board queue row does.
-
-        The user judges from this cut whether a title's meaning shows on
-        the phone. A cut one column off would show a word the board
-        hides, or hide one it shows.
-        """
-        assert card.cut_for_board(title) == shown
+        assert [finding.rule for finding in findings] == rules
 
     def test_new_refuses_title_listing_every_finding(
         self, projects: Path, capsys: pytest.CaptureFixture[str]
@@ -1504,9 +1441,7 @@ class TestTitleRules:
             projects,
             "new",
             "DevEnv",
-            "Uploads retry after the network drops for a minute or two",
-            "--type",
-            "feat",
+            "uploads: retry after the network drops for a minute or two",
             "--by",
             "general-staff",
         )
@@ -1515,37 +1450,33 @@ class TestTitleRules:
         assert not list((projects / "DevEnv").glob("PDEV-*"))
         assert capsys.readouterr().err == (
             "card: title refused:\n"
-            "  T1 length: 57 characters, at most 50\n"
-            '  T2 verb: "Uploads" is not in the verb list\n'
-            "Put a verb first, at most 50 characters,"
-            ' such as "Retry failed uploads".\n'
+            "  T1 length: 58 characters, at most 50\n"
+            '  T2 label: "uploads:"\n'
+            "  T4 form: starts with a lower-case letter\n"
+            "Write it as a commit title of at most 50 characters, such as"
+            ' "Retry failed uploads".\n'
         )
 
-    def test_new_user_reports_verb_and_cut(
+    def test_new_accepts_noun_title_without_type(
         self, projects: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """With --user, card new makes the card and prints what it reports.
+        """An agent's card new takes any first word and needs no type.
 
-        The user may start a title with a verb VERBS lacks. The printed
-        board cut shows the user what the phone's board row keeps.
+        It prints only the card's name, so an agent that reads the
+        output as the name gets nothing else.
         """
         code = run_card(
             projects,
             "new",
             "DevEnv",
             "Hubs read the approval state",
-            "--type",
-            "feat",
-            "--user",
             "--by",
-            "user",
+            "general-staff",
         )
 
         assert code == 0
         assert capsys.readouterr().out == (
             "PDEV-001 Hubs read the approval state\n"
-            'T2 verb: "Hubs" is not in the verb list (user verb)\n'
-            "T7 cut: Hubs read the approval sta~\n"
         )
 
     def test_set_title_refuses_failing_title_unchanged(
@@ -1564,192 +1495,57 @@ class TestTitleRules:
         assert code == 1
         assert path.read_text() == before
 
-    def test_set_title_refuses_card_without_type(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """card set refuses even a good title while the card has no type.
-
-        T3 reads the card's own work type, so the retitle script must set
-        the type before the title. The refusal names the command to run.
-        """
-        path = write_card(projects, KEY, "draft", work_type="")
-        before = path.read_text()
-
-        code = run_card(projects, "set", KEY, "title", "Fix board rows")
-
-        assert code == 1
-        assert path.read_text() == before
-        assert capsys.readouterr().err == (
-            "card: title refused:\n"
-            "  T3 type: no work type\n"
-            "Work types: feat, fix, docs, refactor, chore, research.\n"
-            "Give one with card new --type T, or card set KEY type T.\n"
-        )
-
-    def test_set_title_user_passes_unknown_verb(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """With --user, card set takes a title whose verb VERBS lacks.
-
-        Without it, the user could not give a card such a title at all.
-        The printed lines show the user the verb report and the board cut.
-        """
-        path = write_card(projects, KEY, "draft")
-
-        code = run_card(
-            projects, "set", KEY, "title", "Spruce up board rows", "--user"
-        )
-
-        assert code == 0
-        new_path = path.with_name(f"{KEY} Spruce up board rows.md")
-        assert card.read_title(new_path.read_text(), KEY) == (
-            "Spruce up board rows"
-        )
-        assert capsys.readouterr().out == (
-            f"{KEY} Spruce up board rows\n"
-            'T2 verb: "Spruce" is not in the verb list (user verb)\n'
-            "T7 cut: Spruce up board rows\n"
-        )
-
     def test_check_lists_open_cards_failing_titles(
         self, projects: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """card check lists each failing rule of an open card's title.
 
-        The retitle pass finds the cards to fix from this list. A done
-        or dropped card keeps its title, so listing it would bury the
-        open ones.
+        Staff find the titles to fix from this list. A done or dropped
+        card keeps its title, so listing it would bury the open ones.
         """
-        write_card(projects, "PDEV-KB-001", "draft", title="Some work")
-        write_card(projects, "PDEV-KB-002", "done", title="Some work")
+        write_card(projects, "PDEV-KB-001", "draft", title="Some work.")
+        write_card(projects, "PDEV-KB-002", "done", title="Some work.")
         write_card(projects, "PDEV-KB-003", "active")
 
         code = run_card(projects, "check")
 
         assert code == 1
         assert capsys.readouterr().out == (
-            'PDEV-KB-001 T2 verb: "Some" is not in the verb list\n'
+            "PDEV-KB-001 T4 form: ends with a period\n"
             "1 problems in 3 cards\n"
         )
 
+    @pytest.mark.parametrize(
+        ("stage", "target", "flags", "criteria"),
+        [
+            pytest.param(
+                "active", "todo", ["--why", "paused"], "", id="pause"
+            ),
+            pytest.param("draft", "todo", [], "- [ ] Done.", id="release"),
+            pytest.param("draft", "active", [], "- [ ] Done.", id="chain"),
+        ],
+    )
     def test_move_to_todo_refuses_failing_title(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+        stage: str,
+        target: str,
+        flags: list[str],
+        criteria: str,
     ) -> None:
-        """A move into todo refuses a failing title and leaves the card.
+        """A move into or through todo refuses a failing title.
 
-        Workers start todo cards, so a worker never starts on a card
-        whose title breaks the rules. A staff pause back to todo counts
-        too.
+        Workers start todo cards, so a bad title must stop before todo.
         """
-        path = write_card(projects, KEY, "active", title="Some work")
+        path = write_card(projects, KEY, stage, criteria, title="Some work.")
         before = path.read_text()
 
-        code = run_card(
-            projects, "move", KEY, "todo", "--why", "paused", "--by", "hub"
-        )
+        code = run_card(projects, "move", KEY, target, *flags, "--by", "hub")
 
         assert code == 1
         assert path.read_text() == before
         assert capsys.readouterr().err.startswith("card: title refused:\n")
-
-    @pytest.mark.parametrize(
-        ("args", "detail"),
-        [
-            pytest.param(
-                ["Retry failed uploads"], "no work type", id="missing"
-            ),
-            pytest.param(
-                ["--from", "FILE"], '"bug" is not a work type', id="unknown"
-            ),
-        ],
-    )
-    def test_new_refuses_missing_or_unknown_type(
-        self,
-        projects: Path,
-        tmp_path: Path,
-        capsys: pytest.CaptureFixture[str],
-        args: list[str],
-        detail: str,
-    ) -> None:
-        """card new refuses a missing or unknown work type, even with --user.
-
-        A card needs a work type before anyone builds it. Unlike an
-        unknown verb, the user's --user does not pass it. FILE in args
-        stands for a card file whose type is bug.
-        """
-        card_file = tmp_path / "card.md"
-        card_file.write_text(CARD_FILE.replace("type: feat", "type: bug"))
-        args = [str(card_file) if arg == "FILE" else arg for arg in args]
-
-        code = run_card(
-            projects, "new", "DevEnv", *args, "--user", "--by", "user"
-        )
-
-        assert code == 1
-        assert not list((projects / "DevEnv").glob("PDEV-*"))
-        assert capsys.readouterr().err == (
-            "card: title refused:\n"
-            f"  T3 type: {detail}\n"
-            "Work types: feat, fix, docs, refactor, chore, research.\n"
-            "Give one with card new --type T, or card set KEY type T.\n"
-        )
-
-    def test_set_type_fills_old_card(self, projects: Path) -> None:
-        """card set KEY type writes the work type into a card that lacks one.
-
-        Cards made before rule T3 hold no work type, and the retitle
-        pass gives each one with this command. Without it, such a card
-        could never pass card check or move into todo again.
-        """
-        path = write_card(projects, KEY, "draft")
-        path.write_text(path.read_text().replace("work_type: feat\n", ""))
-
-        code = run_card(projects, "set", KEY, "type", "fix")
-
-        assert code == 0
-        assert card.read_fields(path.read_text())["work_type"] == "fix"
-        assert run_card(projects, "check") == 0
-
-    def test_check_lists_cards_without_valid_type(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """card check lists each open card with a missing or unknown work type.
-
-        Cards made before rule T3 have none, and the retitle pass finds
-        them from this list.
-        """
-        path = write_card(projects, "PDEV-KB-001", "draft")
-        path.write_text(path.read_text().replace("work_type: feat\n", ""))
-        write_card(projects, "PDEV-KB-002", "active", work_type="bug")
-
-        code = run_card(projects, "check")
-
-        assert code == 1
-        assert capsys.readouterr().out == (
-            "PDEV-KB-001 T3 type: no work type\n"
-            'PDEV-KB-002 T3 type: "bug" is not a work type\n'
-            "2 problems in 2 cards\n"
-        )
-
-    def test_move_to_todo_refuses_untyped_card(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """A move into todo refuses a card with no work type, even the user's.
-
-        Workers start todo cards, and --user passes only T2, never T3.
-        """
-        path = write_card(projects, KEY, "draft", "- [ ] Done.")
-        path.write_text(path.read_text().replace("work_type: feat\n", ""))
-        before = path.read_text()
-
-        code = run_card(
-            projects, "move", KEY, "todo", "--user", "--by", "user"
-        )
-
-        assert code == 1
-        assert path.read_text() == before
-        assert "  T3 type: no work type\n" in capsys.readouterr().err
-
 
 @pytest.fixture
 def herdr_agents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -1956,8 +1752,6 @@ class TestRekey:
             "new",
             "DevEnv",
             "Add a retry button",
-            "--type",
-            "feat",
             "--by",
             "user",
         )
@@ -2108,3 +1902,217 @@ class TestRekey:
         assert code == 1
         assert reason in capsys.readouterr().err
         assert read_tree(projects) == before
+
+
+MERGED_PR = "https://github.com/me/repo/pull/7"
+OTHER_PR = "https://github.com/me/repo/pull/8"
+
+
+@pytest.fixture
+def pr_states(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A gh on PATH that prints each PR's state from the returned file.
+
+    Each line of the file is ``URL STATE``, and the file starts empty.
+    For a URL not in the file, gh fails, as it does for a PR it cannot
+    find.
+    """
+    states = tmp_path / "pr-states.txt"
+    states.write_text("")
+    gh = tmp_path / "gh-bin" / "gh"
+    gh.parent.mkdir()
+    script = """#!/bin/sh
+awk -v url="$3" '$1 == url {print $2; found = 1} END {exit !found}' STATES \\
+    || { echo "no pull request $3" >&2; exit 1; }
+"""
+    gh.write_text(script.replace("STATES", shlex.quote(str(states))))
+    gh.chmod(0o755)
+    path = f"{gh.parent}{os.pathsep}{os.environ['PATH']}"
+    monkeypatch.setenv("PATH", path)
+    return states
+
+
+def link_prs(path: Path, *urls: str) -> None:
+    """Set a card note's prs field to the URLs, as card link would."""
+    path.write_text(card.set_field(path.read_text(), "prs", list(urls)))
+
+
+@pytest.mark.usefixtures("pr_states")
+class TestMerged:
+    """card merged moves the cards of a merged PR to done, or logs why not."""
+
+    def test_moves_card_through_review_to_done(
+        self,
+        projects: Path,
+        pr_states: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A merge moves an active card to done once all its PRs merged.
+
+        The merge is the user's approval, so the Log shows the user's move
+        through in-review and names the merged PR.
+        """
+        path = write_card(projects, KEY, "active", "- [x] Done.")
+        link_prs(path, MERGED_PR, OTHER_PR)
+        pr_states.write_text(f"{OTHER_PR} MERGED\n")
+
+        code = run_card(projects, "merged", MERGED_PR)
+
+        assert code == 0
+        text = path.read_text()
+        assert f"stage: done\nstage_date: {TODAY}\n" in text
+        assert text.endswith(
+            f"- {TODAY} in-review: by card merged for the user\n"
+            f"- {TODAY} done: by card merged for the user."
+            f" {MERGED_PR} merged\n"
+        )
+        out = capsys.readouterr().out
+        assert out == f"{KEY} active -> in-review -> done\n"
+
+    def test_matches_pr_in_any_spelling_only(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A merge moves the card linking its PR and no card linking another.
+
+        Done is final, so a card moved by another PR's merge would close
+        unfinished work. The argument and the card each spell the PR
+        another way, and must still match.
+        """
+        path = write_card(projects, KEY, "active", "- [x] Done.")
+        link_prs(path, "http://GitHub.com/Me/Repo/pull/7/files")
+        others = [
+            write_card(projects, "PDEV-KB-002", "active", "- [x] Done."),
+            write_card(projects, "PDEV-KB-003", "active", "- [x] Done."),
+        ]
+        link_prs(others[0], "https://github.com/me/repo/pull/70")
+        link_prs(others[1], "https://github.com/me/other/pull/7")
+        before = [other.read_text() for other in others]
+        spelled = "HTTPS://www.github.com/me/REPO/pull/7#x"
+
+        code = run_card(projects, "merged", spelled)
+
+        assert code == 0
+        assert "stage: done\n" in path.read_text()
+        assert [other.read_text() for other in others] == before
+        out = capsys.readouterr().out
+        assert out == f"{KEY} active -> in-review -> done\n"
+
+    @pytest.mark.parametrize(
+        ("criteria", "states", "reason"),
+        [
+            pytest.param(
+                "- [x] Done.",
+                f"{OTHER_PR} OPEN\n",
+                f"{OTHER_PR} is open",
+                id="other-pr-open",
+            ),
+            pytest.param(
+                "- [x] Done.",
+                f"{OTHER_PR} CLOSED\n",
+                f"{OTHER_PR} is closed",
+                id="other-pr-closed",
+            ),
+            pytest.param(
+                "- [x] Done.\n- [ ] Tested.",
+                f"{OTHER_PR} MERGED\n",
+                "1 unticked in Acceptance Criteria",
+                id="criteria-unticked",
+            ),
+            pytest.param(
+                "- [x] Done.\n- [/] Tested.\n* [ ] Read.",
+                f"{OTHER_PR} MERGED\n",
+                "2 unticked in Acceptance Criteria",
+                id="criteria-other-marks",
+            ),
+        ],
+    )
+    def test_logs_why_card_stays(
+        self,
+        projects: Path,
+        pr_states: Path,
+        capsys: pytest.CaptureFixture[str],
+        criteria: str,
+        states: str,
+        reason: str,
+    ) -> None:
+        """A card with work left keeps its stage, and its Log says what.
+
+        Done is final, so moving such a card would close unfinished work
+        with no further check. The note tells the user what still holds
+        the card.
+        """
+        path = write_card(projects, KEY, "active", criteria)
+        link_prs(path, MERGED_PR, OTHER_PR)
+        pr_states.write_text(states)
+
+        code = run_card(projects, "merged", MERGED_PR)
+
+        assert code == 0
+        text = path.read_text()
+        assert "stage: active\n" in text
+        assert text.endswith(
+            f"- {TODAY} note (card merged): {MERGED_PR} merged,"
+            f" but the card stays active: {reason}\n"
+        )
+        assert capsys.readouterr().out == f"{KEY} stays active: {reason}\n"
+
+    def test_rerun_logs_why_card_stays_once(
+        self, projects: Path, pr_states: Path
+    ) -> None:
+        """A second run for the same merge leaves a held card unchanged.
+
+        A user reruns the command after a gh failure or a timeout, and each
+        rerun would otherwise add the same note to every held card.
+        """
+        path = write_card(projects, KEY, "active", "- [x] Done.")
+        link_prs(path, MERGED_PR, OTHER_PR)
+        pr_states.write_text(f"{OTHER_PR} OPEN\n")
+        run_card(projects, "merged", MERGED_PR)
+        before = path.read_text()
+
+        code = run_card(projects, "merged", MERGED_PR)
+
+        assert code == 0
+        assert path.read_text() == before
+
+    def test_moves_other_cards_when_gh_fails(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """One card's gh failure still lets the next card move, and exits 1.
+
+        Nothing runs the command again on its own, so a card skipped after
+        another card's failure would stay open until someone moves it by
+        hand.
+        """
+        # KEY sorts first, so its failure comes before the other card.
+        failing = write_card(projects, KEY, "active", "- [x] Done.")
+        link_prs(failing, MERGED_PR, OTHER_PR)
+        path = write_card(projects, "PDEV-KB-002", "active", "- [x] Done.")
+        link_prs(path, MERGED_PR)
+        before = failing.read_text()
+
+        code = run_card(projects, "merged", MERGED_PR)
+
+        assert code == 1
+        assert failing.read_text() == before
+        assert "stage: done\n" in path.read_text()
+        out = capsys.readouterr().out
+        assert out == "PDEV-KB-002 active -> in-review -> done\n"
+
+    @pytest.mark.parametrize("stage", ["done", "dropped"])
+    def test_skips_done_or_dropped_exits_zero(
+        self, projects: Path, capsys: pytest.CaptureFixture[str], stage: str
+    ) -> None:
+        """A merge that no open card links changes nothing and exits 0.
+
+        A done card is final and a dropped one was given up, so a later
+        merge must not write to either.
+        """
+        path = write_card(projects, KEY, stage, "- [x] Done.")
+        link_prs(path, MERGED_PR)
+        before = path.read_text()
+
+        code = run_card(projects, "merged", MERGED_PR)
+
+        assert code == 0
+        assert path.read_text() == before
+        assert capsys.readouterr().out == f"no open card links {MERGED_PR}\n"
