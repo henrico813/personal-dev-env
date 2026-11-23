@@ -25,8 +25,8 @@ fn list_rows(status: &Value) -> Vec<(String, String, String)> {
         .unwrap()
         .iter()
         .map(|row| {
-            let text = |field: &str| row[field].as_str().unwrap().to_owned();
-            (text("name"), text("state"), text("why"))
+            let read_cell = |field: &str| row[field].as_str().unwrap().to_owned();
+            (read_cell("name"), read_cell("state"), read_cell("why"))
         })
         .collect()
 }
@@ -338,7 +338,7 @@ fn run_status_closes_every_handed_off_hub() {
 
     let status = read_status_json(&test_tools);
 
-    let to_close = |name: &str| {
+    let make_to_close_row = |name: &str| {
         (
             name.to_owned(),
             "to-close".to_owned(),
@@ -347,7 +347,10 @@ fn run_status_closes_every_handed_off_hub() {
     };
     assert_eq!(
         list_rows(&status),
-        [to_close("auto-hub-2"), to_close("kanban-hub-4")]
+        [
+            make_to_close_row("auto-hub-2"),
+            make_to_close_row("kanban-hub-4")
+        ]
     );
 }
 

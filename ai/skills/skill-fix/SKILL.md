@@ -99,24 +99,58 @@ agent, unless the linking skill names someone else.
 1. Save the fix and clear the worktree before you show it. Every
    session on this PC shares the fix worktree, and `start` refuses
    another skill's fix while yours waits there. Save the diff to a
-   new file under `/tmp`, then drop the edits. The first line makes
-   the diff show new files, such as a new reference file:
+   new file under `/tmp`, then drop the edits. The first line of the
+   block below makes the diff show new files, such as a new
+   reference file. When you save a fix again, `git apply --3way` has
+   staged its earlier edits. Plain `git diff` leaves staged edits
+   out, so diff against `HEAD`:
 
    ```bash
    git -C <worktree> add --intent-to-add .
-   git -C <worktree> diff > <patch file>
+   git -C <worktree> diff HEAD > <patch file>
    skill-fix start <skill> --reset
    ```
+
+   Then get the privacy review in the `pull-request` skill's
+   Guardrail 5, since `commit` can push the fix. Its brief, for a
+   fresh agent, says what counts as a hit: a line that names or hints
+   at something private. It lists four things to read: the diff, the
+   commit log, the branch name and the PR text. It also has blanks in
+   angle brackets, such as `<worktree>`. Fill it in this way:
+
+   - `<worktree>`: the fix worktree.
+   - The diff (item 1): give the patch file's lines that start with
+     `+` instead, without the `+++` file name lines.
+   - The commit log (item 2): give the message file instead.
+   - The branch name (item 3): keep it as it is.
+   - The PR text (item 4): skip it. The tool writes the fix
+     pull request's title and body from the same stock text each
+     time, which names no PC.
+   - `<BASE>`, used by items 1 and 2, and `<PR message file>`, used
+     by item 4: leave both empty, since you replace or skip those
+     items.
+
+   Skip three steps of the guardrail: its Testing line, its amend
+   step and its term scan. The first two change a pull request's
+   Testing text and commit, which a fix does not have, and `commit`
+   runs the term scan itself.
+
+   To fix a hit in the diff, run `skill-fix start <skill>` and
+   `git -C <worktree> apply --3way <patch file>`, edit the fix, and
+   save it again as above. Fix a hit
+   in the message file in place. Get a new review each time the patch
+   or message file changes, in this step or a later one. Show a fix
+   only after its review reports zero hits.
 
 2. Offer the fix once, at the time the linking skill names. Show the
    user the message and the diff. To offer several fixes in one
    message, as conclude-session does, write and save each fix in
    turn, then show them all.
 
-   When a hub started you to write the fix, put the message, the diff
-   and the patch file's path in your report and end your turn. The
-   hub reviews them, shows them to the user and sends you the answer
-   with `hub send`.
+   When a hub started you to write the fix, put the message, the diff,
+   the patch file's path and the privacy review's `Hits:` line in your
+   report and end your turn. The hub reviews them, shows them to the
+   user and sends you the answer with `hub send`.
 3. Wait for the answer. For each fix the user says yes to, in order,
    run `start`. When its `edits` is true, act as step 2 item 1 says.
    Otherwise apply the fix's diff and commit it:
@@ -145,7 +179,11 @@ the table below says:
 - `committed`: the fix is safe on its branch. Tell the user once:
   "Fix committed; it reaches every PC after you merge the fix PR."
   When `sync` is not `pushed`, `pr_open` or `pr_waiting`, act on it
-  as [references/replies.md](references/replies.md) says.
+  as [references/replies.md](references/replies.md) says. For a
+  `conflict`, that file has you merge `main` in and resolve it. On
+  the user's yes, commit the merge. Then get the privacy review in
+  `pull-request` Guardrail 5, filled in as that file says, and run
+  `skill-fix sync` only when it reports zero hits.
 - `held`: the fix holds an extra term, a word from the file that
   `extra_terms_file` in `~/.config/pde/config.json` names. It stays
   on this PC. Say only: "This fix matched the extra-term list and is
@@ -211,6 +249,8 @@ text". Mention each finding to the user once.
 
 - The user knows whether the fix was committed or not saved.
 - The user saw the exact diff before `commit` ran.
+- A privacy review of the saved fix reported zero hits before the
+  user saw it.
 - The fix changes one skill's folder and passes the Final checks of
   skill-development.
 - The message has a `Missed:` and an `Intent:` line, with no task

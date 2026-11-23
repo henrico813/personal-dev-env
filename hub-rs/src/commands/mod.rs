@@ -29,7 +29,7 @@ pub struct Outcome {
 }
 
 impl Outcome {
-    pub(crate) fn line(text: impl Into<String>) -> Outcome {
+    pub(crate) fn from_line(text: impl Into<String>) -> Outcome {
         Outcome {
             lines: vec![text.into()],
         }

@@ -43,7 +43,19 @@ git -C <worktree> merge "$remote/main"
 Resolve each conflict so every fix keeps the meaning of its
 `Intent:` line, which `git -C <worktree> log` shows. Show the user
 the resolved diff. On the user's yes, run `git -C <worktree> commit
---no-edit`, then `skill-fix sync`.
+--no-edit`. `skill-fix sync` pushes that merge commit, so get a
+privacy review of it first, as the `pull-request` skill's Guardrail
+5 says for a merge commit:
+
+- Fill the brief as its paragraph on a merge commit says, not as
+  SKILL.md step 3 says for a saved fix, since the merge is a real
+  commit. `<worktree>` is the fix worktree. `<BASE>` is
+  `<remote>/<fix branch>`, with `remote` from the block above.
+- On a hit, fix the line, run `git -C <worktree> commit --amend
+  --no-edit`, and get a new review.
+- Run the guardrail's term scan too. Skip only its Testing line,
+  since a fix has no Testing text.
+- Run `skill-fix sync` only when the review reports zero hits.
 
 When `pr_state` is `merged`, tell the user, and leave the fix branch
 as it is.

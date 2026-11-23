@@ -17,7 +17,7 @@ fn run_alive_prints_time_and_last_tool() {
     let now = make_time("2026-11-11T22:14:00+00:00[UTC]");
     let now_ms = now.timestamp().as_millisecond();
     write_opencode_db(
-        &test_tools.opencode_path(),
+        &test_tools.build_opencode_path(),
         &[
             OpenCodeRow {
                 session: "ses_a",
@@ -49,7 +49,7 @@ fn run_alive_unknown_session_fails() {
     let test_tools = TestTools::new();
     let now = make_time("2026-11-11T22:14:00+00:00[UTC]");
     write_opencode_db(
-        &test_tools.opencode_path(),
+        &test_tools.build_opencode_path(),
         &[OpenCodeRow {
             session: "ses_a",
             kind: "user",

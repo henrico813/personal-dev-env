@@ -15,7 +15,7 @@ const NOW: &str = "2026-11-16T10:00:00Z";
 /// Test tools with two live agents, demo-kb-007-impl matched by pane
 /// and demo-kb-008-impl by session ID `ses_008`, and an empty
 /// pde-gh-write request folder.
-fn tools_with_live_agents() -> (TestTools, PathBuf) {
+fn make_tools_with_live_agents() -> (TestTools, PathBuf) {
     let mut test_tools = TestTools::new();
     test_tools.herdr.agents = vec![
         make_agent("demo-kb-007-impl", AgentStatus::Idle),
@@ -54,7 +54,7 @@ fn write_request(folder: &Path, id: &str, state: &str, changed_age: SignedDurati
 /// filed it, newest change first.
 #[test]
 fn run_requests_shows_state_and_filing_session() {
-    let (test_tools, requests) = tools_with_live_agents();
+    let (test_tools, requests) = make_tools_with_live_agents();
     let from_007 = json!({"pane_id": "w1:demo-kb-007-impl"});
     write_request(
         &requests,
@@ -105,7 +105,7 @@ fn run_requests_shows_state_and_filing_session() {
 /// a live session's recent one.
 #[test]
 fn run_requests_hides_old_or_orphaned_requests() {
-    let (test_tools, requests) = tools_with_live_agents();
+    let (test_tools, requests) = make_tools_with_live_agents();
     write_request(
         &requests,
         "aa0001",

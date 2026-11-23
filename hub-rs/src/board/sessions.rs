@@ -1,6 +1,6 @@
 //! Draws the sessions panel, which groups every session by the
 //! verdict the tidy pass acts on, above the jump bar. Read
-//! `session_lines` and `session_elements` first.
+//! `format_session_lines` and `build_session_elements` first.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -41,7 +41,7 @@ impl SessionGroup {
 
     /// Returns the group of a session in `state`. Safe to close holds
     /// every session the clean pass closes or parks.
-    pub(super) fn of(state: Lifecycle) -> SessionGroup {
+    pub(super) fn from_state(state: Lifecycle) -> SessionGroup {
         match state {
             Lifecycle::WaitsOnUser => SessionGroup::NeedsYou,
             Lifecycle::Working | Lifecycle::WaitsOnHub => SessionGroup::Working,
@@ -79,11 +79,11 @@ pub(super) struct PanelLine {
 /// count, followed by its rows, each cut to `width`. A why too long
 /// for its row goes on the line below it.
 /// Empty groups are left out, so a phone screen holds more rows.
-pub(super) fn session_lines(sessions: &[SessionRow], width: usize) -> Vec<PanelLine> {
+pub(super) fn format_session_lines(sessions: &[SessionRow], width: usize) -> Vec<PanelLine> {
     let mut lines = Vec::new();
     for group in SessionGroup::ALL {
         let members: Vec<usize> = (0..sessions.len())
-            .filter(|&index| SessionGroup::of(sessions[index].state) == group)
+            .filter(|&index| SessionGroup::from_state(sessions[index].state) == group)
             .collect();
         if members.is_empty() {
             continue;
@@ -122,12 +122,12 @@ pub(super) fn session_lines(sessions: &[SessionRow], width: usize) -> Vec<PanelL
 
 /// Returns the sessions' indexes in the order the panel shows them,
 /// which j and k follow.
-pub(super) fn shown_order(sessions: &[SessionRow]) -> Vec<usize> {
+pub(super) fn order_shown_sessions(sessions: &[SessionRow]) -> Vec<usize> {
     SessionGroup::ALL
         .into_iter()
         .flat_map(|group| {
             (0..sessions.len())
-                .filter(move |&index| SessionGroup::of(sessions[index].state) == group)
+                .filter(move |&index| SessionGroup::from_state(sessions[index].state) == group)
         })
         .collect()
 }
@@ -135,7 +135,7 @@ pub(super) fn shown_order(sessions: &[SessionRow]) -> Vec<usize> {
 /// Returns the clean dialog's top line, such as `close 1  park 1`, and
 /// one row per session in Safe to close with what y does to it, such
 /// as `old-search          close`.
-pub(super) fn clean_dialog_lines(sessions: &[SessionRow]) -> (String, Vec<String>) {
+pub(super) fn format_clean_dialog_lines(sessions: &[SessionRow]) -> (String, Vec<String>) {
     let count = |state| {
         sessions
             .iter()
@@ -186,8 +186,12 @@ pub(super) fn draw_sessions(
         List::new(items).highlight_style(Style::new().add_modifier(Modifier::REVERSED));
     frame.render_stateful_widget(list_widget, rows, list);
     // The bar is bold once it can jump, and dim while it only hints.
-    let style = if chosen.is_some() { bold } else { draw::dim() };
-    let text = bar_text(chosen, usize::from(bar.width));
+    let style = if chosen.is_some() {
+        bold
+    } else {
+        draw::pick_dim_style()
+    };
+    let text = format_bar_text(chosen, usize::from(bar.width));
     frame.render_widget(Paragraph::new(text).style(style), bar);
 }
 
@@ -195,7 +199,7 @@ pub(super) fn draw_sessions(
 /// in `area`, with `list` scrolled as the last draw left it. A row
 /// and its why line tap `choose`, and the bar taps `go` once a session
 /// is chosen. Rows scrolled off come too, hidden.
-pub(super) fn session_elements(
+pub(super) fn build_session_elements(
     lines: &[PanelLine],
     sessions: &[SessionRow],
     area: Rect,
@@ -212,9 +216,9 @@ pub(super) fn session_elements(
                 Some(index) => format!("session:{}", sessions[index].name),
                 None => format!("sessions:{number}"),
             };
-            let element = match draw::row_or_scroll(number, list.offset(), rows) {
-                Ok(row) => draw::text_element(&id, &line.text, Rect { y: row, ..rows }),
-                Err(step) => draw::text_element(&id, &line.text, rows)
+            let element = match draw::find_row_or_scroll(number, list.offset(), rows) {
+                Ok(row) => draw::build_text_element(&id, &line.text, Rect { y: row, ..rows }),
+                Err(step) => draw::build_text_element(&id, &line.text, rows)
                     .hide(HiddenBy::Scroll, step.to_owned()),
             };
             match line.session {
@@ -232,7 +236,8 @@ pub(super) fn session_elements(
             }
         })
         .collect();
-    let bar_element = draw::text_element("bar", &bar_text(chosen, usize::from(bar.width)), bar);
+    let bar_element =
+        draw::build_text_element("bar", &format_bar_text(chosen, usize::from(bar.width)), bar);
     elements.push(match chosen {
         Some(_) => Element {
             kind: Kind::Bar,
@@ -255,7 +260,7 @@ fn split_bar(area: Rect) -> [Rect; 2] {
 
 /// Returns the jump bar's words, such as `-> jump to docs-fix`, cut to
 /// `width`.
-fn bar_text(chosen: Option<&str>, width: usize) -> String {
+fn format_bar_text(chosen: Option<&str>, width: usize) -> String {
     match chosen {
         Some(name) => fit(&format!("-> jump to {name}"), width),
         None => fit(CHOOSE_HINT, width),
@@ -271,7 +276,7 @@ fn describe_session(session: &SessionRow) -> String {
     format!(
         "{:<NAME_WIDTH$} {} {thousands:>3}",
         fit(&session.name, NAME_WIDTH),
-        context_bar(session.context_tokens),
+        format_context_bar(session.context_tokens),
     )
 }
 
@@ -293,7 +298,7 @@ fn describe_why(session: &SessionRow) -> String {
 
 /// Returns three blocks filled by thirds of `HANDOFF_TOKENS`, such as
 /// `██░` at 102K, so the level reads without color.
-fn context_bar(tokens: Option<u64>) -> String {
+fn format_context_bar(tokens: Option<u64>) -> String {
     let filled = tokens.map_or(0, |tokens| (tokens * 3 / HANDOFF_TOKENS).min(3));
     (0..3)
         .map(|block| if block < filled { '█' } else { '░' })
@@ -313,7 +318,7 @@ pub(super) fn fit(text: &str, width: usize) -> String {
 mod tests {
     use super::*;
 
-    use crate::board::view::tests::sample_queue;
+    use crate::board::view::tests::make_sample_queue;
 
     /// The sessions panel must sort each session into the group the
     /// clean pass sees, with its context and why, at 40 columns. A
@@ -322,9 +327,9 @@ mod tests {
     /// why it stays.
     #[test]
     fn session_lines_group_sessions_with_reasons() {
-        let queue = sample_queue();
+        let queue = make_sample_queue();
 
-        let lines: Vec<String> = session_lines(&queue.sessions, 40)
+        let lines: Vec<String> = format_session_lines(&queue.sessions, 40)
             .into_iter()
             .map(|line| line.text)
             .collect();

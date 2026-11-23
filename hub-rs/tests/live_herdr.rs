@@ -108,12 +108,14 @@ fn herdr_cli_resumes_session_by_id() {
     let herdr = connect_herdr();
     // Start a session and give it one turn, so OpenCode saves it.
     let (pane_id, tab_id) = make_workspace(&herdr, folder.path(), "hub-live-2");
-    let start = |pane_id: String, args: Vec<String>| AgentStart {
+    let make_agent_start = |pane_id: String, args: Vec<String>| AgentStart {
         name: "hub-live-2".to_owned(),
         pane_id,
         args,
     };
-    herdr.start_agent(&start(pane_id, Vec::new())).unwrap();
+    herdr
+        .start_agent(&make_agent_start(pane_id, Vec::new()))
+        .unwrap();
     herdr
         .prompt("hub-live-2", "Reply with the word ok.")
         .unwrap();
@@ -123,7 +125,7 @@ fn herdr_cli_resumes_session_by_id() {
     let (pane_id, tab_id) = make_workspace(&herdr, folder.path(), "hub-live-2");
     let args = vec!["--session".to_owned(), session.clone(), "--auto".to_owned()];
 
-    herdr.start_agent(&start(pane_id, args)).unwrap();
+    herdr.start_agent(&make_agent_start(pane_id, args)).unwrap();
     let resumed = wait_for_session(&herdr, "hub-live-2");
 
     herdr.close_tab(&tab_id).unwrap();

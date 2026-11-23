@@ -206,7 +206,7 @@ impl Board {
             }
         };
         let chosen = self.list.selected();
-        let chosen_id = chosen.and_then(|index| self.line_id(index));
+        let chosen_id = chosen.and_then(|index| self.find_line_id(index));
         self.status = format!("read {} {:.1}s", queue.read_at, queue.took.as_secs_f32());
         self.groups = groups::build_groups(&queue);
         // A session gone since the last read can no longer be jumped to.
@@ -217,7 +217,7 @@ impl Board {
         self.queue = Some(queue);
         self.rebuild_lines();
         let same_line = chosen_id.and_then(|id| {
-            (0..self.lines.len()).find(|&index| self.line_id(index).as_ref() == Some(&id))
+            (0..self.lines.len()).find(|&index| self.find_line_id(index).as_ref() == Some(&id))
         });
         let last = self.lines.len().saturating_sub(1);
         let place = same_line.unwrap_or_else(|| chosen.unwrap_or(0).min(last));
@@ -321,24 +321,26 @@ impl Board {
             return;
         }
         match self.view {
-            None => glance::draw_glance(frame, self.area, &self.glance()),
+            None => glance::draw_glance(frame, self.area, &self.build_glance()),
             Some(panel) => self.draw_view(frame, panel),
         }
     }
 
     /// Returns every element the open page holds, top first, as the
     /// last draw left it. Those the draw left out are hidden.
-    pub(crate) fn elements(&self) -> Vec<Element> {
+    pub(crate) fn collect_elements(&self) -> Vec<Element> {
         if let Page::Details(details) | Page::Cleaned(details) = &self.page {
-            return draw::details_elements(details, self.area);
+            return draw::build_details_elements(details, self.area);
         }
         if let Page::Confirm(_) = self.page {
-            return self.confirm_elements();
+            return self.build_confirm_elements();
         }
         match self.view {
-            None => glance::glance_elements(self.area, &self.glance()),
-            Some(Panel::Queue) => draw::list_elements(&self.list_screen(), self.area, &self.list),
-            Some(panel) => self.view_elements(panel),
+            None => glance::build_glance_elements(self.area, &self.build_glance()),
+            Some(Panel::Queue) => {
+                draw::build_list_elements(&self.build_list_screen(), self.area, &self.list)
+            }
+            Some(panel) => self.build_view_elements(panel),
         }
     }
 
@@ -355,7 +357,7 @@ impl Board {
         ScreenDump {
             step,
             page,
-            elements: self.elements(),
+            elements: self.collect_elements(),
             lines,
         }
     }
@@ -381,7 +383,7 @@ impl Board {
     }
 
     /// Returns what the glance page draws from.
-    fn glance(&self) -> Glance<'_> {
+    fn build_glance(&self) -> Glance<'_> {
         Glance {
             groups: &self.groups,
             queue: self.queue.as_ref(),
@@ -394,10 +396,10 @@ impl Board {
 
     /// Returns a view's breadcrumb, such as `< away`, with the count of
     /// new events after it on the away view.
-    fn view_title(&self, panel: Panel) -> String {
+    fn format_view_title(&self, panel: Panel) -> String {
         match (panel, &self.queue) {
             (Panel::Away, Some(queue)) => {
-                let count = self.away_events(queue).len();
+                let count = self.select_away_events(queue).len();
                 format!("< away  {}", away::describe_new_count(self.since, count))
             }
             _ => format!("< {}", panel.slug()),
@@ -405,21 +407,21 @@ impl Board {
     }
 
     /// Returns the events the away view and block show.
-    fn away_events<'a>(&self, queue: &'a Queue) -> &'a [away::AwayEvent] {
+    fn select_away_events<'a>(&self, queue: &'a Queue) -> &'a [away::AwayEvent] {
         away::find_events_since(&queue.events, self.since)
     }
 
     /// Returns the lines of the away, next or machine view, `width`
     /// columns wide. The queue and sessions views draw lists of their
     /// own.
-    fn view_text(&self, panel: Panel, width: usize) -> Vec<PanelText> {
+    fn format_view_lines(&self, panel: Panel, width: usize) -> Vec<PanelText> {
         let Some(queue) = &self.queue else {
             return Vec::new();
         };
         match panel {
-            Panel::Away => panels::away_lines(self.away_events(queue), width),
-            Panel::Next => panels::next_lines(&self.groups, queue.no_hub, usize::MAX, width),
-            Panel::Machine => panels::machine_lines(&queue.gauges, &queue.feed, width),
+            Panel::Away => panels::format_away_lines(self.select_away_events(queue), width),
+            Panel::Next => panels::format_next_lines(&self.groups, queue.no_hub, usize::MAX, width),
+            Panel::Machine => panels::format_machine_lines(&queue.gauges, &queue.feed, width),
             Panel::Queue | Panel::Sessions => Vec::new(),
         }
     }
@@ -441,14 +443,17 @@ impl Board {
         }
         let [title, body, hint] = draw::split_screen(self.area);
         let bold = Style::new().add_modifier(Modifier::BOLD);
-        frame.render_widget(Paragraph::new(self.view_title(panel)).style(bold), title);
         frame.render_widget(
-            Paragraph::new(draw::view_hint(&self.status)).style(draw::dim()),
+            Paragraph::new(self.format_view_title(panel)).style(bold),
+            title,
+        );
+        frame.render_widget(
+            Paragraph::new(draw::format_view_hint(&self.status)).style(draw::pick_dim_style()),
             hint,
         );
         if panel == Panel::Sessions {
-            let rows = self.session_rows(usize::from(body.width));
-            self.session_list.select(self.chosen_line(&rows));
+            let rows = self.format_session_rows(usize::from(body.width));
+            self.session_list.select(self.find_chosen_line(&rows));
             sessions::draw_sessions(
                 frame,
                 body,
@@ -458,7 +463,7 @@ impl Board {
             );
             return;
         }
-        let lines = self.view_text(panel, usize::from(body.width));
+        let lines = self.format_view_lines(panel, usize::from(body.width));
         // Stop the scroll where the last line shows at the bottom.
         let last_top = lines.len().saturating_sub(usize::from(body.height));
         self.scroll = self.scroll.min(last_top);
@@ -467,13 +472,16 @@ impl Board {
 
     /// Returns the elements of a view other than the queue's, as
     /// `draw_view` drew them.
-    fn view_elements(&self, panel: Panel) -> Vec<Element> {
+    fn build_view_elements(&self, panel: Panel) -> Vec<Element> {
         let [title, body, hint] = draw::split_screen(self.area);
-        let mut elements = vec![draw::back_element(&self.view_title(panel), title)];
+        let mut elements = vec![draw::build_back_element(
+            &self.format_view_title(panel),
+            title,
+        )];
         if panel == Panel::Sessions {
-            let rows = self.session_rows(usize::from(body.width));
+            let rows = self.format_session_rows(usize::from(body.width));
             let sessions = self.queue.as_ref().map_or(&[][..], |queue| &queue.sessions);
-            elements.extend(sessions::session_elements(
+            elements.extend(sessions::build_session_elements(
                 &rows,
                 sessions,
                 body,
@@ -481,12 +489,17 @@ impl Board {
                 self.chosen_session.as_deref(),
             ));
         } else {
-            let lines = self.view_text(panel, usize::from(body.width));
-            elements.extend(panels::text_elements(panel, &lines, body, self.scroll));
+            let lines = self.format_view_lines(panel, usize::from(body.width));
+            elements.extend(panels::build_text_elements(
+                panel,
+                &lines,
+                body,
+                self.scroll,
+            ));
         }
-        elements.push(draw::text_element(
+        elements.push(draw::build_text_element(
             "hint",
-            &draw::view_hint(&self.status),
+            &draw::format_view_hint(&self.status),
             hint,
         ));
         elements
@@ -495,7 +508,7 @@ impl Board {
     /// Returns how many lines PageDown moves, the rows the open page or
     /// view shows, so it never passes a hidden line whose step is
     /// `press pagedown`.
-    fn page_size(&self) -> isize {
+    fn measure_page_size(&self) -> isize {
         // The top line and the hint take two rows.
         let rows = self.area.height.saturating_sub(2);
         let rows = match (&self.page, self.view) {
@@ -537,7 +550,7 @@ impl Board {
         if key.code == KeyCode::Char('r') {
             return Step::Refresh;
         }
-        let page_size = self.page_size();
+        let page_size = self.measure_page_size();
         if let Page::Details(_) | Page::Cleaned(_) = self.page {
             return match key.code {
                 KeyCode::Char('q' | ' ') | KeyCode::Esc | KeyCode::Enter => {
@@ -553,7 +566,7 @@ impl Board {
         }
         match key.code {
             KeyCode::Tab => {
-                match self.view.map_or(Some(Panel::Away), Panel::next) {
+                match self.view.map_or(Some(Panel::Away), Panel::find_next_panel) {
                     Some(panel) => self.open_view(panel),
                     None => self.view = None,
                 }
@@ -599,7 +612,7 @@ impl Board {
                     KeyCode::Char('k') | KeyCode::Up => self.move_session(-1),
                     KeyCode::PageDown => self.move_session(page_size),
                     KeyCode::PageUp => self.move_session(-page_size),
-                    KeyCode::Enter if rested => self.jump_step(),
+                    KeyCode::Enter if rested => self.build_jump_step(),
                     _ => Step::Stay,
                 };
             }
@@ -628,8 +641,9 @@ impl Board {
             self.page = Page::List;
             return Step::Stay;
         }
-        let elements = self.elements();
-        let action = elements::element_at(&elements, column, row).map(|element| element.action);
+        let elements = self.collect_elements();
+        let action =
+            elements::find_element_at(&elements, column, row).map(|element| element.action);
         match action {
             Some(Action::Jump(group)) => {
                 self.jump_to(group);
@@ -640,7 +654,7 @@ impl Board {
                 self.choose_session(index);
                 Step::Stay
             }
-            Some(Action::Go) => self.jump_step(),
+            Some(Action::Go) => self.build_jump_step(),
             Some(Action::Open(panel)) => {
                 self.open_view(panel);
                 Step::Stay
@@ -683,7 +697,7 @@ impl Board {
     /// not get shows what `Cards::list_cards` gave, and asks for its
     /// note.
     fn open_details(&mut self, group: Group, index: usize) -> Step {
-        let (Some(queue), Some(item)) = (&self.queue, self.item(group, index)) else {
+        let (Some(queue), Some(item)) = (&self.queue, self.find_item(group, index)) else {
             return Step::Stay;
         };
         let card = match item.target {
@@ -768,13 +782,13 @@ impl Board {
         let names: Vec<String> = queue
             .sessions
             .iter()
-            .filter(|row| SessionGroup::of(row.state) == SessionGroup::SafeToClose)
+            .filter(|row| SessionGroup::from_state(row.state) == SessionGroup::SafeToClose)
             .map(|row| row.name.clone())
             .collect();
         if names.is_empty() {
             self.status = "nothing to close".to_owned();
         } else {
-            let (title, rows) = sessions::clean_dialog_lines(&queue.sessions);
+            let (title, rows) = sessions::format_clean_dialog_lines(&queue.sessions);
             self.page = Page::Confirm(Confirm {
                 opened: now,
                 run: run.clone(),
@@ -810,7 +824,7 @@ impl Board {
     /// Draws the clean dialog over the whole frame.
     fn draw_confirm(&self, frame: &mut Frame) {
         let [top, middle, bottom] = draw::split_screen(frame.area());
-        let (title, rows) = self.confirm_lines(usize::from(middle.height));
+        let (title, rows) = self.format_confirm_lines(usize::from(middle.height));
         let bold = Style::new().add_modifier(Modifier::BOLD);
         frame.render_widget(Paragraph::new(title).style(bold), top);
         let shown: Vec<ratatui::text::Line> = rows.into_iter().map(Into::into).collect();
@@ -819,23 +833,23 @@ impl Board {
     }
 
     /// Returns the clean dialog's elements as `draw_confirm` drew them.
-    fn confirm_elements(&self) -> Vec<Element> {
+    fn build_confirm_elements(&self) -> Vec<Element> {
         let [top, middle, bottom] = draw::split_screen(self.area);
-        let (title, rows) = self.confirm_lines(usize::from(middle.height));
-        let mut elements = vec![draw::text_element("title", &title, top)];
+        let (title, rows) = self.format_confirm_lines(usize::from(middle.height));
+        let mut elements = vec![draw::build_text_element("title", &title, top)];
         elements.extend(rows.iter().zip(middle.y..middle.bottom()).enumerate().map(
             |(number, (row, y))| {
-                draw::text_element(&format!("confirm:{number}"), row, Rect { y, ..middle })
+                draw::build_text_element(&format!("confirm:{number}"), row, Rect { y, ..middle })
             },
         ));
-        elements.push(draw::text_element("hint", CONFIRM_HINT, bottom));
+        elements.push(draw::build_text_element("hint", CONFIRM_HINT, bottom));
         elements
     }
 
     /// Returns the clean dialog's top line and the rows that fit in
     /// `room` rows. When some do not fit, the last row is `+ N more`, so
     /// the user knows y acts on more than the screen shows.
-    fn confirm_lines(&self, room: usize) -> (String, Vec<String>) {
+    fn format_confirm_lines(&self, room: usize) -> (String, Vec<String>) {
         let Page::Confirm(confirm) = &self.page else {
             return (String::new(), Vec::new());
         };
@@ -856,7 +870,7 @@ impl Board {
         let Some(queue) = &self.queue else {
             return Step::Stay;
         };
-        let order = sessions::shown_order(&queue.sessions);
+        let order = sessions::order_shown_sessions(&queue.sessions);
         let Some(last) = order.len().checked_sub(1) else {
             return Step::Stay;
         };
@@ -882,19 +896,19 @@ impl Board {
 
     /// Returns a jump to the chosen session, or `Step::Stay` with none
     /// chosen.
-    fn jump_step(&self) -> Step {
+    fn build_jump_step(&self) -> Step {
         self.chosen_session.clone().map_or(Step::Stay, Step::Jump)
     }
 
     /// Returns the sessions panel's lines, `width` columns wide.
-    fn session_rows(&self, width: usize) -> Vec<sessions::PanelLine> {
+    fn format_session_rows(&self, width: usize) -> Vec<sessions::PanelLine> {
         self.queue.as_ref().map_or_else(Vec::new, |queue| {
-            sessions::session_lines(&queue.sessions, width)
+            sessions::format_session_lines(&queue.sessions, width)
         })
     }
 
     /// Returns the place in `rows` of the chosen session's row.
-    fn chosen_line(&self, rows: &[sessions::PanelLine]) -> Option<usize> {
+    fn find_chosen_line(&self, rows: &[sessions::PanelLine]) -> Option<usize> {
         let queue = self.queue.as_ref()?;
         let name = self.chosen_session.as_ref()?;
         rows.iter().position(|line| {
@@ -941,7 +955,7 @@ impl Board {
     }
 
     /// Returns what the queue view draws from.
-    fn list_screen(&self) -> ListScreen<'_> {
+    fn build_list_screen(&self) -> ListScreen<'_> {
         ListScreen {
             groups: &self.groups,
             lines: &self.lines,
@@ -951,7 +965,7 @@ impl Board {
     }
 
     /// Returns the item at `index` in `group`.
-    fn item(&self, group: Group, index: usize) -> Option<&Item> {
+    fn find_item(&self, group: Group, index: usize) -> Option<&Item> {
         self.groups
             .iter()
             .find(|(each, _)| *each == group)
@@ -960,13 +974,14 @@ impl Board {
 
     /// Returns what names the line at `index` across reads, or `None`
     /// past the end.
-    fn line_id(&self, index: usize) -> Option<LineId> {
+    fn find_line_id(&self, index: usize) -> Option<LineId> {
         match *self.lines.get(index)? {
             Line::Heading { group, .. } => Some(LineId::Heading(group)),
             Line::More { group, .. } => Some(LineId::More(group)),
-            Line::Item { group, index } => {
-                Some(LineId::Item(group, self.item(group, index)?.id.clone()))
-            }
+            Line::Item { group, index } => Some(LineId::Item(
+                group,
+                self.find_item(group, index)?.id.clone(),
+            )),
             Line::NoHub => Some(LineId::NoHub),
         }
     }
@@ -994,22 +1009,22 @@ pub(super) mod tests {
     /// waiting on the hub and one to park. Its watch gauge is
     /// past 90%, its feed holds two reports, and AWAY has those and a
     /// `notes.md` line, the newest at `10:40`.
-    pub(crate) fn sample_queue() -> Queue {
-        let session = |name: &str, state, why: &str, stage, tokens| {
+    pub(crate) fn make_sample_queue() -> Queue {
+        let make_session = |name: &str, state, why: &str, stage, tokens| {
             SessionRow::new(name.to_owned(), state, why.to_owned(), stage, tokens)
         };
-        let report = |at: &str, unread, name: &str| FeedLine {
+        let make_report = |at: &str, unread, name: &str| FeedLine {
             at: at.to_owned(),
             stamp: format!("2026-11-15T{at}:00Z").parse().unwrap(),
             unread,
             name: name.to_owned(),
         };
-        let event = |time: &str, text: &str| AwayEvent {
+        let make_event = |time: &str, text: &str| AwayEvent {
             at: format!("2026-11-15T{time}:00Z").parse().unwrap(),
             time: time.to_owned(),
             text: text.to_owned(),
         };
-        let card = |key: &str, stage, title: &str, workers: &[&str]| CardLine {
+        let make_card = |key: &str, stage, title: &str, workers: &[&str]| CardLine {
             key: key.parse().unwrap(),
             stage,
             project: "Demo".to_owned(),
@@ -1028,39 +1043,39 @@ pub(super) mod tests {
             read_at: "10:42".to_owned(),
             took: Duration::from_millis(600),
             cards: vec![
-                card(
+                make_card(
                     "DEMO-KB-001",
                     Stage::Active,
                     "Faster search",
                     &["api-build"],
                 ),
-                card(
+                make_card(
                     "DEMO-KB-002",
                     Stage::Active,
                     "Board for the phone",
                     &["card-sync"],
                 ),
-                card(
+                make_card(
                     "DEMO-KB-003",
                     Stage::Active,
                     "Trim the build cache",
                     &["blocked-fix"],
                 ),
-                card(
+                make_card(
                     "DEMO-KB-004",
                     Stage::Active,
                     "Lint every Dockerfile in the repository",
                     &[],
                 ),
-                card("DEMO-KB-005", Stage::Active, "Rotate the backup keys", &[]),
-                card(
+                make_card("DEMO-KB-005", Stage::Active, "Rotate the backup keys", &[]),
+                make_card(
                     "DEMO-KB-010",
                     Stage::InReview,
                     "Retry a failed upload twice, then show the error",
                     &["docs-fix"],
                 ),
-                card("DEMO-KB-020", Stage::Todo, "Sort ready cards", &[]),
-                card("OPS-KB-001", Stage::Draft, "Watch the disks", &[]),
+                make_card("DEMO-KB-020", Stage::Todo, "Sort ready cards", &[]),
+                make_card("OPS-KB-001", Stage::Draft, "Watch the disks", &[]),
             ],
             questions: vec![OpenQuestion {
                 key: "DEMO-KB-001".parse().unwrap(),
@@ -1081,49 +1096,49 @@ pub(super) mod tests {
                 card: None,
             }],
             sessions: vec![
-                session(
+                make_session(
                     "api-build",
                     Lifecycle::Working,
                     "-",
                     Some(Stage::Active),
                     Some(160_000),
                 ),
-                session(
+                make_session(
                     "blocked-fix",
                     Lifecycle::WaitsOnUser,
                     "needs you",
                     None,
                     Some(40_000),
                 ),
-                session(
+                make_session(
                     "card-sync",
                     Lifecycle::WaitsOnHub,
                     "no reply yet",
                     Some(Stage::Active),
                     Some(20_000),
                 ),
-                session(
+                make_session(
                     "docs-fix",
                     Lifecycle::Kept(KeptReason::RecentRequest),
                     "request in the last hour",
                     Some(Stage::InReview),
                     Some(90_000),
                 ),
-                session(
+                make_session(
                     "old-search",
                     Lifecycle::ToClose,
                     "card done",
                     Some(Stage::Done),
                     None,
                 ),
-                session(
+                make_session(
                     "ship-docs",
                     Lifecycle::ToPark,
                     "-",
                     Some(Stage::InReview),
                     Some(30_000),
                 ),
-                session(
+                make_session(
                     "upload-retry",
                     Lifecycle::Parked,
                     "-",
@@ -1142,13 +1157,13 @@ pub(super) mod tests {
                 }),
             },
             feed: vec![
-                report("10:40", true, "api-build"),
-                report("10:12", false, "docs-fix"),
+                make_report("10:40", true, "api-build"),
+                make_report("10:12", false, "docs-fix"),
             ],
             events: vec![
-                event("10:40", "api-build reported"),
-                event("10:31", "launched card-sync on DEMO-KB-002"),
-                event("10:12", "docs-fix reported"),
+                make_event("10:40", "api-build reported"),
+                make_event("10:31", "launched card-sync on DEMO-KB-002"),
+                make_event("10:12", "docs-fix reported"),
             ],
             no_hub: false,
             run: Some(PathBuf::from("/runs/sample")),
@@ -1157,19 +1172,19 @@ pub(super) mod tests {
         }
     }
 
-    /// Returns a board that shows `sample_queue` on the glance page,
+    /// Returns a board that shows `make_sample_queue` on the glance page,
     /// drawn once at 40x16.
-    pub(crate) fn sample_board() -> Board {
+    pub(crate) fn make_sample_board() -> Board {
         let mut board = Board::new(false);
-        board.show_reading(Ok(sample_queue()));
+        board.show_reading(Ok(make_sample_queue()));
         board.render_lines(40, 16);
         board
     }
 
-    /// Returns `sample_board` with the queue view open, drawn once at
+    /// Returns `make_sample_board` with the queue view open, drawn once at
     /// 40x16.
-    pub(crate) fn queue_board() -> Board {
-        let mut board = sample_board();
+    pub(crate) fn make_queue_board() -> Board {
+        let mut board = make_sample_board();
         board.handle_input(&press(KeyCode::Char('2')));
         board.render_lines(40, 16);
         board
@@ -1200,7 +1215,7 @@ pub(super) mod tests {
     #[test]
     fn render_lines_glance_answers_three_questions() {
         let mut board = Board::new(false);
-        board.show_reading(Ok(sample_queue()));
+        board.show_reading(Ok(make_sample_queue()));
 
         let lines = board.render_lines(40, 16);
 
@@ -1231,7 +1246,7 @@ pub(super) mod tests {
     #[test]
     fn render_lines_glance_shows_events_since_visit() {
         let mut board = Board::new(false);
-        board.show_reading(Ok(sample_queue()));
+        board.show_reading(Ok(make_sample_queue()));
         let since = "2026-11-15T10:31:00Z".parse().ok();
 
         board.show_visit(since, Some(SignedDuration::from_mins(89)));
@@ -1249,7 +1264,7 @@ pub(super) mod tests {
     /// heading so a tap can open it.
     #[test]
     fn render_lines_short_glance_keeps_queue_rows() {
-        let mut board = sample_board();
+        let mut board = make_sample_board();
 
         let lines = board.render_lines(40, 10);
 
@@ -1276,7 +1291,7 @@ pub(super) mod tests {
     #[test]
     fn handle_input_block_tap_opens_breadcrumb_closes() {
         let mut board = Board::new(false);
-        board.show_reading(Ok(many_questions_queue()));
+        board.show_reading(Ok(make_many_questions_queue()));
         let glance = board.render_lines(40, 16);
 
         board.handle_input(&tap_on(&glance, "+ 5 more"));
@@ -1295,7 +1310,7 @@ pub(super) mod tests {
     #[test]
     fn dump_glance_lists_cut_rows_with_block_tap() {
         let mut board = Board::new(false);
-        board.show_reading(Ok(many_questions_queue()));
+        board.show_reading(Ok(make_many_questions_queue()));
 
         let dump = board.dump(40, 16, None);
 
@@ -1328,7 +1343,7 @@ pub(super) mod tests {
     /// word, or a group out of order hides what the user looks for.
     #[test]
     fn render_lines_groups_folds_and_cuts_rows() {
-        let mut board = queue_board();
+        let mut board = make_queue_board();
 
         let lines = board.render_lines(40, 16);
 
@@ -1358,7 +1373,7 @@ pub(super) mod tests {
     /// the rest, or the cards past the first four cannot be reached.
     #[test]
     fn handle_input_taps_fold_and_show_more() {
-        let mut board = queue_board();
+        let mut board = make_queue_board();
         let lines = board.render_lines(40, 16);
 
         board.handle_input(&tap_on(&lines, "v Active"));
@@ -1374,11 +1389,11 @@ pub(super) mod tests {
         assert_eq!(in_full[10], "v In review 1");
     }
 
-    /// `sample_queue` with four more questions, so Needs you fills a
+    /// `make_sample_queue` with four more questions, so Needs you fills a
     /// short screen and the cards in work start below it. The glance
     /// page's QUEUE block at 40x16 cuts five rows.
-    fn many_questions_queue() -> Queue {
-        let mut queue = sample_queue();
+    fn make_many_questions_queue() -> Queue {
+        let mut queue = make_sample_queue();
         queue.questions.extend((1..=4).map(|number| OpenQuestion {
             key: "DEMO-KB-001".parse().unwrap(),
             project: "Demo".to_owned(),
@@ -1392,7 +1407,7 @@ pub(super) mod tests {
 
     /// Returns a board that shows `queue` with the queue view open,
     /// drawn once at 40 by `rows`.
-    fn short_queue_view(queue: Queue, rows: u16) -> (Board, Vec<String>) {
+    fn draw_short_queue_view(queue: Queue, rows: u16) -> (Board, Vec<String>) {
         let mut board = Board::new(false);
         board.show_reading(Ok(queue));
         board.render_lines(40, rows);
@@ -1407,7 +1422,7 @@ pub(super) mod tests {
     /// runs.
     #[test]
     fn handle_input_count_tap_shows_its_group() {
-        let (mut board, lines) = short_queue_view(many_questions_queue(), 8);
+        let (mut board, lines) = draw_short_queue_view(make_many_questions_queue(), 8);
 
         board.handle_input(&tap_on(&lines, "1 run"));
         let jumped = board.render_lines(40, 8);
@@ -1422,7 +1437,7 @@ pub(super) mod tests {
     /// different card than the one they tapped.
     #[test]
     fn handle_input_scrolled_tap_opens_drawn_row() {
-        let (mut board, lines) = short_queue_view(many_questions_queue(), 8);
+        let (mut board, lines) = draw_short_queue_view(make_many_questions_queue(), 8);
         board.handle_input(&tap_on(&lines, "1 run"));
         let scrolled = board.render_lines(40, 8);
 
@@ -1438,7 +1453,7 @@ pub(super) mod tests {
     /// page must not read the note again and make the user wait.
     #[test]
     fn handle_input_tap_shows_details_without_reading() {
-        let mut board = queue_board();
+        let mut board = make_queue_board();
         let lines = board.render_lines(40, 16);
 
         let step = board.handle_input(&tap_on(&lines, "Retry a failed"));
@@ -1466,7 +1481,7 @@ pub(super) mod tests {
     /// started never show their criteria.
     #[test]
     fn handle_input_unread_card_loads_its_note() {
-        let mut board = queue_board();
+        let mut board = make_queue_board();
         let lines = board.render_lines(40, 16);
         let key: CardKey = "DEMO-KB-001".parse().unwrap();
         let note = CardNote {
@@ -1497,11 +1512,11 @@ pub(super) mod tests {
     /// heading or less, which once put QUEUE's elements over NEXT.
     #[test]
     fn dump_lists_ids_and_places_as_drawn() {
-        let mut board = queue_board();
+        let mut board = make_queue_board();
         let list = board.dump(40, 16, None);
         board.handle_input(&tap_on(&list.lines, "Retry a failed"));
         let details = board.dump(40, 16, None);
-        let short_glances = [10, 6, 4].map(|rows| sample_board().dump(40, rows, None));
+        let short_glances = [10, 6, 4].map(|rows| make_sample_board().dump(40, rows, None));
 
         let ids: Vec<&str> = list
             .elements
@@ -1550,7 +1565,7 @@ pub(super) mod tests {
     /// still reports that it opened everything.
     #[test]
     fn dump_lists_hidden_cards_with_show_steps() {
-        let mut board = queue_board();
+        let mut board = make_queue_board();
 
         let dump = serde_json::to_value(board.dump(40, 16, None)).unwrap();
 
@@ -1588,23 +1603,23 @@ pub(super) mod tests {
     /// sends an agent's steps away from the row forever.
     #[test]
     fn dump_names_scroll_toward_hidden_rows() {
-        let (mut board, lines) = short_queue_view(sample_queue(), 5);
+        let (mut board, lines) = draw_short_queue_view(make_sample_queue(), 5);
         board.handle_input(&tap_on(&lines, "1 run"));
 
         let dump = board.dump(40, 5, None);
 
-        let hiding = |id: &str| {
+        let read_hiding = |id: &str| {
             let element = dump.elements.iter().find(|element| element.id == id);
             let hiding = element.and_then(|element| element.hiding.as_ref()).unwrap();
             (hiding.hidden_by.word(), hiding.show.as_str())
         };
         assert_eq!(
-            hiding("question:Deploy tonight?"),
+            read_hiding("question:Deploy tonight?"),
             ("scroll", "press pageup")
         );
-        assert_eq!(hiding("card:DEMO-KB-005"), ("more", "press pagedown"));
-        assert_eq!(hiding("group:draft"), ("scroll", "press pagedown"));
-        assert_eq!(hiding("card:OPS-KB-001"), ("fold", "press pagedown"));
+        assert_eq!(read_hiding("card:DEMO-KB-005"), ("more", "press pagedown"));
+        assert_eq!(read_hiding("group:draft"), ("scroll", "press pagedown"));
+        assert_eq!(read_hiding("card:OPS-KB-001"), ("fold", "press pagedown"));
     }
 
     /// Raw mode turns Ctrl-C into a key, so a board that misses it
@@ -1694,7 +1709,7 @@ pub(super) mod tests {
         ];
 
         for case in cases {
-            let mut board = sample_board();
+            let mut board = make_sample_board();
             for code in case.reach {
                 board.handle_input(&press(*code));
             }
@@ -1712,13 +1727,13 @@ pub(super) mod tests {
     /// press of Enter would open another item.
     #[test]
     fn show_reading_keeps_the_chosen_row() {
-        let mut board = queue_board();
+        let mut board = make_queue_board();
         let lines = board.render_lines(40, 16);
         board.handle_input(&tap_on(&lines, "blocked-fix"));
         board.handle_input(&press(KeyCode::Esc));
         let answered = Queue {
             questions: Vec::new(),
-            ..sample_queue()
+            ..make_sample_queue()
         };
 
         board.show_reading(Ok(answered));
@@ -1733,7 +1748,7 @@ pub(super) mod tests {
     /// gauges from a phone user, who has no wide screen to see them on.
     #[test]
     fn handle_input_digits_open_each_view() {
-        let mut board = sample_board();
+        let mut board = make_sample_board();
         let mut tops = Vec::new();
 
         for digit in ['1', '2', '3', '4', '5'] {
@@ -1757,7 +1772,7 @@ pub(super) mod tests {
     /// new user lost.
     #[test]
     fn handle_input_question_mark_opens_view_help() {
-        let mut board = queue_board();
+        let mut board = make_queue_board();
 
         board.handle_input(&press(KeyCode::Char('?')));
         let help = board.render_lines(40, 16);
@@ -1773,7 +1788,7 @@ pub(super) mod tests {
     /// would hide what the user opened a wide screen to see.
     #[test]
     fn render_lines_blocks_side_by_side_when_wide() {
-        let mut board = sample_board();
+        let mut board = make_sample_board();
 
         let lines = board.render_lines(120, 16);
 
@@ -1796,7 +1811,7 @@ pub(super) mod tests {
     /// to whichever session slid under the finger.
     #[test]
     fn handle_input_session_tap_chooses_bar_jumps() {
-        let mut board = sample_board();
+        let mut board = make_sample_board();
         board.handle_input(&press(KeyCode::Char('4')));
         let before = board.render_lines(40, 16);
 
@@ -1815,7 +1830,7 @@ pub(super) mod tests {
     /// user's screen to a session they never meant to open.
     #[test]
     fn handle_input_at_enter_waits_for_rest() {
-        let mut board = sample_board();
+        let mut board = make_sample_board();
         let start = Instant::now();
         let quick_at = start + Duration::from_millis(300);
         board.handle_input_at(&press(KeyCode::Char('4')), start);
@@ -1833,11 +1848,11 @@ pub(super) mod tests {
     /// to jump to a tab that no longer exists.
     #[test]
     fn show_reading_drops_chosen_session_once_gone() {
-        let mut board = sample_board();
+        let mut board = make_sample_board();
         board.handle_input(&press(KeyCode::Char('4')));
         let before = board.render_lines(40, 16);
         board.handle_input(&tap_on(&before, "docs-fix"));
-        let mut later = sample_queue();
+        let mut later = make_sample_queue();
         later.sessions.retain(|row| row.name != "docs-fix");
 
         board.show_reading(Ok(later));
@@ -1851,7 +1866,7 @@ pub(super) mod tests {
     /// parks would let y park sessions the user never saw.
     #[test]
     fn handle_input_c_lists_sessions_to_close() {
-        let mut board = sample_board();
+        let mut board = make_sample_board();
 
         let step = board.handle_input(&press(KeyCode::Char('c')));
         let lines = board.render_lines(40, 16);
@@ -1873,7 +1888,7 @@ pub(super) mod tests {
     /// nothing of.
     #[test]
     fn handle_input_c_refuses_when_nothing_closes() {
-        let mut queue = sample_queue();
+        let mut queue = make_sample_queue();
         queue
             .sessions
             .retain(|row| !["old-search", "ship-docs"].contains(&row.name.as_str()));
@@ -1893,7 +1908,7 @@ pub(super) mod tests {
     /// sessions the user never saw listed.
     #[test]
     fn render_lines_clean_dialog_counts_hidden_rows() {
-        let mut queue = sample_queue();
+        let mut queue = make_sample_queue();
         queue.sessions.extend((1..=15).map(|number| SessionRow {
             name: format!("old-{number:02}"),
             state: Lifecycle::ToClose,
@@ -1940,7 +1955,7 @@ pub(super) mod tests {
         ];
 
         for (name, presses, expected, page) in cases {
-            let mut board = sample_board();
+            let mut board = make_sample_board();
             let start = Instant::now();
             board.handle_input_at(&press(KeyCode::Char('c')), start);
 
@@ -1971,7 +1986,7 @@ pub(super) mod tests {
         ];
 
         for (name, input) in cases {
-            let mut board = sample_board();
+            let mut board = make_sample_board();
             let start = Instant::now();
             board.handle_input_at(&press(KeyCode::Char('c')), start);
 
@@ -1989,10 +2004,10 @@ pub(super) mod tests {
     /// park one the user never saw.
     #[test]
     fn handle_input_y_cleans_what_dialog_listed() {
-        let mut board = sample_board();
+        let mut board = make_sample_board();
         let start = Instant::now();
         board.handle_input_at(&press(KeyCode::Char('c')), start);
-        let mut later = sample_queue();
+        let mut later = make_sample_queue();
         later.run = Some(PathBuf::from("/runs/other"));
         later.sessions.push(SessionRow {
             name: "late-close".to_owned(),
