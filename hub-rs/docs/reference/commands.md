@@ -456,8 +456,11 @@ machines' agents through its own filter.
 ### clean
 
 `hub clean [--run DIR] [--dry-run]` closes the tab of each `to-close`
-session and parks each `to-park` session. It looks at every session
-in Herdr on this machine. Only `clean` and `park` close tabs.
+session and parks each `to-park` session. It acts only on the
+sessions of DIR's run: those `hub launch` started from DIR, those
+that reported to DIR, and the old hubs DIR handed off from. Another
+hub's sessions stay open and get no `closed`, `parked` or `kept`
+line. Only `clean` and `park` close tabs.
 
 - `closed NAME: WHY` and `parked NAME: KEY in-review`.
 - `forgot NAME`: a parked session that is live again.
@@ -552,9 +555,9 @@ QUEUE; from 100 columns they sit side by side.
   sessions, each marked `close` or `park`, and ends in `+ N more`
   when they do not fit. The list does not change while it is
   open. y, once the list has been open 1 second and no key came
-  for 0.7 seconds, closes and parks the listed sessions as
-  `hub clean` does and shows its output, with a `kept` line for
-  any it now keeps. Any other key or a tap cancels. With nothing
+  for 0.7 seconds, closes and parks the listed sessions,
+  from any hub, and shows its output, with a `kept` line for any
+  it now keeps. Any other key or a tap cancels. With nothing
   to close or no hub running, c says so and changes nothing.
 - A visit is one stretch of the user using the board, ended by
   10 quiet minutes with no key or tap. The board saves the time

@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use jiff::Zoned;
 
-use super::events::{self, Event, EventKind};
+use super::events::{self, Event, EventKind, Memory};
 use super::facts::CollectedFacts;
 use super::lifecycle::{Lifecycle, SessionFacts, Verdict, decide_lifecycle};
 use super::parking::{self, ParkOutcome, TidyLock};
@@ -191,6 +191,24 @@ pub(crate) fn find_unsafe_problem(collected: &CollectedFacts) -> Option<&str> {
         .iter()
         .find(|line| UNSAFE_SOURCES.iter().any(|source| line.starts_with(source)))
         .map(String::as_str)
+}
+
+/// Returns the names of the sessions this run knows, the ones the
+/// tidy pass of `run_clean` may close or park. Those are each session
+/// `run_launch` started from this run, each name with a report here,
+/// read or not, and each old hub a `handoff` event of this run named.
+///
+/// # Errors
+///
+/// When the run folder or its `notes.md` cannot be read.
+pub(crate) fn list_run_session_names(
+    run: &RunFolder,
+    memory: &Memory,
+) -> Result<BTreeSet<String>, HubError> {
+    let mut names = run.list_started_names()?;
+    names.extend(run.list_reported_names()?.any);
+    names.extend(memory.handed_off.iter().cloned());
+    Ok(names)
 }
 
 /// Groups the sessions by tab and returns what may change. A whole tab

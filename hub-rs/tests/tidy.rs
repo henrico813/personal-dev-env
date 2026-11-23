@@ -131,7 +131,8 @@ fn run_clean_dry_run_changes_nothing() {
 
 /// The board's y cleans only the sessions its dialog listed. A session
 /// that became safe to close after the list was made must stay open,
-/// or y would close a tab the user never saw named.
+/// or y would close a tab the user never saw named. The listed session
+/// reported to another hub's run, since the dialog lists every hub's.
 #[test]
 fn run_clean_listed_keeps_unlisted_sessions_open() {
     let mut test_tools = TestTools::new();
@@ -147,6 +148,10 @@ fn run_clean_listed_keeps_unlisted_sessions_open() {
         "DEMO-KB-002",
         Stage::Done,
     );
+    let other_run = test_tools.path().join("other-run");
+    fs::create_dir(&other_run).unwrap();
+    let archive = "report-demo-kb-001-impl.2214.read";
+    fs::rename(test_tools.run_path().join(archive), other_run.join(archive)).unwrap();
     let now = make_time("2026-11-11T22:14:00+00:00[UTC]");
 
     let outcome = run_clean_listed(
@@ -162,6 +167,94 @@ fn run_clean_listed_keeps_unlisted_sessions_open() {
         *test_tools.herdr.closed_tabs.borrow(),
         ["w1:t-demo-kb-001-impl"]
     );
+}
+
+/// Every hub on the machine sees every Herdr agent, so `run_clean`
+/// must close only the workers of its own run. Closing another hub's
+/// finished worker, such as an auto run's, ends a session that hub
+/// still tracks, and the user loses its tab with no word from its hub.
+#[test]
+fn run_clean_leaves_other_runs_workers_open() {
+    let mut test_tools = TestTools::new();
+    add_finished_worker(
+        &mut test_tools,
+        "demo-kb-001-impl",
+        "DEMO-KB-001",
+        Stage::Done,
+    );
+    add_finished_worker(
+        &mut test_tools,
+        "demo-kb-002-auto",
+        "DEMO-KB-002",
+        Stage::Done,
+    );
+    // The second worker reported to another hub's run folder.
+    let other_run = test_tools.path().join("other-run");
+    fs::create_dir(&other_run).unwrap();
+    let archive = "report-demo-kb-002-auto.2214.read";
+    fs::rename(test_tools.run_path().join(archive), other_run.join(archive)).unwrap();
+
+    let outcome = clean(&test_tools, false);
+
+    assert_eq!(outcome.lines, ["closed demo-kb-001-impl: DEMO-KB-001 done"]);
+    assert_eq!(
+        *test_tools.herdr.closed_tabs.borrow(),
+        ["w1:t-demo-kb-001-impl"]
+    );
+}
+
+/// A run also knows a worker by the `notes.md` line `run_launch`
+/// wrote, before it ever reports, and an old hub by the `handoff`
+/// event that replaced it. Missing either leaves finished tabs open
+/// for the user to close by hand.
+#[test]
+fn run_clean_closes_sessions_this_run_knows() {
+    struct Case {
+        name: &'static str,
+        session: &'static str,
+        file: &'static str,
+        text: &'static str,
+        line: &'static str,
+    }
+    let cases = [
+        Case {
+            name: "launched-worker",
+            session: "demo-kb-001-impl",
+            file: "notes.md",
+            text: "- 2200 started demo-kb-001-impl (w1:demo-kb-001-impl) from demo.md\n",
+            line: "closed demo-kb-001-impl: DEMO-KB-001 done",
+        },
+        Case {
+            name: "handed-off-hub",
+            session: "kanban-hub-3",
+            file: "events.jsonl",
+            text: r#"{"at":"2026-11-11T22:00:00Z","event":"handoff","old":"kanban-hub-3","tab":"w1:t-kanban-hub-3","new":"kanban-hub-4"}"#,
+            line: "closed kanban-hub-3: handed off",
+        },
+    ];
+
+    for case in cases {
+        let mut test_tools = TestTools::new();
+        let folder = test_tools.path().to_owned();
+        test_tools.herdr.agents.push(Agent {
+            session_id: Some(format!("ses_{}", case.session)),
+            folders: vec![folder],
+            ..make_agent(case.session, AgentStatus::Idle)
+        });
+        test_tools
+            .cards
+            .stages
+            .insert("DEMO-KB-001".to_owned(), Stage::Done);
+        test_tools
+            .cards
+            .card_notes
+            .insert("DEMO-KB-001".to_owned(), CardNote::default());
+        fs::write(test_tools.run_path().join(case.file), case.text).unwrap();
+
+        let outcome = clean(&test_tools, false);
+
+        assert_eq!(outcome.lines, [case.line], "{}", case.name);
+    }
 }
 
 /// The hub runs `run_send` as a process of its own, beside `run_clean`.
@@ -470,6 +563,10 @@ fn run_clean_keeps_record_of_parked_session() {
         "parked_at": "2026-11-10T22:41:00Z",
     });
     fs::write(parked.join("demo-kb-007-impl.json"), record.to_string()).unwrap();
+    let archive = test_tools
+        .run_path()
+        .join("report-demo-kb-007-impl.2214.read");
+    fs::write(archive, "PR opened.\n").unwrap();
 
     let outcome = clean(&test_tools, false);
 

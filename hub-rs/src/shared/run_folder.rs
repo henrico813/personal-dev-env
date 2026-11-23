@@ -159,6 +159,23 @@ impl RunFolder {
         Ok(names)
     }
 
+    /// Returns each NAME from the `- HHMM started NAME (PANE) from HANDOFF`
+    /// lines that `run_launch` adds to `notes.md`.
+    pub(crate) fn list_started_names(&self) -> Result<BTreeSet<String>, HubError> {
+        let notes = self.read_optional_file("notes.md")?;
+        let names = notes
+            .lines()
+            .filter_map(|line| {
+                let (_, text) = line.strip_prefix("- ")?.split_once(' ')?;
+                let (name, _) = text.strip_prefix("started ")?.split_once(" (")?;
+                // A note the hub wrote by hand can start with `started` too.
+                name.parse::<AgentName>().ok()
+            })
+            .map(|name| name.as_str().to_owned())
+            .collect();
+        Ok(names)
+    }
+
     /// Returns the text of NAME's newest report, read or not, by file
     /// time. Returns `None` when NAME never reported.
     pub(crate) fn read_newest_report(&self, name: &str) -> Result<Option<String>, HubError> {
