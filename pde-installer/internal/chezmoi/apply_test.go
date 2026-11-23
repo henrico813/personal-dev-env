@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"pde-installer/internal/colorprofile"
+	"pde-installer/internal/fsutil"
 	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 	"pde-installer/internal/testfile"
@@ -35,7 +36,7 @@ func TestApplyCommitsChanges(t *testing.T) {
 			t.Fatalf("inspect backup %q: %v", change.Backup, err)
 		}
 	}
-	if err := journal.Commit(); err != nil {
+	if err := fsutil.CommitJournals(journal); err != nil {
 		t.Fatal(err)
 	}
 	for _, change := range journal.Changes {
@@ -132,7 +133,7 @@ func TestApplyHandlesUnchangedStatus(t *testing.T) {
 	if len(journal.Changes) != 1 || journal.Changes[0].Destination != fixture.state {
 		t.Fatalf("Apply() changes = %#v", journal.Changes)
 	}
-	if err := journal.Commit(); err != nil {
+	if err := fsutil.CommitJournals(journal); err != nil {
 		t.Fatal(err)
 	}
 	assertApplyFile(t, fixture.state, "new-state\n")
