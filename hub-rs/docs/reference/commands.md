@@ -447,11 +447,11 @@ result it sends the phone one notification, titled
 the reason. The same result again sends nothing, even after a restart,
 since the watch keeps the last result in `hub/update-seen.json`.
 
-The watch also does what `hub restore-sidebar` does in each check,
-but sets the filter only when something was missing. Every 5 minutes
-it tags the hubs and shows the desk row on each saved machine too,
-for a machine whose Herdr runs without the `pde.hub` plugin. The
-user's Herdr lists those machines' agents through its own filter.
+The watch also does what `hub restore-sidebar` does in each check.
+Every 5 minutes it sets the missing `go_to` tags and the desk row on
+each saved machine too, for a machine whose Herdr runs without the
+`pde.hub` plugin, and clears none there. The user's Herdr lists those
+machines' agents through its own filter.
 
 ### clean
 
@@ -604,28 +604,42 @@ The steps of an auto run, in order. Each takes `--run DIR`.
 
 - `hub flag NAME` marks NAME's pane "needs you" and prints
   `flagged NAME`. `hub unflag NAME` clears it and prints
-  `unflagged NAME`.
+  `unflagged NAME`. Without `--machine`, each then sets the agent
+  list as `hub restore-sidebar` does, and adds
+  `could not set the go to list: REASON` when that fails.
 - `hub alive SESSION` prints an OpenCode session's activity, such as
   `42 messages, newest 14:05:09, last tool bash, working`. The last
   word is `working`, `finished` or `stopped`. Exits 1 with
   `no OpenCode session SESSION on this machine`.
 - `hub go` shows the next hub in the sidebar and prints
   `showing NAME`. `hub gather` moves the hubs' workspaces, and the
-  desk, to the top of the sidebar, cuts Herdr's agent list to the
-  hubs and the sessions that wait on the user, and prints
+  desk, to the top of the sidebar, sets Herdr's agent list as
+  `hub restore-sidebar` does, and prints
   `at the top: IDS` with the workspace IDs. Both exit 3 with
   `no hub is running`.
 - `hub desk` makes the `desk` workspace when it is missing, with
   `hub board` in its first tab and a shell in its second, and moves
   it below the kanban hubs. It prints `made desk: board, then shell`
   or `desk is open`.
-- `hub restore-sidebar [--start-board]` puts back what a Herdr
-  restart drops from the agent list on this machine: the tag of each
-  hub, the desk row and the filter. It moves no workspace. With
+- `hub desk add NAME` moves NAME's pane into the desk as its last
+  tab and prints `NAME is on the desk`. `hub desk rm NAME` moves it
+  into a new workspace named NAME and prints `NAME is off the desk`.
+  `hub desk move NAME N` makes it the Nth agent on the desk and
+  prints `NAME is at place N on the desk`. Each exits 3 with
+  `no desk is open; hub desk makes one`, and `rm` and `move` with
+  `NAME is not on the desk`. `move` exits 2 with
+  `the place must be 1 to COUNT`.
+- `hub restore-sidebar [--start-board]` sets the agent list, headed
+  `go to`, on this machine: the front hub, the desk's board and
+  agents in tab order, then only the sessions that wait on the user.
+  The front hub is the live agent that last ran `hub next` or
+  `hub watch start` in a run folder without `approved.md`, when it
+  has no name or a hub name other than an auto hub's. Else it is the
+  live `kanban-hub-N` with the highest N. It moves no workspace. With
   `--start-board`, it also runs `hub board` in the desk's first pane
   when that pane's shell runs nothing. It prints
-  `put back: NAMES` with each hub it tagged and `desk`, or
-  `nothing was missing`, then `started the board in the desk` or
+  `changed: NAMES` with each pane whose tag it changed and `desk`, or
+  `nothing changed`, then `started the board in the desk` or
   `could not start the board: REASON`. The `pde.hub` Herdr plugin
   runs it with `--start-board` when Herdr starts, and without it each
-  time Herdr detects an agent.
+  time Herdr detects an agent or moves a pane or tab.
