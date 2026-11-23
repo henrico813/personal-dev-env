@@ -182,12 +182,13 @@ agent, unless the linking skill names someone else.
      `/tmp/<skill>-fix-1.patch` shows the change. From then on, "the
      patch file" in these steps means the newest round's file. When
      only the message file changed, keep the last patch file.
-   - Read only what changed: the lines that each hit, finding or
-     change request points to, and the new patch against the last
-     one. Do not read again the whole skill, a source file you read
-     to learn how a tool works, or a report you already wrote, since
-     every later turn re-reads what you read. When `git apply` fails
-     as item 3 says, also read the new text the fix must fit.
+   - Read only what changed: the lines each hit or finding points
+     to, the change the user asked for, and the new patch against
+     the last one. Do not read again the whole skill, a source file
+     you read to learn how a tool works, or a report you already
+     wrote, since every later turn re-reads what you read. When
+     `git apply` fails as item 3 says, also read the new text the fix
+     must fit.
 
 ### 4. Act on the reply
 

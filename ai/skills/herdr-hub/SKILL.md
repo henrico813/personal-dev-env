@@ -393,8 +393,8 @@ any of those places settles a question as fully as a reply key:
 - A direction, such as "do the small one first", makes the choice.
 - A reply that leaves the choice to you, such as "any order", picks
   the `Recommended:` choice. The user made that call, not you.
-- A premise correction, such as "that changed", can make the
-  question moot; record it as moot with `hub answer`.
+- A premise correction, such as "that changed", can leave no
+  choice to make. Run `hub answer <key> "moot: <why>"`.
 - For a reply that settles part, `hub answer` that part, then
   `hub ask` the rest, quoting the reply the user thinks answered it.
 

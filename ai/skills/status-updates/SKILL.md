@@ -38,30 +38,31 @@ one digit and is quick to type on a phone.
 
 - A batch of questions starts with the first question you ask when
   no earlier question waits on the user. It ends when no question in
-  it still waits: each one is answered, or dropped because its work
-  ended.
+  it still waits: each one is answered, or dropped because no one
+  needs its answer any more, such as when its card is closed.
 - Each question keeps its number until its batch ends, even after
   its own answer. The user may still reply to an older message, and
   a key must then name one question. When the batch ends, its numbers
   are free to use again, and the next batch starts at `Q1`.
 - A new question in the open batch takes the number after the
   highest one in it.
-- A handoff or compaction does not end the open batch. Keep the
-  numbers the handoff or your earlier messages give, and number new
-  questions after the highest. When you cannot tell whether the last
-  batch ended, number new questions after the highest number you
-  see, and hold new questions past `Q9` as the next item says. When
-  you hold a question this way, ask the user whether the earlier
-  questions still wait, as a question about the batch: if none
-  waits, the batch has ended and the held questions start at `Q1`.
 - When the open batch already has a `Q9`, hold each new question
   until the batch ends. A held question is not asked yet, so leave it
   out of each update except for one line that says how many are
-  held. Ask the held questions first in the next batch.
+  held, such as `Held: 2 questions, asked once Q1 to Q9 are
+  answered.` Ask the held questions first in the next batch.
 - A question about the batch, such as which question a reply
   answers, takes the next number too. When the batch already has a
   `Q9`, ask it instead in one plain sentence that names the choices,
   with no number. It skips the short form.
+- A handoff or compaction does not end the open batch. Keep the
+  numbers the handoff or your earlier messages give, and number new
+  questions after the highest. When you cannot tell whether the last
+  batch ended, number new questions after the highest number you
+  see, and hold new questions past `Q9` as an item above says. When
+  you hold a question this way, ask the user whether the earlier
+  questions still wait, as a question about the batch: if none
+  waits, the batch has ended and the held questions start at `Q1`.
 - Match a reply key against the open batch first. Then match each
   reply as [references/waiting-on-you.md](references/waiting-on-you.md)
   says.

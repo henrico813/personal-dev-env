@@ -64,11 +64,14 @@ choice this session recommends and why, and its `Open:` line, as step
 4 of "Write the handoff file" in SKILL.md says. Name where the user
 may have answered each one, such as a session's pane or a card.>
 
-Before you ask a question below, check each place it names and the
-card's Decisions for the user's reply. In a place its `Open:` line
-names, read only what came after that line's time. Read in full a
-place the line does not name, or one that shows no times. Drop each
-question the user answered or made moot. Ask the rest first, with the
+Before you ask a question below, look for the user's reply in each
+place it names and in the card's Decisions. Each question's `Open:`
+line names the places the last session checked, and when. In those
+places, read only what came after that time. Read every other place
+in full, and a place that shows no times too, since you cannot tell
+what is new there. Drop each question the user answered or made moot.
+A plain reply can settle a question, as "Questions for the user" in
+the `herdr-hub` skill says. Ask the rest first, with the
 same Q numbers, in the short form of the `status-updates` skill,
 since the user's replies name questions by these numbers. Give no Q
 number listed in What the user decided to a new question until its
