@@ -27,6 +27,13 @@ pub(crate) struct Activity {
     pub word: ActivityWord,
 }
 
+/// When a session started and last changed, in milliseconds since
+/// 1970.
+pub(crate) struct SessionTimes {
+    pub created_ms: i64,
+    pub updated_ms: i64,
+}
+
 /// A message OpenCode stores as the user's. It may come from the hub
 /// or the watch, which type into the session's pane too.
 pub(crate) struct UserMessage {
@@ -272,6 +279,31 @@ impl OpenCodeDb {
             .optional()
             .map_err(OpenCodeError::Database)?;
         Ok(directory.map(PathBuf::from))
+    }
+
+    /// Returns when a session started and last changed, from the
+    /// `session_v2` table, or `None` when the database lacks the
+    /// session.
+    pub(crate) fn read_session_times(
+        &self,
+        session: &str,
+    ) -> Result<Option<SessionTimes>, OpenCodeError> {
+        let Some(connection) = self.open()? else {
+            return Ok(None);
+        };
+        connection
+            .query_row(
+                "select time_created, time_updated from session_v2 where id = ?1",
+                [session],
+                |row| {
+                    Ok(SessionTimes {
+                        created_ms: row.get(0)?,
+                        updated_ms: row.get(1)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(OpenCodeError::Database)
     }
 
     /// Returns the session's user messages sent at or after `since`,

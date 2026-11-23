@@ -25,9 +25,6 @@ func TestAquaProbeReturnsCommandErrors(t *testing.T) {
 	if err == nil || status != "" || !strings.Contains(err.Error(), "exit status 9") {
 		t.Fatalf("Probe() = _, %q, %v", status, err)
 	}
-	if _, status := New(home, t.TempDir(), "full", run.Runner{}).Status(); status != "error" {
-		t.Fatalf("Status() state = %q", status)
-	}
 }
 
 // Missing Aqua tools must not be reported as current.

@@ -126,7 +126,7 @@ func findRealGH() string {
 		}
 		path := filepath.Join(dir, "gh")
 		target, err := filepath.EvalSymlinks(path)
-		if err != nil || target == self || !isExecutable(target) {
+		if err != nil || target == self || !approval.IsExecutable(target) {
 			continue
 		}
 		if filepath.Base(target) == "aqua-proxy" {
@@ -148,7 +148,7 @@ func findNewestAquaGH(root string) string {
 	for _, match := range matches {
 		relative, _ := filepath.Rel(filepath.Join(root, "pkgs", "github_release", "github.com", "cli", "cli"), match)
 		version := parseVersion(strings.Split(relative, string(filepath.Separator))[0])
-		if version != nil && isExecutable(match) && isNewerVersion(version, newestVersion) {
+		if version != nil && approval.IsExecutable(match) && isNewerVersion(version, newestVersion) {
 			newest, newestVersion = match, version
 		}
 	}
@@ -179,11 +179,6 @@ func isNewerVersion(version, than []int) bool {
 	return false
 }
 
-func isExecutable(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir() && info.Mode()&0o111 != 0
-}
-
 // Keeps a noisy gh command from bloating the record that reruns print.
 const maxOutput = 64 << 10
 
@@ -198,7 +193,7 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 }
 
 func runGH(rec approval.Record, gh string, output io.Writer) int {
-	if gh == "" || !isExecutable(gh) {
+	if gh == "" || !approval.IsExecutable(gh) {
 		// The request stays approved, so rerunning the command runs it.
 		fmt.Fprintf(stderr, "pde-gh-write: cannot find gh to run approved %s; rerun this exact command\n", rec.ID)
 		return 1

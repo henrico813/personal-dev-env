@@ -233,15 +233,6 @@ func pinState(config, checksums string) (state, error) {
 	return state{ConfigSHA256: configHash, ChecksumsSHA256: checksumsHash}, nil
 }
 
-// Status reports the installed Aqua version and state.
-func (m Manager) Status() (string, string) {
-	installed, status, err := m.Probe()
-	if err != nil {
-		return "", "error"
-	}
-	return installed, status
-}
-
 // Probe reports the Aqua version without hiding execution errors.
 func (m Manager) Probe() (string, string, error) {
 	aqua, ok := manifest.Find("aqua", manifest.Aqua)
@@ -263,15 +254,6 @@ func (m Manager) Probe() (string, string, error) {
 		return installed, "current", nil
 	}
 	return installed, "outdated", nil
-}
-
-// ToolStatus reports the installed version and state of a managed tool.
-func (m Manager) ToolStatus(name, version string) (string, string) {
-	installed, status, err := m.ToolProbe(name, version)
-	if err != nil {
-		return "", "error"
-	}
-	return installed, status
 }
 
 // ToolProbe reports a tool version without hiding probe errors.

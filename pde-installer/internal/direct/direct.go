@@ -168,15 +168,6 @@ func (m Manager) current(font Font) (bool, error) {
 	return string(data) == font.SHA256+"\n", nil
 }
 
-// Status reports whether a font matches its pinned checksum.
-func (m Manager) Status(font Font) string {
-	status, err := m.Probe(font)
-	if err != nil {
-		return "error"
-	}
-	return status
-}
-
 // Probe reports font state without hiding filesystem errors.
 func (m Manager) Probe(font Font) (string, error) {
 	current, err := m.current(font)

@@ -75,7 +75,7 @@ func loadOrCreate(req approval.Request, gh string, retry bool) (string, error) {
 		if rec.State == approval.StatePending {
 			// The owner asks the agent to send a dismissed request again, and a
 			// rerun is all the agent can do. Saved here, because startMoshi and
-			// ensureRunner save rec only when they restart something.
+			// approval.EnsureRunner save rec only when they restart something.
 			if rec.Dismissed {
 				rec.Dismissed = false
 				// Like dismissing, this keeps the request's age.
@@ -89,7 +89,7 @@ func loadOrCreate(req approval.Request, gh string, retry bool) (string, error) {
 			// request would wait with nothing to answer on the phone. startMoshi
 			// does nothing while the earlier question is still running.
 			rec = startMoshi(rec)
-			rec = ensureRunner(rec)
+			rec = approval.EnsureRunner(rec, runnerStart)
 		}
 		return rec.State, nil
 	}

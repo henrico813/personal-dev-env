@@ -18,6 +18,9 @@ use crate::external::herdr::{Agent, AgentKind, AgentStatus};
 const REVIEW_PREFIX: &str = "review-";
 /// The word before `-hub-` in an auto run's hub, as in `auto-hub-13`.
 const AUTO_HUB_WORD: &str = "auto";
+/// The word before `-hub-` in the name of each hub the user works the
+/// kanban board with.
+const KANBAN_HUB_WORD: &str = "kanban";
 
 /// One session's place in its life. Each `match` on it must name
 /// every state. Code that forgets to handle a new state then fails to
@@ -302,6 +305,14 @@ pub(crate) fn can_adopt_hub(own: &str, name: &str, handed_off: &BTreeSet<String>
 /// Tells whether `name` is an auto run's hub, such as `auto-hub-13`.
 pub(crate) fn is_auto_hub(name: &str) -> bool {
     split_hub_name(name).is_some_and(|(word, _)| word == AUTO_HUB_WORD)
+}
+
+/// Returns 13 for `kanban-hub-13`, and `None` for any other kind of hub
+/// or name.
+pub(crate) fn parse_kanban_hub_number(name: &str) -> Option<u64> {
+    split_hub_name(name)
+        .filter(|(word, _)| *word == KANBAN_HUB_WORD)
+        .map(|(_, number)| number)
 }
 
 /// Splits a hub name such as `kanban-hub-13` into `kanban` and 13.

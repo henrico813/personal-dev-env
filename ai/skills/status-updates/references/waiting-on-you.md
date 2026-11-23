@@ -12,7 +12,10 @@ own, ask for an approval, or list pull requests to review.
 
 The user answers on a phone. Every question to the user, from any
 agent, including a hub that runs other sessions, takes this form, in
-an update or on its own:
+an update or on its own. Two cases skip it: the plain sentence that
+SKILL.md's "Question numbers" allows once the batch has a `Q9`, and
+a list where the user picks any number of items, as the last item
+below says. The form:
 
 ```markdown
 **Q7. Lessons rework: how the repeat search survives squash merges**
@@ -32,13 +35,9 @@ Reply like `Q7A Q8-1`.
   as `**Q7. `. The title names the work in plain words first, then
   what the user decides. A card key, if any, comes after those words
   in parentheses, never first.
-- Number each question `Q` and the next number not yet used in this
-  session, counting every message, such as `Q7` after `Q6`. A
-  question asked again keeps its number, and no number names a second
-  question, since the user may answer an older message after a newer
-  one arrives. The `Q` sets question numbers apart from numbered
-  actions. After a handoff, keep the numbers it gives and number new
-  ones above the highest; after compaction, above the highest you see.
+- Number each question `Q` and a number from 1 to 9, as SKILL.md's
+  "Question numbers" says. A question asked again keeps its number.
+  The `Q` sets question numbers apart from numbered actions.
 - Put the choices right under the title, with no blank line. Write
   each as `- A: ` and one short line, at most 72 characters. The
   count includes `- A: ` and `(rec)`, but not bold and code marks.
@@ -63,21 +62,27 @@ Reply like `Q7A Q8-1`.
   the checker skips code blocks.
 - Before you list a question as waiting, check that the user has not
   answered it yet.
-- Match each reply to a question by its number, with or without the
-  `Q`, so `7A` answers `Q7`. Ask which question a key answers when
-  its number names no question that still waits, such as one you
-  never asked, or names questions in two messages, which can happen
-  after compaction or a handoff. Ask too when a key has no number and
+- Match each reply to a question in the open batch by its number,
+  with or without the `Q`, so `7A` answers `Q7`. Ask which question a
+  key answers when its number names no question that still waits,
+  such as one you never asked or one from a batch that has ended.
+  Ask too when a key could name questions in two batches, as when you
+  cannot tell whether a batch ended, or when a key has no number and
   fits more than one waiting question. A number that names an
-  answered question may mean the user changes that answer, so offer
-  that as one reading. Ask in this form, with a new number. In a
-  reply such as `Q3A 2B`, act on each key that matches one waiting
-  question, and act on the others only once the user answers.
+  answered question, in the open batch or an ended one, may mean the
+  user changes that answer, so offer that as one reading.
+- Ask which question a key answers in this form, with the next
+  number in the batch. When the batch already has a `Q9`, ask as
+  SKILL.md's "Question numbers" says. In a reply such as `Q3A 2B`,
+  act on each key that matches one waiting question, and act on the
+  others only once the user answers.
 - A question that waits on the user is never a side item. Ask it
   again in each update, whole, in this form and with its number,
   until the user answers or the work ends. Never ask it again by its
-  name or number alone. When the questions push an update past 20
-  screen lines, keep them whole and move other detail to a file.
+  name or number alone. A question held past `Q9` is not asked yet;
+  show it as SKILL.md's "Question numbers" says. When the questions
+  push an update past 20 screen lines, keep them whole and move other
+  detail to a file.
   When the questions alone fill more than 20 screen lines, still send
   them whole. The checker then prints `update fills N lines`. Send
   the update anyway; this is the one checker line you may leave
@@ -90,8 +95,8 @@ Reply like `Q7A Q8-1`.
 numbered title: a number without its `Q`, a card key first, fewer
 than 2 choices, a choice over 72 characters, a count of `(rec)` other
 than one, and no reply line after the last question. Check the rest
-yourself, such as at most 3 choices, numbers not used before in the
-session, and reply keys that match the questions. The checker cannot
+yourself, such as at most 3 choices, numbers that follow SKILL.md,
+and reply keys that match the questions. The checker cannot
 find a question written in another form.
 
 ## Approvals, deadlines and reviews

@@ -152,7 +152,7 @@ func reportError(stderr io.Writer, cmd string, err error) {
 	_, _ = fmt.Fprintf(stderr, "%s: %v\n", cmd, cliErr)
 }
 
-func plannerMarkdownDecodeError(raw []byte, parseErr error) *PlannerCLIError {
+func newMarkdownDecodeError(raw []byte, parseErr error) *PlannerCLIError {
 	subject := "plan markdown"
 	wrapped, malformedWrapper := wrappedDocContext(parseErr)
 	if wrapped {
@@ -297,7 +297,7 @@ func buildHelpText() string {
 	b.WriteString(helpText)
 	b.WriteString(guardedHelp)
 	b.WriteString(validationRulesHeader)
-	for _, rule := range ValidationRules() {
+	for _, rule := range ListValidationRules() {
 		b.WriteString("  - " + rule + "\n")
 	}
 	return b.String()
@@ -316,7 +316,7 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 
 	parsed, err := ParseMarkdown(string(raw))
 	if err != nil {
-		reportError(stderr, "inspect", plannerMarkdownDecodeError(raw, err))
+		reportError(stderr, "inspect", newMarkdownDecodeError(raw, err))
 		return 1
 	}
 
@@ -388,7 +388,7 @@ func buildInspectPlan(parsed ParseResult, source string) InspectPlan {
 	for stepIdx, step := range parsed.Plan.Implementation {
 		inspectStep := InspectStep{Title: step.Title, Summary: step.Summary}
 		for changeIdx, change := range step.FileChanges {
-			raw := rawAt(source, parsed.DiffContents[stepIdx][changeIdx])
+			raw := sliceRawAt(source, parsed.DiffContents[stepIdx][changeIdx])
 			selector := fmt.Sprintf("implementation[%d].file_changes[%d]", stepIdx+1, changeIdx+1)
 			inspectStep.FileChanges = append(inspectStep.FileChanges, InspectFileChange{
 				Filename:         change.Filename,

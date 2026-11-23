@@ -37,7 +37,7 @@ func TestValidatePlanRejectsDuplicateStepFilenames(t *testing.T) {
 }
 
 func TestValidationRulesUseExportedLimits(t *testing.T) {
-	rules := ValidationRules()
+	rules := ListValidationRules()
 
 	tests := []struct {
 		desc     string
@@ -64,7 +64,7 @@ func TestValidationRulesUseExportedLimits(t *testing.T) {
 
 	for _, tc := range tests {
 		if !ruleStrings[tc.wantRule] {
-			t.Fatalf("ValidationRules() missing %q (testing %s)", tc.wantRule, tc.desc)
+			t.Fatalf("ListValidationRules() missing %q (testing %s)", tc.wantRule, tc.desc)
 		}
 	}
 }
