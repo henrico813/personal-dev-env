@@ -3,8 +3,8 @@
 Read this before you name a Rust function or method, or keep a Rust
 name that does not start with a verb.
 
-In Rust, start every function and method name with a verb. These
-names need no verb:
+"Function names" in SKILL.md asks for a verb first in every
+language. In Rust, these names need no verb:
 
 - a test, marked by an attribute that ends in `test`, such as
   `#[test]` or `#[tokio::test]`
