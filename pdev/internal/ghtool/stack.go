@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -53,7 +54,8 @@ func checkStackOrder(gh string, req approval.Request) error {
 
 // Runs an approved pr merge, using GitHub's merge-async API for a PR in a
 // GitHub stack, since gh pr merge fails there. Once the PR has merged, the
-// open PRs based on its branch move to its base.
+// open PRs based on its branch move to its base, and card merged updates the
+// cards that link it.
 func runMerge(rec approval.Record, gh string, output io.Writer) int {
 	target, unknown := approval.FindCommandTarget(rec.Args)
 	if unknown {
@@ -86,6 +88,7 @@ func runMerge(rec approval.Record, gh string, output io.Writer) int {
 	// With --auto, gh succeeds before the PR merges.
 	if code == 0 && !auto {
 		moveDependents(rec, gh, pr, output)
+		reportMergeToCards(pr.URL, output)
 	}
 	return code
 }
@@ -127,6 +130,7 @@ func checkCreateBase(gh string, req approval.Request) error {
 // The PR a merge names, and the open PRs based on its branch.
 type mergePR struct {
 	Number      int
+	URL         string
 	State       string
 	HeadRefName string
 	BaseRefName string
@@ -155,7 +159,7 @@ func findMergePR(gh, directory, repo, target string) (mergePR, error) {
 	if target != "" {
 		view = append(view, target)
 	}
-	if err := readGHJSON(gh, directory, repo, &pr, append(view, "--json", "number,headRefName")...); err != nil {
+	if err := readGHJSON(gh, directory, repo, &pr, append(view, "--json", "number,headRefName,url")...); err != nil {
 		return pr, err
 	}
 	var reply struct {
@@ -304,6 +308,46 @@ func moveDependents(rec approval.Record, gh string, pr mergePR, output io.Writer
 		}
 		fmt.Fprintf(output, "pde-gh-write: moved #%s to base %s\n", number, pr.BaseRefName)
 	}
+}
+
+// card writes to the vault, which can be slow, and runs under the request
+// lock, so a hung card must not keep the merge result from being saved.
+var cardTimeout = 20 * time.Second
+
+// The installer puts card beside pde-gh. Tests replace this to put a fake there.
+var cardProgram = func() (string, error) { return approval.FindSibling("card") }
+
+// Runs card merged with the PR's URL, which updates the cards that link it.
+// The PR has merged by then, so a failure only warns.
+func reportMergeToCards(url string, output io.Writer) {
+	ctx, cancel := context.WithTimeout(context.Background(), cardTimeout)
+	defer cancel()
+	path, env := findCard()
+	cmd := exec.CommandContext(ctx, path, "merged", url)
+	cmd.Env = env
+	cmd.Stdout, cmd.Stderr = output, output
+	cmd.WaitDelay = time.Second
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			err = fmt.Errorf("card ran out of time after %v", cardTimeout)
+		}
+		fmt.Fprintf(output, "pde-gh-write: merged, but could not update the cards linking %s: %v\n", url, err)
+	}
+}
+
+// Finds card on PATH, then beside this program, since Herdr runs the popup with
+// its server's PATH, which may lack ~/.local/bin. A card found beside it gets
+// that folder first on its PATH, so card finds the programs it runs there too.
+func findCard() (path string, env []string) {
+	if path, err := exec.LookPath("card"); err == nil {
+		return path, nil
+	}
+	path, err := cardProgram()
+	if err != nil || !isExecutable(path) {
+		// Fails with "not found in $PATH", which the warning shows.
+		return "card", nil
+	}
+	return path, append(os.Environ(), "PATH="+filepath.Dir(path)+":"+os.Getenv("PATH"))
 }
 
 // Stack lookups run under the request lock, so a hung gh must not hold it
