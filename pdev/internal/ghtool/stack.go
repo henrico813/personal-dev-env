@@ -343,7 +343,7 @@ func findCard() (path string, env []string) {
 		return path, nil
 	}
 	path, err := cardProgram()
-	if err != nil || !isExecutable(path) {
+	if err != nil || !approval.IsExecutable(path) {
 		// Fails with "not found in $PATH", which the warning shows.
 		return "card", nil
 	}
