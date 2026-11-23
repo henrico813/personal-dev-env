@@ -158,8 +158,9 @@ impl ParkedFolder {
 /// Parks a session whose state is `to-park`. The steps run in this order
 /// so a crash at any step leaves a session the next pass handles.
 /// 1. Work out the state again with a fresh agent and message count.
-/// 2. Save the record whole.
-/// 3. Link the session to its card while the agent still runs.
+/// 2. Save the record whole, with the session `find_launched_session`
+///    picks.
+/// 3. Link the session Herdr shows to its card while the agent still runs.
 /// 4. Work out the state again, since a message may have come in, and
 ///    read the tab's panes again, to compare with `planned`.
 /// 5. Close the tab, then log `parked`, write one `notes.md` line, and
@@ -173,8 +174,8 @@ impl ParkedFolder {
 ///
 /// # Errors
 ///
-/// A Herdr, card or file failure. `HubError::PartlyDone` when the tab
-/// closed and the log or note failed.
+/// A Herdr, card, OpenCode database or file failure. `HubError::PartlyDone`
+/// when the tab closed and the log or note failed.
 pub(crate) fn park_session(
     tools: &Tools<'_>,
     run: &RunFolder,
@@ -189,11 +190,12 @@ pub(crate) fn park_session(
     }
     // `decide_lifecycle` parks only an OpenCode agent with a session ID
     // and a card.
-    let (Some(session_id), Some(card)) = (agent.session_id.clone(), facts.card.as_ref()) else {
+    let (Some(herdr_id), Some(card)) = (agent.session_id.clone(), facts.card.as_ref()) else {
         return Err(HubError::NotDone(format!(
             "{name} has no session ID or card to park with"
         )));
     };
+    let session_id = find_launched_session(tools, name, &card.key, &herdr_id)?;
     let workspace_label = tools
         .herdr
         .list_workspaces()?
@@ -353,6 +355,38 @@ pub(crate) fn decide_fresh_lifecycle(
         ..facts.clone()
     };
     Ok((agent, decide_lifecycle(&fresh)))
+}
+
+/// Returns the session NAME was launched as, which Herdr hides when NAME
+/// starts a nested `opencode run`. That is the first session the card Log
+/// lists for NAME that was still running when Herdr's session began, or
+/// Herdr's ID when none was.
+fn find_launched_session(
+    tools: &Tools<'_>,
+    name: &str,
+    card: &CardKey,
+    herdr_id: &str,
+) -> Result<String, HubError> {
+    let note = tools.cards.read_card(card)?;
+    let Some(herdr) = tools.opencode.read_session_times(herdr_id)? else {
+        return Ok(herdr_id.to_owned());
+    };
+    let logged = note
+        .logged_sessions
+        .iter()
+        .filter(|logged| logged.name == name && logged.session_id != herdr_id);
+    for candidate in logged {
+        let Some(times) = tools.opencode.read_session_times(&candidate.session_id)? else {
+            continue;
+        };
+        // Still running when Herdr's session began. This skips an old session
+        // of this name, which ended before, and a nested run an earlier park
+        // linked, which started after.
+        if times.created_ms <= herdr.created_ms && times.updated_ms >= herdr.created_ms {
+            return Ok(candidate.session_id.clone());
+        }
+    }
+    Ok(herdr_id.to_owned())
 }
 
 /// Reads a just-started agent until Herdr shows a session ID, at most

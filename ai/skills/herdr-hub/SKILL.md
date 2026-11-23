@@ -79,8 +79,11 @@ need a count or summary of a folder's contents that `hub status`
 does not cover, hand it to a worker as a `model-routing`
 `local-script` job, per Rules, instead of running `ls` directly.
 Before you tell the user a `you` session waits, read its newest
-lines with `herdr agent read`. When it asks nothing, its "needs you"
-mark is stale: run `hub unflag <name>` and leave it out.
+lines with `herdr agent read`. A session that handed off a card
+shows `you` while the card's question waits. It waits on that same
+question, so do not unflag it or list it as a second wait; close its
+tab once the session that took over runs. Any other `you` session
+that asks nothing is stale: run `hub unflag <name>`; leave it out.
 Tell the user what each `you` session waits on, and keep that in
 every later message until the session no longer waits on the user,
 as `status-updates` says. When such a session has never reported to
@@ -340,12 +343,12 @@ you make any card.
   [references/sidebar-names.md](references/sidebar-names.md) when
   the name is wrong, or to place or rename a card's worker.
 - `hub handoff`, `hub adopt` and `hub auto now` move every hub's
-  workspace on this machine into one block at the top of the sidebar.
-  `hub gather` makes the same move when the user runs it.
-  The user presses `ctrl+b shift+h`, or runs `hub go`, to show the
-  next hub in sidebar order, wrapping to the first.
+  workspace on this machine to the top of the sidebar, as `hub gather`
+  does. The user presses `ctrl+b shift+h`, or runs `hub go`, to show
+  the next hub in sidebar order, wrapping to the first.
 - The workspace labelled `desk` is the user's. Never open a tab or pane
-  in it or start an agent there.
+  in it or start an agent there. Use `hub desk add` and `hub desk rm`
+  only when the user asks; to put a session in front of them, flag it.
 - No name holds a status word, such as done, paused or waiting.
   Herdr's state and the "needs you" mark show status.
 
@@ -370,7 +373,7 @@ Put each question that waits on the user on the card it blocks with
 agree. Write the whole question to a file, so no message names it by
 number alone, and run `hub ask <key> <question file>`. Read
 [references/hub-brief.md](references/hub-brief.md) for a worked
-example of the question file.
+example of the question file, and what `hub ask` refuses and marks.
 
 The `If no reply:` line says what stays blocked and what the worker
 does meanwhile. The work the question asks about never goes ahead
@@ -381,29 +384,26 @@ as which changes a session review makes, goes on a new draft card
 made with `card new <project> "<title>"`, so every
 reader finds it.
 
-`hub ask` refuses a question with a part missing. It also refuses a
-card that already waits on the user, since a card shows one open
-question. Keep the next question for that card in `notes.md`, and ask
-it with `hub ask` right after `hub answer`. `hub ask` marks the card
-needs-you, so `hub status` shows the card's sessions as `you`. While
-the mark is open, a session that handed off that card also shows
-`you`: that session waits on the same question, not a new one. Close
-its tab yourself once the session that took over runs.
-
 Before you list a question or task as waiting, even one a handoff
 carries, check where the user answers: your chat, the card's session
 panes, its Decisions and Log, `hub requests` and GitHub. Leave out what
-is settled; record a found answer with `hub answer`.
+is settled; record a found answer with `hub answer`. A plain reply in
+any of those places settles a question as fully as a reply key:
+
+- A direction, such as "do the small one first", makes the choice.
+- A reply that leaves the choice to you, such as "any order", picks
+  the `Recommended:` choice. The user made that call, not you.
+- A premise correction, such as "that changed", can leave no
+  choice to make. Run `hub answer <key> "moot: <why>"`.
+- For a reply that settles part, `hub answer` that part, then
+  `hub ask` the rest, quoting the reply the user thinks answered it.
 
 When the user answers, run `hub answer <key> "<answer>"`. It moves
 the question to the card's Decisions with the answer and marks the
 card answered. Record an answer that sets a rule for later work in
-`rules.md`. Bring the user everything that waits on them with:
-
-    hub brief --run "<run folder>"
-
-Read [references/hub-brief.md](references/hub-brief.md) for what it
-prints and how to show each part to the user.
+`rules.md`. Bring the user everything that waits on them with
+`hub brief --run "<run folder>"`, up to `Q9`, and show it as
+[references/hub-brief.md](references/hub-brief.md) says.
 
 ## Merges
 

@@ -54,7 +54,7 @@ func runOutline(
 		)
 		return 1
 	}
-	entries, err := outlinePlan(string(raw))
+	entries, err := parsePlanOutline(string(raw))
 	if err != nil {
 		reportError(
 			stderr,
@@ -125,7 +125,7 @@ func runShow(
 		)
 		return 1
 	}
-	entries, err := outlinePlan(string(raw))
+	entries, err := parsePlanOutline(string(raw))
 	if err != nil {
 		reportError(
 			stderr,
@@ -171,7 +171,7 @@ func runShow(
 
 // Returns each ## and ### heading and each file change outside code fences,
 // in file order. A part ends where the next part of its level or higher starts.
-func outlinePlan(input string) ([]outlineEntry, error) {
+func parsePlanOutline(input string) ([]outlineEntry, error) {
 	lines := strings.SplitAfter(
 		input,
 		"\n",

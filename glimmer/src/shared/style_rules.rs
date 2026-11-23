@@ -202,6 +202,14 @@ impl<'a> StyleCheck<'a> {
                         let outcome = Outcome::Reported(ReportNote::ReportOnly);
                         broken.push((Rule::VerbFirst, outcome, Some(detail)));
                     }
+                    FirstWord::MostlyNoun => {
+                        let detail = format!("\"{first_word}\" is mostly a noun in English");
+                        broken.push((Rule::VerbFirst, Outcome::Fails, Some(detail)));
+                    }
+                    FirstWord::Participle => {
+                        let detail = format!("\"{first_word}\" describes a thing, not an action");
+                        broken.push((Rule::VerbFirst, Outcome::Fails, Some(detail)));
+                    }
                     FirstWord::NotVerb => {
                         let detail = format!("\"{first_word}\" is not an English verb");
                         broken.push((Rule::VerbFirst, Outcome::Fails, Some(detail)));
@@ -345,7 +353,7 @@ impl Rule {
             }
             Self::SevenWords => "Every function name must contain at most seven words.",
             Self::VerbFirst => {
-                "`verb-first` fails a new name whose first word is no English verb, such as `path`, and only reports a verb missing from its list of common verbs, such as `card`, which may be a noun in the name."
+                "In every language, start each function and method name with a verb, even one that returns a value: `count_rows`, not `row_count`."
             }
             Self::Docstring => {
                 "Give every function, method and class a docstring, tests and fixtures included."
@@ -396,18 +404,19 @@ const FILLER: [&str; 10] = [
     "seamlessly",
 ];
 
-/// Lists the verbs that start a function name with no note. Any other
-/// dictionary verb still passes, with a note.
+/// Lists the verbs that start a function name with no note, even one
+/// WordNet tags more often as a noun, such as `stage` in `stage_files`.
 const COMMON_VERBS: &str = "
     accept activate add adopt allow answer append apply approve archive
     arm ask assert assign attach audit build bump calculate call cancel
-    capture change check choose clean clear clone close collect combine
-    commit compare compile complete compute configure confirm connect
-    consume convert copy count create cut decide decode delete deliver
-    describe detect disable discard dispatch download draw drop dump edit
-    emit enable encode ensure enter escape evaluate exit expand expect
-    explain export extract fail fetch fill filter find finish fix flush
-    follow forget format freeze gather generate get give group guard
+    capture change check choose clean clear clip clone close collapse
+    collect combine commit compare compile complete compute configure
+    confirm connect consume convert copy count create cut decide decode
+    delete deliver describe detect disable discard dispatch display
+    download draw drop dump edit emit enable encode ensure enter escape
+    evaluate exchange exit expand expect explain export extract fail
+    fetch fill filter find finish fix flush focus follow forget format
+    freeze gather generate get give grade group guard
     handle hash help hide hold import include increment index init insert
     inspect install is iter join judge jump keep kill label launch list
     load lock log look looks make map mark match measure merge migrate
@@ -415,11 +424,11 @@ const COMMON_VERBS: &str = "
     parse pass patch pause pick pin plan poll pop post prepare press
     preview print process produce prompt prune publish pull push put queue
     quit quote raise read receive record reduce refresh refund refuse
-    register reject release reload remove rename render reorder repeat
+    register reject release reload remove rename render reorder repair repeat
     replace reply report request require reserve reset resolve restore
     resume retry return reverse review rewrite round run sanitize save
     scan schedule score scout scroll search seed select send serve set
-    setup show shrink skip sleep sort split start stash stop store strip
+    setup show shrink skip sleep sort split stage start stash stop store strip
     submit subscribe summarize swap switch sync take teardown tell test
     trace track transform transition translate trim truncate try undo
     unlock unpack update upgrade upload use validate verify view visit
@@ -446,6 +455,15 @@ const INVENTED_HEADINGS: [&str; 7] = [
 /// `COMMON_VERBS`, such as `gauge`, is never refused.
 static DICTIONARY_VERBS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     include_str!("english_verbs.txt")
+        .lines()
+        .filter(|line| !line.starts_with('#'))
+        .collect()
+});
+
+/// Holds the verbs WordNet tags more often as nouns, such as `title`, so
+/// `title_text` fails.
+static MOSTLY_NOUN_VERBS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    include_str!("mostly_noun_verbs.txt")
         .lines()
         .filter(|line| !line.starts_with('#'))
         .collect()
@@ -774,9 +792,14 @@ fn split_name_words(name: &str) -> Vec<String> {
 enum FirstWord {
     /// Marks a common verb or a question word, such as `parse` or `is`.
     CommonVerb,
-    /// Marks a word only the dictionary calls a verb, such as `card`, which
+    /// Marks a word only the dictionary calls a verb, such as `gauge`, which
     /// may be a noun in the name.
     DictionaryOnly,
+    /// Marks a verb WordNet tags more often as a noun, such as `rows`.
+    MostlyNoun,
+    /// Marks a past or `-ing` form of an uncommon verb, such as `capped`,
+    /// which describes a thing, as in `capped_lines`.
+    Participle,
     NotVerb,
 }
 
@@ -789,15 +812,32 @@ fn classify_first_word(word: &str) -> FirstWord {
     }
     let forms = list_verb_stems(&word);
     let is_common = |stem: &String| COMMON_VERBS.split_whitespace().any(|verb| verb == stem);
+    // Only a plural counts as the noun, so `reshape` is not read as `shape`.
+    let mut singular_forms = [("ies", "y"), ("es", ""), ("s", "")]
+        .into_iter()
+        .filter_map(|(ending, replacement)| {
+            word.strip_suffix(ending)
+                .map(|stem| format!("{stem}{replacement}"))
+        })
+        .chain([word.clone()]);
     if forms.iter().any(is_common) {
         FirstWord::CommonVerb
-    } else if forms
+    } else if !forms
         .iter()
         .any(|stem| DICTIONARY_VERBS.contains(stem.as_str()))
     {
-        FirstWord::DictionaryOnly
-    } else {
         FirstWord::NotVerb
+    } else if singular_forms.any(|form| MOSTLY_NOUN_VERBS.contains(form.as_str())) {
+        FirstWord::MostlyNoun
+    } else if word.ends_with("ed") || word.ends_with("ing") {
+        // A verb whose own spelling ends this way, such as `embed`, stays a verb.
+        if DICTIONARY_VERBS.contains(word.as_str()) {
+            FirstWord::DictionaryOnly
+        } else {
+            FirstWord::Participle
+        }
+    } else {
+        FirstWord::DictionaryOnly
     }
 }
 
@@ -1247,33 +1287,53 @@ mod tests {
             assert_eq!(find_in_new_file("lib.rs", source), []);
         }
 
-        /// `find_file_style_issues` must sort a name's first word into a verb in any form, a verb only the dictionary knows, or no verb.
-        /// Otherwise a real verb such as `gauge` would be refused, or a noun-first name such as `path_for` would pass.
+        /// `find_file_style_issues` must sort a name's first word into a verb in any form, a verb only the dictionary knows, a noun, or no verb.
+        /// Otherwise a real verb such as `gauge` or `stage` would be refused, or a noun-first name such as `rows_between` would pass.
         #[test]
         fn verb_first_sorts_words_by_dictionary() {
-            let noted =
-                "\"gauge\" is a dictionary verb, not a common one; rename it if it is a noun here";
+            let noted = |word: &str| {
+                format!(
+                    "\"{word}\" is a dictionary verb, not a common one; rename it if it is a noun here"
+                )
+            };
+            let fails = |detail: &str| vec![(Rule::VerbFirst, Outcome::Fails, detail.to_owned())];
             let cases = [
                 ("verb-form", "fn needs_wrapping() {}\n", vec![]),
                 ("doubled-letter", "fn stopped_jobs() {}\n", vec![]),
                 ("re-prefix", "fn rewrap_lines() {}\n", vec![]),
+                ("common-verb-also-noun", "fn stage_files() {}\n", vec![]),
+                (
+                    "mostly-noun-plural",
+                    "fn rows_between() {}\n",
+                    fails("\"rows\" is mostly a noun in English"),
+                ),
+                (
+                    "past-form-describes-thing",
+                    "fn capped_lines() {}\n",
+                    fails("\"capped\" describes a thing, not an action"),
+                ),
+                (
+                    "prefixed-verb-not-noun",
+                    "fn reshape_rows() {}\n",
+                    vec![(
+                        Rule::VerbFirst,
+                        Outcome::Reported(ReportNote::ReportOnly),
+                        noted("reshape"),
+                    )],
+                ),
                 (
                     "dictionary-verb",
                     "fn gauge_load() {}\n",
                     vec![(
                         Rule::VerbFirst,
                         Outcome::Reported(ReportNote::ReportOnly),
-                        noted.to_owned(),
+                        noted("gauge"),
                     )],
                 ),
                 (
                     "not-a-verb",
                     "fn path_for() {}\n",
-                    vec![(
-                        Rule::VerbFirst,
-                        Outcome::Fails,
-                        "\"path\" is not an English verb".to_owned(),
-                    )],
+                    fails("\"path\" is not an English verb"),
                 ),
             ];
 
