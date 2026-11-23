@@ -48,17 +48,3 @@ func startGHRunner(rec approval.Record) approval.Record {
 	}
 	return approval.StartRunner(rec, path)
 }
-
-// Restarts a runner that was killed or lost on reboot, so a late approval
-// still runs. Callers hold the request lock.
-func ensureRunner(rec approval.Record) approval.Record {
-	if rec.RunnerPID == 0 || !approval.ProcessAlive(rec.RunnerPID) {
-		return runnerStart(rec)
-	}
-	return rec
-}
-
-func isExecutable(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir() && info.Mode()&0o111 != 0
-}

@@ -83,10 +83,10 @@ fn refuses_while_check_comments_fails() {
     assert_eq!(error.code, ErrorCode::CheckFailed);
 }
 
-/// `make_feedback_request_list` must list only changed comments and comments that go against a decision, such as a cut comment that is back.
-/// Otherwise the user would miss a decision made in another worktree, or answer comments nobody changed.
+/// `make_feedback_request_list` must list only comments the branch changed, such as a cut comment that is back, and leave out unchanged ones that go against a decision.
+/// Otherwise every branch's review would ask about a comment that main changed after the user approved it.
 #[test]
-fn lists_only_changed_or_conflicting_comments() {
+fn lists_only_changed_comments() {
     let repo = make_repo();
     let dir = repo.path();
     let store_before = "package review\n\n// Saves the answer under the lock.\nfunc SaveAnswer() {}\n\n// Loads every answer.\nfunc LoadAnswers() {}\n\nfunc CountAnswers() {}\n";
@@ -113,8 +113,6 @@ fn lists_only_changed_or_conflicting_comments() {
     assert_eq!(
         listed,
         [
-            "review_file.go OpenReview was_cut",
-            "review_file.go CloseReview differs_from_approved",
             "review_store.go LoadAnswers was_cut",
             "review_store.go CountAnswers new",
         ]
@@ -197,20 +195,20 @@ fn refuses_other_base_while_user_notes_wait() {
 /// Otherwise that comment could ship without User Feedback, even from a file with no decision.
 #[test]
 fn refuses_unasked_committed_or_staged_comment() {
-    /// Puts the cut comment only in the index.
+    /// Puts a new comment on the cut name only in the index.
     fn stage_only(dir: &Path) {
         write_store(dir, "", "");
         commit_all(dir);
-        write_store(dir, APPROVED, "return");
+        write_store(dir, REWORDED, "return");
         run_git(dir, &["add", STORE]);
         run_git(
             dir,
             &["restore", "--source=HEAD", "--worktree", "--", STORE],
         );
     }
-    /// Puts the cut comment only in HEAD.
+    /// Puts a new comment on the cut name only in HEAD.
     fn commit_only(dir: &Path) {
-        write_store(dir, APPROVED, "return");
+        write_store(dir, REWORDED, "return");
         commit_all(dir);
         write_store(dir, "", "return");
         run_git(dir, &["add", STORE]);
@@ -270,24 +268,6 @@ fn refuses_unasked_committed_or_staged_comment() {
             error.message
         );
     }
-}
-
-/// `make_feedback_request_list` must refuse a file with a decision that does not parse, naming the file, even when the branch never changed it.
-/// Otherwise a cut decided in another worktree could hide in it, and the Feedback Request List would come back empty.
-#[test]
-fn refuses_unparsable_file_with_a_decision() {
-    let repo = make_repo();
-    let dir = repo.path();
-    let broken = format!("package review\n\n{APPROVED}func SaveAnswer( {{}}\n");
-    fs::write(dir.join("old_broken.go"), broken).unwrap();
-    commit_all(dir);
-    add_decision(dir, "old_broken.go", "SaveAnswer", "");
-    let base = resolve_commit(dir, "HEAD").unwrap();
-
-    let error = make_feedback_request_list(dir, Some(base), &[]).unwrap_err();
-
-    assert_eq!(error.code, ErrorCode::FileUnreadable);
-    assert!(error.message.contains("old_broken.go"), "{}", error.message);
 }
 
 /// `make_feedback_request_list` must leave a saved Review Session's bytes and modified time as they were, in every status.

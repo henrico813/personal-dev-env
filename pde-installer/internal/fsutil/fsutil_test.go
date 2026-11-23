@@ -153,12 +153,15 @@ func TestJournalRemovesCommittedCleanup(t *testing.T) {
 	if err := journal.AddCleanup(cleanup); err != nil {
 		t.Fatal(err)
 	}
-	if err := journal.Commit(); err != nil {
+	if err := CommitJournals(journal); err != nil {
 		t.Fatal(err)
 	}
 	assertTestFile(t, destination, "new")
 	if _, err := os.Stat(cleanup); !os.IsNotExist(err) {
 		t.Fatalf("cleanup path remains: %v", err)
+	}
+	if _, err := os.Stat(stage); !os.IsNotExist(err) {
+		t.Fatalf("backup remains: %v", err)
 	}
 	assertNoJournals(t, config.Directory)
 }

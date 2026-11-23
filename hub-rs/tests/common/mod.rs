@@ -746,19 +746,39 @@ pub fn write_opencode_db(path: &Path, rows: &[OpenCodeRow<'_>]) {
 /// Adds a row to the OpenCode database's `session_v2` table at
 /// `path`, making the table first when it is missing.
 pub fn write_opencode_session(path: &Path, session: &str, directory: &Path) {
+    let database = open_session_table(path);
+    database
+        .execute(
+            "insert into session_v2 (id, directory) values (?1, ?2)",
+            rusqlite::params![session, directory.to_string_lossy()],
+        )
+        .unwrap();
+}
+
+/// Adds a `session_v2` row with the session's start and last change,
+/// in milliseconds, and no folder.
+pub fn write_opencode_times(path: &Path, session: &str, created_ms: i64, updated_ms: i64) {
+    let database = open_session_table(path);
+    database
+        .execute(
+            "insert into session_v2 (id, time_created, time_updated) values (?1, ?2, ?3)",
+            rusqlite::params![session, created_ms, updated_ms],
+        )
+        .unwrap();
+}
+
+/// Opens the database at `path` with the columns of `session_v2` the
+/// hub reads, making the table first when it is missing.
+fn open_session_table(path: &Path) -> Connection {
     let database = Connection::open(path).unwrap();
     database
         .execute(
-            "create table if not exists session_v2 (id text primary key, directory text)",
+            "create table if not exists session_v2 (id text primary key, directory text, \
+             time_created integer, time_updated integer)",
             [],
         )
         .unwrap();
     database
-        .execute(
-            "insert into session_v2 values (?1, ?2)",
-            rusqlite::params![session, directory.to_string_lossy()],
-        )
-        .unwrap();
 }
 
 /// A fixed local time, such as `2026-11-11T22:14:00+00:00[UTC]`.

@@ -476,6 +476,9 @@ record, adds the session to its card and closes its tab. Prints
 `parked NAME on KEY`.
 
 - Exits 3 with `no session NAME`, or `NAME stays: REASON`.
+- The record keeps the session NAME was launched as, from the
+  card's Log, even when a nested `opencode run` made Herdr show
+  another. `clean` parks the same way.
 
 ### board
 

@@ -373,6 +373,9 @@ pub struct CardNote {
     pub project: String,
     /// Session IDs, oldest first.
     pub sessions: Vec<String>,
+    /// The Log's `session: NAME (kind ID)` lines, oldest first, which
+    /// `card link --session` writes for each new session.
+    pub logged_sessions: Vec<LoggedSession>,
     /// The text of the newest `needs-you` Log line, while no `answered`
     /// line follows it, so the card waits on the user.
     pub needs_you: Option<String>,
@@ -393,6 +396,14 @@ pub struct CardNote {
     /// #498`, which the hub writes when it hands the card to the user
     /// for review.
     pub next_step: Option<String>,
+}
+
+/// One Log line `session: NAME (kind ID)`, a session Herdr showed for
+/// the agent named NAME when `card link` ran.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LoggedSession {
+    pub name: String,
+    pub session_id: String,
 }
 
 /// What `card board` gives. `board_over` and `board_under` events
@@ -586,9 +597,30 @@ fn parse_card_note(key: &CardKey, text: &str) -> CardNote {
             {
                 note.next_step = Some(step.trim().to_owned());
             }
+            if section == "Log"
+                && let Some(session) = parse_logged_session(words)
+            {
+                note.logged_sessions.push(session);
+            }
         }
     }
     note
+}
+
+/// Reads a Log line's words after the date, such as
+/// `session: demo-kb-007-impl (opencode ses_1)`, where the ID is the
+/// last word in the parentheses.
+fn parse_logged_session(words: &str) -> Option<LoggedSession> {
+    let (name, kind_and_id) = words.strip_prefix("session: ")?.split_once(" (")?;
+    let session_id = kind_and_id
+        .trim_end()
+        .strip_suffix(')')?
+        .split_whitespace()
+        .last()?;
+    Some(LoggedSession {
+        name: name.to_owned(),
+        session_id: session_id.to_owned(),
+    })
 }
 
 /// Adds one Open Questions line to `items`, as `card` counts items. A
@@ -911,6 +943,39 @@ mod tests {
         assert_eq!(note.plans, ["DEMO-12 Retry failed uploads"]);
         assert_eq!(note.prs, ["https://github.com/demo/app/pull/498"]);
         assert_eq!(note.next_step.as_deref(), Some("review PR #498"));
+    }
+
+    /// Park saves the session an agent was launched as, read from these
+    /// lines, when Herdr shows a nested run's session instead. A wrong
+    /// name or ID parks the wrong session, and a reopen resumes it.
+    #[test]
+    fn parse_card_note_reads_logged_sessions() {
+        let card_show = "---\n\
+                         sessions:\n  \
+                           - \"opencode ses_1\"\n\
+                         ---\n\
+                         \n\
+                         # DEMO-KB-001 Retry failed uploads\n\
+                         ---\n\
+                         \n\
+                         ## Log\n\
+                         ---\n\
+                         \n\
+                         - 2026-11-10 session: demo-kb-001-impl (opencode ses_1)\n\
+                         - 2026-11-11 note (hub): parked demo-kb-001-impl\n\
+                         - 2026-11-12 session: demo-kb-001-fix (opencode ses_2)\n";
+
+        let note = parse_card_note(&"DEMO-KB-001".parse().unwrap(), card_show);
+
+        let logged: Vec<(&str, &str)> = note
+            .logged_sessions
+            .iter()
+            .map(|logged| (logged.name.as_str(), logged.session_id.as_str()))
+            .collect();
+        assert_eq!(
+            logged,
+            [("demo-kb-001-impl", "ses_1"), ("demo-kb-001-fix", "ses_2")]
+        );
     }
 
     /// Every session's lifecycle starts from its card's stage, read
