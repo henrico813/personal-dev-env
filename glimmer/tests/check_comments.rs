@@ -150,30 +150,46 @@ fn fails_reworded_approved_comment() {
     }
 }
 
-/// `check_comments` must pass a comment the branch did not change, even one approved with other text, and a changed comment on a name the user cut.
-/// Otherwise the agent would be stuck on comments that `make_feedback_request_list` asks the user about.
+/// `check_comments` must pass a changed comment on a name the user cut.
+/// Otherwise the agent would be stuck on a comment that `make_feedback_request_list` asks the user about.
 #[test]
-fn passes_unchanged_or_cut_comments() {
-    // Each branch changes the file, so `check_comments` reads it.
-    let cases = [
-        (
-            "approved-elsewhere-unchanged",
-            REWORDED,
-            store_source(APPROVED, "return"),
-        ),
-        ("cut-then-reworded", "", store_source(REWORDED, "")),
-    ];
+fn passes_changed_comment_on_cut_name() {
+    let repo = make_repo();
+    let dir = repo.path();
+    add_decision(dir, STORE, "SaveAnswer", "");
+    write_store(dir, REWORDED, "");
 
-    for (case, decision, source) in cases {
+    let output = check_comments(dir, None).unwrap();
+
+    assert_eq!(output.result.failures, []);
+    assert_eq!(output.next, NextStep::MakeFeedbackRequestList);
+}
+
+/// `check_comments` must report, not fail, a comment the branch did not change when it goes against a decision, approved with other text or cut.
+/// The review no longer asks about such a comment, so without the report no agent would see it, and a failure would block the agent.
+#[test]
+fn reports_unchanged_comment_against_decision() {
+    let cases = [("approved-elsewhere", REWORDED), ("cut", "")];
+
+    for (case, decision) in cases {
         let repo = make_repo();
         let dir = repo.path();
         add_decision(dir, STORE, "SaveAnswer", decision);
-        fs::write(dir.join(STORE), source).unwrap();
+        // The branch changes the file but not the comment.
+        fs::write(dir.join(STORE), store_source(APPROVED, "return")).unwrap();
 
         let output = check_comments(dir, None).unwrap();
 
+        let finding = Finding {
+            file: PathBuf::from(STORE),
+            name: Some("SaveAnswer".to_owned()),
+            line: 3,
+            rule: Rule::Approved,
+            outcome: Outcome::Reported(ReportNote::Existing),
+            detail: None,
+        };
         assert_eq!(output.result.failures, [], "{case}");
-        assert_eq!(output.next, NextStep::MakeFeedbackRequestList, "{case}");
+        assert!(output.result.reported.contains(&finding), "{case}");
     }
 }
 
