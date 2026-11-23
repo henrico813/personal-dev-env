@@ -73,7 +73,6 @@ status: open
 # A file for card new --from, with one heading in lower case.
 CARD_FILE = """---
 title: Retry failed uploads
-type: feat
 kind: research
 ---
 
@@ -128,15 +127,13 @@ def write_card(
     criteria: str = "",
     stage_date: str = "2026-11-06",
     title: str = "Fix some work",
-    work_type: str = "feat",
 ) -> Path:
-    """Write a card note at a stage, with optional criteria, title and type."""
+    """Write a card note at a stage, with optional criteria and title."""
     text = card.render_card(
         key=key,
         title=title,
         project="DevEnv",
         kind="build",
-        work_type=work_type,
         today="2026-11-01",
         stage=stage,
         log_entry=f"{stage}: by user",
@@ -197,8 +194,6 @@ class TestNew:
             "new",
             "DevEnv",
             "Fix hub files drift",
-            "--type",
-            "fix",
             "--by",
             "user",
         )
@@ -219,8 +214,6 @@ class TestNew:
             "new",
             "DevEnv",
             "Old work",
-            "--type",
-            "feat",
             "--adopt",
             "in-review",
             "--user",
@@ -250,8 +243,6 @@ class TestNew:
             "new",
             "DevEnv",
             "Old work",
-            "--type",
-            "feat",
             "--adopt",
             "active",
             "--by",
@@ -281,7 +272,7 @@ class TestNew:
         assert code == 0
         path = projects / "DevEnv" / f"{NEW_KEY} Retry failed uploads.md"
         text = path.read_text()
-        assert "kind: research\nwork_type: feat\n" in text
+        assert "kind: research\n" in text
         assert card.read_section(text, "Context") == (
             "\n- Uploads fail on a slow link.\n"
         )
@@ -323,11 +314,6 @@ class TestNew:
                 ["--from", "FILE", "--kind", "build"],
                 id="kind-and-file",
             ),
-            pytest.param(
-                CARD_FILE,
-                ["--from", "FILE", "--type", "feat"],
-                id="type-and-file",
-            ),
             pytest.param(None, ["--from", "FILE"], id="missing-file"),
             pytest.param(None, [], id="no-title-or-file"),
         ],
@@ -343,8 +329,8 @@ class TestNew:
 
         A typo such as ## Criteria, or a section written twice, would
         otherwise drop that text from the card without notice, and the
-        worker would build without it. A TITLE, --kind or --type beside
-        the file leaves unclear which one the user meant. FILE in args
+        worker would build without it. A TITLE or --kind beside the file
+        leaves unclear which one the user meant. FILE in args
         stands for the card file, which is not written when file_text is
         None.
         """
@@ -701,8 +687,6 @@ class TestSessions:
                     "new",
                     "DevEnv",
                     "Fix some work",
-                    "--type",
-                    "feat",
                     "--adopt",
                     "active",
                     "--user",
@@ -1041,9 +1025,7 @@ class TestList:
         screen, and a missing project leaves the row without its tag.
         """
         title = "Show subagent tokens and cost in the sidebar"
-        run_card(
-            projects, "new", "DevEnv", title, "--type", "feat", "--by", "user"
-        )
+        run_card(projects, "new", "DevEnv", title, "--by", "user")
         capsys.readouterr()
 
         code = run_card(projects, "list", "--tabs")
@@ -1382,30 +1364,30 @@ class TestNamingRules:
 
 
 class TestTitleRules:
-    """Titles read like commit titles, and their start fits a board row."""
+    """Titles read like commit titles, with no label or key."""
 
     @pytest.mark.parametrize(
         ("title", "rules"),
         [
             pytest.param(
                 "Uploads retry after the network drops for a minute or two",
-                ["T1", "T2"],
-                id="long-noun-first",
+                ["T1"],
+                id="long",
             ),
             pytest.param(
                 "photo wall: sort the albums and suggest better captions",
-                ["T1", "T2", "T4", "T6"],
+                ["T1", "T2", "T4"],
                 id="lower-case-label",
             ),
             pytest.param(
                 "Shopkeep: AI tags use Ledger, tested",
-                ["T2", "T4"],
+                ["T2"],
                 id="label-first",
             ),
             pytest.param(
                 "Photo app fixes from the spring album review: short"
                 " captions, plain album names",
-                ["T1", "T2", "T6"],
+                ["T1", "T4"],
                 id="late-colon",
             ),
             pytest.param(
@@ -1418,18 +1400,19 @@ class TestTitleRules:
                 ["T1"],
                 id="51-characters",
             ),
-            pytest.param("Fix: board rows drift", ["T4"], id="verb-label"),
+            pytest.param("Hubs read the approval state", [], id="noun-first"),
+            pytest.param("Fix: board rows drift", ["T2"], id="verb-label"),
             pytest.param(
-                "Fix the DEMO-KB-004 board rows", ["T5"], id="card-key"
+                "Fix the DEMO-KB-004 board rows", ["T3"], id="card-key"
             ),
             pytest.param(
-                "Close DEMO-41 after the merge", ["T5"], id="plan-key"
+                "Close DEMO-41 after the merge", ["T3"], id="plan-key"
             ),
             pytest.param(
-                "Fix the board rows (DEMO-KB-004)", ["T5"], id="wrapped-key"
+                "Fix the board rows (DEMO-KB-004)", ["T3"], id="wrapped-key"
             ),
-            pytest.param("Fix board rows.", ["T6"], id="period"),
-            pytest.param("Fix the #board rows", ["T6"], id="link-character"),
+            pytest.param("Fix board rows.", ["T4"], id="period"),
+            pytest.param("Fix the #board rows", ["T4"], id="link-character"),
         ],
     )
     def test_check_title_fails_each_broken_rule(
@@ -1437,59 +1420,13 @@ class TestTitleRules:
     ) -> None:
         """check_title fails exactly the rules a title breaks.
 
-        The bad titles have the shapes of real cards that showed cut or
-        as labels on the board. A missed rule lets such a title back, and
-        a rule that fires on a good title refuses an agent's good card.
+        The bad titles have the shapes of real cards that showed as
+        labels on the board. A missed rule lets such a title back, and a
+        rule that fires on a good title refuses an agent's good card.
         """
-        findings = card.check_title(title, "feat", False)
+        findings = card.check_title(title)
 
-        assert [finding.rule for finding in findings if finding.fails] == (
-            rules
-        )
-
-    def test_check_title_user_passes_only_verb(self) -> None:
-        """With user, an unknown first word reports and other rules fail.
-
-        The user may start a title with a verb VERBS lacks. The user's
-        title must still not start with a label or a lower-case letter.
-        """
-        findings = card.check_title(
-            "photo wall: sort the albums", "feat", True
-        )
-
-        assert [finding.rule for finding in findings if finding.fails] == [
-            "T4",
-            "T6",
-        ]
-        assert str(findings[0]) == (
-            'T2 verb: "photo" is not in the verb list (user verb)'
-        )
-
-    @pytest.mark.parametrize(
-        ("title", "shown"),
-        [
-            pytest.param(
-                "Retry a failed upload twice now",
-                "Retry a failed upload twic~",
-                id="cut",
-            ),
-            pytest.param(
-                "Retry a failed upload twice",
-                "Retry a failed upload twice",
-                id="27-characters",
-            ),
-        ],
-    )
-    def test_cut_for_board_matches_hub_row(
-        self, title: str, shown: str
-    ) -> None:
-        """cut_for_board shows a title as a hub board queue row does.
-
-        The user judges from this cut whether a title's meaning shows on
-        the phone. A cut one column off would show a word the board
-        hides, or hide one it shows.
-        """
-        assert card.cut_for_board(title) == shown
+        assert [finding.rule for finding in findings] == rules
 
     def test_new_refuses_title_listing_every_finding(
         self, projects: Path, capsys: pytest.CaptureFixture[str]
@@ -1504,9 +1441,7 @@ class TestTitleRules:
             projects,
             "new",
             "DevEnv",
-            "Uploads retry after the network drops for a minute or two",
-            "--type",
-            "feat",
+            "uploads: retry after the network drops for a minute or two",
             "--by",
             "general-staff",
         )
@@ -1515,37 +1450,33 @@ class TestTitleRules:
         assert not list((projects / "DevEnv").glob("PDEV-*"))
         assert capsys.readouterr().err == (
             "card: title refused:\n"
-            "  T1 length: 57 characters, at most 50\n"
-            '  T2 verb: "Uploads" is not in the verb list\n'
-            "Put a verb first, at most 50 characters,"
-            ' such as "Retry failed uploads".\n'
+            "  T1 length: 58 characters, at most 50\n"
+            '  T2 label: "uploads:"\n'
+            "  T4 form: starts with a lower-case letter\n"
+            "Write it as a commit title of at most 50 characters, such as"
+            ' "Retry failed uploads".\n'
         )
 
-    def test_new_user_reports_verb_and_cut(
+    def test_new_accepts_noun_title_without_type(
         self, projects: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """With --user, card new makes the card and prints what it reports.
+        """An agent's card new takes any first word and needs no type.
 
-        The user may start a title with a verb VERBS lacks. The printed
-        board cut shows the user what the phone's board row keeps.
+        It prints only the card's name, so an agent that reads the
+        output as the name gets nothing else.
         """
         code = run_card(
             projects,
             "new",
             "DevEnv",
             "Hubs read the approval state",
-            "--type",
-            "feat",
-            "--user",
             "--by",
-            "user",
+            "general-staff",
         )
 
         assert code == 0
         assert capsys.readouterr().out == (
             "PDEV-001 Hubs read the approval state\n"
-            'T2 verb: "Hubs" is not in the verb list (user verb)\n'
-            "T7 cut: Hubs read the approval sta~\n"
         )
 
     def test_set_title_refuses_failing_title_unchanged(
@@ -1564,71 +1495,23 @@ class TestTitleRules:
         assert code == 1
         assert path.read_text() == before
 
-    def test_set_title_refuses_card_without_type(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """card set refuses even a good title while the card has no type.
-
-        T3 reads the card's own work type, so the retitle script must set
-        the type before the title. The refusal names the command to run.
-        """
-        path = write_card(projects, KEY, "draft", work_type="")
-        before = path.read_text()
-
-        code = run_card(projects, "set", KEY, "title", "Fix board rows")
-
-        assert code == 1
-        assert path.read_text() == before
-        assert capsys.readouterr().err == (
-            "card: title refused:\n"
-            "  T3 type: no work type\n"
-            "Work types: feat, fix, docs, refactor, chore, research.\n"
-            "Give one with card new --type T, or card set KEY type T.\n"
-        )
-
-    def test_set_title_user_passes_unknown_verb(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """With --user, card set takes a title whose verb VERBS lacks.
-
-        Without it, the user could not give a card such a title at all.
-        The printed lines show the user the verb report and the board cut.
-        """
-        path = write_card(projects, KEY, "draft")
-
-        code = run_card(
-            projects, "set", KEY, "title", "Spruce up board rows", "--user"
-        )
-
-        assert code == 0
-        new_path = path.with_name(f"{KEY} Spruce up board rows.md")
-        assert card.read_title(new_path.read_text(), KEY) == (
-            "Spruce up board rows"
-        )
-        assert capsys.readouterr().out == (
-            f"{KEY} Spruce up board rows\n"
-            'T2 verb: "Spruce" is not in the verb list (user verb)\n'
-            "T7 cut: Spruce up board rows\n"
-        )
-
     def test_check_lists_open_cards_failing_titles(
         self, projects: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """card check lists each failing rule of an open card's title.
 
-        The retitle pass finds the cards to fix from this list. A done
-        or dropped card keeps its title, so listing it would bury the
-        open ones.
+        Staff find the titles to fix from this list. A done or dropped
+        card keeps its title, so listing it would bury the open ones.
         """
-        write_card(projects, "PDEV-KB-001", "draft", title="Some work")
-        write_card(projects, "PDEV-KB-002", "done", title="Some work")
+        write_card(projects, "PDEV-KB-001", "draft", title="Some work.")
+        write_card(projects, "PDEV-KB-002", "done", title="Some work.")
         write_card(projects, "PDEV-KB-003", "active")
 
         code = run_card(projects, "check")
 
         assert code == 1
         assert capsys.readouterr().out == (
-            'PDEV-KB-001 T2 verb: "Some" is not in the verb list\n'
+            "PDEV-KB-001 T4 form: ends with a period\n"
             "1 problems in 3 cards\n"
         )
 
@@ -1641,7 +1524,7 @@ class TestTitleRules:
         whose title breaks the rules. A staff pause back to todo counts
         too.
         """
-        path = write_card(projects, KEY, "active", title="Some work")
+        path = write_card(projects, KEY, "active", title="Some work.")
         before = path.read_text()
 
         code = run_card(
@@ -1651,105 +1534,6 @@ class TestTitleRules:
         assert code == 1
         assert path.read_text() == before
         assert capsys.readouterr().err.startswith("card: title refused:\n")
-
-    @pytest.mark.parametrize(
-        ("args", "detail"),
-        [
-            pytest.param(
-                ["Retry failed uploads"], "no work type", id="missing"
-            ),
-            pytest.param(
-                ["--from", "FILE"], '"bug" is not a work type', id="unknown"
-            ),
-        ],
-    )
-    def test_new_refuses_missing_or_unknown_type(
-        self,
-        projects: Path,
-        tmp_path: Path,
-        capsys: pytest.CaptureFixture[str],
-        args: list[str],
-        detail: str,
-    ) -> None:
-        """card new refuses a missing or unknown work type, even with --user.
-
-        A card needs a work type before anyone builds it. Unlike an
-        unknown verb, the user's --user does not pass it. FILE in args
-        stands for a card file whose type is bug.
-        """
-        card_file = tmp_path / "card.md"
-        card_file.write_text(CARD_FILE.replace("type: feat", "type: bug"))
-        args = [str(card_file) if arg == "FILE" else arg for arg in args]
-
-        code = run_card(
-            projects, "new", "DevEnv", *args, "--user", "--by", "user"
-        )
-
-        assert code == 1
-        assert not list((projects / "DevEnv").glob("PDEV-*"))
-        assert capsys.readouterr().err == (
-            "card: title refused:\n"
-            f"  T3 type: {detail}\n"
-            "Work types: feat, fix, docs, refactor, chore, research.\n"
-            "Give one with card new --type T, or card set KEY type T.\n"
-        )
-
-    def test_set_type_fills_old_card(self, projects: Path) -> None:
-        """card set KEY type writes the work type into a card that lacks one.
-
-        Cards made before rule T3 hold no work type, and the retitle
-        pass gives each one with this command. Without it, such a card
-        could never pass card check or move into todo again.
-        """
-        path = write_card(projects, KEY, "draft")
-        path.write_text(path.read_text().replace("work_type: feat\n", ""))
-
-        code = run_card(projects, "set", KEY, "type", "fix")
-
-        assert code == 0
-        assert card.read_fields(path.read_text())["work_type"] == "fix"
-        assert run_card(projects, "check") == 0
-
-    def test_check_lists_cards_without_valid_type(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """card check lists each open card with a missing or unknown work type.
-
-        Cards made before rule T3 have none, and the retitle pass finds
-        them from this list.
-        """
-        path = write_card(projects, "PDEV-KB-001", "draft")
-        path.write_text(path.read_text().replace("work_type: feat\n", ""))
-        write_card(projects, "PDEV-KB-002", "active", work_type="bug")
-
-        code = run_card(projects, "check")
-
-        assert code == 1
-        assert capsys.readouterr().out == (
-            "PDEV-KB-001 T3 type: no work type\n"
-            'PDEV-KB-002 T3 type: "bug" is not a work type\n'
-            "2 problems in 2 cards\n"
-        )
-
-    def test_move_to_todo_refuses_untyped_card(
-        self, projects: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """A move into todo refuses a card with no work type, even the user's.
-
-        Workers start todo cards, and --user passes only T2, never T3.
-        """
-        path = write_card(projects, KEY, "draft", "- [ ] Done.")
-        path.write_text(path.read_text().replace("work_type: feat\n", ""))
-        before = path.read_text()
-
-        code = run_card(
-            projects, "move", KEY, "todo", "--user", "--by", "user"
-        )
-
-        assert code == 1
-        assert path.read_text() == before
-        assert "  T3 type: no work type\n" in capsys.readouterr().err
-
 
 @pytest.fixture
 def herdr_agents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -1956,8 +1740,6 @@ class TestRekey:
             "new",
             "DevEnv",
             "Add a retry button",
-            "--type",
-            "feat",
             "--by",
             "user",
         )

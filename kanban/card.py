@@ -11,8 +11,8 @@ key and the file name follow the naming rules in
 ``chezmoi/dot_config/pde/names.toml``, installed as
 ``~/.config/pde/names.toml``.
 
-The tables FIELDS, SECTIONS, STAGES, KINDS, WORK_TYPES, MOVES and
-VERBS below define the note layout and the rules. ``card template``
+The tables FIELDS, SECTIONS, STAGES, KINDS and MOVES below define the
+note layout and the rules. ``card template``
 prints the Obsidian template from the same tables, so cards made in
 either place match.
 
@@ -20,9 +20,9 @@ Usage::
 
     card [--vault NAME] COMMAND ...
 
-    card new PROJECT TITLE --type T [--kind K] [--user]  make a card in draft
-    card new PROJECT --from FILE [--user]  title, type, kind, sections
-    card new PROJECT TITLE --type T --adopt STAGE --user [--why TEXT]
+    card new PROJECT TITLE [--kind K] [--user]  make a card in draft
+    card new PROJECT --from FILE [--user]  title, kind, sections
+    card new PROJECT TITLE --adopt STAGE --user [--why TEXT]
                                        [--session [AGENT]]
     card list [--stage S] [--project P] [--kind K] [--tabs]
     card board                         counts and the review queue
@@ -33,7 +33,7 @@ Usage::
     card add KEY SECTION TEXT          add a bullet or criteria checkbox
     card attach KEY FILE               copy FILE to attachments, embed it
     card edit KEY SECTION N TEXT|--remove  replace or remove item N
-    card set KEY title|kind|type VALUE [--user]
+    card set KEY title|kind VALUE
     card link KEY PLAN|PR_URL
     card link KEY --session [AGENT]    record a Herdr agent's session
     card delete KEY --user
@@ -89,9 +89,6 @@ KINDS = {
     "research": "ends in a document or a decision",
 }
 DEFAULT_KIND = "build"
-# The kind of change a card is, named with a commit title's type word.
-# A card needs one to be made or moved to todo.
-WORK_TYPES = ["feat", "fix", "docs", "refactor", "chore", "research"]
 # The allowed moves and who may make them. When no single move reaches
 # a stage, card move takes the shortest chain, such as active to
 # in-review to done.
@@ -138,7 +135,6 @@ FIELDS = [
     "template_version",
     "project",
     "kind",
-    "work_type",
     "date_created",
     "plans",
     "prs",
@@ -157,35 +153,6 @@ SECTIONS = [
 WRITABLE_SECTIONS = [name for name in SECTIONS if name != "Log"]
 CRITERIA = "Acceptance Criteria"
 TITLE_LIMIT = 50
-# A hub board queue row on a 40-column phone screen keeps 27 columns
-# for the title, its cut mark included.
-BOARD_TITLE_WIDTH = 27
-# The title check accepts only these as a title's first word, since
-# code cannot tell a verb from other words. A title given with --user
-# may start with any word.
-VERBS = frozenset(
-    """
-    accept access add adopt alert align allow apply archive ask audit automate
-    back block build bump cache catch change check clean clear close collect
-    combine compare configure connect convert copy count cover create cut debug
-    decide define delete deploy describe design detect document download draft
-    drop edit enable end enforce evaluate explain explore export extend fetch
-    file fill filter find finish fix flag fold follow format free gate gather
-    generate give group guard hand handle harden help hide implement import
-    improve install investigate keep label land launch let limit link list load
-    lock log make mark match measure merge migrate move name note open order
-    package park pass pause pick pin plan point port prepare prevent print
-    process propose prune publish pull push put query queue read rebuild
-    recheck record redesign reduce reevaluate refactor refine refresh refuse
-    reject release reload remind remove rename reorder repair replace report
-    require rerun research reset resolve restore resume retire retry return
-    reuse review rewrite route run save scan schedule scope score search send
-    separate set share show shrink simplify skip slim sort speed split start
-    stop store support swap switch sync tag take teach tell test tidy time
-    track train trim try tune turn undo unify unlock update upgrade use
-    validate verify wait wake warn watch wire wrap write
-    """.split()
-)
 
 WIDTH = 60
 BOARD_WIDTH = 40
@@ -244,11 +211,6 @@ class Card:
         return str(read_fields(self.text).get("kind", ""))
 
     @property
-    def work_type(self) -> str:
-        """The card's work type, such as fix, or an empty string if none."""
-        return str(read_fields(self.text).get("work_type", ""))
-
-    @property
     def stage_date(self) -> str:
         """The day of the last move, else the creation date."""
         fields = read_fields(self.text)
@@ -265,13 +227,12 @@ class Card:
 class NewCard:
     """What card new needs to write a card, from its arguments or a file.
 
-    ``work_type`` is empty when none was given. ``sections`` maps a
-    name from WRITABLE_SECTIONS to the text under its heading.
+    ``sections`` maps a name from WRITABLE_SECTIONS to the text under
+    its heading.
     """
 
     title: str
     kind: str
-    work_type: str
     sections: dict[str, str]
 
 
@@ -311,17 +272,14 @@ class Rule:
 
 @dataclass(frozen=True)
 class TitleFinding:
-    """What one title check found, such as ``T4 label: "board:"``.
+    """What one title check found, such as ``T2 label: "board:"``.
 
-    card refuses a title with a finding that fails, and card check lists
-    those. A finding that does not fail only prints, such as T7's cut,
-    which shows the title as the phone board will cut it.
+    card refuses a title with any finding, and card check lists them.
     """
 
     rule: str
     name: str
     detail: str
-    fails: bool
 
     def __str__(self) -> str:
         """Return the finding as card prints it."""
@@ -380,7 +338,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--from",
         dest="from_file",
         metavar="FILE",
-        help="take the title, type, kind and sections from FILE,"
+        help="take the title, kind and sections from FILE,"
         " laid out below",
     )
     new.add_argument(
@@ -388,12 +346,6 @@ def build_parser() -> argparse.ArgumentParser:
         choices=list(KINDS),
         help="; ".join(f"{name} {meaning}" for name, meaning in KINDS.items())
         + f"; default {DEFAULT_KIND}",
-    )
-    new.add_argument(
-        "--type",
-        dest="work_type",
-        choices=WORK_TYPES,
-        help="the kind of change, needed unless FILE gives it",
     )
     new.add_argument(
         "--user",
@@ -494,15 +446,10 @@ def build_parser() -> argparse.ArgumentParser:
     add_author(edit)
     edit.set_defaults(run=run_edit)
 
-    set_ = commands.add_parser("set", help="change the title, kind or type")
+    set_ = commands.add_parser("set", help="change the title or kind")
     set_.add_argument("key")
-    set_.add_argument("field", choices=["title", "kind", "type"])
+    set_.add_argument("field", choices=["title", "kind"])
     set_.add_argument("value")
-    set_.add_argument(
-        "--user",
-        action="store_true",
-        help="the user chose this title; agents pass it only when told",
-    )
     set_.set_defaults(run=run_set)
 
     link = commands.add_parser(
@@ -626,10 +573,9 @@ def format_card_file_help() -> str:
     """
     return "\n".join(
         [
-            "--from FILE holds the title, type and kind, then sections:",
+            "--from FILE holds the title and kind, then sections:",
             "  ---",
             "  title: Retry failed uploads",
-            "  type: fix",
             "  kind: build",
             "  ---",
             "",
@@ -639,7 +585,6 @@ def format_card_file_help() -> str:
             "  ## Acceptance Criteria",
             "  - [ ] A failed upload retries.",
             "",
-            f"type is one of {', '.join(WORK_TYPES)}.",
             f"kind is optional, {DEFAULT_KIND} by default. Each of these",
             "sections may appear once, in any letter case:",
             f"  {', '.join(WRITABLE_SECTIONS)}",
@@ -651,9 +596,7 @@ def format_card_file_help() -> str:
 def run_new(args: argparse.Namespace, projects: Path) -> int:
     """Make a card in draft, or adopt work under way, and print its name.
 
-    A title or work type that fails check_title is refused. The
-    findings that only report, such as the board cut, print after the
-    name.
+    A title with a check_title finding is refused.
 
     Args:
         args: The parsed arguments.
@@ -666,8 +609,6 @@ def run_new(args: argparse.Namespace, projects: Path) -> int:
         raise CardError("give either a TITLE or --from FILE")
     if args.from_file is not None and args.kind:
         raise CardError("with --from, FILE gives the kind")
-    if args.from_file is not None and args.work_type:
-        raise CardError("with --from, FILE gives the type")
     if args.adopt and not args.user:
         raise CardError(
             "only the user adopts work already under way."
@@ -682,12 +623,8 @@ def run_new(args: argparse.Namespace, projects: Path) -> int:
     if args.from_file is not None:
         new_card = read_card_file(Path(args.from_file))
     else:
-        new_card = NewCard(
-            args.title, args.kind or DEFAULT_KIND, args.work_type or "", {}
-        )
-    findings = require_passing_title(
-        new_card.title.strip(), new_card.work_type, args.user
-    )
+        new_card = NewCard(args.title, args.kind or DEFAULT_KIND, {})
+    require_passing_title(new_card.title.strip())
     stage = args.adopt or STAGES[0]
     verb = "adopted by" if args.adopt else "by"
     entry = format_log_entry(
@@ -698,25 +635,22 @@ def run_new(args: argparse.Namespace, projects: Path) -> int:
         session = find_agent_session(args.session)
     path = create_card(projects, args.project, new_card, stage, entry, session)
     print(path.stem)
-    for finding in findings:
-        print(finding)
     return 0
 
 
 def read_card_file(path: Path) -> NewCard:
-    """Read a new card's title, type, kind and section text from a file.
+    """Read a new card's title, kind and section text from a file.
 
-    The file has frontmatter with ``title``, ``type`` and an optional
-    ``kind``, then ``##`` headings named as in WRITABLE_SECTIONS, in
-    any case. Any other heading, or text before the first heading, is
-    refused so that no line is dropped without notice. check_title
-    refuses a missing or unknown type later.
+    The file has frontmatter with ``title`` and an optional ``kind``,
+    then ``##`` headings named as in WRITABLE_SECTIONS, in any case.
+    Any other heading, or text before the first heading, is refused so
+    that no line is dropped without notice.
 
     Args:
         path: The file, laid out as ``card new --help`` shows.
 
     Returns:
-        The card's title, kind, work type and section text.
+        The card's title, kind and section text.
 
     Raises:
         CardError: The file cannot be read, has no title, names an
@@ -733,7 +667,6 @@ def read_card_file(path: Path) -> NewCard:
     kind = str(fields.get("kind") or DEFAULT_KIND)
     if kind not in KINDS:
         raise CardError(f"kind is one of {', '.join(KINDS)}")
-    work_type = str(fields.get("type", "")).strip()
     allowed = [name.lower() for name in WRITABLE_SECTIONS]
     seen: set[str] = set()
     lines = text.split("\n")
@@ -757,7 +690,7 @@ def read_card_file(path: Path) -> NewCard:
         for name in WRITABLE_SECTIONS
         if (body := read_section(text, name)) and body.strip()
     }
-    return NewCard(title, kind, work_type, sections)
+    return NewCard(title, kind, sections)
 
 
 def create_card(
@@ -777,7 +710,7 @@ def create_card(
     Args:
         projects: The vault's Projects folder.
         project: The project folder name, in any case.
-        new_card: The title, kind, work type and section text.
+        new_card: The title, kind and section text.
         stage: The first stage, draft unless the card is adopted.
         log_entry: The first Log line, without its date.
         session: A Herdr agent session to record, or None.
@@ -805,7 +738,6 @@ def create_card(
             title=new_card.title.strip(),
             project=folder.name,
             kind=new_card.kind,
-            work_type=new_card.work_type,
             today=today,
             stage=stage,
             log_entry=log_entry,
@@ -1291,8 +1223,7 @@ def check_move(
     # Workers start todo cards, so every move into todo is checked,
     # a staff pause included.
     if target == TODO:
-        work_type = str(read_fields(text).get("work_type", ""))
-        require_passing_title(read_title(text, key), work_type, user)
+        require_passing_title(read_title(text, key))
     # Only staff moves can fill a stage that has a limit; the user's
     # moves pass.
     limit = {ACTIVE: ACTIVE_LIMIT, IN_REVIEW: REVIEW_LIMIT}.get(target)
@@ -1544,10 +1475,9 @@ def find_item(
 
 
 def run_set(args: argparse.Namespace, projects: Path) -> int:
-    """Change a card's kind or work type, or its title and file name.
+    """Change a card's kind, or its title and file name.
 
-    A title that fails check_title with the card's work type is
-    refused, as in run_new.
+    A title with a check_title finding is refused, as in run_new.
 
     Args:
         args: The parsed arguments.
@@ -1563,17 +1493,7 @@ def run_set(args: argparse.Namespace, projects: Path) -> int:
         update_card(card, lambda text: set_field(text, "kind", args.value))
         print(f"{card.key} kind {args.value}")
         return 0
-    if args.field == "type":
-        if args.value not in WORK_TYPES:
-            raise CardError(f"type is one of {', '.join(WORK_TYPES)}")
-        update_card(
-            card, lambda text: set_field(text, "work_type", args.value)
-        )
-        print(f"{card.key} type {args.value}")
-        return 0
-    findings = require_passing_title(
-        args.value.strip(), card.work_type, args.user
-    )
+    require_passing_title(args.value.strip())
     name = BAD_NAME_CHARS_RE.sub("", args.value).strip()
     if not name:
         raise CardError("the title needs a letter or digit")
@@ -1588,8 +1508,6 @@ def run_set(args: argparse.Namespace, projects: Path) -> int:
     if new_path != card.path:
         os.rename(card.path, new_path)
     print(new_path.stem)
-    for finding in findings:
-        print(finding)
     return 0
 
 
@@ -2093,101 +2011,58 @@ def find_card_issues(card: Card) -> list[str]:
             issues.append(f"no {name} section")
     # Closed cards keep the titles they closed with.
     if card.stage not in (DONE, DROPPED):
-        findings = check_title(card.title, card.work_type, False)
-        issues += [str(finding) for finding in findings if finding.fails]
+        issues += [str(finding) for finding in check_title(card.title)]
     return issues
 
 
-def require_passing_title(
-    title: str, work_type: str, user: bool
-) -> list[TitleFinding]:
-    """Refuse a title that fails a rule, else return its findings.
+def require_passing_title(title: str) -> None:
+    """Refuse a title that breaks a rule of check_title.
 
     Args:
         title: The title without the key.
-        work_type: The card's work type, empty when it has none.
-        user: True when the user chose the title.
-
-    Returns:
-        The findings, which only report, such as T7's board cut.
 
     Raises:
-        CardError: A rule fails, with every failing finding listed.
+        CardError: A rule fails, with every finding listed.
     """
-    findings = check_title(title, work_type, user)
-    failing = [finding for finding in findings if finding.fails]
-    if failing:
-        raise CardError(format_title_refusal(failing))
-    return findings
-
-
-def format_title_refusal(failing: list[TitleFinding]) -> str:
-    """Return the refusal, one line per failing finding, then hints.
-
-    Args:
-        failing: The failing findings.
-
-    Returns:
-        The text that main prints after ``card: ``.
-    """
-    lines = ["title refused:", *(f"  {finding}" for finding in failing)]
-    if any(finding.rule != "T3" for finding in failing):
+    findings = check_title(title)
+    if findings:
+        lines = ["title refused:", *(f"  {finding}" for finding in findings)]
         lines.append(
-            f"Put a verb first, at most {TITLE_LIMIT} characters,"
-            ' such as "Retry failed uploads".'
+            f"Write it as a commit title of at most {TITLE_LIMIT}"
+            ' characters, such as "Retry failed uploads".'
         )
-    if any(finding.rule == "T3" for finding in failing):
-        lines.append(f"Work types: {', '.join(WORK_TYPES)}.")
-        lines.append(
-            "Give one with card new --type T, or card set KEY type T."
-        )
-    return "\n".join(lines)
+        raise CardError("\n".join(lines))
 
 
-def check_title(title: str, work_type: str, user: bool) -> list[TitleFinding]:
-    """Run the title rules T1 to T7 and return every finding.
+def check_title(title: str) -> list[TitleFinding]:
+    """Run the title rules T1 to T4 and return each one the title breaks.
 
-    A title reads like a commit title and its start fits a hub board
-    row. With user, an unknown first word only reports, but a missing
-    or unknown work type still fails.
+    A title reads like a commit title, with no label or key.
 
     Args:
         title: The title without the key.
-        work_type: The card's work type, empty when it has none.
-        user: True when the user chose the title.
 
     Returns:
-        The findings in rule order, T7's board cut last.
+        The findings in rule order, empty for a good title.
     """
     findings = []
     if len(title) > TITLE_LIMIT:
         detail = f"{len(title)} characters, at most {TITLE_LIMIT}"
-        findings.append(TitleFinding("T1", "length", detail, True))
+        findings.append(TitleFinding("T1", "length", detail))
     words = title.split(" ")
-    verb = words[0].rstrip(":,")
-    if verb.lower() not in VERBS:
-        detail = f'"{verb}" is not in the verb list'
-        if user:
-            detail += " (user verb)"
-        findings.append(TitleFinding("T2", "verb", detail, not user))
-    if not work_type:
-        findings.append(TitleFinding("T3", "type", "no work type", True))
-    elif work_type not in WORK_TYPES:
-        detail = f'"{work_type}" is not a work type'
-        findings.append(TitleFinding("T3", "type", detail, True))
     labels = [word for word in words[:3] if word.endswith(":")]
     if labels:
-        findings.append(TitleFinding("T4", "label", f'"{labels[0]}"', True))
+        findings.append(TitleFinding("T2", "label", f'"{labels[0]}"'))
     keys = find_title_keys(title)
     if keys:
         detail = ", ".join(f'"{key}"' for key in keys)
-        findings.append(TitleFinding("T5", "key", detail, True))
+        findings.append(TitleFinding("T3", "key", detail))
     form = []
     if title[:1].islower():
         form.append("starts with a lower-case letter")
     if title.endswith("."):
         form.append("ends with a period")
-    # A label's colon is a T4 finding only.
+    # A label's colon is a T2 finding only.
     body = " ".join(
         word.removesuffix(":") if index < 3 else word
         for index, word in enumerate(words)
@@ -2196,8 +2071,7 @@ def check_title(title: str, work_type: str, user: bool) -> list[TitleFinding]:
     if refused:
         form.append(f"holds {' '.join(refused)}")
     if form:
-        findings.append(TitleFinding("T6", "form", ", ".join(form), True))
-    findings.append(TitleFinding("T7", "cut", cut_for_board(title), False))
+        findings.append(TitleFinding("T4", "form", ", ".join(form)))
     return findings
 
 
@@ -2223,23 +2097,6 @@ def find_title_keys(title: str) -> list[str]:
         if card_key.fullmatch(word) or plan_file.fullmatch(f"{word}.md"):
             keys.append(word)
     return keys
-
-
-def cut_for_board(title: str) -> str:
-    """Return the title as a hub board queue row shows it on a phone.
-
-    The hub keeps the first 26 characters of a longer title and adds
-    ``~``, such as ``Retry a failed upload twic~``.
-
-    Args:
-        title: The title without the key.
-
-    Returns:
-        The title, cut to BOARD_TITLE_WIDTH columns.
-    """
-    if len(title) <= BOARD_TITLE_WIDTH:
-        return title
-    return title[: BOARD_TITLE_WIDTH - 1] + "~"
 
 
 def run_name(args: argparse.Namespace) -> int:
@@ -2283,7 +2140,6 @@ def render_card(
     title: str,
     project: str,
     kind: str,
-    work_type: str,
     today: str,
     stage: str,
     log_entry: str,
@@ -2296,7 +2152,6 @@ def render_card(
         title: The title for the first heading.
         project: The project folder name.
         kind: One of KINDS, or a template expression.
-        work_type: One of WORK_TYPES, or a template expression.
         today: The date, as YYYY-MM-DD.
         stage: The first stage.
         log_entry: The first Log line, without its date.
@@ -2314,7 +2169,6 @@ def render_card(
         "template_version": "1",
         "project": project,
         "kind": kind,
-        "work_type": work_type,
         "date_created": today,
         "plans": [],
         "prs": [],
@@ -2337,7 +2191,7 @@ def render_card(
 def render_template() -> str:
     """Return the Templater template that makes a card in Obsidian.
 
-    It asks for the project, title, kind and work type, picks the next
+    It asks for the project, title and kind, picks the next
     number from the card and plan notes under Projects and moves the
     note into the project folder. It takes no lock, so ``card check``
     finds a clash.
@@ -2349,7 +2203,6 @@ def render_template() -> str:
     file_rule = find_rule("card_file")
     constants = {
         "KINDS_JSON": KINDS,
-        "WORK_TYPES_JSON": WORK_TYPES,
         "CARD_KEY_MAKE_JSON": key_rule.make,
         "CARD_FILE_MAKE_JSON": file_rule.make,
         "CARD_FILE_RE_JSON": format_js_pattern(file_rule),
@@ -2363,7 +2216,6 @@ def render_template() -> str:
         title="<% title %>",
         project="<% project.name %>",
         kind="<% kind %>",
-        work_type="<% workType %>",
         today="<% today %>",
         stage=STAGES[0],
         log_entry=f"{STAGES[0]}: by the user in Obsidian",
@@ -2403,9 +2255,6 @@ const kinds = KINDS_JSON;
 const kind = await tp.system.suggester(
   Object.entries(kinds).map(([name, meaning]) => `${name}: ${meaning}`),
   Object.keys(kinds), true, "Kind");
-const workTypes = WORK_TYPES_JSON;
-const workType = await tp.system.suggester(
-  workTypes, workTypes, true, "Work type");
 const fill = (template, values) => template.replace(
   /\{([a-z_]+)(?:\|([a-z0-9]+))?\}/g, (slot, field, filter) => {
     const value = String(values[field]);
