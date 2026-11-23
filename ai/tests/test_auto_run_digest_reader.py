@@ -77,8 +77,13 @@ def ask_with_fake_model(
         fake = bin_folder / "opencode"
         fake.write_text(f"#!/bin/sh\necho '> build'\necho '{reply}'\n")
         fake.chmod(0o755)
-    # PATH holds only the fake, so a real opencode never runs.
-    env = {**os.environ, "PATH": str(bin_folder)}
+    # PATH holds only the fake, so a real opencode never runs. The state
+    # folder keeps ask's temporary files out of the real home.
+    env = {
+        **os.environ,
+        "PATH": str(bin_folder),
+        "XDG_STATE_HOME": str(tmp_path / "state"),
+    }
     return run_reader(
         "ask",
         "--model",

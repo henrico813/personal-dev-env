@@ -269,8 +269,17 @@ pub(crate) fn read_file_on_disk(root: &Path, file: &Path) -> Result<FileVersion,
 
 /// Returns true when `commit` is HEAD or one of its ancestors.
 pub(crate) fn is_ancestor_of_head(dir: &Path, commit: &CommitId) -> Result<bool, Error> {
+    is_ancestor(dir, commit.as_str(), "HEAD")
+}
+
+/// Returns true when HEAD is `commit` or one of its ancestors.
+pub(crate) fn is_head_in_history_of(dir: &Path, commit: &CommitId) -> Result<bool, Error> {
+    is_ancestor(dir, "HEAD", commit.as_str())
+}
+
+fn is_ancestor(dir: &Path, ancestor: &str, descendant: &str) -> Result<bool, Error> {
     let output = git_command(dir)
-        .args(["merge-base", "--is-ancestor", commit.as_str(), "HEAD"])
+        .args(["merge-base", "--is-ancestor", ancestor, descendant])
         .output()
         .map_err(command_error)?;
     match output.status.code() {

@@ -59,3 +59,18 @@ func StartRunner(rec Record, program string) Record {
 	}
 	return rec
 }
+
+// Calls start when rec has no live runner, such as one killed or lost on
+// reboot, so a late approval still runs. Callers hold the request lock.
+func EnsureRunner(rec Record, start func(Record) Record) Record {
+	if rec.RunnerPID == 0 || !ProcessAlive(rec.RunnerPID) {
+		return start(rec)
+	}
+	return rec
+}
+
+// Reports whether path is a file, not a folder, with any execute bit set.
+func IsExecutable(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir() && info.Mode()&0o111 != 0
+}

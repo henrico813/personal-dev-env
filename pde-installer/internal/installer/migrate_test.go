@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"pde-installer/internal/colorprofile"
+	"pde-installer/internal/fsutil"
 )
 
 // Migration must preserve existing settings and legacy vault paths.
@@ -30,7 +31,7 @@ func TestLegacyConfigMigratesSafely(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := journal.Commit(); err != nil {
+	if err := fsutil.CommitJournals(journal); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(directory, "config.json"))
@@ -76,7 +77,7 @@ func TestLegacyConfigRenamesOldSettingKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := journal.Commit(); err != nil {
+	if err := fsutil.CommitJournals(journal); err != nil {
 		t.Fatal(err)
 	}
 
@@ -110,7 +111,7 @@ func TestMigrationSavesSelectedDesktop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := journal.Commit(); err != nil {
+	if err := fsutil.CommitJournals(journal); err != nil {
 		t.Fatal(err)
 	}
 
@@ -133,7 +134,7 @@ func TestLegacyConfigPersistsFullProfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := journal.Commit(); err != nil {
+	if err := fsutil.CommitJournals(journal); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(path)
@@ -159,7 +160,7 @@ func TestLegacyConfigHandlesNull(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := journal.Commit(); err != nil {
+	if err := fsutil.CommitJournals(journal); err != nil {
 		t.Fatal(err)
 	}
 }
