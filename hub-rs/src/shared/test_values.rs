@@ -25,7 +25,7 @@ pub(crate) fn make_agent(name: &str, status: AgentStatus) -> Agent {
         state_seq: 1,
         folders: Vec::new(),
         machine: None,
-        go_to_tagged: false,
+        go_to: None,
     }
 }
 
