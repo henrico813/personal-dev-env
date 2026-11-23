@@ -37,15 +37,21 @@ getter without reading its body, so check each one yourself.
 
 ## A reported word
 
-`verb-first` fails a first word that is no English verb. A word that
-is a verb but not a common one, such as `screen`, is only reported,
-since it is often a noun in the name. A reported name passes the
-check, so your reading is all that stops a noun name from merging.
+`verb-first` fails a first word that is no English verb. It also
+fails a verb that the WordNet dictionary tags more often as a noun,
+such as `title` or `rows`, and a past or `-ing` form of an uncommon
+verb, such as `capped`, since `capped_lines` names a thing. A word on
+its list of common verbs, such as `stage`, always passes.
+
+Any other verb that is not a common one, such as `tool`, is only
+reported, since it may still be a noun in the name. A reported name
+passes the check, so your reading is all that stops a noun name from
+merging.
 
 To tell which a reported word is, read the name as a phrase. When
-the phrase names what the function returns, such as `screen_lines`,
-the word is a noun: rename it, such as `count_screen_lines`. Keep the
-name only when the word acts as a verb in it, such as `stage_files`,
+the phrase names what the function returns, such as `tool_paths`,
+the word is a noun: rename it, such as `list_tool_paths`. Keep the
+name only when the word acts as a verb in it, such as `reshape_rows`,
 and list it in your final message.
 
 ## Languages the check cannot read
