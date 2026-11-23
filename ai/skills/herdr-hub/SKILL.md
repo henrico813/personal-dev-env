@@ -282,9 +282,9 @@ vault. A hub never reports to a hub on another machine.
   keeps each of them.
 - You may release a draft to `todo` once it has a `- [ ]` line under
   Acceptance Criteria and its title passes `card`'s title rules; a
-  refusal says why. Never add criteria yourself to release a card; the
-  user sets them. Note each release as `references/hub-brief.md` says.
-  Only the user adopts work already under way or drops a card.
+  refused `card move` prints why. Never add criteria yourself to release
+  a card; the user sets them. Only the user adopts running work or drops
+  a card. Note each release as `references/hub-brief.md` says.
 - Two limits, each across every project: 8 cards in `active` and 6 in
   `in-review`, as `card board` shows. `card` refuses a move into a full
   stage unless the move has `--user`. While active has room, start the

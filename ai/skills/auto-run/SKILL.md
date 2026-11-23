@@ -117,12 +117,12 @@ The user's rules for every run:
    A card the user picks may be todo, active or in-review. A card the
    user wants that is still a draft stays out of `run.md`, since the
    check refuses a draft. You may release it (move it to todo) once it
-   has a `- [ ]` line under Acceptance Criteria and its title passes
-   `card`'s title rules, as `herdr-hub`'s Cards section says;
+   has a `- [ ]` line under Acceptance Criteria and its title passes the
+   `card` command's title rules, as `herdr-hub`'s Cards section says;
    `card move` refuses it otherwise. After a release, do steps 2 to 5
    again, so the card is listed, sorted, written to `run.md` and
-   checked. When you do not release it, name it and say why in the
-   briefing's Left out line.
+   checked. When you do not release it, name it and say why in the Left
+   out line of the briefing you send in step 6.
 6. Find out when the user is away, and each of the user's rules that
    ends at a set time, such as a model limit until a quota resets.
    Ask the user when you do not know. Then send the briefing, by
