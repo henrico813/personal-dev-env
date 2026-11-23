@@ -23,7 +23,7 @@ use crate::shared::review_session::{
 use crate::shared::user_feedback::UserFeedback;
 use crate::shared::{Error, ErrorCode};
 
-/// Returns the Feedback Requests for changed or conflicting comments and change
+/// Returns the Feedback Requests for changed comments and change
 /// requests, and resends noted ones with their IDs while User Notes wait.
 /// Refuses while a list waits, a write is unfinished, step 2 fails, or a
 /// committed or staged comment goes unasked. An empty list goes to the user
@@ -99,8 +99,8 @@ pub fn make_feedback_request_list(
     })
 }
 
-/// Returns a request for each comment that is changed since `base` or goes against
-/// a decision, and for each change request. Their IDs are not set yet.
+/// Returns a request for each comment that is changed since `base`, and for each
+/// change request. Their IDs are not set yet.
 fn find_requests(
     dir: &Path,
     root: &Path,
@@ -108,14 +108,8 @@ fn find_requests(
     change_requests: &[ChangeRequest],
 ) -> Result<Vec<FoundRequest>, Error> {
     let approvals = approvals::load(dir)?;
-    let changed = git::list_changed_files(dir, base)?;
-    let files: BTreeSet<&Path> = changed
-        .iter()
-        .map(PathBuf::as_path)
-        .chain(approvals.files())
-        .collect();
     let mut found = Vec::new();
-    for file in files {
+    for file in &git::list_changed_files(dir, base)? {
         if !comments::is_supported(file) {
             continue;
         }
@@ -253,11 +247,16 @@ fn find_reason(
     before: &FileComments,
     comment: &Comment,
 ) -> Option<RequestReason> {
+    // A comment the branch did not change stays out of its review, even one that
+    // goes against a decision, since every branch would ask about it. Step 2
+    // reports it instead.
+    if before.has_same(comment) {
+        return None;
+    }
     match approvals.compare(comment) {
-        DecisionMatch::Undecided if !before.has_same(comment) => Some(RequestReason::New),
-        DecisionMatch::Undecided | DecisionMatch::Approved => None,
+        DecisionMatch::Undecided => Some(RequestReason::New),
+        DecisionMatch::Approved => None,
         DecisionMatch::WasCut => Some(RequestReason::WasCut),
-        // A changed comment would already have failed step 2, so this one has not changed.
         DecisionMatch::DiffersFromApproved => Some(RequestReason::DiffersFromApproved),
     }
 }

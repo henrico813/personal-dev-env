@@ -3,9 +3,9 @@
 
 A card is one piece of work the user wants, like a GitHub issue. A plan
 made from it is like a pull request. Each card is one note,
-``500 Zettelkasten/Projects/<Project>/<KEY> <Title>.md``, with a key
-such as PDEV-516 built from the project code in the project folder's
-AGENTS.md. Done and dropped cards keep older keys such as PDEV-KB-012,
+``<KEY> <Title>.md``, in its project's folder in the vault. The key,
+such as DEMO-41, starts with the project code from that folder's
+AGENTS.md. Done and dropped cards keep older keys such as DEMO-KB-012,
 which card still reads; ``card rekey`` gives open ones new keys. The
 key and the file name follow the naming rules in
 ``chezmoi/dot_config/pde/names.toml``, installed as
@@ -89,14 +89,12 @@ KINDS = {
     "research": "ends in a document or a decision",
 }
 DEFAULT_KIND = "build"
-# The kind of change a card is, as in a commit title. check_title's T3
-# rule needs one.
+# The kind of change a card is, named with a commit title's type word.
+# A card needs one to be made or moved to todo.
 WORK_TYPES = ["feat", "fix", "docs", "refactor", "chore", "research"]
-# Moving a card chains these moves, through `find_move_chain`, when no
-# single one reaches the stage, and refuses a stage no chain reaches,
-# so finishing a card is final and follow-up work gets a new card.
-# "user" moves need --user, and "staff" moves take it when the user
-# makes them.
+# The allowed moves and who may make them. When no single move reaches
+# a stage, card move takes the shortest chain, such as active to
+# in-review to done.
 MOVES = {
     (DRAFT, TODO): "user",
     (TODO, DRAFT): "staff",
@@ -162,8 +160,9 @@ TITLE_LIMIT = 50
 # A hub board queue row on a 40-column phone screen keeps 27 columns
 # for the title, its cut mark included.
 BOARD_TITLE_WIDTH = 27
-# Words a title may start with, for rule T2. With --user, any other
-# first word only reports.
+# The title check accepts only these as a title's first word, since
+# code cannot tell a verb from other words. A title given with --user
+# may start with any word.
 VERBS = frozenset(
     """
     accept access add adopt alert align allow apply archive ask audit automate
@@ -246,7 +245,7 @@ class Card:
 
     @property
     def work_type(self) -> str:
-        """The work_type field, or an empty string when it is missing."""
+        """The card's work type, such as fix, or an empty string if none."""
         return str(read_fields(self.text).get("work_type", ""))
 
     @property
@@ -264,7 +263,7 @@ class Card:
 
 @dataclass(frozen=True)
 class NewCard:
-    """The title, kind, work type and section text of a new card.
+    """What card new needs to write a card, from its arguments or a file.
 
     ``work_type`` is empty when none was given. ``sections`` maps a
     name from WRITABLE_SECTIONS to the text under its heading.
@@ -312,9 +311,11 @@ class Rule:
 
 @dataclass(frozen=True)
 class TitleFinding:
-    """One title rule's result, such as ``T4 label: "board:"``.
+    """What one title check found, such as ``T4 label: "board:"``.
 
-    A finding that does not fail only reports, such as T7's board cut.
+    card refuses a title with a finding that fails, and card check lists
+    those. A finding that does not fail only prints, such as T7's cut,
+    which shows the title as the phone board will cut it.
     """
 
     rule: str

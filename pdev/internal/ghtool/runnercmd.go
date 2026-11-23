@@ -28,15 +28,6 @@ func startDetachedRunner(rec approval.Record) approval.Record {
 	return approval.StartRunner(rec, path)
 }
 
-// Restarts a runner that was killed or lost on reboot, so a late approval
-// still runs. Callers hold the request lock.
-func ensureRunner(rec approval.Record) approval.Record {
-	if rec.RunnerPID == 0 || !approval.ProcessAlive(rec.RunnerPID) {
-		return runnerStart(rec)
-	}
-	return rec
-}
-
 // Waits for an answer, then goes through the same locked path as the
 // foreground writer, so gh runs at most once whichever process gets there first.
 func runnerMain(id string) int {
