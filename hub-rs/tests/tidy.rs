@@ -299,11 +299,11 @@ fn run_clean_keeps_tab_of_new_agent() {
 /// or the user loses the editor or program running in it.
 #[test]
 fn run_clean_closes_only_quiet_shell_tabs() {
-    let user_pane = || vec!["w1:p-user".to_owned()];
+    let make_user_pane = || vec!["w1:p-user".to_owned()];
     let cases = [
         (
             "quiet-shell",
-            user_pane(),
+            make_user_pane(),
             Vec::new(),
             vec!["closed demo-kb-001-impl: DEMO-KB-001 done"],
             vec!["w1:t-demo-kb-001-impl"],
@@ -311,7 +311,7 @@ fn run_clean_closes_only_quiet_shell_tabs() {
         (
             "editor-in-front",
             Vec::new(),
-            user_pane(),
+            make_user_pane(),
             vec![
                 "kept demo-kb-001-impl: its tab holds other work",
                 "nothing to close",

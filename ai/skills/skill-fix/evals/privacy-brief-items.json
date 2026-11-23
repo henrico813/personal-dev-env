@@ -1,0 +1,16 @@
+{
+  "id": "privacy-brief-items",
+  "source": "a skill review that found the steps for filling in the privacy brief hard to follow",
+  "rule": "Show the diff, then commit",
+  "correction": true,
+  "prompt": "You saved a fix to the garden-log skill as a patch file, wrote its message file and reset the fix worktree. You are about to start the privacy reviewer from the pull-request skill's Guardrail 5. Its brief has four items: the diff, the commit log, the branch name, and the PR title and body. Reply with only what you give the reviewer for each item, and which steps of the guardrail you skip.",
+  "pass": [
+    "patch",
+    "branch"
+  ],
+  "judge": [
+    "Does the answer give the patch file's added lines for item 1, the message file for item 2, keep the branch name for item 3, skip item 4, and skip the guardrail's Testing line, amend step and term scan?"
+  ],
+  "good": "Item 1: the added lines of the patch file. Item 2: the message file. Item 3: the branch name, kept as it is. Item 4: skipped, since the tool writes the fix pull request's text itself. I skip the Testing line, the amend step and the term scan, since skill-fix commit runs the scan.",
+  "bad": "I give the reviewer the full PR diff against main and the fix pull request's title and body, and I run the term scan myself and add a Testing line before the commit."
+}

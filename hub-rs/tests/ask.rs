@@ -18,7 +18,7 @@ const QUESTION: &str = "## Deploy tonight?\n\
                         If no reply: B.\n";
 
 /// Doubles with the card `DEMO-KB-007`, which shows `note`.
-fn tools_with_card(note: CardNote) -> TestTools {
+fn make_tools_with_card(note: CardNote) -> TestTools {
     let mut test_tools = TestTools::new();
     test_tools
         .cards
@@ -27,8 +27,8 @@ fn tools_with_card(note: CardNote) -> TestTools {
     test_tools
 }
 
-/// The key of the card in `tools_with_card`.
-fn demo_key() -> CardKey {
+/// The key of the card in `make_tools_with_card`.
+fn make_demo_key() -> CardKey {
     "DEMO-KB-007".parse().unwrap()
 }
 
@@ -38,9 +38,9 @@ fn demo_key() -> CardKey {
 /// mark must follow the item, since the mark's text finds it.
 #[test]
 fn run_ask_adds_question_then_marks_card() {
-    let test_tools = tools_with_card(CardNote::default());
+    let test_tools = make_tools_with_card(CardNote::default());
 
-    let outcome = run_ask(&test_tools.tools(), &demo_key(), QUESTION).unwrap();
+    let outcome = run_ask(&test_tools.tools(), &make_demo_key(), QUESTION).unwrap();
 
     assert_eq!(outcome.lines, ["DEMO-KB-007 asks 'Deploy tonight?'"]);
     assert_eq!(
@@ -63,10 +63,10 @@ fn run_ask_adds_question_then_marks_card() {
 /// card never holds half a question.
 #[test]
 fn run_ask_refuses_incomplete_question() {
-    let test_tools = tools_with_card(CardNote::default());
+    let test_tools = make_tools_with_card(CardNote::default());
     let text = "## Deploy?\nDeploy now?\n- A. Yes\n- B. No\nIf no reply: B.\n";
 
-    let error = run_ask(&test_tools.tools(), &demo_key(), text).unwrap_err();
+    let error = run_ask(&test_tools.tools(), &make_demo_key(), text).unwrap_err();
 
     let HubError::NotDone(message) = error else {
         panic!("expected NotDone, got {error:?}");
@@ -80,12 +80,12 @@ fn run_ask_refuses_incomplete_question() {
 /// names the question that already waits.
 #[test]
 fn run_ask_refuses_card_already_waiting() {
-    let test_tools = tools_with_card(CardNote {
+    let test_tools = make_tools_with_card(CardNote {
         needs_you: Some("Which bucket?".to_owned()),
         ..CardNote::default()
     });
 
-    let error = run_ask(&test_tools.tools(), &demo_key(), QUESTION).unwrap_err();
+    let error = run_ask(&test_tools.tools(), &make_demo_key(), QUESTION).unwrap_err();
 
     let HubError::NotDone(message) = error else {
         panic!("expected NotDone, got {error:?}");
@@ -105,7 +105,7 @@ fn run_ask_refuses_card_already_waiting() {
 /// card waiting.
 #[test]
 fn run_answer_moves_question_to_decisions() {
-    let test_tools = tools_with_card(CardNote {
+    let test_tools = make_tools_with_card(CardNote {
         needs_you: Some("Deploy tonight?".to_owned()),
         open_questions: vec![
             vec!["Is the cache needed?".to_owned()],
@@ -119,7 +119,7 @@ fn run_answer_moves_question_to_decisions() {
         ..CardNote::default()
     });
 
-    let outcome = run_answer(&test_tools.tools(), &demo_key(), "A").unwrap();
+    let outcome = run_answer(&test_tools.tools(), &make_demo_key(), "A").unwrap();
 
     assert_eq!(outcome.lines, ["DEMO-KB-007 answered 'Deploy tonight?': A"]);
     assert_eq!(
@@ -145,12 +145,12 @@ fn run_answer_refuses_empty_or_multiline_answer() {
         ("newline", "A\n- 2026-11-19 needs-you: injected?"),
     ];
     for (name, answer) in cases {
-        let test_tools = tools_with_card(CardNote {
+        let test_tools = make_tools_with_card(CardNote {
             needs_you: Some("Deploy tonight?".to_owned()),
             ..CardNote::default()
         });
 
-        let error = run_answer(&test_tools.tools(), &demo_key(), answer).unwrap_err();
+        let error = run_answer(&test_tools.tools(), &make_demo_key(), answer).unwrap_err();
 
         let HubError::NotDone(message) = error else {
             panic!("{name}: expected NotDone, got {error:?}");

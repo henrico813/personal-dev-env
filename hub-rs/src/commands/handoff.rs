@@ -230,7 +230,7 @@ pub fn run_adopt(
         },
     };
     events::append_event(run, &adopted)?;
-    let mut outcome = Outcome::line(format!(
+    let mut outcome = Outcome::from_line(format!(
         "adopted {}; hub clean closes its tab once it is idle, then hub next --start-reviews starts {}",
         old_hub.name,
         name_reviewer(&old_hub.name)

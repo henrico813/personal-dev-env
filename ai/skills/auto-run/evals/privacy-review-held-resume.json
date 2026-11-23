@@ -1,0 +1,16 @@
+{
+  "id": "privacy-review-held-resume",
+  "source": "a skill review that found the held pull request steps unclear on which push the privacy review comes before",
+  "rule": "References",
+  "correction": true,
+  "prompt": "You are a new session in an auto run. A held pull request's parent just merged, and you set PARENT to the default branch with `keep`. Its branch was pushed before. Reply with only the steps you take next, in order, up to and including running ship.sh, and which file tells you how.",
+  "pass": [
+    "privacy",
+    "pr-loop"
+  ],
+  "judge": [
+    "Does the answer get a privacy review before build.md's Push a later round, and a new one before ship.sh, and name pr-loop.md as the file that says how?"
+  ],
+  "good": "references/pr-loop.md gives the steps.\n1. Run build.md's Carry a parent's commit to a child.\n2. Get a privacy review with \"$REMOTE/$BR\" as BASE, and fix each hit until it reports 0 hits.\n3. Run build.md's Push a later round.\n4. Try the change and add the result to Testing and `tested`.\n5. Get a new privacy review with the same BASE.\n6. Run bash <PR folder>/ship.sh.",
+  "bad": "1. Carry the parent's commit and push the later round.\n2. Try it and update Testing.\n3. Run ship.sh, then get a privacy review of the open pull request."
+}

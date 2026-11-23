@@ -525,7 +525,7 @@ fn record_news(news: &News) -> Option<EventKind> {
 
 /// Returns the one line to print, as text or as JSON.
 fn make_outcome(news: &News, hub_tokens: Option<u64>, json: bool) -> Outcome {
-    Outcome::line(if json {
+    Outcome::from_line(if json {
         format_news_json(news, hub_tokens)
     } else {
         format_news_line(news, hub_tokens)
@@ -641,16 +641,16 @@ mod tests {
             announced: [("docs-fix".to_owned(), 100)].into(),
             ..Memory::default()
         };
-        let report = |mtime_ns, seconds| ReportFile {
+        let make_report_file = |mtime_ns, seconds| ReportFile {
             name: "docs-fix".to_owned(),
             mtime_ns,
             age: Duration::from_secs(seconds),
         };
         let cases = [
-            ("announced-same-version", report(100, 60), false),
-            ("rewritten-after-announce", report(200, 60), true),
-            ("younger-than-two-seconds", report(200, 1), false),
-            ("two-seconds-old", report(200, 2), true),
+            ("announced-same-version", make_report_file(100, 60), false),
+            ("rewritten-after-announce", make_report_file(200, 60), true),
+            ("younger-than-two-seconds", make_report_file(200, 1), false),
+            ("two-seconds-old", make_report_file(200, 2), true),
         ];
 
         for (case_name, report, expected) in cases {
@@ -676,7 +676,7 @@ mod tests {
             due: bool,
         }
         let now: Zoned = "2026-11-11T22:14:00+00:00[UTC]".parse().unwrap();
-        let mark = |at: &str, state_seq: u64| MinuteMark {
+        let make_mark = |at: &str, state_seq: u64| MinuteMark {
             at: at.parse().unwrap(),
             state_seqs: [("docs-fix".to_owned(), state_seq)].into(),
             read_count: 3,
@@ -691,25 +691,25 @@ mod tests {
             },
             Case {
                 name: "state-changed-within-minute",
-                mark: Some(mark("2026-11-11T22:13:30Z", 0)),
+                mark: Some(make_mark("2026-11-11T22:13:30Z", 0)),
                 read_count: 3,
                 due: false,
             },
             Case {
                 name: "nothing-changed",
-                mark: Some(mark("2026-11-11T22:12:00Z", 1)),
+                mark: Some(make_mark("2026-11-11T22:12:00Z", 1)),
                 read_count: 3,
                 due: false,
             },
             Case {
                 name: "state-changed",
-                mark: Some(mark("2026-11-11T22:12:00Z", 0)),
+                mark: Some(make_mark("2026-11-11T22:12:00Z", 0)),
                 read_count: 3,
                 due: true,
             },
             Case {
                 name: "report-read",
-                mark: Some(mark("2026-11-11T22:12:00Z", 1)),
+                mark: Some(make_mark("2026-11-11T22:12:00Z", 1)),
                 read_count: 4,
                 due: true,
             },

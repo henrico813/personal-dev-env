@@ -39,7 +39,7 @@ pub fn run_go(tools: &Tools<'_>) -> Result<Outcome, HubError> {
         return Err(HubError::NotDone("no hub is running".to_owned()));
     };
     tools.herdr.focus_agent(&next_hub.name)?;
-    Ok(Outcome::line(format!("showing {}", next_hub.name)))
+    Ok(Outcome::from_line(format!("showing {}", next_hub.name)))
 }
 
 /// Moves the desk, when it is open, and every hub's workspace into one
@@ -49,7 +49,10 @@ pub fn run_gather(tools: &Tools<'_>) -> Result<Outcome, HubError> {
     let Some(block) = gather_hubs(tools)? else {
         return Err(HubError::NotDone("no hub is running".to_owned()));
     };
-    Ok(Outcome::line(format!("at the top: {}", block.join(" "))))
+    Ok(Outcome::from_line(format!(
+        "at the top: {}",
+        block.join(" ")
+    )))
 }
 
 /// Does what `hub gather` does, for a command that just started or
@@ -80,7 +83,7 @@ pub fn run_desk(tools: &Tools<'_>, home: &Path) -> Result<Outcome, HubError> {
     let block = list_top_block(&hubs, Some(&desk_id));
     move_block_to_top(tools, &block, &workspaces)?;
     show_go_to_list(tools, &agents, &hubs, Some(&desk_id))?;
-    Ok(Outcome::line(line))
+    Ok(Outcome::from_line(line))
 }
 
 /// Tags each hub on this machine that lost its tag, shows the desk row
@@ -134,7 +137,7 @@ pub(crate) fn restore_other_machines(tools: &Tools<'_>) -> Vec<String> {
     };
     let mut warnings = Vec::new();
     for label in labels {
-        if let Err(error) = restore_hubs_and_desk(tools.herdr.on_machine(&label).as_ref()) {
+        if let Err(error) = restore_hubs_and_desk(tools.herdr.clone_for_machine(&label).as_ref()) {
             warnings.push(format!("could not restore the sidebar on {label}: {error}"));
         }
     }
@@ -212,16 +215,16 @@ fn gather_hubs(tools: &Tools<'_>) -> Result<Option<Vec<String>>, HubError> {
 
 /// Makes the desk workspace in `home` and returns its ID.
 fn make_desk(tools: &Tools<'_>, home: &Path) -> Result<String, HubError> {
-    let place = |label: &str| NewPlace {
+    let make_place = |label: &str| NewPlace {
         label: label.to_owned(),
         cwd: home.to_owned(),
         env: Vec::new(),
     };
-    let desk = tools.herdr.create_workspace(&place(DESK_LABEL))?;
+    let desk = tools.herdr.create_workspace(&make_place(DESK_LABEL))?;
     tools.herdr.run_in_pane(&desk.root_pane_id, BOARD_COMMAND)?;
     tools
         .herdr
-        .create_tab(&desk.workspace_id, &place("shell"))?;
+        .create_tab(&desk.workspace_id, &make_place("shell"))?;
     Ok(desk.workspace_id)
 }
 
