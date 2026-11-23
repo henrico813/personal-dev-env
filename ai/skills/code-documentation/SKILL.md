@@ -418,12 +418,12 @@ Act on each failure by its rule:
 - Any other rule: rename the function or fix the comment.
 
 `verb-first` fails a new name whose first word is no verb, such as
-`path`, mostly a noun, such as `title`, or a past form that describes
-a thing, such as `capped`. It only reports another uncommon verb,
-such as `tool`, which may be a noun in the name. `restated-name` is
-reported, never failed. Rename the function when its word is a noun,
-or when the call fails the caller test in "Function names". Otherwise
-list it in your final message.
+`path`, is mostly a noun, such as `title`, or is a past or `-ing` form
+of an uncommon verb, one not on its list of common verbs, such as
+`capped`. It only reports any other uncommon verb, such as `tool`, which
+may be a noun in the name. `restated-name` is only reported. Rename the
+function when its word is a noun, or when the call fails the caller test
+in "Function names". Otherwise list it in your final message.
 
 Run the check again until `result.failures` is empty. `next` is then
 `make_feedback_request_list`, even when findings are reported. Never
