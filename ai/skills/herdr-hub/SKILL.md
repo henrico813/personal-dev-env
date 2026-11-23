@@ -280,8 +280,8 @@ vault. A hub never reports to a hub on another machine.
   card. A short chat holds none. A card is one piece of work, so
   sessions on the same work share one card, and its `sessions` list
   keeps each of them.
-- You may release a draft to `todo` once its Acceptance Criteria section
-  has a `- [ ]` line and its title passes the title rules; a refused
+- You may release a draft to `todo` once `card` finds a `- [ ]` line
+  in its Acceptance Criteria section and accepts its title; a refused
   `card move` says why. Never add criteria yourself to release a card;
   the user sets them. Note each release as `references/hub-brief.md`
   says. Only the user adopts work already under way or drops a card.
