@@ -61,7 +61,7 @@ func TestOpenCodeMemcapLauncher(t *testing.T) {
 
 func writeMemcapLauncher(t *testing.T, home string) string {
 	t.Helper()
-	source := filepath.Join(repoRoot(t), "chezmoi", "dot_local", "bin", "executable_opencode")
+	source := filepath.Join(findRepoRoot(t), "chezmoi", "dot_local", "bin", "executable_opencode")
 	data, err := os.ReadFile(source)
 	if err != nil {
 		t.Fatal(err)

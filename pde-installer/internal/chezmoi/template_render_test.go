@@ -179,9 +179,9 @@ func TestIgnoreListCoversEveryDesktopFile(t *testing.T) {
 	}
 	files := map[string]string{}
 	found := map[string]bool{}
-	for _, target := range managedSourceTargets(t) {
+	for _, target := range listManagedSourceTargets(t) {
 		for root, owner := range owners {
-			if pathsOverlap(target, root) {
+			if doPathsOverlap(target, root) {
 				files[target] = owner
 				found[root] = true
 			}
@@ -234,7 +234,7 @@ func TestUpdateTimerUsesConfiguredInterval(t *testing.T) {
 		"dot_config/systemd/user/pde-update.timer.tmpl",
 		data,
 		"tokyo-night",
-		repoRoot(t),
+		findRepoRoot(t),
 	)
 
 	if err != nil {
@@ -383,7 +383,7 @@ func renderPathList(t *testing.T, name, profileName, desktop string) []string {
 		profile.Desktop(desktop),
 		time.Hour,
 	)
-	text, err := renderTemplateWithData(t, name, data, "tokyo-night", repoRoot(t))
+	text, err := renderTemplateWithData(t, name, data, "tokyo-night", findRepoRoot(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -480,7 +480,7 @@ func TestClientGetsOnlyAllowedSkills(t *testing.T) {
 func TestSharedWorkflowMappings(t *testing.T) {
 	text := renderProfileTemplate(t, ".chezmoiexternal.toml.tmpl", "full")
 	for _, target := range []string{".config/opencode/AGENTS.md", ".codex/AGENTS.md", ".pi/agent/AGENTS.md", ".claude/CLAUDE.md"} {
-		mapping := fmt.Sprintf("[%q]\ntype = \"file\"\nurl = 'file://%s/ai/AGENTS.md'", target, repoRoot(t))
+		mapping := fmt.Sprintf("[%q]\ntype = \"file\"\nurl = 'file://%s/ai/AGENTS.md'", target, findRepoRoot(t))
 		if strings.Count(text, mapping) != 1 {
 			t.Fatalf("mapping %s does not point once to ai/AGENTS.md", target)
 		}
@@ -493,7 +493,7 @@ func TestSharedWorkflowMappings(t *testing.T) {
 }
 
 func TestGitConfigEnablesDelta(t *testing.T) {
-	path := filepath.Join(repoRoot(t), "chezmoi", "dot_config", "pde", "gitconfig")
+	path := filepath.Join(findRepoRoot(t), "chezmoi", "dot_config", "pde", "gitconfig")
 	tests := map[string]string{
 		"core.pager":             "delta",
 		"interactive.diffFilter": "delta --color-only",
@@ -675,7 +675,7 @@ export GOOG_API_KEY=demo-key
 export GOOG_MODEL=qwen3.8
 `)
 
-	command := agentZshCommand(home, `vibe run --key demo --model goog/qwen3.8
+	command := newAgentZshCommand(home, `vibe run --key demo --model goog/qwen3.8
 print -r -- "${GOOG_BASE_URL-}:${GOOG_API_KEY-}:${GOOG_MODEL-}" >"$HOME/vibe-caller"`)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("vibe failed: %v\n%s", err, output)
@@ -944,7 +944,7 @@ func readHomeFile(t *testing.T, home, name string) string {
 	return string(data)
 }
 
-func agentZshCommand(home, script string) *exec.Cmd {
+func newAgentZshCommand(home, script string) *exec.Cmd {
 	command := exec.Command("zsh", "-c", script)
 	configureZshCommand(command, home)
 	return command
@@ -979,20 +979,20 @@ func writeOpenCodeZshRuntime(t *testing.T, home string) {
 	writeApplyFile(t, filepath.Join(home, ".zshenv"), renderProfileTemplate(t, "dot_zshenv.tmpl", "full"))
 	writeApplyFile(t, filepath.Join(home, ".zshrc"), renderProfileTemplate(t, "dot_zshrc.tmpl", "full"))
 	for _, plugin := range []string{"colored-man-pages", "command-not-found", "git", "git-extras", "node"} {
-		writeApplyFile(t, zshPluginPath(home, "ohmyzsh/plugins/"+plugin, plugin+".plugin.zsh"), "")
+		writeApplyFile(t, joinZshPluginPath(home, "ohmyzsh/plugins/"+plugin, plugin+".plugin.zsh"), "")
 	}
 	for _, path := range []string{
-		zshPluginPath(home, "powerlevel10k", "powerlevel10k.zsh-theme"),
-		zshPluginPath(home, "zsh-z", "zsh-z.plugin.zsh"),
-		zshPluginPath(home, "zsh-autosuggestions", "zsh-autosuggestions.zsh"),
-		zshPluginPath(home, "zsh-history-substring-search", "zsh-history-substring-search.zsh"),
-		zshPluginPath(home, "zsh-syntax-highlighting", "zsh-syntax-highlighting.zsh"),
+		joinZshPluginPath(home, "powerlevel10k", "powerlevel10k.zsh-theme"),
+		joinZshPluginPath(home, "zsh-z", "zsh-z.plugin.zsh"),
+		joinZshPluginPath(home, "zsh-autosuggestions", "zsh-autosuggestions.zsh"),
+		joinZshPluginPath(home, "zsh-history-substring-search", "zsh-history-substring-search.zsh"),
+		joinZshPluginPath(home, "zsh-syntax-highlighting", "zsh-syntax-highlighting.zsh"),
 	} {
 		writeApplyFile(t, path, "")
 	}
 }
 
-func zshPluginPath(home, plugin, file string) string {
+func joinZshPluginPath(home, plugin, file string) string {
 	return filepath.Join(home, ".local", "share", "zsh", "plugins", filepath.FromSlash(plugin), file)
 }
 
@@ -1034,7 +1034,7 @@ func TestColorDataHasCompletePalettes(t *testing.T) {
 	if !ok {
 		t.Fatal("colorProfiles is not an object")
 	}
-	wantProfiles := colorprofile.All()
+	wantProfiles := colorprofile.List()
 	if len(profiles) != len(wantProfiles) {
 		t.Fatalf("colorProfiles count = %d, want %d", len(profiles), len(wantProfiles))
 	}
@@ -1100,7 +1100,7 @@ func TestColorTemplatesRenderEveryProfile(t *testing.T) {
 		"dot_config/nvim/lua/plugins/colorscheme.lua.tmpl",
 		"dot_config/nvim/lua/plugins/ui.lua.tmpl",
 	}
-	profiles := colorprofile.All()
+	profiles := colorprofile.List()
 	for _, name := range templates {
 		t.Run(name, func(t *testing.T) {
 			outputs := make(map[[32]byte]string)
@@ -1122,7 +1122,7 @@ func TestColorTemplatesRenderEveryProfile(t *testing.T) {
 }
 
 func TestPowerlevelUsesRGBColors(t *testing.T) {
-	for _, profile := range colorprofile.All() {
+	for _, profile := range colorprofile.List() {
 		path := filepath.Join(t.TempDir(), ".p10k.zsh")
 		text, err := renderConfiguredTemplate(t, "dot_p10k.zsh.tmpl", "full", string(profile))
 		if err != nil {
@@ -1539,7 +1539,7 @@ func renderTemplate(t *testing.T, name, profile string) (string, error) {
 
 func renderConfiguredTemplate(t *testing.T, name, profile, colorProfile string) (string, error) {
 	t.Helper()
-	return renderTemplateForCheckout(t, name, profile, colorProfile, repoRoot(t))
+	return renderTemplateForCheckout(t, name, profile, colorProfile, findRepoRoot(t))
 }
 
 func renderTemplateForCheckout(t *testing.T, name, profileName, colorProfile, checkout string) (string, error) {
@@ -1561,7 +1561,7 @@ func renderTemplateForCheckout(t *testing.T, name, profileName, colorProfile, ch
 // Renders a template with pdeData, the installer's --override-data JSON.
 func renderTemplateWithData(t *testing.T, name, pdeData, colorProfile, checkout string) (string, error) {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), "chezmoi", name))
+	data, err := os.ReadFile(filepath.Join(findRepoRoot(t), "chezmoi", name))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1611,7 +1611,7 @@ func renderTemplateWithData(t *testing.T, name, pdeData, colorProfile, checkout 
 
 func loadTemplateData(t *testing.T) map[string]any {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), "chezmoi", ".chezmoidata.json"))
+	data, err := os.ReadFile(filepath.Join(findRepoRoot(t), "chezmoi", ".chezmoidata.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1626,7 +1626,7 @@ type templateError struct{ message string }
 
 func (e *templateError) Error() string { return e.message }
 
-func repoRoot(t *testing.T) string {
+func findRepoRoot(t *testing.T) string {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

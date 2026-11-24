@@ -32,7 +32,7 @@ func TestExplicitProfileIsSelected(t *testing.T) {
 }
 
 func TestSavedProfileIsLoaded(t *testing.T) {
-	home := profileHome(t, `{"profile":"terminal"}`)
+	home := makeProfileHome(t, `{"profile":"terminal"}`)
 	got, err := resolveProfile(home, "", installProfile)
 	if err != nil || got != "terminal" {
 		t.Fatalf("resolveProfile() = %q, %v", got, err)
@@ -48,7 +48,7 @@ func TestMissingProfileBlocksInstall(t *testing.T) {
 
 func TestLegacyInstallsUseFull(t *testing.T) {
 	tests := map[string]func(*testing.T) string{
-		"config with install path": func(t *testing.T) string { return profileHome(t, `{"install_path":"/repo"}`) },
+		"config with install path": func(t *testing.T) string { return makeProfileHome(t, `{"install_path":"/repo"}`) },
 		"legacy paths file": func(t *testing.T) string {
 			home := t.TempDir()
 			writeProfileFile(t, filepath.Join(home, ".config", "pde", "paths.env"), "PDE_MAIN_VAULT=/vault\n")
@@ -66,14 +66,14 @@ func TestLegacyInstallsUseFull(t *testing.T) {
 }
 
 func TestProfilelessConfigRequiresRepair(t *testing.T) {
-	_, err := resolveProfile(profileHome(t, `{}`), "", readProfile)
+	_, err := resolveProfile(makeProfileHome(t, `{}`), "", readProfile)
 	if err == nil || !strings.Contains(err.Error(), "has no profile") {
 		t.Fatalf("resolveProfile() error = %v", err)
 	}
 }
 
 func TestInvalidSavedProfileIsRejected(t *testing.T) {
-	home := profileHome(t, `{"profile":"small"}`)
+	home := makeProfileHome(t, `{"profile":"small"}`)
 	_, err := resolveProfile(home, "", readProfile)
 	if err == nil || !strings.Contains(err.Error(), `invalid profile "small"`) {
 		t.Fatalf("resolveProfile() error = %v", err)
@@ -91,7 +91,7 @@ func TestExplicitSelectionsOverrideSaved(t *testing.T) {
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			home := profileHome(t, `{"profile":"`+test.saved+`"}`)
+			home := makeProfileHome(t, `{"profile":"`+test.saved+`"}`)
 			got, err := resolveProfile(home, test.request, installProfile)
 			if err != nil || got != test.want {
 				t.Fatalf("resolveProfile() = %q, %v", got, err)
@@ -132,7 +132,7 @@ func TestInstallArgumentKeepsOtherSavedSelection(t *testing.T) {
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			home := profileHome(t, test.saved)
+			home := makeProfileHome(t, test.saved)
 
 			got, err := resolveInstallSelections(config{Home: home}, test.args, "")
 
@@ -178,7 +178,7 @@ func TestResolveInstallSelectionsReadsUpdateInterval(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			home := profileHome(
+			home := makeProfileHome(
 				t,
 				test.saved,
 			)
@@ -219,7 +219,7 @@ func TestResolveInstallSelectionsReadsUpdateInterval(t *testing.T) {
 // Install hands the extra skills checkout to the templates, so a ~/ value must
 // become a real folder under HOME before install saves it.
 func TestInstallSelectionsReadsExtraSkillsRepo(t *testing.T) {
-	home := profileHome(
+	home := makeProfileHome(
 		t,
 		`{"profile":"full","extra_skills_repo":"~/extra"}`,
 	)
@@ -242,7 +242,7 @@ func TestInstallSelectionsReadsExtraSkillsRepo(t *testing.T) {
 	}
 }
 
-func profileHome(t *testing.T, config string) string {
+func makeProfileHome(t *testing.T, config string) string {
 	t.Helper()
 	home := t.TempDir()
 	writeProfileFile(t, filepath.Join(home, ".config", "pde", "config.json"), config)

@@ -124,7 +124,7 @@ func (m Manager) Reconcile(selected profile.Profile) (*fsutil.Journal, error) {
 	if err != nil {
 		return nil, err
 	}
-	if m.current(specs, inputs) {
+	if m.isCurrent(specs, inputs) {
 		return &fsutil.Journal{}, nil
 	}
 	droppedFiles, err := m.findDroppedBuildFiles(specs)
@@ -227,11 +227,11 @@ func (m Manager) Reconcile(selected profile.Profile) (*fsutil.Journal, error) {
 		if spec.verifyArg == "" {
 			continue
 		}
-		if err := m.Runner.Run("verify "+spec.name, run.Command{Name: filepath.Join(m.Home, ".local", "bin", spec.name), Args: []string{spec.verifyArg}, Env: m.environment()}); err != nil {
+		if err := m.Runner.Run("verify "+spec.name, run.Command{Name: filepath.Join(m.Home, ".local", "bin", spec.name), Args: []string{spec.verifyArg}, Env: m.buildEnvironment()}); err != nil {
 			return nil, journal.Revert(err)
 		}
 	}
-	stateData, err := json.Marshal(buildState{Inputs: inputs, Toolchains: toolchainVersions()})
+	stateData, err := json.Marshal(buildState{Inputs: inputs, Toolchains: listToolchainVersions()})
 	if err != nil {
 		return nil, journal.Revert(fmt.Errorf("encode build state: %w", err))
 	}
@@ -331,9 +331,9 @@ func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 			hashErr == nil &&
 			state.ArchiveSHA256 == m.blinkSHA256 &&
 			state.TreeSHA256 == installedHash &&
-			state.RustVersion == managedVersion("rust") &&
-			state.NvimVersion == managedVersion("neovim") &&
-			regularExecutable(filepath.Join(destination, "lib", "libblink_cmp_fuzzy.so"))
+			state.RustVersion == findManagedVersion("rust") &&
+			state.NvimVersion == findManagedVersion("neovim") &&
+			isRegularExecutable(filepath.Join(destination, "lib", "libblink_cmp_fuzzy.so"))
 		if isCurrent {
 			return &fsutil.Journal{}, nil
 		}
@@ -377,7 +377,7 @@ func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 		return nil, fmt.Errorf("remove blink archive: %w", err)
 	}
 	target := filepath.Join(workspace, "target")
-	command := run.Command{Name: filepath.Join(m.Home, ".local", "bin", "cargo"), Args: []string{"build", "--locked", "--release", "--target-dir", target}, Dir: stage, Env: m.environment(workspace)}
+	command := run.Command{Name: filepath.Join(m.Home, ".local", "bin", "cargo"), Args: []string{"build", "--locked", "--release", "--target-dir", target}, Dir: stage, Env: m.buildEnvironment(workspace)}
 	if err := fsutil.GuardHome(m.Home, workspace, stage, target); err != nil {
 		return nil, err
 	}
@@ -397,7 +397,7 @@ func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 		"-c", "lua " + lua,
 		"-c", "qa",
 	}
-	verify := run.Command{Name: nvim, Args: verifyArgs, Env: m.environment()}
+	verify := run.Command{Name: nvim, Args: verifyArgs, Env: m.buildEnvironment()}
 	if err := m.Runner.Run("verify blink.cmp native library", verify); err != nil {
 		return nil, err
 	}
@@ -410,7 +410,7 @@ func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 	if err != nil {
 		return nil, err
 	}
-	stateData, err := json.Marshal(blinkState{ArchiveSHA256: m.blinkSHA256, TreeSHA256: treeHash, RustVersion: managedVersion("rust"), NvimVersion: managedVersion("neovim")})
+	stateData, err := json.Marshal(blinkState{ArchiveSHA256: m.blinkSHA256, TreeSHA256: treeHash, RustVersion: findManagedVersion("rust"), NvimVersion: findManagedVersion("neovim")})
 	if err != nil {
 		return nil, err
 	}
@@ -496,7 +496,7 @@ func (m Manager) BuildWallpaperPlayer(desktop profile.Desktop) (*fsutil.Journal,
 		if err := fsutil.GuardHome(m.Home, workspace, source); err != nil {
 			return nil, err
 		}
-		if err := m.Runner.Run("build "+name, run.Command{Name: args[0], Args: args[1:], Dir: source, Env: m.environment()}); err != nil {
+		if err := m.Runner.Run("build "+name, run.Command{Name: args[0], Args: args[1:], Dir: source, Env: m.buildEnvironment()}); err != nil {
 			return nil, err
 		}
 	}
@@ -534,7 +534,7 @@ func (m Manager) BuildWallpaperPlayer(desktop profile.Desktop) (*fsutil.Journal,
 // Returns the name and pinned source of the desktop's local manifest item, or
 // an empty name when the desktop has none.
 func (m Manager) findWallpaperPlayer(desktop profile.Desktop) (string, wallpaperPlayer, error) {
-	for _, item := range manifest.Items() {
+	for _, item := range manifest.ListItems() {
 		if item.Owner != manifest.Local || desktop == "" || item.Desktop != desktop {
 			continue
 		}
@@ -556,7 +556,7 @@ func (m Manager) isPlayerCurrent(name string, player wallpaperPlayer, statePath 
 		return false
 	}
 	for _, output := range player.outputs {
-		if !regularExecutable(filepath.Join(m.Home, ".local", "bin", filepath.Base(output))) {
+		if !isRegularExecutable(filepath.Join(m.Home, ".local", "bin", filepath.Base(output))) {
 			return false
 		}
 	}
@@ -572,7 +572,7 @@ func (m Manager) runPlayerCheck(name string, player wallpaperPlayer) error {
 	_, err := m.Runner.Query("check "+name, run.Command{
 		Name: filepath.Join(m.Home, ".local", "bin", name),
 		Args: []string{player.checkArg},
-		Env:  m.environment(),
+		Env:  m.buildEnvironment(),
 	})
 	return err
 }
@@ -613,7 +613,7 @@ func (m Manager) BlinkStatus() (string, error) {
 func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []buildSpec {
 	goBinary := filepath.Join(m.Home, ".local", "bin", "go")
 	cargo := filepath.Join(m.Home, ".local", "bin", "cargo")
-	environment := m.environment(stageRoot)
+	environment := m.buildEnvironment(stageRoot)
 	specs := []buildSpec{
 		{
 			name:   "planner",
@@ -779,7 +779,7 @@ func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []bu
 		},
 	}
 	wanted := map[string]bool{}
-	for _, item := range manifest.ByOwnerFor(selected, manifest.Local) {
+	for _, item := range manifest.GroupByOwnerFor(selected, manifest.Local) {
 		wanted[item.Name] = true
 	}
 	return slices.DeleteFunc(specs, func(spec buildSpec) bool {
@@ -832,7 +832,7 @@ func (m Manager) findDroppedBuildFiles(specs []buildSpec) ([]string, error) {
 // Deletes path after recording a copy in journal, so a rollback puts it back
 // and a commit deletes the copy.
 func removeWithBackup(journal *fsutil.Journal, path string) error {
-	backup := fsutil.BackupName(path)
+	backup := fsutil.MakeBackupName(path)
 	if err := fsutil.CopyPath(path, backup); err != nil {
 		return err
 	}
@@ -842,31 +842,31 @@ func removeWithBackup(journal *fsutil.Journal, path string) error {
 	return os.Remove(path)
 }
 
-func managedVersion(name string) string {
+func findManagedVersion(name string) string {
 	item, _ := manifest.Find(name, manifest.Direct)
 	return item.Version
 }
 
-func toolchainVersions() map[string]string {
-	return map[string]string{"go": managedVersion("go"), "rust": managedVersion("rust")}
+func listToolchainVersions() map[string]string {
+	return map[string]string{"go": findManagedVersion("go"), "rust": findManagedVersion("rust")}
 }
 
-func (m Manager) current(specs []buildSpec, inputs map[string]string) bool {
+func (m Manager) isCurrent(specs []buildSpec, inputs map[string]string) bool {
 	data, err := os.ReadFile(m.statePath())
 	if err != nil {
 		return false
 	}
 	var state buildState
-	if json.Unmarshal(data, &state) != nil || len(state.Inputs) != len(inputs) || len(state.Toolchains) != len(toolchainVersions()) {
+	if json.Unmarshal(data, &state) != nil || len(state.Inputs) != len(inputs) || len(state.Toolchains) != len(listToolchainVersions()) {
 		return false
 	}
-	for name, version := range toolchainVersions() {
+	for name, version := range listToolchainVersions() {
 		if state.Toolchains[name] != version {
 			return false
 		}
 	}
 	for name, input := range inputs {
-		if state.Inputs[name] != input || !regularExecutable(filepath.Join(m.Home, ".local", "bin", name)) {
+		if state.Inputs[name] != input || !isRegularExecutable(filepath.Join(m.Home, ".local", "bin", name)) {
 			return false
 		}
 	}
@@ -886,7 +886,7 @@ func (m Manager) statePath() string {
 	return filepath.Join(m.Home, ".local", "state", "pde", "builds.json")
 }
 
-func (m Manager) environment(stage ...string) []string {
+func (m Manager) buildEnvironment(stage ...string) []string {
 	path := filepath.Join(m.Home, ".local", "bin") + string(os.PathListSeparator) + os.Getenv("PATH")
 	environment := []string{"PATH=" + path}
 	if len(stage) > 0 {
@@ -979,7 +979,7 @@ func hashFiles(root string, paths []string) (string, error) {
 
 // Lstat, so a link left by another installer, such as uv, counts as stale and
 // the next install replaces it with the built file.
-func regularExecutable(path string) bool {
+func isRegularExecutable(path string) bool {
 	info, err := os.Lstat(path)
 	return err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 && info.Size() > 0
 }

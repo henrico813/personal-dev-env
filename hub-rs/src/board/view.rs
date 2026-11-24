@@ -1211,7 +1211,9 @@ pub(super) mod tests {
     /// were away? What is in the queue, and does it run now? What comes
     /// next? The phone's first screen, 40 by 16, must answer all
     /// three with no key pressed. A block cut off, or a queue row without
-    /// its status word, leaves one question open.
+    /// its status word, leaves one question open. A line about a card
+    /// starts with its card key, such as `DEMO-KB-001`, so the user
+    /// can tell which plan goes with the card.
     #[test]
     fn render_lines_glance_answers_three_questions() {
         let mut board = Board::new(false);
@@ -1223,18 +1225,18 @@ pub(super) mod tests {
             "read 10:42 0.6s",
             "AWAY  newest                         [1]",
             " 10:40 api-build reported",
-            " 10:31 launched card-sync on DEMO-KB-002",
+            " 10:31 DEMO-KB-002 launched card-sync o~",
             " 10:12 docs-fix reported",
             "QUEUE  1 run · 2 you · 1 idle        [2]",
-            " you  Deploy tonight?             Demo",
+            " you  DEMO-KB-001 Deploy tonight? Demo",
             " you  blocked-fix  needs you      worker",
-            " run  Faster search               Demo",
-            " idle Board for the phone         Demo",
-            " rev  Retry a failed upload twic~ Demo",
+            " run  DEMO-KB-001 Faster search   Demo",
+            " idle DEMO-KB-002 Board for the ~ Demo",
+            " rev  DEMO-KB-010 Retry a failed~ Demo",
             "NEXT                                 [3]",
-            " you: answer Deploy tonight?",
+            " you: answer DEMO-KB-001 Deploy tonight?",
             " then: review 1 card",
-            " hub: start Sort ready cards",
+            " hub: start DEMO-KB-020 Sort ready cards",
             "? help  4 sessions  5 machine  q quit",
         ];
         assert_eq!(lines, expected);
@@ -1273,7 +1275,7 @@ pub(super) mod tests {
             "AWAY  newest                         [1]",
             "   + 3 more",
             "QUEUE  1 run · 2 you · 1 idle        [2]",
-            " you  Deploy tonight?             Demo",
+            " you  DEMO-KB-001 Deploy tonight? Demo",
             " you  blocked-fix  needs you      worker",
             "   + 3 more",
             "NEXT                                 [3]",
@@ -1323,14 +1325,14 @@ pub(super) mod tests {
             })
             .collect();
         let expected = [
-            (" you  Question 4?                 Demo", "tap block:queue"),
+            (" you  DEMO-KB-001 Question 4?     Demo", "tap block:queue"),
             (
                 " you  blocked-fix  needs you      worker",
                 "tap block:queue",
             ),
-            (" run  Faster search               Demo", "tap block:queue"),
-            (" idle Board for the phone         Demo", "tap block:queue"),
-            (" rev  Retry a failed upload twic~ Demo", "tap block:queue"),
+            (" run  DEMO-KB-001 Faster search   Demo", "tap block:queue"),
+            (" idle DEMO-KB-002 Board for the ~ Demo", "tap block:queue"),
+            (" rev  DEMO-KB-010 Retry a failed~ Demo", "tap block:queue"),
         ];
         assert_eq!(hidden, expected);
     }
@@ -1350,16 +1352,16 @@ pub(super) mod tests {
         let expected = [
             "< queue  1 run · 2 you · 1 idle",
             "v Needs you 2",
-            " you  Deploy tonight?             Demo",
+            " you  DEMO-KB-001 Deploy tonight? Demo",
             " you  blocked-fix  needs you      worker",
             "v Active 5",
-            " run  Faster search               Demo",
-            " idle Board for the phone         Demo",
-            " you  Trim the build cache        Demo",
-            " none Lint every Dockerfile in t~ Demo",
+            " run  DEMO-KB-001 Faster search   Demo",
+            " idle DEMO-KB-002 Board for the ~ Demo",
+            " you  DEMO-KB-003 Trim the build~ Demo",
+            " none DEMO-KB-004 Lint every Doc~ Demo",
             "   + 1 more",
             "v In review 1",
-            " rev  Retry a failed upload twic~ Demo",
+            " rev  DEMO-KB-010 Retry a failed~ Demo",
             "> Todo 1",
             "> Draft 1",
             "",
@@ -1385,7 +1387,7 @@ pub(super) mod tests {
 
         assert_eq!(folded[4..6], ["> Active 5", "v In review 1"]);
         assert_eq!(opened, lines);
-        assert_eq!(in_full[9], " none Rotate the backup keys      Demo");
+        assert_eq!(in_full[9], " none DEMO-KB-005 Rotate the bac~ Demo");
         assert_eq!(in_full[10], "v In review 1");
     }
 
@@ -1802,7 +1804,7 @@ pub(super) mod tests {
             ]
         );
         assert!(lines[2].starts_with(" 10:40 api-build reported "));
-        assert!(lines[2].ends_with(" │  you: answer Deploy tonight?"));
+        assert!(lines[2].ends_with(" │  you: answer DEMO-KB-001 Deploy tonig~"));
     }
 
     /// A read can move rows under a finger, so a tap on a session row

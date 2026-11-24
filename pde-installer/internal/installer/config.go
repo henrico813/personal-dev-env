@@ -51,13 +51,13 @@ func detectConfig(flagRoot string) (config, error) {
 	root := ""
 	if flagRoot != "" {
 		var ok bool
-		root, ok = repository(flagRoot)
+		root, ok = findRepositoryRoot(flagRoot)
 		if !ok {
 			return config{}, fmt.Errorf("invalid --repo-root %q", flagRoot)
 		}
 	} else if environmentRoot := os.Getenv("PDE_REPO_ROOT"); environmentRoot != "" {
 		var ok bool
-		root, ok = repository(environmentRoot)
+		root, ok = findRepositoryRoot(environmentRoot)
 		if !ok {
 			return config{}, fmt.Errorf("invalid PDE_REPO_ROOT %q", environmentRoot)
 		}
@@ -72,7 +72,7 @@ func detectConfig(flagRoot string) (config, error) {
 		AquaRoot: filepath.Join(home, ".local", "share", "aquaproj-aqua"),
 	}
 	for _, destination := range []string{cfg.LocalBin, cfg.AquaRoot, filepath.Join(home, ".config"), filepath.Join(home, ".local", "state")} {
-		if !within(home, destination) {
+		if !isWithin(home, destination) {
 			return config{}, fmt.Errorf("destination outside HOME: %s", destination)
 		}
 		if err := fsutil.GuardHome(home, destination); err != nil {
@@ -84,7 +84,7 @@ func detectConfig(flagRoot string) (config, error) {
 
 func findRepoRoot(start string) string {
 	for directory := start; ; directory = filepath.Dir(directory) {
-		if _, ok := repository(directory); ok {
+		if _, ok := findRepositoryRoot(directory); ok {
 			return directory
 		}
 		if parent := filepath.Dir(directory); parent == directory {
@@ -93,7 +93,7 @@ func findRepoRoot(start string) string {
 	}
 }
 
-func repository(candidate string) (string, bool) {
+func findRepositoryRoot(candidate string) (string, bool) {
 	if candidate == "" {
 		return "", false
 	}
@@ -109,7 +109,7 @@ func repository(candidate string) (string, bool) {
 	return root, true
 }
 
-func within(home, path string) bool {
+func isWithin(home, path string) bool {
 	relative, err := filepath.Rel(home, filepath.Clean(path))
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }

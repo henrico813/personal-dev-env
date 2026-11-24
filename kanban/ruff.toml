@@ -1,0 +1,7 @@
+# The kanban code wraps at 79 columns, not ruff's default 88.
+line-length = 79
+
+[lint]
+# Without a trailing comma, ruff format may pack a call's arguments onto one
+# wrapped line; the comma makes it put each argument on its own line.
+select = ["COM812"]
