@@ -480,7 +480,7 @@ pub enum Command {
     ///
     /// Moves every hub's workspace on this machine to the top of the
     /// sidebar. Hubs named kanban-hub-N come first, then the desk, then
-    /// the other hubs. It also cuts the agent list to the front hub,
+    /// the other hubs. It also cuts the agent list to the front hubs,
     /// the agents on the desk and the sessions that wait on the user.
     /// A hub runs it when it starts.
     #[command(after_help = "Example: hub gather")]

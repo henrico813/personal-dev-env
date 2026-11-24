@@ -8,7 +8,7 @@
 //! gather too, through `gather_after_hub_start`, so no hub has to run
 //! `hub gather`.
 //!
-//! Herdr's agent list, headed "go to", shows each machine's front hub,
+//! Herdr's agent list, headed "go to", shows each machine's front hubs,
 //! then the desk's agents in tab order, then only the sessions that
 //! wait on the user. Read `sync_go_to_list` first. It sets every
 //! `go_to` token on this machine from scratch, and the `pde.hub` Herdr
@@ -17,7 +17,7 @@
 
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use super::Outcome;
@@ -208,7 +208,7 @@ pub fn run_restore_sidebar(tools: &Tools<'_>, start_board: bool) -> Result<Outco
 }
 
 /// Sets every `go_to` token on this machine, then sets Herdr's agent
-/// filter. The front hub sorts first, then each desk agent by its tab,
+/// filter. The front hubs sort first, then each desk agent by its tab,
 /// and every other pane loses its token, so it shows only while it
 /// waits on the user. It writes only the tokens that differ, since
 /// `hub watch` runs it every 5 seconds. Herdr drops the filter on
@@ -216,8 +216,14 @@ pub fn run_restore_sidebar(tools: &Tools<'_>, start_board: bool) -> Result<Outco
 pub(crate) fn sync_go_to_list(tools: &Tools<'_>) -> Result<Synced, HubError> {
     let agents = tools.herdr.list_agent_panes()?;
     let machine_place = find_machine_place(tools.herdr)?;
-    let front_hub = find_front_hub(tools.runs_folder, &agents)?;
-    let synced = write_go_to_tokens(tools.herdr, &agents, front_hub, machine_place, Writes::All)?;
+    let front_hubs = list_front_hubs(tools.runs_folder, &agents)?;
+    let synced = write_go_to_tokens(
+        tools.herdr,
+        &agents,
+        &front_hubs,
+        machine_place,
+        Writes::All,
+    )?;
     tools.herdr.filter_agent_list()?;
     Ok(synced)
 }
@@ -252,12 +258,12 @@ fn fill_in_go_to_tokens(herdr: &dyn Herdr) -> Result<(), HerdrError> {
             .as_deref()
             .is_some_and(|go_to| go_to.starts_with(FRONT_HUB_PLACE))
     });
-    let front_hub = if has_front_hub {
-        None
+    let front_hubs: Vec<&Agent> = if has_front_hub {
+        Vec::new()
     } else {
-        find_newest_kanban_hub(&agents)
+        find_newest_kanban_hub(&agents).into_iter().collect()
     };
-    write_go_to_tokens(herdr, &agents, front_hub, 1, Writes::MissingOnly).map(drop)
+    write_go_to_tokens(herdr, &agents, &front_hubs, 1, Writes::MissingOnly).map(drop)
 }
 
 /// Sets each agent pane's `go_to` token on one machine to the value
@@ -269,7 +275,7 @@ fn fill_in_go_to_tokens(herdr: &dyn Herdr) -> Result<(), HerdrError> {
 fn write_go_to_tokens(
     herdr: &dyn Herdr,
     agents: &[Agent],
-    front_hub: Option<&Agent>,
+    front_hubs: &[&Agent],
     machine_place: u8,
     writes: Writes,
 ) -> Result<Synced, HerdrError> {
@@ -281,17 +287,19 @@ fn write_go_to_tokens(
     };
     let mut changed = Vec::new();
     for agent in agents {
-        let is_front_hub = front_hub.is_some_and(|hub| hub.pane_id == agent.pane_id);
+        let front_hub_rank = front_hubs
+            .iter()
+            .position(|hub| hub.pane_id == agent.pane_id);
         let desk_tab = desk
             .filter(|desk| desk.workspace_id == agent.workspace_id)
             .and_then(|_| desk_tabs.iter().position(|tab_id| *tab_id == agent.tab_id));
-        let wanted = choose_go_to(is_front_hub, desk_tab, machine_place);
+        let wanted = choose_go_to(front_hub_rank, desk_tab, machine_place);
         let may_write = writes == Writes::All || agent.go_to.is_none();
         if agent.go_to == wanted || !may_write {
             continue;
         }
         match wanted.as_deref() {
-            Some(go_to) if is_front_hub => herdr.tag_hub_pane(&agent.pane_id, go_to)?,
+            Some(go_to) if front_hub_rank.is_some() => herdr.tag_hub_pane(&agent.pane_id, go_to)?,
             go_to => herdr.set_go_to(&agent.pane_id, go_to)?,
         }
         let shown_name = if agent.name.is_empty() {
@@ -319,15 +327,21 @@ fn write_go_to_tokens(
     })
 }
 
-/// Returns a pane's `go_to` value, which Herdr sorts as text. The front
-/// hub gets `1-hub-M`, and a pane in the desk's tab NN, 00 first, gets
-/// `2-desk-M-NN`, where M is the machine's place. Every other pane gets
-/// `None`.
-fn choose_go_to(is_front_hub: bool, desk_tab: Option<usize>, machine_place: u8) -> Option<String> {
-    if is_front_hub {
-        return Some(format!("{FRONT_HUB_PLACE}-{machine_place}"));
+/// Returns a pane's `go_to` value, which Herdr sorts as text. The first
+/// front hub gets `1-hub-M` and the one at rank NN after it
+/// `1-hub-M-NN`, which sorts after `1-hub-M`. A pane in the desk's tab
+/// NN, 00 first, gets `2-desk-M-NN`. M is the machine's place. Every
+/// other pane gets `None`.
+fn choose_go_to(
+    front_hub_rank: Option<usize>,
+    desk_tab: Option<usize>,
+    machine_place: u8,
+) -> Option<String> {
+    match front_hub_rank {
+        Some(0) => Some(format!("{FRONT_HUB_PLACE}-{machine_place}")),
+        Some(rank) => Some(format!("{FRONT_HUB_PLACE}-{machine_place}-{rank:02}")),
+        None => desk_tab.map(|tab| format_desk_go_to(machine_place, tab)),
     }
-    desk_tab.map(|tab| format_desk_go_to(machine_place, tab))
 }
 
 /// Returns the `go_to` value of a pane in the desk's tab `tab`.
@@ -346,26 +360,32 @@ fn find_machine_place(herdr: &dyn Herdr) -> Result<u8, HerdrError> {
     })
 }
 
-/// Returns this machine's front hub. That is the live hub recorded
-/// last by `hub next` or `hub watch start` in a run folder that is not
-/// an auto run's. Herdr may show it with no name or a hub name, but a
-/// worker that loops on `hub next` has a worker name. With none, it is
-/// the live `kanban-hub-N` with the highest N, since a hub of an older
-/// build records nothing.
-fn find_front_hub<'a>(
+/// Returns this machine's front hubs, one per run that is not an auto
+/// run, oldest run first. A run's front hub is the live hub recorded
+/// last by `hub next` or `hub watch start` in its folder, so a hub that
+/// handed off drops out once its successor records. Herdr may show it
+/// with no name or a hub name, but a worker that loops on `hub next`
+/// has a worker name. With none, it is the live `kanban-hub-N` with the
+/// highest N, since a hub of an older build records nothing.
+fn list_front_hubs<'a>(
     runs_folder: &Path,
     agents: &'a [Agent],
-) -> Result<Option<&'a Agent>, HubError> {
-    let recorded = find_recorded_hub(runs_folder, agents)?;
-    Ok(recorded.or_else(|| find_newest_kanban_hub(agents)))
+) -> Result<Vec<&'a Agent>, HubError> {
+    let recorded = list_recorded_hubs(runs_folder, agents)?;
+    if recorded.is_empty() {
+        return Ok(find_newest_kanban_hub(agents).into_iter().collect());
+    }
+    Ok(recorded)
 }
 
-/// Returns the live hub that `RunFolder::record_hub` recorded last in
-/// a `herdr-hub.*` folder of `runs_folder`, leaving out auto runs.
-fn find_recorded_hub<'a>(
+/// Returns the live hub that `RunFolder::record_hub` recorded in each
+/// `herdr-hub.*` folder of `runs_folder`, leaving out auto runs and
+/// repeats. Sorting by when each folder was made keeps the order still
+/// while the hubs take turns running `hub next`.
+fn list_recorded_hubs<'a>(
     runs_folder: &Path,
     agents: &'a [Agent],
-) -> Result<Option<&'a Agent>, HubError> {
+) -> Result<Vec<&'a Agent>, HubError> {
     let wrap_file_error = |source| HubError::File {
         path: runs_folder.to_owned(),
         source,
@@ -373,10 +393,10 @@ fn find_recorded_hub<'a>(
     let entries = match fs::read_dir(runs_folder) {
         Ok(entries) => entries,
         // No state folder means no hub ever ran here.
-        Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(source) => return Err(wrap_file_error(source)),
     };
-    let mut newest: Option<(SystemTime, &Agent)> = None;
+    let mut hubs: Vec<(SystemTime, PathBuf, &Agent)> = Vec::new();
     for entry in entries {
         let path = entry.map_err(wrap_file_error)?.path();
         let is_run_name = path
@@ -392,7 +412,7 @@ fn find_recorded_hub<'a>(
         if is_auto_run(&run)? {
             continue;
         }
-        let Some((recorded, recorded_at)) = run.read_recorded_hub()? else {
+        let Some((recorded, _)) = run.read_recorded_hub()? else {
             continue;
         };
         let Some(hub) = find_recorded_agent(&recorded, agents) else {
@@ -401,11 +421,28 @@ fn find_recorded_hub<'a>(
         if !has_front_hub_name(&hub.name) {
             continue;
         }
-        if newest.is_none_or(|(newest_at, _)| recorded_at > newest_at) {
-            newest = Some((recorded_at, hub));
+        hubs.push((read_made_time(&path)?, path, hub));
+    }
+    hubs.sort_by(|left, right| (left.0, &left.1).cmp(&(right.0, &right.1)));
+    let mut front_hubs: Vec<&Agent> = Vec::new();
+    for (_, _, hub) in hubs {
+        // Two runs can record the same session, such as a hub that
+        // adopted another run.
+        if !front_hubs.iter().any(|kept| kept.pane_id == hub.pane_id) {
+            front_hubs.push(hub);
         }
     }
-    Ok(newest.map(|(_, hub)| hub))
+    Ok(front_hubs)
+}
+
+/// Returns when the folder at `path` was made. A file system that keeps
+/// no such time gives the Unix epoch, so those runs sort by path.
+fn read_made_time(path: &Path) -> Result<SystemTime, HubError> {
+    let metadata = fs::metadata(path).map_err(|source| HubError::File {
+        path: path.to_owned(),
+        source,
+    })?;
+    Ok(metadata.created().unwrap_or(SystemTime::UNIX_EPOCH))
 }
 
 /// Tells whether a recorded agent named `name` may be the front hub:

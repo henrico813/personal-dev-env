@@ -642,12 +642,14 @@ The steps of an auto run, in order. Each takes `--run DIR`.
   `NAME is not on the desk`. `move` exits 2 with
   `the place must be 1 to COUNT`.
 - `hub restore-sidebar [--start-board]` sets the agent list, headed
-  `go to`, on this machine: the front hub, the desk's board and
+  `go to`, on this machine: the front hubs, the desk's board and
   agents in tab order, then only the sessions that wait on the user.
-  The front hub is the live agent that last ran `hub next` or
-  `hub watch start` in a run folder without `approved.md`, when it
-  has no name or a hub name other than an auto hub's. Else it is the
-  live `kanban-hub-N` with the highest N. It moves no workspace. With
+  Each run folder without `approved.md` gives one front hub: the live
+  agent that last ran `hub next` or `hub watch start` there, when it
+  has no name or a hub name other than an auto hub's. They show in
+  the order their run folders were made, oldest first. With none, the
+  front hub is the live `kanban-hub-N` with the highest N. It moves
+  no workspace. With
   `--start-board`, it also runs `hub board` in the desk's first pane
   when that pane's shell runs nothing. It prints
   `changed: NAMES` with each pane whose tag it changed and `desk`, or

@@ -564,6 +564,37 @@ mod restore_sidebar {
         );
     }
 
+    /// The user can run a second hub of their own beside the main one.
+    /// Each must keep a row at the top, the older run's first however
+    /// the two take turns running `hub next`, or one hub drops out of
+    /// the user's list.
+    #[test]
+    fn run_restore_sidebar_tags_each_runs_hub() {
+        let mut test_tools = TestTools::new();
+        test_tools.herdr.agents = vec![
+            Agent {
+                session_id: Some("ses_main".to_owned()),
+                ..make_agent("kanban-hub-7", AgentStatus::Working)
+            },
+            Agent {
+                session_id: Some("ses_side".to_owned()),
+                ..make_agent("side-hub-3", AgentStatus::Idle)
+            },
+        ];
+        run_hub_next(&mut test_tools, "main", "ses_main");
+        run_hub_next(&mut test_tools, "side", "ses_side");
+
+        run_restore_sidebar(&test_tools.tools(), false).unwrap();
+
+        assert_eq!(
+            *test_tools.herdr.tagged_hubs.borrow(),
+            [
+                ("w1:kanban-hub-7".to_owned(), "1-hub-1".to_owned()),
+                ("w1:side-hub-3".to_owned(), "1-hub-1-01".to_owned()),
+            ]
+        );
+    }
+
     /// A worker may loop on `hub next` in a run folder of its own, as
     /// a quiet-hours script does. It must not take the front hub's row
     /// from the hub the user works with.
