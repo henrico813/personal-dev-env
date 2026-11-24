@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use jiff::Zoned;
 
-use super::events::{self, Event, EventKind};
+use super::events::{self, Event, EventKind, Memory};
 use super::facts::CollectedFacts;
 use super::lifecycle::{Lifecycle, SessionFacts, Verdict, decide_lifecycle};
 use super::parking::{self, ParkOutcome, TidyLock};
@@ -108,7 +108,10 @@ impl TidyOutcome {
 }
 
 /// Closes, parks and forgets what the collected facts allow, one
-/// action at a time, and adds a `Kept` outcome for each kept session.
+/// action at a time, and adds a `Kept` outcome for each kept session
+/// in `scope`. Only tabs that hold a session in `scope` close or park,
+/// as `plan_tidy_actions` says. A live session's old parked record is
+/// deleted whatever its run.
 /// One failed action becomes a `Kept` outcome, and the pass keeps
 /// going. So one bad card call does not leave every other finished
 /// session open.
@@ -122,6 +125,7 @@ pub(crate) fn run_tidy_pass(
     tools: &Tools<'_>,
     run: &RunFolder,
     collected: &CollectedFacts,
+    scope: &BTreeSet<String>,
     _lock: &TidyLock,
     now: &Zoned,
     dry_run: bool,
@@ -138,7 +142,10 @@ pub(crate) fn run_tidy_pass(
         .collect();
     let closing_tabs: BTreeSet<&str> = judged
         .iter()
-        .filter(|(_, verdict)| matches!(verdict.state, Lifecycle::ToClose | Lifecycle::ToPark))
+        .filter(|(facts, verdict)| {
+            scope.contains(&facts.name)
+                && matches!(verdict.state, Lifecycle::ToClose | Lifecycle::ToPark)
+        })
         .filter_map(|(facts, _)| facts.agent.as_ref().map(|agent| agent.tab_id.as_str()))
         .collect();
     // Most passes close nothing, so Herdr's pane list is read only when
@@ -158,6 +165,7 @@ pub(crate) fn run_tidy_pass(
         .collect();
     actions.extend(plan_tidy_actions(
         &judged,
+        scope,
         &panes,
         tools.own_pane,
         &quiet_shells,
@@ -174,7 +182,9 @@ pub(crate) fn run_tidy_pass(
         })
         .collect();
     for (facts, verdict) in &judged {
-        if let Lifecycle::Kept(reason) = verdict.state {
+        if let Lifecycle::Kept(reason) = verdict.state
+            && scope.contains(&facts.name)
+        {
             outcomes.push(TidyOutcome::Kept {
                 name: facts.name.clone(),
                 reason: reason.label().to_owned(),
@@ -193,15 +203,39 @@ pub(crate) fn find_unsafe_problem(collected: &CollectedFacts) -> Option<&str> {
         .map(String::as_str)
 }
 
-/// Groups the sessions by tab and returns what may change. A whole tab
-/// stays when any pane in it is the hub's own pane, the focused pane,
-/// an agent that is not finished or has no name, or a shell that runs
-/// something. A tab of `to-close` agents closes. A tab whose one agent
-/// is `to-park` parks. Each finished session in a tab that stays is
-/// kept, so `run_clean` says why. A parked record whose state is
-/// `to-close` is forgotten, since its card's work is over.
+/// Returns the names of the sessions this run knows, the scope of
+/// `run_clean`'s tidy pass. Only tabs that hold one of them may change.
+/// Those are each session
+/// `run_launch` started from this run, each name with a report here,
+/// read or not, and each old hub a `handoff` event of this run named.
+///
+/// # Errors
+///
+/// When the run folder or its `notes.md` cannot be read.
+pub(crate) fn list_run_session_names(
+    run: &RunFolder,
+    memory: &Memory,
+) -> Result<BTreeSet<String>, HubError> {
+    let mut names = run.list_started_names()?;
+    names.extend(run.list_reported_names()?.any);
+    names.extend(memory.handed_off.iter().cloned());
+    Ok(names)
+}
+
+/// Groups the sessions by tab and returns what may change. Only a tab
+/// that holds a session in `scope` may change, and each agent in it
+/// counts by its own verdict, so a finished `to-close` agent of
+/// another run closes with the tab. A whole tab stays when any pane in
+/// it is the hub's own pane, the focused pane, an agent that is not
+/// finished or has no name, or a shell that runs something. A tab of
+/// `to-close` agents closes. A tab whose one agent
+/// is `to-park` parks. Each finished session of `scope` in a tab that
+/// stays is kept, so `run_clean` says why. A parked record of `scope`
+/// whose state is `to-close` is forgotten, since its card's work is
+/// over.
 pub(crate) fn plan_tidy_actions<'a>(
     judged: &[(&'a SessionFacts, Verdict)],
+    scope: &BTreeSet<String>,
     panes: &[Pane],
     own_pane: Option<&str>,
     quiet_shells: &BTreeSet<String>,
@@ -220,6 +254,14 @@ pub(crate) fn plan_tidy_actions<'a>(
 
     let mut actions = Vec::new();
     for (tab_id, tab_panes) in tabs {
+        let holds_scope = tab_panes.iter().any(|pane| {
+            by_pane
+                .get(pane.pane_id.as_str())
+                .is_some_and(|(facts, _)| scope.contains(&facts.name))
+        });
+        if !holds_scope {
+            continue;
+        }
         let mut finished = Vec::new();
         let mut keeps_tab = false;
         for pane in tab_panes {
@@ -241,7 +283,9 @@ pub(crate) fn plan_tidy_actions<'a>(
         }
         let keep_finished = |actions: &mut Vec<TidyAction<'a>>| {
             for (facts, _) in &finished {
-                actions.push(TidyAction::Keep { facts });
+                if scope.contains(&facts.name) {
+                    actions.push(TidyAction::Keep { facts });
+                }
             }
         };
         if keeps_tab {
@@ -278,7 +322,10 @@ pub(crate) fn plan_tidy_actions<'a>(
         }
     }
     for (facts, verdict) in judged {
-        if facts.agent.is_none() && verdict.state == Lifecycle::ToClose {
+        if facts.agent.is_none()
+            && verdict.state == Lifecycle::ToClose
+            && scope.contains(&facts.name)
+        {
             actions.push(TidyAction::Forget {
                 name: facts.name.clone(),
             });
@@ -565,7 +612,8 @@ mod tests {
             .collect()
     }
 
-    /// Plans the actions for these sessions and panes.
+    /// Plans the actions for these sessions and panes, with every
+    /// session in the scope.
     fn plan_for(
         sessions: &[(SessionFacts, Verdict)],
         panes: &[Pane],
@@ -576,8 +624,18 @@ mod tests {
             .iter()
             .map(|(facts, verdict)| (facts, verdict.clone()))
             .collect();
+        let scope = sessions
+            .iter()
+            .map(|(facts, _)| facts.name.clone())
+            .collect();
         let quiet_shells = quiet.iter().map(|pane| (*pane).to_owned()).collect();
-        describe_actions(&plan_tidy_actions(&judged, panes, own_pane, &quiet_shells))
+        describe_actions(&plan_tidy_actions(
+            &judged,
+            &scope,
+            panes,
+            own_pane,
+            &quiet_shells,
+        ))
     }
 
     /// Closing a tab closes every pane in it, so a tab stays whole
