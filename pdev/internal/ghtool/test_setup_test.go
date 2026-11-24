@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -33,7 +34,23 @@ func runOutsideCheckout(m *testing.M) int {
 	if err := os.Chdir(dir); err != nil {
 		panic(err)
 	}
+	hideRealCard(dir)
 	return m.Run()
+}
+
+// Puts a card command that does nothing first on PATH, so merge tests never
+// change real cards. A test that checks card puts its own fake before it.
+func hideRealCard(dir string) {
+	bin := filepath.Join(dir, "bin")
+	if err := os.Mkdir(bin, 0o700); err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "card"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		panic(err)
+	}
+	if err := os.Setenv("PATH", bin+":"+os.Getenv("PATH")); err != nil {
+		panic(err)
+	}
 }
 
 // discardStderr hides this program's messages for one test.

@@ -31,7 +31,7 @@ func ReplaceDiff(raw []byte, start, end int, diff []byte) ([]byte, error) {
 		return nil, fmt.Errorf("invalid diff span")
 	}
 	if bytes.ContainsAny(diff, "\r\x00") {
-		return nil, failure(CodePatchUnsupported,
+		return nil, newFailure(CodePatchUnsupported,
 			"Markdown diff bodies must use LF and contain no NUL bytes")
 	}
 	diff = bytes.TrimSuffix(diff, []byte("\n")) // Transport newline, not source-code EOF.
@@ -42,7 +42,7 @@ func ReplaceDiff(raw []byte, start, end int, diff []byte) ([]byte, error) {
 	}
 	opening, closing := string(raw[openStart:start-1]), string(raw[end+1:closeEnd])
 	trimmed := strings.TrimSpace(opening)
-	fenceLen := leadingTicks(trimmed)
+	fenceLen := countLeadingTicks(trimmed)
 	if fenceLen < 3 || strings.TrimSpace(closing) != strings.Repeat("`", fenceLen) {
 		return nil, fmt.Errorf("invalid diff fence span")
 	}
@@ -81,7 +81,7 @@ func ChooseCodeFence(code string) string {
 	return strings.Repeat("`", max(longest+1, 3))
 }
 
-func leadingTicks(s string) int {
+func countLeadingTicks(s string) int {
 	n := 0
 	for n < len(s) && s[n] == '`' {
 		n++
@@ -116,11 +116,11 @@ func WriteIfUnchanged(filename string, before, after []byte) error {
 		return err
 	}
 	if !info.Mode().IsRegular() {
-		return failure(CodePlanUnsupported, "expected a regular, non-symlink plan")
+		return newFailure(CodePlanUnsupported, "expected a regular, non-symlink plan")
 	}
 	lock, err := os.OpenFile(abs+".planner.lock", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
-		return failure(CodePlanBusy, "%w", err)
+		return newFailure(CodePlanBusy, "%w", err)
 	}
 	_ = lock.Close()
 	defer func() { _ = os.Remove(abs + ".planner.lock") }()
@@ -130,14 +130,14 @@ func WriteIfUnchanged(filename string, before, after []byte) error {
 			return err
 		}
 		if !currentInfo.Mode().IsRegular() || !os.SameFile(info, currentInfo) {
-			return failure(CodePlanStale, "file was replaced; reread and reconcile")
+			return newFailure(CodePlanStale, "file was replaced; reread and reconcile")
 		}
 		current, err := os.ReadFile(abs)
 		if err != nil {
 			return err
 		}
 		if !bytes.Equal(current, before) {
-			return failure(CodePlanStale, "content changed; reread and reconcile")
+			return newFailure(CodePlanStale, "content changed; reread and reconcile")
 		}
 		return nil
 	}

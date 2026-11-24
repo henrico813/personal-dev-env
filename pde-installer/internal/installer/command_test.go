@@ -84,7 +84,7 @@ func TestCommandsRecoverProfiles(t *testing.T) {
 			var command *cobra.Command
 			switch commandName {
 			case "install":
-				command = mutatingCommand(commandName, "", &repoRoot, action)
+				command = newMutatingCommand(commandName, "", &repoRoot, action)
 			case "doctor", "list":
 				command = readCommand(commandName, "", &repoRoot, action)
 			}
@@ -126,7 +126,7 @@ func TestDesktopWithoutSavedProfileRunsNothing(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	repoRoot := testRepositoryRoot(t)
 	ran := false
-	command := mutatingCommand("install", "", &repoRoot, func(config, run.Runner) error {
+	command := newMutatingCommand("install", "", &repoRoot, func(config, run.Runner) error {
 		ran = true
 		return nil
 	})

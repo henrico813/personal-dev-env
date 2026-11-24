@@ -157,7 +157,7 @@ func migrateLegacyNvim(home string, journal *fsutil.Journal) error {
 	if err != nil {
 		return fmt.Errorf("read legacy Neovim config: %w", err)
 	}
-	if !legacyNvimTarget(target) {
+	if !isLegacyNvimTarget(target) {
 		return fmt.Errorf("Neovim config symlink is not a legacy PDE link: %s", target)
 	}
 	stage, err := os.MkdirTemp(filepath.Dir(destination), ".nvim-")
@@ -174,7 +174,7 @@ func migrateLegacyNvim(home string, journal *fsutil.Journal) error {
 	return nil
 }
 
-func legacyNvimTarget(target string) bool {
+func isLegacyNvimTarget(target string) bool {
 	target = filepath.Clean(target)
 	config := filepath.Dir(target)
 	return filepath.Base(target) == "nvim" && filepath.Base(config) == "config" && filepath.Base(filepath.Dir(config)) == "pde"

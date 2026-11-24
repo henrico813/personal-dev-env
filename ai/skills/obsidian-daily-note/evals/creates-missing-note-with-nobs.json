@@ -1,0 +1,21 @@
+{
+  "id": "creates-missing-note-with-nobs",
+  "source": "the user's decision that the skill always uses nobs, and a session with no screen where today's note did not exist yet",
+  "rule": "Steps",
+  "correction": true,
+  "prompt": "The user asked you to add a section to today's daily note, and approved the exact text. nobs read on today's note path printed 'note not found' and exited 4. The vault's daily-note settings name a template that exists. The session has no screen and no Obsidian app. Reply with only the commands you run, in order, until the section is added and checked.",
+  "pass": [
+    "nobs append\\b",
+    "nobs append-note",
+    "nobs read"
+  ],
+  "fail": [
+    "(^|[\\s;&|(])obsidian\\s[^\\n]*(eval|daily|vault info)",
+    "nobs write"
+  ],
+  "judge": [
+    "Does the answer create today's note from the filled template with nobs append, read it back, then add the section with nobs append-note and read the note back, all without the Obsidian app, without nobs write, and without stopping to say the note is missing?"
+  ],
+  "good": "Fill the template into ~/.local/state/obsidian-daily-note/new.md\nnobs read \"<daily>\" (still exits 4)\nnobs append \"<daily>\" < new.md\nnobs read \"<daily>\", compare the body with new.md\nnobs append-note \"<daily>\" with the section on stdin\nnobs read \"<daily>\", check the section is in the note once.",
+  "bad": "Stop and report that today's daily note does not exist, and ask the user to open Obsidian to create it."
+}

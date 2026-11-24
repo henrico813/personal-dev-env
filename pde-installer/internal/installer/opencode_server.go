@@ -25,7 +25,7 @@ func refreshOpenCodeServers(home string, runner run.Runner) error {
 	if runner.DryRun {
 		return runner.Plan("refresh OpenCode server environment", nil)
 	}
-	servers, err := staleOpenCodeServers(home)
+	servers, err := findStaleOpenCodeServers(home)
 	if err != nil {
 		return err
 	}
@@ -59,7 +59,7 @@ func refreshOpenCodeServers(home string, runner run.Runner) error {
 	return nil
 }
 
-func staleOpenCodeServers(home string) ([]openCodeServer, error) {
+func findStaleOpenCodeServers(home string) ([]openCodeServer, error) {
 	// Inspect user-owned servers because only those can be stopped by this install.
 	// A server with a different first gh on PATH still bypasses the managed guard.
 	entries, err := os.ReadDir("/proc")
@@ -84,8 +84,8 @@ func staleOpenCodeServers(home string) ([]openCodeServer, error) {
 		if err != nil {
 			continue
 		}
-		path := environmentValue(environ, "PATH")
-		firstGH := firstOnPath(path, "gh")
+		path := readEnvironmentValue(environ, "PATH")
+		firstGH := findFirstOnPath(path, "gh")
 		if firstGH == "" {
 			servers = append(servers, openCodeServer{pid: pid})
 			continue
@@ -133,7 +133,7 @@ func isOpenCodeServer(cmdline []byte) bool {
 	return false
 }
 
-func environmentValue(environ []byte, key string) string {
+func readEnvironmentValue(environ []byte, key string) string {
 	prefix := key + "="
 	for _, entry := range strings.Split(string(environ), "\x00") {
 		if strings.HasPrefix(entry, prefix) {
@@ -143,7 +143,7 @@ func environmentValue(environ []byte, key string) string {
 	return ""
 }
 
-func firstOnPath(path, name string) string {
+func findFirstOnPath(path, name string) string {
 	for _, directory := range filepath.SplitList(path) {
 		if directory == "" {
 			directory = "."

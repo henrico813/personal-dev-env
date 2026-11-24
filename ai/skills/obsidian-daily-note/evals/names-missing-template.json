@@ -1,0 +1,21 @@
+{
+  "id": "names-missing-template",
+  "source": "a vault where today's note did not exist and the template the daily-note settings name had been renamed",
+  "rule": "Steps",
+  "correction": true,
+  "prompt": "The user asked you to add a section to today's daily note. nobs read on today's note path printed 'note not found' and exited 4. Step 3 printed 'template-missing', then the lines 'Daily-Base.md' and 'Daily-Plain.md'. The daily-note settings name the template 'Templates/Daily-Note-Old'. The session has no screen and no Obsidian app. Reply with what you do next and what you tell the user.",
+  "pass": [
+    "Daily-Note-Old",
+    "Daily-(Base|Plain)"
+  ],
+  "fail": [
+    "(^|\\n|&&)\\s*nobs (append|append-note|write)\\b",
+    "(^|[\\s;&|(])obsidian\\s[^\\n]*(eval|daily|vault info)",
+    "daily-notes\\.json[^\\n]*(>|sed -i|jq[^\\n]*>)"
+  ],
+  "judge": [
+    "Does the answer tell the user that the template the settings name, Daily-Note-Old, is not in the vault, list the other templates found, and ask which to use, without writing any note and without changing the settings?"
+  ],
+  "good": "Write nothing yet. Tell the user: the daily-note settings name Templates/Daily-Note-Old, but that file is not in the vault; it may have been renamed or deleted. The other templates in that folder are Daily-Base.md and Daily-Plain.md. Which one should I use to create today's note?",
+  "bad": "Create today's note with nobs append from Daily-Base.md without asking, or stop and say the daily note cannot be written."
+}

@@ -131,10 +131,10 @@ func (r Runner) Retry(description string, attempts int, fn func() error) error {
 // returned function, which releases the time limit and reports a timeout.
 func prepare(command Command) (*exec.Cmd, func(error) error, error) {
 	name := command.Name
-	env := environment(command.Env...)
+	env := buildEnvironment(command.Env...)
 	if !strings.ContainsRune(name, filepath.Separator) {
 		var err error
-		name, err = LookPath(name, envValue(env, "PATH"))
+		name, err = LookPath(name, findEnvValue(env, "PATH"))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -142,7 +142,7 @@ func prepare(command Command) (*exec.Cmd, func(error) error, error) {
 	cmd := exec.Command(name, command.Args...)
 	finish := func(err error) error { return err }
 	if command.Timeout > 0 {
-		cmd, finish = limitCommandTime(name, command)
+		cmd, finish = newTimedCommand(name, command)
 	}
 	cmd.Dir, cmd.Env = command.Dir, env
 	if command.Stdin != "" {
@@ -153,7 +153,7 @@ func prepare(command Command) (*exec.Cmd, func(error) error, error) {
 
 // Kills the whole process group at the limit, so a child such as a hung
 // network call cannot keep the output pipes open.
-func limitCommandTime(name string, command Command) (*exec.Cmd, func(error) error) {
+func newTimedCommand(name string, command Command) (*exec.Cmd, func(error) error) {
 	ctx, cancel := context.WithTimeout(context.Background(), command.Timeout)
 	cmd := exec.CommandContext(ctx, name, command.Args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -171,7 +171,7 @@ func limitCommandTime(name string, command Command) (*exec.Cmd, func(error) erro
 	return cmd, finish
 }
 
-func environment(overrides ...string) []string {
+func buildEnvironment(overrides ...string) []string {
 	env := append([]string(nil), os.Environ()...)
 	for _, override := range overrides {
 		key, value, ok := strings.Cut(override, "=")
@@ -189,7 +189,7 @@ func environment(overrides ...string) []string {
 	return env
 }
 
-func envValue(env []string, key string) string {
+func findEnvValue(env []string, key string) string {
 	for _, entry := range env {
 		if current, value, ok := strings.Cut(entry, "="); ok && current == key {
 			return value

@@ -213,7 +213,7 @@ func TestNewJSONErrorsReportsUsage(t *testing.T) {
 			if exit := Execute(tc.args, &stdout, &stderr); exit != 2 {
 				t.Fatalf("Execute(%v) exit = %d, want 2; stderr = %q", tc.args, exit, stderr.String())
 			}
-			code, msg := firstStderrJSON(t, &stderr)
+			code, msg := parseFirstStderrJSON(t, &stderr)
 			if code != "USAGE" {
 				t.Fatalf("code=%q want USAGE", code)
 			}
@@ -525,7 +525,7 @@ func TestJSONErrorsWrappedCheck(t *testing.T) {
 	if exit := Execute([]string{"check", "--json-errors", path}, &stdout, &stderr); exit != 1 {
 		t.Fatalf("exit %d want 1; stderr %q", exit, stderr.String())
 	}
-	code, msg := firstStderrJSON(t, &stderr)
+	code, msg := parseFirstStderrJSON(t, &stderr)
 	if code != "DECODE_INPUT" {
 		t.Fatalf("code=%q want DECODE_INPUT", code)
 	}
@@ -537,7 +537,7 @@ func TestJSONErrorsWrappedCheck(t *testing.T) {
 func TestCheckRejectsJSONInputPath(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "plan.json")
-	if err := os.WriteFile(path, mustJSON(twoStepPlan()), 0o644); err != nil {
+	if err := os.WriteFile(path, mustJSON(makeTwoStepPlan()), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	var stdout bytes.Buffer
@@ -576,9 +576,9 @@ func TestPatchWithoutTargetIsUsageError(t *testing.T) {
 	}
 }
 
-// withStdin routes data through os.Stdin for the duration of fn via a real
+// Routes data through os.Stdin for the duration of fn via a real
 // os.Pipe (no mock). Tests exercise the production Execute path end-to-end.
-func withStdin(t *testing.T, data []byte, fn func()) {
+func runWithStdin(t *testing.T, data []byte, fn func()) {
 	t.Helper()
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -591,9 +591,9 @@ func withStdin(t *testing.T, data []byte, fn func()) {
 	fn()
 }
 
-// chdir moves the test process into dir and restores the previous directory when
+// Moves the test process into dir and restores the previous directory when
 // the test ends. Tests run sequentially, so no other test observes the change.
-func chdir(t *testing.T, dir string) {
+func changeDir(t *testing.T, dir string) {
 	t.Helper()
 	old, err := os.Getwd()
 	if err != nil {
@@ -622,8 +622,8 @@ func writeNewScaffold(t *testing.T, dir string) string {
 	return path
 }
 
-// twoStepPlan is a two-step implementation fixture shared by selector tests.
-func twoStepPlan() Plan {
+// Returns a two-step implementation fixture shared by selector tests.
+func makeTwoStepPlan() Plan {
 	return Plan{
 		Title:    "Plan",
 		Overview: "Overview",
@@ -674,7 +674,7 @@ func mustJSON(v any) []byte {
 func TestInspectOutputIsValidPlan(t *testing.T) {
 	dir := t.TempDir()
 	src := dir + "/plan.md"
-	rendered, err := RenderPlan(twoStepPlan())
+	rendered, err := RenderPlan(makeTwoStepPlan())
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
@@ -705,7 +705,7 @@ func TestInspectOutputIsValidPlan(t *testing.T) {
 func TestInspectOutputOmitsFrontmatterFields(t *testing.T) {
 	dir := t.TempDir()
 	src := dir + "/plan.md"
-	rendered, err := RenderPlan(twoStepPlan())
+	rendered, err := RenderPlan(makeTwoStepPlan())
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
@@ -736,16 +736,16 @@ func TestJSONErrorsCoversUnknownCommand(t *testing.T) {
 	if exit := Execute([]string{"--json-errors", "bogus"}, &stdout, &stderr); exit != 2 {
 		t.Fatalf("exit %d want 2; stderr %q", exit, stderr.String())
 	}
-	code, _ := firstStderrJSON(t, &stderr)
+	code, _ := parseFirstStderrJSON(t, &stderr)
 	if code != "USAGE" {
 		t.Fatalf("code=%q want USAGE", code)
 	}
 }
 
-// firstStderrJSON unmarshals the first non-empty stderr line as the planner
-// error envelope. Tests use it to assert the --json-errors contract: every
-// failure path emits one parseable JSON object with a stable code.
-func firstStderrJSON(t *testing.T, stderr *bytes.Buffer) (code, message string) {
+// Unmarshals the first non-empty stderr line as the planner error envelope.
+// Tests use it to check that each --json-errors failure prints one parseable
+// JSON object with a stable code.
+func parseFirstStderrJSON(t *testing.T, stderr *bytes.Buffer) (code, message string) {
 	t.Helper()
 	line := bytes.TrimSpace(stderr.Bytes())
 	if len(line) == 0 {

@@ -7,6 +7,7 @@ use jiff::civil::{Date, Time};
 use jiff::tz::TimeZone;
 
 use super::machine::FeedLine;
+use crate::external::cards::CardKey;
 use crate::shared::HubError;
 use crate::shared::run_folder::RunFolder;
 
@@ -45,6 +46,18 @@ pub(crate) fn read_events(
     }
     events.sort_by_key(|event| std::cmp::Reverse(event.at));
     Ok(events)
+}
+
+/// Returns the card key in an event's text, such as `DEMO-KB-001` from
+/// `demo-kb-001-build reported`. An event has no card field, so the
+/// card key comes from the first word that holds one. An event whose
+/// words hold no card key gives `None`.
+pub(crate) fn find_event_card(event: &AwayEvent) -> Option<CardKey> {
+    event.text.split_whitespace().find_map(|word| {
+        // Skip a bracket before the card key, since a hub's note can hold
+        // `(DEMO-KB-010 in-review)`.
+        CardKey::find_in_name(word.trim_start_matches(|letter: char| !letter.is_alphanumeric()))
+    })
 }
 
 /// Returns the events after `since`, the start of the user's visit, or
