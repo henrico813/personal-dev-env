@@ -109,7 +109,7 @@ fn add_due_review(test_tools: &mut TestTools) -> PathBuf {
     let run_path = test_tools.run_path();
     fs::write(
         run_path.join("rules.md"),
-        "- start hubs with `--model 'claude-code/claude-opus-5-5[1m]#medium'`.\n",
+        "- start hubs with `--model 'claude-code/claude-opus-5-5#medium'`.\n",
     )
     .unwrap();
     let review = test_tools
@@ -526,7 +526,7 @@ fn run_next_starts_review_once_old_closes() {
     assert_eq!(created_tabs[0].1.label, "review-kanban-hub-1");
     assert_eq!(
         test_tools.herdr.started.borrow()[0].args,
-        ["--model", "claude-code/claude-opus-5-5[1m]#high", "--auto"]
+        ["--model", "claude-code/claude-opus-5-5#high", "--auto"]
     );
     let prompts = test_tools.herdr.prompts.borrow();
     assert_eq!(prompts.len(), 1);

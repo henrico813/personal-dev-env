@@ -120,8 +120,8 @@ if [ -n "$goog_base_url" ]; then
 fi
 
 printf '%s\n' "$input" | jq \
-    --arg plugin "@openchamber/opencode-claude@1.1.0" \
-    --arg model "claude-code/claude-opus-5-5[1m]" \
+    --arg plugin "@openchamber/opencode-claude@1.7.0" \
+    --arg model "claude-code/claude-opus-5-5" \
     --arg baseURL "$goog_base_url" \
     --arg keyFile "{file:~/.config/opencode/goog.key}" \
     --argjson googModels "${goog_models:-null}" \

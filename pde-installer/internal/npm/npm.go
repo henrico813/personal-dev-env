@@ -28,7 +28,7 @@ func listPackages() []packageSpec {
 		{
 			Name:      "@anthropic-ai/claude-code",
 			Binary:    "claude",
-			Integrity: "sha512-/8Y1pe7M15qMOU7RwUEjpFcM8XGVXNzWrWRXXp/0HlGm1k8FcOCxYMA9VR237JUUzzx5DkcQaGvELAo4si7TwA==",
+			Integrity: "sha512-E6IE7pon8YAtlzIBB0yhhQgopGvsYuSjnCaoP9ATw64T/f3I4ZfwVcj5jWV9yD7XkrSQZCwO7PgS+qMcP817gA==",
 		},
 	}
 	for index := range specs {

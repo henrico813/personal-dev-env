@@ -15,7 +15,7 @@ use common::{
 };
 
 /// The model the newest `rules.md` line names.
-const MODEL: &str = "claude-code/claude-opus-5-5[1m]#medium";
+const MODEL: &str = "claude-code/claude-opus-5-5#medium";
 
 /// A hub `kanban-hub` in pane `w1:kanban-hub` and tab `w1:t1` with
 /// session `ses_old`, the next hub `kanban-hub-2` with session
@@ -58,13 +58,13 @@ fn write_first_reply(test_tools: &TestTools, effort: &str) {
                 session: "ses_new",
                 kind: "assistant",
                 updated_ms: 1,
-                data: json!({"model": {"id": "claude-opus-5-5[1m]", "variant": effort}}),
+                data: json!({"model": {"id": "claude-opus-5-5", "variant": effort}}),
             },
             OpenCodeRow {
                 session: "ses_new",
                 kind: "assistant",
                 updated_ms: 2,
-                data: json!({"model": {"id": "claude-opus-5-5[1m]", "variant": "xhigh"}}),
+                data: json!({"model": {"id": "claude-opus-5-5", "variant": "xhigh"}}),
             },
         ],
     );
