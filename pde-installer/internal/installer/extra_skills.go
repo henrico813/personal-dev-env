@@ -61,7 +61,7 @@ func updateExtraSkills(home string, runner run.Runner) bool {
 	}
 	moved := false
 	if err == nil {
-		moved, err = fastForwardExtraSkills(
+		moved, err = pullExtraSkills(
 			root,
 			runner,
 		)
@@ -76,7 +76,7 @@ func updateExtraSkills(home string, runner run.Runner) bool {
 	return moved
 }
 
-func fastForwardExtraSkills(root string, runner run.Runner) (bool, error) {
+func pullExtraSkills(root string, runner run.Runner) (bool, error) {
 	reason, err := findSkipReason(
 		root,
 		runner,

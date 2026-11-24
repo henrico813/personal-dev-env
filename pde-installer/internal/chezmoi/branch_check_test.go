@@ -48,7 +48,7 @@ func TestBranchCheckRefusesBadNewNames(t *testing.T) {
 		},
 	}
 	script := filepath.Join(
-		repoRoot(t),
+		findRepoRoot(t),
 		"chezmoi",
 		"dot_local",
 		"bin",
@@ -86,7 +86,7 @@ func TestBranchCheckRefusesBadNewNames(t *testing.T) {
 				test.branch,
 			)
 			command.Dir = repo
-			command.Env = isolatedGitEnv(os.Environ())
+			command.Env = isolateGitEnv(os.Environ())
 			output, err := command.CombinedOutput()
 
 			if gotOK := err == nil; gotOK != test.wantOK {
@@ -141,7 +141,7 @@ func runGit(t *testing.T, dir string, args ...string) {
 		args...,
 	)
 	command.Dir = dir
-	command.Env = isolatedGitEnv(os.Environ())
+	command.Env = isolateGitEnv(os.Environ())
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf(
 			"git %s: %v\n%s",
@@ -152,7 +152,7 @@ func runGit(t *testing.T, dir string, args ...string) {
 	}
 }
 
-func isolatedGitEnv(env []string) []string {
+func isolateGitEnv(env []string) []string {
 	return append(
 		env,
 		"GIT_CONFIG_GLOBAL=/dev/null",

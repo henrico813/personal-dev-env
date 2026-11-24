@@ -42,7 +42,9 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--vault", help="vault name for nobs vault path")
     parser.add_argument("keys", nargs="*", help="cards to migrate")
     parser.add_argument(
-        "--dry-run", action="store_true", help="list cards, change none"
+        "--dry-run",
+        action="store_true",
+        help="list cards, change none",
     )
     args = parser.parse_args(argv)
     try:
@@ -60,7 +62,7 @@ def main(argv: list[str]) -> int:
             if not args.dry_run:
                 card.update_card(note, migrate_text)
             print(
-                f"{'would migrate' if args.dry_run else 'migrated'} {note.key}"
+                f"{'would migrate' if args.dry_run else 'migrated'} {note.key}",
             )
     except card.CardError as error:
         print(f"migrate_sections: {error}", file=sys.stderr)

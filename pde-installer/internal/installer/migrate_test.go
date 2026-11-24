@@ -105,7 +105,7 @@ func TestLegacyConfigRenamesOldSettingKeys(t *testing.T) {
 
 // A desktop that is not saved disappears at the next bare install.
 func TestMigrationSavesSelectedDesktop(t *testing.T) {
-	home := profileHome(t, `{"profile":"full"}`+"\n")
+	home := makeProfileHome(t, `{"profile":"full"}`+"\n")
 
 	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo", Profile: "full", Desktop: "i3", ColorProfile: colorprofile.TokyoNight})
 	if err != nil {
@@ -181,7 +181,7 @@ func TestLegacyConfigRollbackRestoresFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := journal.Rollback(); err != nil {
+	if err := journal.RollBack(); err != nil {
 		t.Fatal(err)
 	}
 	restored, err := os.ReadFile(path)
@@ -210,7 +210,7 @@ func TestLegacyNvimLinkRollsBack(t *testing.T) {
 	if info, err := os.Lstat(destination); err != nil || !info.IsDir() {
 		t.Fatalf("migrated Neovim config = %v, %v", info, err)
 	}
-	if err := journal.Rollback(); err != nil {
+	if err := journal.RollBack(); err != nil {
 		t.Fatal(err)
 	}
 	restored, err := os.Readlink(destination)

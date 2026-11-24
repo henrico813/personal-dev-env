@@ -75,7 +75,7 @@ func TestTerminalInventory(t *testing.T) {
 			want = append(want, inventoryItem{name: name, owner: group.owner})
 		}
 	}
-	items := ItemsFor("terminal", "")
+	items := ListItemsFor("terminal", "")
 	got := make([]inventoryItem, 0, len(items))
 	for _, item := range items {
 		got = append(got, inventoryItem{name: item.Name, owner: item.Owner})
@@ -141,12 +141,12 @@ func TestEachProfileAddsRecordedItems(t *testing.T) {
 	for _, test := range tests {
 		t.Run(string(test.profile), func(t *testing.T) {
 			smaller := map[string]bool{}
-			for _, item := range ItemsFor(test.smaller, "") {
+			for _, item := range ListItemsFor(test.smaller, "") {
 				smaller[item.Name] = true
 			}
 
 			var adds []string
-			for _, item := range ItemsFor(test.profile, "") {
+			for _, item := range ListItemsFor(test.profile, "") {
 				if !smaller[item.Name] {
 					adds = append(adds, item.Name)
 				}
@@ -167,14 +167,14 @@ func TestUbuntuItemsMatchProfilePackages(t *testing.T) {
 		for _, desktop := range []profile.Desktop{"", "i3", "sway"} {
 			t.Run(string(selected)+" "+string(desktop), func(t *testing.T) {
 				listed := map[string]bool{}
-				for _, item := range ItemsFor(selected, desktop) {
+				for _, item := range ListItemsFor(selected, desktop) {
 					if item.Owner == Ubuntu {
 						listed[item.Name] = true
 					}
 				}
 				packages := append(selected.Packages(), desktop.Packages()...)
 
-				for _, item := range Items() {
+				for _, item := range ListItems() {
 					if item.Owner != Ubuntu {
 						continue
 					}

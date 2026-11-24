@@ -16,7 +16,7 @@ import (
 
 func TestReconcileManagesStaticBinary(t *testing.T) {
 	home := t.TempDir()
-	archive := compressedBinary(t, "#!/bin/sh\nprintf 'tmux 3.7b\\n'\n")
+	archive := compressBinary(t, "#!/bin/sh\nprintf 'tmux 3.7b\\n'\n")
 	digest := sha256.Sum256(archive)
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		_, _ = response.Write(archive)
@@ -45,14 +45,14 @@ func TestReconcileManagesStaticBinary(t *testing.T) {
 	if len(unchanged.Changes) != 0 {
 		t.Fatalf("second Reconcile() changes = %d, want 0", len(unchanged.Changes))
 	}
-	if err := journal.Rollback(); err != nil {
-		t.Fatalf("Rollback() error = %v", err)
+	if err := journal.RollBack(); err != nil {
+		t.Fatalf("RollBack() error = %v", err)
 	}
 	assertFile(t, filepath.Join(manager.ReleaseRoot(), "old"), "old release\n")
 	assertFile(t, launcher, "old launcher\n")
 }
 
-func compressedBinary(t *testing.T, content string) []byte {
+func compressBinary(t *testing.T, content string) []byte {
 	t.Helper()
 	var archive bytes.Buffer
 	compressed := gzip.NewWriter(&archive)

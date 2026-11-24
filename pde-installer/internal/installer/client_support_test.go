@@ -14,7 +14,7 @@ import (
 // releases folder. Installing client there would delete them, so the install
 // refuses.
 func TestClientInstallRefusesToDeleteReleases(t *testing.T) {
-	cfg := terminalTestConfig(t)
+	cfg := newTerminalTestConfig(t)
 	cfg.Profile = "client"
 	statePath := filepath.Join(
 		direct.New(cfg.Home, run.Runner{}).ToolsRoot(),
