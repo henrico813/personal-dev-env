@@ -117,7 +117,7 @@ func ListItems() []Item {
 		},
 		{
 			Name:    "@anthropic-ai/claude-code",
-			Version: "2.1.283",
+			Version: "2.1.331",
 			Owner:   NPM,
 			Tier:    profile.Workstation,
 		},

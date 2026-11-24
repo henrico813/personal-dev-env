@@ -27,7 +27,7 @@ func TestModifierReplacesManagedPlugins(t *testing.T) {
 			name:  "empty",
 			input: "",
 			want: []any{
-				"@openchamber/opencode-claude@1.1.0",
+				"@openchamber/opencode-claude@1.7.0",
 			},
 		},
 		{
@@ -39,7 +39,7 @@ func TestModifierReplacesManagedPlugins(t *testing.T) {
 				]
 			}`,
 			want: []any{
-				"@openchamber/opencode-claude@1.1.0",
+				"@openchamber/opencode-claude@1.7.0",
 			},
 		},
 		{
@@ -61,7 +61,7 @@ func TestModifierReplacesManagedPlugins(t *testing.T) {
 					"other@2",
 					map[string]any{"enabled": true},
 				},
-				"@openchamber/opencode-claude@1.1.0",
+				"@openchamber/opencode-claude@1.7.0",
 			},
 		},
 	}
