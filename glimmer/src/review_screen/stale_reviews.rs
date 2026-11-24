@@ -84,8 +84,8 @@ fn is_stale(review: &WaitingReview, gh: Option<&[&str]>) -> bool {
 }
 
 /// Returns true when the newest pull request from `branch` is merged or
-/// closed and its last commit is in the worktree's HEAD. A branch with no
-/// pull request, or a `gh` that fails, gives false.
+/// closed, and its last commit is in the worktree's HEAD or holds that HEAD.
+/// A branch with no pull request, or a `gh` that fails, gives false.
 fn is_pull_request_finished(gh: &[&str], worktree: &Path, branch: &str) -> bool {
     /// Holds the fields asked of `gh`, such as `MERGED` and a commit hash.
     #[derive(Deserialize)]
@@ -113,10 +113,13 @@ fn is_pull_request_finished(gh: &[&str], worktree: &Path, branch: &str) -> bool 
     };
     let pull_requests: Vec<PullRequest> = serde_json::from_str(&printed).unwrap_or_default();
     // `gh` matches the branch by name only, so an old pull request from a
-    // reused name or a fork counts only when its last commit is in HEAD.
+    // reused name or a fork counts only when its last commit is in HEAD. A
+    // commit pushed after the worktree's last one, such as a merge of main,
+    // leaves HEAD inside the pull request, so that counts too.
     pull_requests.first().is_some_and(|newest| {
         matches!(newest.state.as_str(), "MERGED" | "CLOSED")
-            && git::is_ancestor_of_head(worktree, &newest.last_commit).unwrap_or(false)
+            && (git::is_ancestor_of_head(worktree, &newest.last_commit).unwrap_or(false)
+                || git::is_head_in_history_of(worktree, &newest.last_commit).unwrap_or(false))
     })
 }
 
@@ -143,8 +146,18 @@ mod tests {
     /// Names the status of a review that waits for User Feedback.
     const WAITING: &str = "waiting_for_user_feedback";
 
+    /// Commits `message`, then moves HEAD back one commit. Returns the commit,
+    /// which the clone keeps.
+    fn commit_and_leave(repo: &MadeUpRepo, message: &str) -> CommitId {
+        repo.run_git(&["commit", "--quiet", "--allow-empty", "-m", message]);
+        let commit = git::resolve_commit(repo.path(), "HEAD").unwrap();
+        repo.run_git(&["reset", "--quiet", "--hard", "HEAD~1"]);
+        commit
+    }
+
     /// `drop_stale_reviews` must dismiss a waiting review once its pull
-    /// request is merged or closed, and keep it while the pull request is
+    /// request is merged or closed, even with a commit pushed after the
+    /// worktree's last one. It keeps the review while the pull request is
     /// open, missing, from an older branch of the same name or a commit the
     /// clone lacks, or `gh` cannot answer. Otherwise Ctrl+b e offers reviews
     /// nobody needs, or hides one the user still has to answer.
@@ -154,6 +167,11 @@ mod tests {
             (
                 "merged",
                 Some(r#"[{"state":"MERGED","headRefOid":"NEW"}]"#),
+                "dismissed",
+            ),
+            (
+                "merged after a later push",
+                Some(r#"[{"state":"MERGED","headRefOid":"LATER"}]"#),
                 "dismissed",
             ),
             (
@@ -185,15 +203,17 @@ mod tests {
         for (case, pr_list, status) in cases {
             let repo = MadeUpRepo::new("feat/screen", &[]);
             repo.save_review(WAITING, vec![], json!({}));
-            // A commit that left the branch stands for an older branch's last commit.
-            repo.run_git(&["commit", "--quiet", "--allow-empty", "-m", "Old work"]);
-            let old = git::resolve_commit(repo.path(), "HEAD").unwrap();
-            repo.run_git(&["reset", "--quiet", "--hard", "HEAD~1"]);
+            // A commit beside HEAD stands for an older branch's last commit.
+            let old = commit_and_leave(&repo, "Old work");
+            repo.run_git(&["commit", "--quiet", "--allow-empty", "-m", "New work"]);
             let head = git::resolve_commit(repo.path(), "HEAD").unwrap();
+            // A commit after HEAD stands for one pushed from elsewhere, such as a merge of main.
+            let later = commit_and_leave(&repo, "Merge main");
             if let Some(pr_list) = pr_list {
                 let pr_list = pr_list
                     .replace("\"NEW\"", &format!("\"{}\"", head.as_str()))
-                    .replace("\"OLD\"", &format!("\"{}\"", old.as_str()));
+                    .replace("\"OLD\"", &format!("\"{}\"", old.as_str()))
+                    .replace("\"LATER\"", &format!("\"{}\"", later.as_str()));
                 fs::write(repo.path().join("pr-list"), pr_list).unwrap();
             }
 

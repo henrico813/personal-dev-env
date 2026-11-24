@@ -29,7 +29,9 @@ func startXvfb(t *testing.T, procRoot string, titles *[]string) *watcher {
 	}
 	defer displayRead.Close()
 	// Xvfb takes every cookie in its -auth file, whatever the display number.
-	server := exec.Command("Xvfb", "-displayfd", "3", "-auth", writeXauthority(t, "0"), "-nolisten", "tcp")
+	// Without -noreset it resets when the last client leaves, and drops a
+	// connection that arrives during the reset.
+	server := exec.Command("Xvfb", "-displayfd", "3", "-auth", writeXauthority(t, "0"), "-nolisten", "tcp", "-noreset")
 	server.ExtraFiles = []*os.File{displayWrite}
 	if err := server.Start(); err != nil {
 		t.Fatal(err)

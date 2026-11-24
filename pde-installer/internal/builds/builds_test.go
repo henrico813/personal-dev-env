@@ -92,8 +92,8 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Reconcile() error = %v", err)
 	}
-	if err := journal.Commit(); err != nil {
-		t.Fatalf("Commit() error = %v", err)
+	if err := fsutil.CommitJournals(journal); err != nil {
+		t.Fatalf("CommitJournals() error = %v", err)
 	}
 	before, err := os.ReadFile(logPath)
 	if err != nil {
@@ -139,8 +139,8 @@ func TestReconcileRestoresMissingWriteLink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
-	if err := journal.Commit(); err != nil {
-		t.Fatalf("Commit() error = %v", err)
+	if err := fsutil.CommitJournals(journal); err != nil {
+		t.Fatalf("CommitJournals() error = %v", err)
 	}
 	link := filepath.Join(home, ".local", "bin", "pde-gh-write")
 	if err := os.Remove(link); err != nil {
@@ -152,8 +152,8 @@ func TestReconcileRestoresMissingWriteLink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Reconcile() error = %v", err)
 	}
-	if err := journal.Commit(); err != nil {
-		t.Fatalf("second Commit() error = %v", err)
+	if err := fsutil.CommitJournals(journal); err != nil {
+		t.Fatalf("second CommitJournals() error = %v", err)
 	}
 	target, err := os.Readlink(link)
 	if err != nil {
@@ -184,8 +184,8 @@ func TestReconcileReplacesLinkedSkillLessons(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
-	if err := journal.Commit(); err != nil {
-		t.Fatalf("Commit() error = %v", err)
+	if err := fsutil.CommitJournals(journal); err != nil {
+		t.Fatalf("CommitJournals() error = %v", err)
 	}
 	info, err := os.Lstat(tool)
 	if err != nil {
@@ -225,8 +225,8 @@ func TestOnlyPythonInputsTriggerRebuild(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Reconcile() error = %v", err)
 			}
-			if err := journal.Commit(); err != nil {
-				t.Fatalf("Commit() error = %v", err)
+			if err := fsutil.CommitJournals(journal); err != nil {
+				t.Fatalf("CommitJournals() error = %v", err)
 			}
 
 			if rebuilt := readBuildLog(t, logPath) != before; rebuilt != tt.rebuild {
@@ -347,7 +347,7 @@ func TestClientBuildsOnlyPythonTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
-	if err := journal.Commit(); err != nil {
+	if err := fsutil.CommitJournals(journal); err != nil {
 		t.Fatal(err)
 	}
 	if got := readBuildLog(t, logPath); got != "python\npython\n" {
@@ -368,8 +368,8 @@ func TestReconcileRemovesLeftoverHubNext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
-	if err := journal.Commit(); err != nil {
-		t.Fatalf("Commit() error = %v", err)
+	if err := fsutil.CommitJournals(journal); err != nil {
+		t.Fatalf("CommitJournals() error = %v", err)
 	}
 
 	if _, err := os.Lstat(hubNext); !os.IsNotExist(err) {
@@ -387,8 +387,8 @@ func TestReconcileOnClientRemovesFullHub(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
-	if err := journal.Commit(); err != nil {
-		t.Fatalf("Commit() error = %v", err)
+	if err := fsutil.CommitJournals(journal); err != nil {
+		t.Fatalf("CommitJournals() error = %v", err)
 	}
 
 	if _, err := os.Lstat(hub); !os.IsNotExist(err) {
@@ -409,8 +409,8 @@ func newCommittedManager(t *testing.T) (manager Manager, repoRoot, logPath strin
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
-	if err := journal.Commit(); err != nil {
-		t.Fatalf("Commit() error = %v", err)
+	if err := fsutil.CommitJournals(journal); err != nil {
+		t.Fatalf("CommitJournals() error = %v", err)
 	}
 	return manager, repoRoot, logPath
 }
@@ -554,8 +554,8 @@ func TestInstallPluginSkipsUnchangedTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first InstallPlugin() error = %v", err)
 	}
-	if err := journal.Commit(); err != nil {
-		t.Fatalf("Commit() error = %v", err)
+	if err := fsutil.CommitJournals(journal); err != nil {
+		t.Fatalf("CommitJournals() error = %v", err)
 	}
 	journal, err = manager.InstallPlugin(name)
 	if err != nil {
@@ -578,8 +578,8 @@ func TestInstallPluginSurvivesSourceRemoval(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InstallPlugin() error = %v", err)
 	}
-	if err := journal.Commit(); err != nil {
-		t.Fatalf("Commit() error = %v", err)
+	if err := fsutil.CommitJournals(journal); err != nil {
+		t.Fatalf("CommitJournals() error = %v", err)
 	}
 	if err := os.RemoveAll(filepath.Join(repoRoot, "nvim-plugins")); err != nil {
 		t.Fatal(err)

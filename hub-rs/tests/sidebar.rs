@@ -314,10 +314,11 @@ mod desk {
 }
 
 mod agent_filter {
+    use std::collections::BTreeMap;
     use std::path::Path;
 
     use hub::commands::sidebar::{run_desk, run_gather};
-    use hub::external::herdr::{Agent, AgentStatus, HubKind, Workspace};
+    use hub::external::herdr::{Agent, AgentStatus, Workspace};
     use hub::shared::Tools;
 
     use super::common::{InMemoryHerdr, TestTools, make_agent, make_workspaces};
@@ -325,11 +326,24 @@ mod agent_filter {
     /// Runs one sidebar command and fails the test on its error.
     type RunCommand = fn(&Tools<'_>);
 
-    /// Each hub start gathers, and the user runs `desk`. Both must
-    /// tag every hub and the desk, mark a flagged worker again and leave
-    /// a plain worker alone, then filter the agent list once. A missing
-    /// tag or mark drops that row from the user's "go to" list. A wrong
-    /// hub kind puts that hub's row in the wrong place.
+    /// An agent named `name` in the desk, workspace `w4`, in tab
+    /// `w4:t-<name>`.
+    fn make_desk_agent(name: &str) -> Agent {
+        Agent {
+            workspace_id: "w4".to_owned(),
+            tab_id: format!("w4:t-{name}"),
+            ..make_agent(name, AgentStatus::Idle)
+        }
+    }
+
+    /// Each hub start gathers, and the user runs `desk`. Both must tag
+    /// only the newest kanban hub as the front hub and each desk agent by
+    /// its tab, clear the tokens a handed-off hub and an auto hub kept,
+    /// mark a flagged worker again, then filter the agent list once.
+    /// A missing tag drops a row from the user's "go to" list, a kept
+    /// one leaves an old hub above the desk, and a desk sorted by name
+    /// breaks the user's tab order. A token already right gets no write,
+    /// since `hub watch` runs this every 5 seconds.
     #[test]
     fn gather_and_desk_fill_go_to_list() {
         let cases: [(&str, RunCommand); 2] = [
@@ -346,6 +360,7 @@ mod agent_filter {
                 agents: vec![
                     Agent {
                         workspace_id: "w3".to_owned(),
+                        go_to: Some("3-hub".to_owned()),
                         ..make_agent("auto-hub-1", AgentStatus::Done)
                     },
                     Agent {
@@ -357,7 +372,16 @@ mod agent_filter {
                         marked: true,
                         ..make_agent("demo-kb-002-review", AgentStatus::Done)
                     },
+                    Agent {
+                        go_to: Some("1-kanban-hub".to_owned()),
+                        ..make_agent("kanban-hub-12", AgentStatus::Idle)
+                    },
                     make_agent("kanban-hub-13", AgentStatus::Working),
+                    make_desk_agent("routine"),
+                    Agent {
+                        go_to: Some("2-desk-1-02".to_owned()),
+                        ..make_desk_agent("notes")
+                    },
                 ],
                 workspaces: [
                     make_workspaces(&["w1", "w2", "w3"]),
@@ -367,6 +391,14 @@ mod agent_filter {
                     }],
                 ]
                 .concat(),
+                tabs: BTreeMap::from([(
+                    "w4".to_owned(),
+                    vec![
+                        "w4:t-board".to_owned(),
+                        "w4:t-routine".to_owned(),
+                        "w4:t-notes".to_owned(),
+                    ],
+                )]),
                 ..InMemoryHerdr::default()
             };
             let test_tools = TestTools::new();
@@ -379,13 +411,23 @@ mod agent_filter {
 
             assert_eq!(
                 *herdr.tagged_hubs.borrow(),
+                [("w1:kanban-hub-13".to_owned(), "1-hub-1".to_owned())],
+                "{case_name}"
+            );
+            assert_eq!(
+                *herdr.go_to_writes.borrow(),
                 [
-                    ("w1:kanban-hub-13".to_owned(), HubKind::Kanban),
-                    ("w1:auto-hub-1".to_owned(), HubKind::Other),
+                    ("w1:auto-hub-1".to_owned(), None),
+                    ("w1:kanban-hub-12".to_owned(), None),
+                    ("w1:routine".to_owned(), Some("2-desk-1-01".to_owned())),
                 ],
                 "{case_name}"
             );
-            assert_eq!(*herdr.desk_agents.borrow(), ["w4:p-board"], "{case_name}");
+            assert_eq!(
+                *herdr.desk_agents.borrow(),
+                [("w4:p-board".to_owned(), "2-desk-1-00".to_owned())],
+                "{case_name}"
+            );
             assert_eq!(
                 *herdr.marks.borrow(),
                 [(
@@ -400,23 +442,24 @@ mod agent_filter {
 }
 
 mod restore_sidebar {
+    use std::fs;
+    use std::time::Duration;
+
+    use hub::commands::next::{NextOptions, run_next};
     use hub::commands::sidebar::run_restore_sidebar;
-    use hub::external::herdr::{Agent, AgentStatus, HubKind, Workspace};
+    use hub::external::herdr::{Agent, AgentStatus, Workspace};
     use hub::shared::Tools;
+    use hub::shared::run_folder::RunFolder;
 
     use super::common::{InMemoryHerdr, TestTools, make_agent};
 
     /// A Herdr in the state its restart leaves, with a kanban hub that
-    /// lost its tag, another hub that kept it, a worker, and a desk in
-    /// `w4` whose board pane no longer shows as the desk agent.
+    /// lost its tag, a worker, and a desk in `w4` whose board pane no
+    /// longer shows as the desk agent.
     fn make_restarted_herdr() -> InMemoryHerdr {
         InMemoryHerdr {
             agents: vec![
                 make_agent("kanban-hub-13", AgentStatus::Idle),
-                Agent {
-                    go_to_tagged: true,
-                    ..make_agent("auto-hub-1", AgentStatus::Working)
-                },
                 make_agent("demo-kb-001-impl", AgentStatus::Idle),
             ],
             workspaces: vec![
@@ -433,6 +476,25 @@ mod restore_sidebar {
         }
     }
 
+    /// Runs one `hub next` check in the run folder `herdr-hub.<word>` of
+    /// the runs folder, as the hub whose session is `session_id`.
+    fn run_hub_next(test_tools: &mut TestTools, word: &str, session_id: &str) -> RunFolder {
+        let path = test_tools.path().join(format!("herdr-hub.{word}"));
+        fs::create_dir_all(&path).unwrap();
+        let run = RunFolder::open(&path).unwrap();
+        test_tools.own_session = Some(session_id.to_owned());
+        let options = NextOptions {
+            timeout: Some(Duration::ZERO),
+            poll: Duration::ZERO,
+            json: false,
+            process_id: 1,
+            cwd: test_tools.path().to_owned(),
+            start_reviews: false,
+        };
+        run_next(&test_tools.tools(), &run, &options).unwrap();
+        run
+    }
+
     /// Herdr runs this when it starts, after a restart dropped every
     /// tag, the desk row and the filter. A hub or desk left out stays
     /// missing from the top of the user's list until someone acts.
@@ -447,13 +509,82 @@ mod restore_sidebar {
 
         let outcome = run_restore_sidebar(&tools, false).unwrap();
 
-        assert_eq!(outcome.lines, ["put back: kanban-hub-13 desk"]);
+        assert_eq!(outcome.lines, ["changed: kanban-hub-13 desk"]);
         assert_eq!(
             *herdr.tagged_hubs.borrow(),
-            [("w1:kanban-hub-13".to_owned(), HubKind::Kanban)]
+            [("w1:kanban-hub-13".to_owned(), "1-hub-1".to_owned())]
         );
-        assert_eq!(*herdr.desk_agents.borrow(), ["w4:p-board"]);
+        assert_eq!(
+            *herdr.desk_agents.borrow(),
+            [("w4:p-board".to_owned(), "2-desk-1-00".to_owned())]
+        );
         assert_eq!(herdr.agent_filters.get(), 1);
+    }
+
+    /// The front hub is the one that last ran `hub next` in a run of
+    /// the user's own, even when Herdr lists it with no name and an
+    /// older named hub of the same kind stays open. An auto run's hub,
+    /// also with no name, that ran `hub next` later must not take its
+    /// place, or the user's main hub drops below the desk.
+    #[test]
+    fn run_restore_sidebar_takes_recorded_front_hub() {
+        let mut test_tools = TestTools::new();
+        test_tools.herdr.agents = vec![
+            Agent {
+                session_id: Some("ses_old".to_owned()),
+                go_to: Some("1-hub-1".to_owned()),
+                ..make_agent("kanban-hub-29", AgentStatus::Idle)
+            },
+            Agent {
+                name: String::new(),
+                pane_id: "w2:p1".to_owned(),
+                session_id: Some("ses_front".to_owned()),
+                ..make_agent("", AgentStatus::Working)
+            },
+            Agent {
+                name: String::new(),
+                pane_id: "w3:p1".to_owned(),
+                session_id: Some("ses_auto".to_owned()),
+                ..make_agent("", AgentStatus::Working)
+            },
+        ];
+        run_hub_next(&mut test_tools, "kanban", "ses_front");
+        let auto_run = run_hub_next(&mut test_tools, "auto", "ses_auto");
+        fs::write(auto_run.path().join("approved.md"), "Approved: run 2\n").unwrap();
+
+        run_restore_sidebar(&test_tools.tools(), false).unwrap();
+
+        assert_eq!(
+            *test_tools.herdr.tagged_hubs.borrow(),
+            [("w2:p1".to_owned(), "1-hub-1".to_owned())]
+        );
+        assert_eq!(
+            *test_tools.herdr.go_to_writes.borrow(),
+            [("w1:kanban-hub-29".to_owned(), None)]
+        );
+    }
+
+    /// A worker may loop on `hub next` in a run folder of its own, as
+    /// a quiet-hours script does. It must not take the front hub's row
+    /// from the hub the user works with.
+    #[test]
+    fn run_restore_sidebar_skips_recorded_worker() {
+        let mut test_tools = TestTools::new();
+        test_tools.herdr.agents = vec![
+            make_agent("kanban-hub-29", AgentStatus::Idle),
+            Agent {
+                session_id: Some("ses_worker".to_owned()),
+                ..make_agent("demo-kb-172-quiet-2", AgentStatus::Working)
+            },
+        ];
+        run_hub_next(&mut test_tools, "quiet", "ses_worker");
+
+        run_restore_sidebar(&test_tools.tools(), false).unwrap();
+
+        assert_eq!(
+            *test_tools.herdr.tagged_hubs.borrow(),
+            [("w1:kanban-hub-29".to_owned(), "1-hub-1".to_owned())]
+        );
     }
 
     /// Herdr restores the desk with a new shell, so the board must
@@ -487,6 +618,95 @@ mod restore_sidebar {
                 .map(|(pane, command)| (pane.to_owned(), command.to_owned()))
                 .collect();
             assert_eq!(*herdr.ran_in_panes.borrow(), expected, "{case_name}");
+        }
+    }
+}
+
+mod desk_steps {
+    use std::collections::BTreeMap;
+
+    use hub::commands::sidebar::run_desk_move;
+    use hub::external::herdr::{Agent, AgentStatus, Herdr, Workspace};
+    use hub::shared::{AgentName, Tools};
+
+    use super::common::{InMemoryHerdr, TestTools, make_agent, make_workspaces};
+
+    /// Herdr with a worker workspace `w2` and the desk, `w4`, holding
+    /// `agents` in `desk_tabs` order.
+    fn make_desk_herdr(agents: Vec<Agent>, desk_tabs: &[&str]) -> InMemoryHerdr {
+        InMemoryHerdr {
+            agents,
+            workspaces: [
+                make_workspaces(&["w2"]),
+                vec![Workspace {
+                    workspace_id: "w4".to_owned(),
+                    label: "desk".to_owned(),
+                }],
+            ]
+            .concat(),
+            tabs: BTreeMap::from([(
+                "w4".to_owned(),
+                desk_tabs.iter().map(|tab| (*tab).to_owned()).collect(),
+            )]),
+            ..InMemoryHerdr::default()
+        }
+    }
+
+    /// An agent named `name` in workspace `workspace_id`, in tab
+    /// `<workspace_id>:t-<name>`.
+    fn make_agent_in(name: &str, workspace_id: &str) -> Agent {
+        Agent {
+            workspace_id: workspace_id.to_owned(),
+            tab_id: format!("{workspace_id}:t-{name}"),
+            ..make_agent(name, AgentStatus::Idle)
+        }
+    }
+
+    /// The user's agent name, parsed as `hub` parses it.
+    fn parse_name(text: &str) -> AgentName {
+        text.parse().unwrap()
+    }
+
+    /// The user counts places among the desk's agents, but Herdr counts
+    /// every tab, the board's and the shell's too, and puts a moved tab
+    /// before the index it is given. Each move must land at the place
+    /// asked for, or the agent goes above the board or one place off.
+    #[test]
+    fn run_desk_move_puts_agent_at_place() {
+        let cases = [
+            ("up", "desk-c", 1, ["desk-c", "desk-a", "desk-b"]),
+            ("down", "desk-a", 3, ["desk-b", "desk-c", "desk-a"]),
+        ];
+
+        for (case_name, name, place, expected_order) in cases {
+            let herdr = make_desk_herdr(
+                vec![
+                    make_agent_in("desk-a", "w4"),
+                    make_agent_in("desk-b", "w4"),
+                    make_agent_in("desk-c", "w4"),
+                ],
+                &[
+                    "w4:t-board",
+                    "w4:t-shell",
+                    "w4:t-desk-a",
+                    "w4:t-desk-b",
+                    "w4:t-desk-c",
+                ],
+            );
+            let test_tools = TestTools::new();
+            let tools = Tools {
+                herdr: &herdr,
+                ..test_tools.tools()
+            };
+
+            run_desk_move(&tools, &parse_name(name), place).unwrap();
+
+            let expected_tabs: Vec<String> = ["board", "shell"]
+                .into_iter()
+                .chain(expected_order)
+                .map(|tab| format!("w4:t-{tab}"))
+                .collect();
+            assert_eq!(herdr.list_tabs("w4").unwrap(), expected_tabs, "{case_name}");
         }
     }
 }

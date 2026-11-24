@@ -1,0 +1,16 @@
+{
+  "id": "carried-question-status",
+  "source": "a hub carried three questions to the next hub as still open by number alone, and the next hub had to replay the day's sessions to learn whether the user had answered them",
+  "rule": "Write the handoff file",
+  "correction": true,
+  "prompt": "You are demo-lead-1, a Herdr session that runs two workers for the user. No hub runs. You are writing the handoff file for the session that takes over from you. It is 2026-11-20 15:10. Two questions to the user are not on any card:\n\n- Q2. Old reports: what happens to reports older than a year? (A: delete them, B: move them to the archive folder.) Asked in your chat at 14:00. The user may answer in your chat or in worker demo-12's pane.\n- Q3. Weekly backup: which night does it run? (A: Sunday, B: Wednesday.) Asked in your chat at 14:20. The user may answer in your chat or in worker demo-14's pane.\n\nWhat your checks just printed: your chat has no reply to either question. demo-12's pane has no reply. demo-14's pane shows the user wrote at 14:45: \"wednesday is fine for the backups\".\n\nWrite only the handoff's \"What the user decided\" and \"Questions for the user\" sections.",
+  "pass": [
+    "(?i)(open|no answer|unanswered|not answered)[^\\n]{0,160}(15:10|demo-12)"
+  ],
+  "judge": [
+    "Does the answer put the backup-night question under What the user decided, with Wednesday as the answer and the demo-14 pane as where the user gave it, and not list it as an open question?",
+    "Does the old-reports question keep its title and come with a line saying it is still open, which places were checked, and when?"
+  ],
+  "good": "## What the user decided\n\n1. Weekly backup night: Wednesday. The user wrote \"wednesday is fine for the backups\" in demo-14's pane at 14:45 (Q3).\n\n## Questions for the user\n\n**Q2. Old reports: what happens to reports older than a year?**\n- A: delete them\n- B: move them to the archive folder\nOpen: no answer in demo-lead-1's chat or demo-12's pane at 2026-11-20 15:10. The user may answer in either place.",
+  "bad": "## What the user decided\n\n(none yet)\n\n## Questions for the user\n\n**Q2. Old reports: what happens to reports older than a year?**\n- A: delete them\n- B: move them to the archive folder\nOpen: no answer in demo-lead-1's chat or demo-12's pane at 2026-11-20 15:10.\n\n**Q3. Weekly backup: which night does it run?**\n- A: Sunday\n- B: Wednesday\nThe user may answer in demo-14's pane."
+}

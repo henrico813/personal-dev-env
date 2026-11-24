@@ -43,10 +43,15 @@ Refused to keep a stack of PRs in order, one approval per PR:
 
 A PR in a GitHub stack merges through that API instead of `gh pr merge`,
 which GitHub refuses for it; `pde-gh-write` waits up to 25 seconds for
-the result. After a merge succeeds without `--auto`, it moves the open
-PRs based on the merged branch to the merged PR's base, except PRs in a
-GitHub stack, which GitHub moves itself. If it cannot look up the PR, it
-runs `gh pr merge` as given and moves nothing.
+the result. When a merge without `--auto` fails, it reads the PR again
+and counts the merge as done if GitHub shows it merged. After a merge
+succeeds without `--auto`, it moves the open PRs based on the merged
+branch to the merged PR's base, except PRs in a GitHub stack, which
+GitHub moves itself. It then runs `card merged` with the PR's URL, so
+the kanban cards linked to the PR update, and shows card's output. If
+`card` is missing, fails, or runs over 20 seconds, it prints one warning
+and still exits 0. If it cannot look up the PR, it runs `gh pr merge` as
+given, moves nothing and skips `card`.
 
 ## States
 
@@ -62,7 +67,7 @@ runs `gh pr merge` as given and moves nothing.
 
 | Code | Meaning |
 |---|---|
-| `0` | `gh` succeeded, now or in an earlier run |
+| `0` | `gh` succeeded, now or in an earlier run, or a merge call failed but GitHub then showed the PR merged |
 | `1` | This program failed, such as no real `gh` or an unreadable record, or GitHub failed or had not finished a stack merge |
 | `2` | The command or its arguments were refused |
 | `3` | No answer within 90 seconds; the runner runs `gh` once approved, so rerun only to read the result |
@@ -360,7 +365,7 @@ Record fields, with those omitted when empty marked as optional:
 | `created` | Creation time; orders the queue |
 | `updated` | Last save; expiry counts from it |
 | `state` | See [states](#states) |
-| `exit_code` | `gh`'s exit code once it ran |
+| `exit_code` | The exit code pde-gh-write returns for the run |
 | `output` (optional) | Up to 64 KiB of `gh`'s standard output and error |
 | `moshi_pid`, `runner_pid` (optional) | Process IDs of the running phone question and runner |
 | `dismissed` (optional) | Dismissed from the popup |
@@ -393,7 +398,7 @@ approval popups.
 | Variable | Use |
 |---|---|
 | `XDG_STATE_HOME` | Root of the state directory; `~/.local/state` when unset |
-| `PATH` | Only full-path folders count, so an empty entry or `.` never picks a `gh` in the working directory. The `gh` run is the first executable one that is not this program, so with [the guard](#the-guard) linked as `gh` it is the real `gh`, or the newest aqua `gh` in place of aqua's shim. `herdr` is the first on `PATH`, otherwise the one in this program's folder: Herdr runs the inbox and popup with its server's `PATH`, which may lack `~/.local/bin`, where the installer puts both |
+| `PATH` | Only full-path folders count, so an empty entry or `.` never picks a `gh` in the working directory. The `gh` run is the first executable one that is not this program, so with [the guard](#the-guard) linked as `gh` it is the real `gh`, or the newest aqua `gh` in place of aqua's shim. `herdr` and `card` are each the first on `PATH`, otherwise the one in this program's folder: Herdr runs the inbox and popup with its server's `PATH`, which may lack `~/.local/bin`, where the installer puts them. A `card` from this program's folder runs with that folder first on its `PATH`, so it finds the programs it runs there |
 | `PDE_GH_WRITE` | Set to `1` for the approved `gh` only, so the guard lets it through |
 | `HERDR_ENV` | Herdr sets it to `1` in its terminals; then a new request opens the Herdr popup, shows a notification, sets the sidebar marker, looks up the Herdr agent, and makes the phone question wait until the request is 30 seconds old |
 | `PDE_REQUEST_ID` | Set by Herdr for `--herdr-popup`: the request to show first |

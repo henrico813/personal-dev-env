@@ -63,6 +63,13 @@ func FakeHerdr(t *testing.T, script string) (log string) {
 	return log
 }
 
+// Puts a fake card first on PATH and returns its call log, as FakeGH does.
+func FakeCard(t *testing.T, script string) (log string) {
+	t.Helper()
+	_, log = fake(t, "card", script)
+	return log
+}
+
 // FakeMoshiHook puts a fake moshi-hook first on PATH and returns its call
 // log, as FakeGH does.
 func FakeMoshiHook(t *testing.T, script string) (log string) {

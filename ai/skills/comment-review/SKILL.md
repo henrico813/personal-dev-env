@@ -58,10 +58,14 @@ review's `status`, the `result`, an `error` with a `code` and a
    ```
 
    `result.list` holds a Feedback Request for each comment the branch
-   added or changed, and each comment that goes against an approval
-   or cut. Its `reason` is `new`, `was_cut` (the user cut it before),
-   `differs_from_approved` (the user approved other text) or
-   `agent_wants_change`. If `next` is
+   added or changed, and for each change request you pass with
+   `--input`, as below. Its `reason` is `new`, `was_cut` (the user
+   cut it before), `differs_from_approved` (the user approved other
+   text) or `agent_wants_change`. A comment the branch did not change
+   is never listed, even one that goes against the user's approval
+   or cut, since every branch's review would then ask about it. Step
+   2 reports it with the note `existing`; list it in your final
+   message, as `code-documentation` says. If `next` is
    `finish_without_feedback_requests`, tell the user there is nothing
    to review and stop.
    To change a comment the user approved, write an input file outside

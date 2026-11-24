@@ -5,15 +5,19 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use hub::commands::Outcome;
+use hub::commands::clean::run_park;
 use hub::commands::next::{NextOptions, run_next};
 use hub::commands::send::{SendRequest, run_send};
+use hub::external::cards::{CardNote, LoggedSession, Stage};
 use hub::external::herdr::{Agent, AgentStatus, Workspace};
 use hub::shared::HubError;
-use serde_json::json;
+use serde_json::{Value, json};
 
-use common::{TestTools, make_agent, make_time, read_events, write_opencode_session};
+use common::{
+    TestTools, make_agent, make_time, read_events, write_opencode_session, write_opencode_times,
+};
 
-/// The parked worker every test here reopens.
+/// The worker every test here parks or reopens.
 const WORKER: &str = "demo-kb-007-impl";
 
 /// Parks WORKER as the tidy pass leaves it, with a record for session
@@ -73,6 +77,55 @@ fn check_once(test_tools: &TestTools) -> String {
     };
     let outcome = run_next(&test_tools.tools(), &test_tools.run(), &options).unwrap();
     outcome.lines.join("\n")
+}
+
+/// Adds WORKER idle on card DEMO-KB-007 in review with its report read,
+/// so it can be parked. Herdr shows `session_id`, and the card's Log
+/// lists each `(agent name, session ID)` in `logged`, oldest first.
+fn add_finished_worker(test_tools: &mut TestTools, session_id: &str, logged: &[(&str, &str)]) {
+    let folder = test_tools.path().to_owned();
+    test_tools.herdr.agents.push(Agent {
+        session_id: Some(session_id.to_owned()),
+        folders: vec![folder],
+        ..make_agent(WORKER, AgentStatus::Idle)
+    });
+    test_tools
+        .cards
+        .stages
+        .insert("DEMO-KB-007".to_owned(), Stage::InReview);
+    let logged_sessions = logged
+        .iter()
+        .map(|(name, session_id)| LoggedSession {
+            name: (*name).to_owned(),
+            session_id: (*session_id).to_owned(),
+        })
+        .collect();
+    let note = CardNote {
+        logged_sessions,
+        ..CardNote::default()
+    };
+    test_tools
+        .cards
+        .card_notes
+        .insert("DEMO-KB-007".to_owned(), note);
+    let archive = format!("report-{WORKER}.2214.read");
+    fs::write(test_tools.run_path().join(archive), "PR opened.\n").unwrap();
+}
+
+/// Runs `hub park WORKER` at `22:14` and returns WORKER's parked record.
+fn park_and_read_record(test_tools: &TestTools) -> Value {
+    let now = make_time("2026-11-11T22:14:00+00:00[UTC]");
+    run_park(
+        &test_tools.tools(),
+        &test_tools.run(),
+        &WORKER.parse().unwrap(),
+        &now,
+    )
+    .unwrap();
+    let path = test_tools
+        .state_folder()
+        .join(format!("hub/parked/{WORKER}.json"));
+    serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
 }
 
 /// A message to a parked worker, such as review comments, must reach
@@ -279,4 +332,57 @@ fn run_next_prints_failed_reopen_once() {
     );
     assert_eq!(second, "timeout (hub -)");
     assert!(test_tools.herdr.started.borrow().is_empty());
+}
+
+/// The record and the `parked` event must name the session the card Log
+/// lists for the worker, not the nested `opencode run` Herdr shows, or a
+/// reopen resumes the nested run.
+#[test]
+fn run_park_saves_launched_session() {
+    let mut test_tools = TestTools::new();
+    add_finished_worker(&mut test_tools, "ses_herdr", &[(WORKER, "ses_launched")]);
+    // `ses_launched` spans the start of Herdr's nested session.
+    let opencode = test_tools.build_opencode_path();
+    write_opencode_times(&opencode, "ses_launched", 1_000, 9_000);
+    write_opencode_times(&opencode, "ses_herdr", 5_000, 8_000);
+
+    let record = park_and_read_record(&test_tools);
+
+    assert_eq!(record["session_id"], "ses_launched");
+    let events = read_events(&test_tools.run_path());
+    assert_eq!(events.last().unwrap()["session"], "ses_launched");
+}
+
+/// A session of another agent, an old one of the same name, or a nested
+/// run an earlier park linked must not replace Herdr's, or a reopen
+/// resumes another agent's or an ended session.
+#[test]
+fn run_park_keeps_herdr_session_without_match() {
+    // Herdr's session `ses_herdr` began at 5000. `ses_launched` spans that
+    // start, `ses_old` ended before it and `ses_late` began after it.
+    let cases = [
+        ("other-name", "demo-kb-007-plan", "ses_launched"),
+        ("reused-name", WORKER, "ses_old"),
+        ("relinked-nested", WORKER, "ses_late"),
+    ];
+
+    for (case, logged_name, logged_session) in cases {
+        let mut test_tools = TestTools::new();
+        add_finished_worker(
+            &mut test_tools,
+            "ses_herdr",
+            &[(logged_name, logged_session)],
+        );
+        let opencode = test_tools.build_opencode_path();
+        write_opencode_times(&opencode, "ses_launched", 1_000, 9_000);
+        write_opencode_times(&opencode, "ses_old", 500, 3_000);
+        write_opencode_times(&opencode, "ses_late", 6_000, 9_000);
+        write_opencode_times(&opencode, "ses_herdr", 5_000, 8_000);
+
+        let record = park_and_read_record(&test_tools);
+
+        assert_eq!(record["session_id"], "ses_herdr", "{case}");
+        let events = read_events(&test_tools.run_path());
+        assert_eq!(events.last().unwrap()["session"], "ses_herdr", "{case}");
+    }
 }

@@ -39,7 +39,7 @@ func TestRenderIssueScaffoldMatchesVaultFrontmatter(t *testing.T) {
 }
 
 func TestRenderPlanEmitsUncheckedForPendingOrEmptyStatus(t *testing.T) {
-	plan := minimalPlan()
+	plan := makeMinimalPlan()
 	plan.DefinitionOfDone.Goals = []ChecklistItem{{Text: "pending goal"}}
 	out, err := RenderPlan(plan)
 	if err != nil {
@@ -51,7 +51,7 @@ func TestRenderPlanEmitsUncheckedForPendingOrEmptyStatus(t *testing.T) {
 }
 
 func TestRenderPlanEmitsCheckedForStatusDone(t *testing.T) {
-	plan := minimalPlan()
+	plan := makeMinimalPlan()
 	plan.DefinitionOfDone.Goals = []ChecklistItem{{Text: "done goal", Status: StatusDone}}
 	out, err := RenderPlan(plan)
 	if err != nil {
@@ -62,7 +62,7 @@ func TestRenderPlanEmitsCheckedForStatusDone(t *testing.T) {
 	}
 }
 
-func minimalPlan() Plan {
+func makeMinimalPlan() Plan {
 	return Plan{
 		Title:    "T",
 		Overview: "Overview text.",

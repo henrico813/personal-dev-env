@@ -26,7 +26,7 @@ Read the session's pane or its latest report file.
 Name the project folder, a short title, and a reason for the Log:
 
 ```sh
-card new DevEnv "Fix login timeout" --type fix --adopt active --user --by user --why "session fix-login running since 11-03" --session fix-login
+card new DevEnv "Fix login timeout" --adopt active --user --by user --why "session fix-login running since 11-03" --session fix-login
 ```
 
 `--session fix-login` records the Herdr agent `fix-login`'s session
@@ -35,8 +35,7 @@ card points at the session that does the work.
 
 Add `--kind research` when the work ends in a document or a decision
 rather than a change. `card` prints the new card's name, such as
-`PDEV-416 Fix login timeout`, then the title's board cut. The
-card's Log line reads
+`PDEV-416 Fix login timeout`. The card's Log line reads
 `- 2026-11-06 active: adopted by user for the user. session ...`,
 then `- 2026-11-06 session: fix-login (opencode ses_...)`.
 

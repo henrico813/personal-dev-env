@@ -78,7 +78,7 @@ func herdrPath() string {
 		return path
 	}
 	if self, err := thisProgram(); err == nil {
-		if path := filepath.Join(filepath.Dir(self), "herdr"); isExecutable(path) {
+		if path := filepath.Join(filepath.Dir(self), "herdr"); approval.IsExecutable(path) {
 			return path
 		}
 	}

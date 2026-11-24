@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"pde-installer/internal/fsutil"
 	"pde-installer/internal/run"
 	"pde-installer/internal/testfile"
 )
@@ -341,8 +342,8 @@ func TestOfficialToolsInstall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReconcileTools() error = %v", err)
 	}
-	if err := journal.Commit(); err != nil {
-		t.Fatalf("Commit() error = %v", err)
+	if err := fsutil.CommitJournals(journal); err != nil {
+		t.Fatalf("CommitJournals() error = %v", err)
 	}
 	tools, err := ListTools()
 	if err != nil {

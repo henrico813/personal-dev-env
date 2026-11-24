@@ -17,19 +17,17 @@ changes stage only through a **move**.
 In the shell, make a card in the DevEnv project:
 
 ```sh
-card new DevEnv "Try the card tool" --type chore --by user --user
+card new DevEnv "Try the card tool" --by user --user
 ```
 
 `card` prints the new card's name, such as `PDEV-005 Try the card
-tool`. A second line, such as `T7 cut: Try the card tool`, shows the
-title as the phone's board row shows it. `--by user` names you as the
-one who acted, for the card's Log, its dated history at the bottom.
-`--user` records that you, not an agent, decided. `--type` names the
-kind of change, as in a commit title, such as `feat` or `fix`.
+tool`. `--by user` names you as the one who acted, for the card's
+Log, its dated history at the bottom. `--user` records that you, not
+an agent, decided.
 
 You can make a card in Obsidian instead. Run the Templater command
 *Create new note from template*, pick `001.09 Zettel-Kanban`, then
-answer the four prompts: project, title, kind and work type. The **kind** is
+answer the three prompts: project, title and kind. The **kind** is
 `build` for work that ends in a change to code, config or the running
 setup, or `research` for work that ends in a document or a decision.
 
@@ -60,7 +58,7 @@ Use the key `card new` printed for you.
 ---
 
 Releasing a card moves it from `draft` to `todo`, which tells the
-staff agent the card may start. Only you can release a card, and
+staff agent the card may start. You or an agent can release a card.
 `card` refuses until Acceptance Criteria holds at least one `- [ ]`
 line and the title passes the
 [title rules](../reference/card.md#title-rules).

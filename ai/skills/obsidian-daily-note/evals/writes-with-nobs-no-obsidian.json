@@ -1,0 +1,21 @@
+{
+  "id": "writes-with-nobs-no-obsidian",
+  "source": "the user's correction that the daily note needs no Obsidian app and no screen",
+  "rule": "Steps",
+  "correction": true,
+  "prompt": "The user asked you to add a section about this session to today's daily note, and approved the exact text. Today's note exists. The session has no Obsidian app running and no display. Reply with only the commands you run to add the section and to check the result, in order.",
+  "pass": [
+    "nobs append-note",
+    "nobs read"
+  ],
+  "fail": [
+    "(^|[\\s;&|(])obsidian\\s[^\\n]*(eval|daily|vault info)",
+    "\\$\\{?(WAYLAND_)?DISPLAY",
+    "needs a (display|screen)"
+  ],
+  "judge": [
+    "Does the answer add the section with nobs append-note, without the Obsidian app or a display check, and then read the note back with nobs read to check that the section is in the note once and whole?"
+  ],
+  "good": "nobs read \"<daily>\" piped to jq: one # Notes line, heading absent (1 0)\nnobs append-note \"<daily>\" with the section on stdin\nnobs read \"<daily>\" piped to jq: the section is in the note once (1 1).",
+  "bad": "Stop and report that Obsidian needs a display, so the section cannot be added."
+}

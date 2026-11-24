@@ -208,6 +208,12 @@ to_json
 ParseConfig
 ```
 
+In every language, start each function and method name with a verb,
+even one that returns a value: `count_rows`, not `row_count`. Before
+you keep a name with no verb, or one the comment check reports, read
+[references/function-names.md](references/function-names.md), and in
+Rust [references/rust-names.md](references/rust-names.md) too.
+
 Name what the function does or returns, not merely its input or type.
 Avoid vague names such as `check` and `save`. Use module or class
 context to avoid repetition while keeping call sites understandable.
@@ -396,7 +402,7 @@ writes nothing. Act on its JSON:
   says why it does not fail: `approved` text, `existing` text from
   before your task, a license `header`, or a `report_only` rule.
 - `result.unsupported`: changed files the check cannot read. Check
-  their comments yourself.
+  their comments and function names yourself.
 - `error`: the check did not run. Do what its `message` says, such
   as fixing a file that does not parse.
 
@@ -411,12 +417,13 @@ Act on each failure by its rule:
   approvals file gives the word to use instead.
 - Any other rule: rename the function or fix the comment.
 
-`verb-first` fails a new name whose first word is no English verb,
-such as `path`, and only reports a verb missing from its list of
-common verbs, such as `card`, which may be a noun in the name.
-`restated-name` is reported, never failed. Rename the function when
-its word is a noun, or when the call fails the caller test in
-"Function names". Otherwise list it in your final message.
+`verb-first` fails a new name whose first word is no verb, such as
+`path`, is mostly a noun, such as `title`, or is a past or `-ing` form
+of an uncommon verb, one not on its list of common verbs, such as
+`capped`. It only reports any other uncommon verb, such as `tool`, which
+may be a noun in the name. `restated-name` is only reported. Rename the
+function when its word is a noun, or when the call fails the caller test
+in "Function names". Otherwise list it in your final message.
 
 Run the check again until `result.failures` is empty. `next` is then
 `make_feedback_request_list`, even when findings are reported. Never
@@ -431,17 +438,14 @@ that the comment check did not run, and check these rules yourself.
 
 In Go and Python, these rules apply on top of the ones above:
 
-- Start every function and method name with a verb, except a test, a
-  fixture or a property.
 - Keep each `//` or `#` comment to at most two sentences.
 - Use no colon in a `//` or `#` comment, except inside code or a URL.
 
-In Go, `main`, `init`, getters with no arguments and names that
-start with `New` need no verb, and a `Deprecated:` or `BUG(who):`
-note may keep its colon and length. `check-comments` checks these
-rules and the seven-word limit in Go and Python files, and doc
-comments that start with their name in Rust files too, only on the
-names and comments your task added or changed.
+In Go, a `Deprecated:` or `BUG(who):` note may keep its colon and
+length. `check-comments` checks these rules in Go and Python files.
+It checks verbs first, the seven-word limit and doc comments that
+start with their name in Go, Python and Rust files. It checks only
+the names and comments your task added or changed.
 
 ## Python rules
 
@@ -464,12 +468,6 @@ so add one. Leave docstrings on old functions you did not touch for
 a separate change. A function moved from a deleted file into a new
 one counts as old, with or without `git mv`.
 
-## Rust rules
-
-In Rust, start every function and method name with a verb too; read
-[references/rust-names.md](references/rust-names.md) before you keep a
-name with no verb. `check-comments` checks this and the word limit.
-
 ## Completion check
 
 Before declaring source or test work complete, check:
@@ -486,8 +484,9 @@ Before declaring source or test work complete, check:
   its caller writes it
 - each tool name you add says its job in whole words, without the
   project's own name or prefix
-- for Go, Python or Rust files, `check-comments` reports no failures,
-  and each reported name is renamed or listed in your final message
+- each function name you add starts with a verb, in every language;
+  `check-comments` reports no failures, and each reported name is
+  renamed or listed in your final message
 
 Fix supported in-scope issues once. Do not start an open-ended prose polishing
 loop.
