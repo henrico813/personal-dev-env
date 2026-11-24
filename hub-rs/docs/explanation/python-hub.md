@@ -100,14 +100,19 @@ for people and skills that used the Python one.
 
 ## Closing and parking
 
-- `clean` takes a run folder and runs the tidy pass on that run's
-  sessions only: those it started, heard from or handed off from.
+- `clean` takes a run folder and runs the tidy pass on the tabs of
+  that run's sessions only: those it started, heard from or handed
+  off from.
   It closes the tab of each `to-close` one and parks each `to-park`
-  one. Each change prints one line, such as
+  one. A finished `to-close` session of another run closes too when
+  it shares one of those tabs. Each change prints one line, such as
   `closed demo-kb-001-impl: DEMO-KB-001 done`.
 - `clean` deletes the parked record of any run's session that is
   live again, and prints `forgot NAME`. Then it prints one `kept`
-  line per kept session of the run, and `nothing to close` when nothing changed. `--dry-run`
+  line per kept session of the run, and one per session of another
+  run whose shared tab stays open at the last check before closing.
+  It prints
+  `nothing to close` when nothing changed. `--dry-run`
   prints `would close`, `would park` and `would forget` lines and
   changes nothing.
 - A plain shell closes only with its finished agent's tab. A tab
