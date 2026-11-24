@@ -21,6 +21,7 @@ use crate::shared::events::{self, Event, EventKind, Memory};
 use crate::shared::lifecycle;
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{AgentName, HubError, Tools};
+use crate::watch;
 
 /// How long the next hub has to give its first reply.
 const REPLY_TIME_LIMIT: Duration = Duration::from_secs(120);
@@ -120,6 +121,7 @@ pub fn run_handoff(
             tab: old.tab_id.clone(),
             new: name.as_str().to_owned(),
             review: Some(review.clone()),
+            run: None,
         },
     };
     events::append_event(run, &handoff_event).map_err(started_but)?;
@@ -165,7 +167,9 @@ pub fn run_handoff(
 /// `run_handoff` named, or an auto hub whose run is over. Writes the
 /// handoff for `old`'s session review and records a `handoff` event,
 /// so `run_clean` closes `old` once it is idle and `run_next` with
-/// `start_reviews` set then starts the review.
+/// `start_reviews` set then starts the review. For an auto hub, the
+/// event also names its run folder when exactly one folder names it as
+/// hub, so `run_clean` can close that run's workspaces.
 /// Then puts the hubs at the top of the sidebar, and a failure there
 /// adds a warning line, not an error.
 ///
@@ -212,6 +216,15 @@ pub fn run_adopt(
         )));
     };
 
+    // Only an auto run's workspaces hold nothing but its own sessions.
+    // A kanban hub's run is never recorded, so clean leaves the user's
+    // tabs alone.
+    let auto_run = if lifecycle::is_auto_hub(&old_hub.name) {
+        watch::find_run_of_hub(tools.runs_folder, &old_hub.name)?
+    } else {
+        None
+    };
+
     let review = write_review_handoff(
         tools.state_folder,
         run,
@@ -227,6 +240,7 @@ pub fn run_adopt(
             tab: old_hub.tab_id.clone(),
             new: hub.name.clone(),
             review: Some(review),
+            run: auto_run,
         },
     };
     events::append_event(run, &adopted)?;

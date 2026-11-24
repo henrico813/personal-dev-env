@@ -67,10 +67,11 @@ pub struct InMemoryHerdr {
     /// `read_process_info` gives them a process group in front that is
     /// not the shell's.
     pub program_in_front: Vec<String>,
-    /// The workspaces in sidebar order, top first.
+    /// The workspaces in sidebar order, top first. As Herdr does,
+    /// `list_workspaces` leaves out one whose listed tabs have all closed.
     pub workspaces: Vec<Workspace>,
     /// Each workspace's tab IDs in tab order, by workspace ID, before
-    /// any `move_tab`. A workspace not listed has no tabs.
+    /// any `move_tab` or `close_tab`. A workspace not listed has no tabs.
     pub tabs: BTreeMap<String, Vec<String>>,
     /// Each `mark_needs_you` call, as its pane ID and states.
     pub marks: RefCell<Vec<(String, Vec<AgentStatus>)>>,
@@ -293,6 +294,7 @@ impl Herdr for InMemoryHerdr {
     fn list_tabs(&self, workspace_id: &str) -> Result<Vec<String>, HerdrError> {
         self.take_failure("list_tabs")?;
         let mut tabs = self.tabs.get(workspace_id).cloned().unwrap_or_default();
+        tabs.retain(|tab| !self.closed_tabs.borrow().contains(tab));
         for (tab_id, insert_index) in self.moved_tabs.borrow().iter() {
             let Some(source) = tabs.iter().position(|tab| tab == tab_id) else {
                 continue;
@@ -329,7 +331,14 @@ impl Herdr for InMemoryHerdr {
 
     fn list_workspaces(&self) -> Result<Vec<Workspace>, HerdrError> {
         self.take_failure("list_workspaces")?;
-        Ok(self.workspaces.clone())
+        let closed = self.closed_tabs.borrow();
+        let mut workspaces = self.workspaces.clone();
+        workspaces.retain(|workspace| {
+            self.tabs
+                .get(&workspace.workspace_id)
+                .is_none_or(|tabs| tabs.is_empty() || tabs.iter().any(|tab| !closed.contains(tab)))
+        });
+        Ok(workspaces)
     }
 
     /// Answers with workspace `new` and root pane `new:p-<label>`.

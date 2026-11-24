@@ -7,7 +7,7 @@ use std::path::Path;
 use hub::commands::Outcome;
 use hub::commands::clean::{run_clean, run_clean_listed, run_park};
 use hub::external::cards::{CardNote, Stage};
-use hub::external::herdr::{Agent, AgentStatus, Pane};
+use hub::external::herdr::{Agent, AgentStatus, HerdrError, Pane, Workspace};
 use hub::shared::HubError;
 use jiff::{SignedDuration, Timestamp};
 use serde_json::{Value, json};
@@ -402,6 +402,351 @@ fn run_clean_judges_agents_sharing_hub_tab() {
             "{case_name}"
         );
     }
+}
+
+/// Sets up auto run 21 after `kanban-hub-4`, this hub, adopted it.
+/// This hub's pane sits in `own_workspace`. Workspace `w2`, "auto run
+/// 21", holds the idle old hub `auto-hub-21`. Workspace `w3`,
+/// "demo-kb-002 auto", holds the worker `demo-kb-002-auto` on done card
+/// DEMO-KB-002 and tab `w3:t-shell` with plain shell pane `w3:p-shell`.
+/// The auto run's folder says it started the worker, and the adopt's
+/// `handoff` event names that folder.
+fn add_adopted_auto_run(
+    test_tools: &mut TestTools,
+    worker_status: AgentStatus,
+    own_workspace: &str,
+) {
+    let folder = test_tools.path().to_owned();
+    let own_pane = format!("{own_workspace}:kanban-hub-4");
+    let own_tab = format!("{own_workspace}:t-kanban-hub-4");
+    test_tools.own_pane = Some(own_pane.clone());
+    test_tools.herdr.agents.push(Agent {
+        pane_id: own_pane,
+        tab_id: own_tab.clone(),
+        workspace_id: own_workspace.to_owned(),
+        ..make_agent("kanban-hub-4", AgentStatus::Working)
+    });
+    for (name, status, workspace) in [
+        ("auto-hub-21", AgentStatus::Idle, "w2"),
+        ("demo-kb-002-auto", worker_status, "w3"),
+    ] {
+        test_tools.herdr.agents.push(Agent {
+            session_id: Some(format!("ses_{name}")),
+            pane_id: format!("{workspace}:{name}"),
+            tab_id: format!("{workspace}:t-{name}"),
+            workspace_id: workspace.to_owned(),
+            folders: vec![folder.clone()],
+            ..make_agent(name, status)
+        });
+    }
+    test_tools.herdr.on_list_panes = Some(Box::new(|| {
+        vec![Pane {
+            pane_id: "w3:p-shell".to_owned(),
+            tab_id: "w3:t-shell".to_owned(),
+            focused: false,
+            has_agent: false,
+        }]
+    }));
+    test_tools.herdr.workspaces = [
+        ("w1", "kanban"),
+        ("w2", "auto run 21"),
+        ("w3", "demo-kb-002 auto"),
+    ]
+    .map(|(workspace_id, label)| Workspace {
+        workspace_id: workspace_id.to_owned(),
+        label: label.to_owned(),
+    })
+    .to_vec();
+    let tabs = &mut test_tools.herdr.tabs;
+    tabs.insert("w2".to_owned(), vec!["w2:t-auto-hub-21".to_owned()]);
+    let worker_tabs = ["w3:t-demo-kb-002-auto", "w3:t-shell"];
+    tabs.insert("w3".to_owned(), worker_tabs.map(str::to_owned).to_vec());
+    tabs.entry(own_workspace.to_owned())
+        .or_default()
+        .push(own_tab);
+    test_tools
+        .cards
+        .stages
+        .insert("DEMO-KB-002".to_owned(), Stage::Done);
+    test_tools
+        .cards
+        .card_notes
+        .insert("DEMO-KB-002".to_owned(), CardNote::default());
+    let auto_run = folder.join("herdr-hub.auto21");
+    fs::create_dir(&auto_run).unwrap();
+    let started = "- 1047 started demo-kb-002-auto (w3:demo-kb-002-auto) from /h.md\n";
+    fs::write(auto_run.join("notes.md"), started).unwrap();
+    let adopt = json!({
+        "at": "2026-11-11T22:00:00Z",
+        "event": "handoff",
+        "old": "auto-hub-21",
+        "tab": "w2:t-auto-hub-21",
+        "new": "kanban-hub-4",
+        "run": auto_run,
+    });
+    fs::write(
+        test_tools.run_path().join("events.jsonl"),
+        adopt.to_string(),
+    )
+    .unwrap();
+}
+
+/// Once an adopted auto hub is done, the hub's tab, a done worker's
+/// tab and a tab of a shell at its prompt must close, and so must their
+/// workspaces. Otherwise every finished run stays in the user's
+/// sidebar.
+#[test]
+fn run_clean_retires_finished_auto_run_workspaces() {
+    let mut test_tools = TestTools::new();
+    add_adopted_auto_run(&mut test_tools, AgentStatus::Idle, "w1");
+    test_tools.herdr.quiet_shells = vec!["w3:p-shell".to_owned()];
+
+    let outcome = clean(&test_tools, false);
+
+    assert_eq!(
+        outcome.lines,
+        [
+            "closed auto-hub-21: handed off",
+            "closed demo-kb-002-auto: DEMO-KB-002 done",
+            "closed pane w3:p-shell: run over",
+            "closed workspace auto run 21: run over",
+            "closed workspace demo-kb-002 auto: run over",
+        ]
+    );
+    assert_eq!(
+        *test_tools.herdr.closed_tabs.borrow(),
+        ["w2:t-auto-hub-21", "w3:t-demo-kb-002-auto", "w3:t-shell"]
+    );
+}
+
+/// Retiring starts only once the adopted auto hub is `to-close`. While
+/// it still works, the user may still use its run, so no tab in the
+/// run's workspaces may close.
+#[test]
+fn run_clean_keeps_workspaces_while_hub_works() {
+    let mut test_tools = TestTools::new();
+    add_adopted_auto_run(&mut test_tools, AgentStatus::Idle, "w1");
+    test_tools.herdr.quiet_shells = vec!["w3:p-shell".to_owned()];
+    let agents = &mut test_tools.herdr.agents;
+    let old_hub = agents.iter_mut().find(|agent| agent.name == "auto-hub-21");
+    old_hub.unwrap().status = AgentStatus::Working;
+
+    clean(&test_tools, false);
+
+    assert!(test_tools.herdr.closed_tabs.borrow().is_empty());
+}
+
+/// A finished run's worker workspace can still hold work, such as a
+/// worker mid-turn or a shell running a program. Their tabs must stay, and
+/// each must get a `kept` line, or the user cannot tell why the
+/// workspace stays open.
+#[test]
+fn run_clean_names_work_keeping_retired_workspace() {
+    let mut test_tools = TestTools::new();
+    add_adopted_auto_run(&mut test_tools, AgentStatus::Working, "w1");
+    test_tools.herdr.program_in_front = vec!["w3:p-shell".to_owned()];
+
+    let outcome = clean(&test_tools, false);
+
+    assert_eq!(
+        outcome.lines,
+        [
+            "closed auto-hub-21: handed off",
+            "kept pane w3:p-shell: shell in use",
+            "kept demo-kb-002-auto: working",
+            "closed workspace auto run 21: run over",
+        ]
+    );
+    assert_eq!(*test_tools.herdr.closed_tabs.borrow(), ["w2:t-auto-hub-21"]);
+}
+
+/// A finished worker of the run can stay for a reason, such as work git
+/// cannot vouch for. Its `kept` line must name it even though this hub
+/// did not start it, or the user cannot tell why the workspace stays.
+#[test]
+fn run_clean_names_kept_worker_holding_workspace() {
+    let mut test_tools = TestTools::new();
+    add_adopted_auto_run(&mut test_tools, AgentStatus::Idle, "w1");
+    test_tools.herdr.quiet_shells = vec!["w3:p-shell".to_owned()];
+    let agents = &mut test_tools.herdr.agents;
+    let worker = agents
+        .iter_mut()
+        .find(|agent| agent.name == "demo-kb-002-auto");
+    worker.unwrap().folders.clear();
+
+    let outcome = clean(&test_tools, false);
+
+    assert_eq!(
+        outcome.lines,
+        [
+            "closed auto-hub-21: handed off",
+            "closed pane w3:p-shell: run over",
+            "kept demo-kb-002-auto: git failed",
+            "closed workspace auto run 21: run over",
+        ]
+    );
+}
+
+/// A workspace that holds this hub's pane is the user's, not the run's,
+/// even when a worker of the run sits there too. Retiring it would
+/// close the user's shells, so only the old hub's workspace closes.
+#[test]
+fn run_clean_keeps_workspace_holding_own_hub() {
+    let mut test_tools = TestTools::new();
+    add_adopted_auto_run(&mut test_tools, AgentStatus::Idle, "w3");
+    test_tools.herdr.quiet_shells = vec!["w3:p-shell".to_owned()];
+
+    let outcome = clean(&test_tools, false);
+
+    assert_eq!(
+        outcome.lines,
+        [
+            "closed auto-hub-21: handed off",
+            "closed workspace auto run 21: run over",
+        ]
+    );
+    assert_eq!(*test_tools.herdr.closed_tabs.borrow(), ["w2:t-auto-hub-21"]);
+}
+
+/// The desk holds the board and the user's own shell, even after
+/// `hub desk add` moved a worker of the run there. Retiring it would
+/// close the user's shell tab, and then Herdr would drop the desk.
+#[test]
+fn run_clean_never_retires_desk_workspace() {
+    let mut test_tools = TestTools::new();
+    add_adopted_auto_run(&mut test_tools, AgentStatus::Idle, "w1");
+    test_tools.herdr.quiet_shells = vec!["w3:p-shell".to_owned()];
+    // `w3`, which holds the worker and a shell, is the user's desk.
+    test_tools.herdr.workspaces[2].label = "desk".to_owned();
+
+    clean(&test_tools, false);
+
+    assert_eq!(*test_tools.herdr.closed_tabs.borrow(), ["w2:t-auto-hub-21"]);
+}
+
+/// When `HERDR_PANE_ID` names the wrong pane, a hub the user still
+/// works in can sit in a run's worker workspace. Retiring that
+/// workspace would close the user's tabs there, so a workspace that
+/// holds a hub that stays open must keep its tabs.
+#[test]
+fn run_clean_keeps_workspace_holding_open_hub() {
+    let mut test_tools = TestTools::new();
+    add_adopted_auto_run(&mut test_tools, AgentStatus::Idle, "w1");
+    test_tools.herdr.quiet_shells = vec!["w3:p-shell".to_owned()];
+    test_tools.herdr.agents.push(Agent {
+        pane_id: "w3:kanban-hub-3".to_owned(),
+        tab_id: "w3:t-kanban-hub-3".to_owned(),
+        workspace_id: "w3".to_owned(),
+        ..make_agent("kanban-hub-3", AgentStatus::Working)
+    });
+
+    clean(&test_tools, false);
+
+    assert_eq!(*test_tools.herdr.closed_tabs.borrow(), ["w2:t-auto-hub-21"]);
+}
+
+/// Without `HERDR_PANE_ID`, clean cannot tell which workspace holds
+/// the hub the user works in, so it must retire nothing rather than
+/// risk the user's own tabs, and say why. The old hub's tab still
+/// closes.
+#[test]
+fn run_clean_retires_nothing_without_own_pane() {
+    let mut test_tools = TestTools::new();
+    add_adopted_auto_run(&mut test_tools, AgentStatus::Idle, "w1");
+    test_tools.herdr.quiet_shells = vec!["w3:p-shell".to_owned()];
+    test_tools.own_pane = None;
+
+    let outcome = clean(&test_tools, false);
+
+    assert_eq!(
+        outcome.lines,
+        [
+            "closed auto-hub-21: handed off",
+            "kept workspaces of auto-hub-21: this hub's pane is unknown",
+        ]
+    );
+    assert_eq!(*test_tools.herdr.closed_tabs.borrow(), ["w2:t-auto-hub-21"]);
+}
+
+/// A failed Herdr list while clean looks for a finished run's
+/// workspaces must not stop the clean. The old hub's tab still closes,
+/// and a `kept` line says why no workspace closed.
+#[test]
+fn run_clean_closes_hub_despite_tab_failure() {
+    let mut test_tools = TestTools::new();
+    add_adopted_auto_run(&mut test_tools, AgentStatus::Idle, "w1");
+    test_tools.herdr.quiet_shells = vec!["w3:p-shell".to_owned()];
+    let not_running = HerdrError::Failed("herdr is not running".to_owned());
+    test_tools.herdr.fail_next("list_tabs", not_running);
+
+    let outcome = clean(&test_tools, false);
+
+    assert_eq!(
+        outcome.lines,
+        [
+            "closed auto-hub-21: handed off",
+            "kept workspaces of auto-hub-21: herdr is not running",
+        ]
+    );
+    assert_eq!(*test_tools.herdr.closed_tabs.borrow(), ["w2:t-auto-hub-21"]);
+}
+
+/// Only the workspaces of sessions the auto run started may retire. The
+/// user's quiet shell beside a worker the run did not start must stay,
+/// or every clean would close the shells in each live session's
+/// workspace.
+#[test]
+fn run_clean_keeps_unstarted_workers_workspace() {
+    let mut test_tools = TestTools::new();
+    add_adopted_auto_run(&mut test_tools, AgentStatus::Idle, "w1");
+    test_tools.herdr.agents.push(Agent {
+        pane_id: "w4:demo-kb-009-impl".to_owned(),
+        tab_id: "w4:t-demo-kb-009-impl".to_owned(),
+        workspace_id: "w4".to_owned(),
+        ..make_agent("demo-kb-009-impl", AgentStatus::Idle)
+    });
+    // Workspace `w4` holds that worker and the user's quiet shell.
+    test_tools.herdr.workspaces.push(Workspace {
+        workspace_id: "w4".to_owned(),
+        label: "demo-kb-009 impl".to_owned(),
+    });
+    let w4_tabs = ["w4:t-demo-kb-009-impl", "w4:t-shell"];
+    test_tools
+        .herdr
+        .tabs
+        .insert("w4".to_owned(), w4_tabs.map(str::to_owned).to_vec());
+    test_tools.herdr.on_list_panes = Some(Box::new(|| {
+        vec![
+            Pane {
+                pane_id: "w3:p-shell".to_owned(),
+                tab_id: "w3:t-shell".to_owned(),
+                focused: false,
+                has_agent: false,
+            },
+            Pane {
+                pane_id: "w4:p-shell".to_owned(),
+                tab_id: "w4:t-shell".to_owned(),
+                focused: false,
+                has_agent: false,
+            },
+        ]
+    }));
+    test_tools.herdr.quiet_shells = vec!["w3:p-shell".to_owned(), "w4:p-shell".to_owned()];
+    test_tools
+        .cards
+        .stages
+        .insert("DEMO-KB-009".to_owned(), Stage::Done);
+    test_tools
+        .cards
+        .card_notes
+        .insert("DEMO-KB-009".to_owned(), CardNote::default());
+
+    clean(&test_tools, false);
+
+    assert_eq!(
+        *test_tools.herdr.closed_tabs.borrow(),
+        ["w2:t-auto-hub-21", "w3:t-demo-kb-002-auto", "w3:t-shell"]
+    );
 }
 
 /// The hub runs `run_send` as a process of its own, beside `run_clean`.

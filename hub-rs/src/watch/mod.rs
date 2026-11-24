@@ -798,6 +798,24 @@ pub(crate) fn find_hub_runs(runs_folder: &Path, agents: &[Agent]) -> Result<HubR
     })
 }
 
+/// Returns the one `herdr-hub.*` folder in `runs_folder` whose log
+/// names `hub` as the run's hub, or `None` when no folder or more than
+/// one does.
+///
+/// # Errors
+///
+/// `HubError::File` when `runs_folder` cannot be read.
+pub(crate) fn find_run_of_hub(runs_folder: &Path, hub: &str) -> Result<Option<PathBuf>, HubError> {
+    let mut failures = Vec::new();
+    let mut matching = find_watched_runs(runs_folder, &[], &mut failures)?
+        .into_iter()
+        .filter(|watched| watched.watch.hub.as_deref() == Some(hub));
+    match (matching.next(), matching.next()) {
+        (Some(watched), None) => Ok(Some(watched.run.path().to_owned())),
+        _ => Ok(None),
+    }
+}
+
 /// Returns each `herdr-hub.*` folder in `runs_folder` whose event log
 /// names a hub, in folder order, with that hub when Herdr lists it. A
 /// folder whose log cannot be read is left out, with its failure added

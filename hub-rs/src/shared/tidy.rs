@@ -1,19 +1,22 @@
 //! Runs the tidy pass, which closes and parks finished sessions. Read
 //! `run_tidy_pass` first. `plan_tidy_actions` is pure and holds every
-//! rule about which tabs may close.
+//! rule about which tabs may close, and `find_retiring_workspaces`
+//! picks the workspaces of a finished auto run whose every tab the
+//! pass judges.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 use jiff::Zoned;
 
 use super::events::{self, Event, EventKind, Memory};
 use super::facts::CollectedFacts;
-use super::lifecycle::{Lifecycle, SessionFacts, Verdict, decide_lifecycle};
+use super::lifecycle::{Lifecycle, SessionFacts, Verdict, decide_lifecycle, is_hub_name};
 use super::parking::{self, ParkOutcome, TidyLock};
 use super::run_folder::RunFolder;
 use super::{HubError, Tools};
 use crate::external::cards::{CardKey, Stage};
-use crate::external::herdr::{Herdr, Pane};
+use crate::external::herdr::{Herdr, Pane, Workspace};
 use crate::external::processes;
 
 /// The problem lines that leave facts out. A failed card read can
@@ -25,6 +28,35 @@ const UNSAFE_SOURCES: [&str; 2] = ["cards:", "requests:"];
 /// The reason a finished session stays when another pane in its tab
 /// would close with it.
 pub(crate) const TAB_HOLDS_WORK: &str = "its tab holds other work";
+
+/// Why a retiring workspace's shell tab or the workspace itself closed.
+const RUN_OVER: &str = "run over";
+
+// Why a pane keeps a retiring workspace's tab open.
+const SHELL_IN_USE: &str = "shell in use";
+const UNNAMED_AGENT: &str = "agent with no name";
+const PANE_FOCUSED: &str = "focused";
+
+/// Why no workspace of an adopted auto run retires.
+const OWN_PANE_UNKNOWN: &str = "this hub's pane is unknown";
+
+/// The label of the user's desk workspace, as `hub desk` makes it. The
+/// desk never retires, even when an agent of the run was moved there.
+const DESK_LABEL: &str = "desk";
+
+/// A workspace of a finished auto run, with the tabs Herdr listed,
+/// whose every tab the tidy pass judges.
+pub(crate) struct RetiringWorkspace {
+    pub workspace: Workspace,
+    pub tabs: BTreeSet<String>,
+}
+
+/// What one tidy pass may change. Only a tab that holds a session in
+/// `names`, or a tab of a `retiring` workspace, may close or park.
+pub(crate) struct TidyScope {
+    pub names: BTreeSet<String>,
+    pub retiring: Vec<RetiringWorkspace>,
+}
 
 /// One thing the tidy pass will do. It borrows each session's facts
 /// from the collected facts, so no facts are copied.
@@ -46,6 +78,12 @@ pub(crate) enum TidyAction<'a> {
     /// Leaves a `to-close` or `to-park` session open because closing
     /// its tab would close another pane's work too.
     Keep { facts: &'a SessionFacts },
+    /// Closes a retiring workspace's tab that holds only shells that
+    /// run nothing. `names` holds `pane PANE-ID` for each shell.
+    CloseShells { tab_id: String, names: Vec<String> },
+    /// Names a pane that keeps a retiring workspace's tab open, such as
+    /// a shell that runs something.
+    KeepPane { name: String, reason: &'static str },
 }
 
 /// What one action did, worded as `run_clean` prints it.
@@ -109,9 +147,12 @@ impl TidyOutcome {
 
 /// Closes, parks and forgets what the collected facts allow, one
 /// action at a time, and adds a `Kept` outcome for each kept session
-/// in `scope`. Only tabs that hold a session in `scope` close or park,
-/// as `plan_tidy_actions` says. A live session's old parked record is
-/// deleted whatever its run.
+/// in `scope.names`. Only tabs that hold a session in `scope.names`,
+/// or tabs of a retiring workspace, close or park, as
+/// `plan_tidy_actions` says. Each agent in a retiring workspace that
+/// is not finished gets a `Kept` outcome too, and a retiring workspace
+/// whose every tab closed gets a `Closed` outcome. A live session's
+/// old parked record is deleted whatever its run.
 /// One failed action becomes a `Kept` outcome, and the pass keeps
 /// going. So one bad card call does not leave every other finished
 /// session open.
@@ -125,7 +166,7 @@ pub(crate) fn run_tidy_pass(
     tools: &Tools<'_>,
     run: &RunFolder,
     collected: &CollectedFacts,
-    scope: &BTreeSet<String>,
+    scope: &TidyScope,
     _lock: &TidyLock,
     now: &Zoned,
     dry_run: bool,
@@ -140,14 +181,20 @@ pub(crate) fn run_tidy_pass(
         .iter()
         .map(|facts| (facts, decide_lifecycle(facts)))
         .collect();
-    let closing_tabs: BTreeSet<&str> = judged
+    let retiring_tabs: BTreeSet<&str> = scope
+        .retiring
+        .iter()
+        .flat_map(|retiring| retiring.tabs.iter().map(String::as_str))
+        .collect();
+    let mut closing_tabs: BTreeSet<&str> = judged
         .iter()
         .filter(|(facts, verdict)| {
-            scope.contains(&facts.name)
+            scope.names.contains(&facts.name)
                 && matches!(verdict.state, Lifecycle::ToClose | Lifecycle::ToPark)
         })
         .filter_map(|(facts, _)| facts.agent.as_ref().map(|agent| agent.tab_id.as_str()))
         .collect();
+    closing_tabs.extend(retiring_tabs.iter().copied());
     // Most passes close nothing, so Herdr's pane list is read only when
     // a tab may close.
     let panes = if closing_tabs.is_empty() {
@@ -165,7 +212,8 @@ pub(crate) fn run_tidy_pass(
         .collect();
     actions.extend(plan_tidy_actions(
         &judged,
-        scope,
+        &scope.names,
+        &retiring_tabs,
         &panes,
         tools.own_pane,
         &quiet_shells,
@@ -182,16 +230,203 @@ pub(crate) fn run_tidy_pass(
         })
         .collect();
     for (facts, verdict) in &judged {
-        if let Lifecycle::Kept(reason) = verdict.state
-            && scope.contains(&facts.name)
-        {
-            outcomes.push(TidyOutcome::Kept {
-                name: facts.name.clone(),
-                reason: reason.label().to_owned(),
+        let in_retiring_tab = facts
+            .agent
+            .as_ref()
+            .is_some_and(|agent| retiring_tabs.contains(agent.tab_id.as_str()));
+        let reason = match verdict.state {
+            Lifecycle::Kept(reason) if in_retiring_tab || scope.names.contains(&facts.name) => {
+                reason.label()
+            }
+            Lifecycle::Working | Lifecycle::WaitsOnHub | Lifecycle::WaitsOnUser
+                if in_retiring_tab =>
+            {
+                verdict.pick_why_or_state()
+            }
+            Lifecycle::Kept(_)
+            | Lifecycle::Working
+            | Lifecycle::WaitsOnHub
+            | Lifecycle::WaitsOnUser
+            | Lifecycle::ToClose
+            | Lifecycle::ToPark
+            | Lifecycle::Parked => continue,
+        };
+        outcomes.push(TidyOutcome::Kept {
+            name: facts.name.clone(),
+            reason: reason.to_owned(),
+        });
+    }
+    outcomes.extend(list_closed_workspaces(
+        tools,
+        &scope.retiring,
+        &actions,
+        dry_run,
+    ));
+    Ok(outcomes)
+}
+
+/// Returns the workspaces whose every tab `run_tidy_pass` may close.
+/// Each holds an adopted auto hub that is `to-close`, as
+/// `memory.auto_runs` names it, or a live session that hub's run
+/// started, as its `notes.md` says. The desk and a workspace with this
+/// hub's pane or another open hub are left out. When it cannot tell
+/// which workspaces those are, none retire, and each such hub gets a
+/// `kept workspaces of HUB` outcome that says why.
+pub(crate) fn find_retiring_workspaces(
+    tools: &Tools<'_>,
+    collected: &CollectedFacts,
+    memory: &Memory,
+) -> (Vec<RetiringWorkspace>, Vec<TidyOutcome>) {
+    let old_hubs: Vec<(&SessionFacts, &Path)> = collected
+        .sessions
+        .iter()
+        .filter_map(|facts| Some((facts, memory.auto_runs.get(&facts.name)?.as_path())))
+        .filter(|(facts, _)| decide_lifecycle(facts).state == Lifecycle::ToClose)
+        .collect();
+    if old_hubs.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+    match list_auto_run_workspaces(tools, collected, &old_hubs) {
+        Ok(retiring) => (retiring, Vec::new()),
+        Err(why) => {
+            let kept = old_hubs.iter().map(|(facts, _)| TidyOutcome::Kept {
+                name: format!("workspaces of {}", facts.name),
+                reason: why.clone(),
             });
+            (Vec::new(), kept.collect())
         }
     }
-    Ok(outcomes)
+}
+
+/// Returns the workspaces of `old_hubs` and of the live sessions their
+/// runs started, or why none may retire. A workspace is left out when
+/// its tabs hold this hub's own pane, when it holds a hub that stays
+/// open, or when it is the user's desk, since its other tabs are not
+/// the run's.
+fn list_auto_run_workspaces(
+    tools: &Tools<'_>,
+    collected: &CollectedFacts,
+    old_hubs: &[(&SessionFacts, &Path)],
+) -> Result<Vec<RetiringWorkspace>, String> {
+    let panes = tools
+        .herdr
+        .list_panes()
+        .map_err(|error| error.to_string())?;
+    let own_tab = tools
+        .own_pane
+        .and_then(|own_pane| panes.into_iter().find(|pane| pane.pane_id == own_pane));
+    // Without this hub's own tab, its workspace cannot be told apart.
+    let Some(own_tab) = own_tab.map(|pane| pane.tab_id) else {
+        return Err(OWN_PANE_UNKNOWN.to_owned());
+    };
+    let mut started = BTreeSet::new();
+    for (_, path) in old_hubs {
+        let run = RunFolder::open(path).map_err(|error| error.to_string())?;
+        started.extend(
+            run.list_started_names()
+                .map_err(|error| error.to_string())?,
+        );
+    }
+    let run_workspaces: BTreeSet<&str> = collected
+        .sessions
+        .iter()
+        .filter(|facts| {
+            started.contains(&facts.name) || old_hubs.iter().any(|(hub, _)| hub.name == facts.name)
+        })
+        .filter_map(|facts| facts.agent.as_ref())
+        .map(|agent| agent.workspace_id.as_str())
+        .collect();
+    let open_hub_workspaces: BTreeSet<&str> = collected
+        .sessions
+        .iter()
+        .filter(|facts| {
+            is_hub_name(&facts.name) && decide_lifecycle(facts).state != Lifecycle::ToClose
+        })
+        .filter_map(|facts| facts.agent.as_ref())
+        .map(|agent| agent.workspace_id.as_str())
+        .collect();
+    let mut retiring = Vec::new();
+    for workspace in tools
+        .herdr
+        .list_workspaces()
+        .map_err(|error| error.to_string())?
+    {
+        let id = workspace.workspace_id.as_str();
+        if !run_workspaces.contains(id)
+            || open_hub_workspaces.contains(id)
+            || workspace.label == DESK_LABEL
+        {
+            continue;
+        }
+        let tabs: BTreeSet<String> = tools
+            .herdr
+            .list_tabs(id)
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .collect();
+        if !tabs.contains(&own_tab) {
+            retiring.push(RetiringWorkspace { workspace, tabs });
+        }
+    }
+    Ok(retiring)
+}
+
+/// Returns a `Closed` outcome for each retiring workspace whose every
+/// tab the actions close or park, as Herdr drops a workspace with its
+/// last tab. A real run gives it only when Herdr no longer lists the
+/// workspace, and a failed list gives none.
+fn list_closed_workspaces(
+    tools: &Tools<'_>,
+    retiring: &[RetiringWorkspace],
+    actions: &[TidyAction<'_>],
+    dry_run: bool,
+) -> Vec<TidyOutcome> {
+    let planned_tabs: BTreeSet<&str> = actions
+        .iter()
+        .filter_map(|action| match action {
+            TidyAction::Close { tab_id, .. } | TidyAction::CloseShells { tab_id, .. } => {
+                Some(tab_id.as_str())
+            }
+            TidyAction::Park { facts, .. } => {
+                facts.agent.as_ref().map(|agent| agent.tab_id.as_str())
+            }
+            TidyAction::Forget { .. } | TidyAction::Keep { .. } | TidyAction::KeepPane { .. } => {
+                None
+            }
+        })
+        .collect();
+    let emptied: Vec<&Workspace> = retiring
+        .iter()
+        .filter(|retiring| {
+            retiring
+                .tabs
+                .iter()
+                .all(|tab| planned_tabs.contains(tab.as_str()))
+        })
+        .map(|retiring| &retiring.workspace)
+        .collect();
+    if emptied.is_empty() {
+        return Vec::new();
+    }
+    let listed: BTreeSet<String> = if dry_run {
+        BTreeSet::new()
+    } else {
+        match tools.herdr.list_workspaces() {
+            Ok(workspaces) => workspaces
+                .into_iter()
+                .map(|workspace| workspace.workspace_id)
+                .collect(),
+            Err(_) => return Vec::new(),
+        }
+    };
+    emptied
+        .into_iter()
+        .filter(|workspace| !listed.contains(&workspace.workspace_id))
+        .map(|workspace| TidyOutcome::Closed {
+            names: vec![format!("workspace {}", workspace.label)],
+            why: RUN_OVER.to_owned(),
+        })
+        .collect()
 }
 
 /// Returns the first problem line that stops the tidy pass, if any.
@@ -223,7 +458,8 @@ pub(crate) fn list_run_session_names(
 }
 
 /// Groups the sessions by tab and returns what may change. Only a tab
-/// that holds a session in `scope` may change, and each agent in it
+/// that holds a session in `scope`, or one in `retiring_tabs`, may
+/// change, and each agent in it
 /// counts by its own verdict, so a finished `to-close` agent of
 /// another run closes with the tab. A whole tab stays when any pane in
 /// it is the hub's own pane, the focused pane, an agent that is not
@@ -233,9 +469,14 @@ pub(crate) fn list_run_session_names(
 /// stays is kept, so `run_clean` says why. A parked record of `scope`
 /// whose state is `to-close` is forgotten, since its card's work is
 /// over.
+/// Each finished agent in a tab of `retiring_tabs` counts as one of
+/// `scope`. When such a tab stays, each pane that keeps it gets a
+/// `KeepPane` action, except an agent that is not finished. When it
+/// holds only shells that run nothing, it closes.
 pub(crate) fn plan_tidy_actions<'a>(
     judged: &[(&'a SessionFacts, Verdict)],
     scope: &BTreeSet<String>,
+    retiring_tabs: &BTreeSet<&str>,
     panes: &[Pane],
     own_pane: Option<&str>,
     quiet_shells: &BTreeSet<String>,
@@ -254,36 +495,68 @@ pub(crate) fn plan_tidy_actions<'a>(
 
     let mut actions = Vec::new();
     for (tab_id, tab_panes) in tabs {
-        let holds_scope = tab_panes.iter().any(|pane| {
-            by_pane
-                .get(pane.pane_id.as_str())
-                .is_some_and(|(facts, _)| scope.contains(&facts.name))
-        });
+        let retiring = retiring_tabs.contains(tab_id);
+        let holds_scope = retiring
+            || tab_panes.iter().any(|pane| {
+                by_pane
+                    .get(pane.pane_id.as_str())
+                    .is_some_and(|(facts, _)| scope.contains(&facts.name))
+            });
         if !holds_scope {
             continue;
         }
         let mut finished = Vec::new();
         let mut keeps_tab = false;
-        for pane in tab_panes {
+        // Each pane that keeps the tab and why, said only for a retiring tab.
+        let mut keeping: Vec<(String, &'static str)> = Vec::new();
+        for pane in &tab_panes {
             let found = by_pane.get(pane.pane_id.as_str());
+            let name_pane = || format!("pane {}", pane.pane_id);
             if own_pane == Some(pane.pane_id.as_str()) || pane.focused {
                 keeps_tab = true;
+                match found {
+                    // `run_tidy_pass` gives an agent that is not finished its
+                    // own `kept` line.
+                    Some((_, verdict))
+                        if !matches!(verdict.state, Lifecycle::ToClose | Lifecycle::ToPark) => {}
+                    Some((facts, _)) => keeping.push((facts.name.clone(), PANE_FOCUSED)),
+                    None => keeping.push((name_pane(), PANE_FOCUSED)),
+                }
             } else if let Some((facts, verdict)) = found {
                 if matches!(verdict.state, Lifecycle::ToClose | Lifecycle::ToPark) {
                     finished.push((*facts, *verdict));
                 } else {
                     keeps_tab = true;
                 }
-            } else if pane.has_agent || !quiet_shells.contains(&pane.pane_id) {
+            } else if pane.has_agent {
                 keeps_tab = true;
+                keeping.push((name_pane(), UNNAMED_AGENT));
+            } else if !quiet_shells.contains(&pane.pane_id) {
+                keeps_tab = true;
+                keeping.push((name_pane(), SHELL_IN_USE));
             }
         }
+        if retiring {
+            let keep_panes = keeping
+                .into_iter()
+                .map(|(name, reason)| TidyAction::KeepPane { name, reason });
+            actions.extend(keep_panes);
+        }
         if finished.is_empty() {
+            if retiring && !keeps_tab {
+                actions.push(TidyAction::CloseShells {
+                    tab_id: tab_id.to_owned(),
+                    names: tab_panes
+                        .iter()
+                        .map(|pane| format!("pane {}", pane.pane_id))
+                        .collect(),
+                });
+            }
             continue;
         }
         let keep_finished = |actions: &mut Vec<TidyAction<'a>>| {
             for (facts, _) in &finished {
-                if scope.contains(&facts.name) {
+                if retiring || scope.contains(&facts.name) {
                     actions.push(TidyAction::Keep { facts });
                 }
             }
@@ -381,8 +654,32 @@ fn apply_tidy_action(
             Ok(()) => vec![TidyOutcome::Forgot { name: name.clone() }],
             Err(error) => vec![make_kept_outcome(name, error.to_string())],
         },
-        TidyAction::Keep { .. } => vec![describe_planned_action(action)],
+        TidyAction::CloseShells { tab_id, names } => match close_shell_tab(tools, tab_id, panes) {
+            Ok(true) => vec![describe_planned_action(action)],
+            Ok(false) => names
+                .iter()
+                .map(|name| make_kept_outcome(name, TAB_HOLDS_WORK.to_owned()))
+                .collect(),
+            Err(error) => names
+                .iter()
+                .map(|name| make_kept_outcome(name, error.to_string()))
+                .collect(),
+        },
+        TidyAction::Keep { .. } | TidyAction::KeepPane { .. } => {
+            vec![describe_planned_action(action)]
+        }
     }
+}
+
+/// Closes a retiring workspace's tab of shells when its panes still
+/// match the plan and run nothing, and tells whether it closed. It logs
+/// no event or `notes.md` line, since no session closed.
+fn close_shell_tab(tools: &Tools<'_>, tab_id: &str, planned: &[Pane]) -> Result<bool, HubError> {
+    if !is_tab_still_free(tools, tab_id, planned)? {
+        return Ok(false);
+    }
+    tools.herdr.close_tab(tab_id)?;
+    Ok(true)
 }
 
 /// Closes a tab once every session in it is still `to-close` and its
@@ -523,6 +820,14 @@ fn describe_planned_action(action: &TidyAction<'_>) -> TidyOutcome {
             name: facts.name.clone(),
             reason: TAB_HOLDS_WORK.to_owned(),
         },
+        TidyAction::CloseShells { names, .. } => TidyOutcome::Closed {
+            names: names.clone(),
+            why: RUN_OVER.to_owned(),
+        },
+        TidyAction::KeepPane { name, reason } => TidyOutcome::Kept {
+            name: name.clone(),
+            reason: (*reason).to_owned(),
+        },
     }
 }
 
@@ -608,6 +913,10 @@ mod tests {
                 }
                 TidyAction::Forget { name } => format!("forget {name}"),
                 TidyAction::Keep { facts } => format!("keep {}", facts.name),
+                TidyAction::CloseShells { tab_id, names } => {
+                    format!("close shells {tab_id} {}", names.join(", "))
+                }
+                TidyAction::KeepPane { name, reason } => format!("keep {name}: {reason}"),
             })
             .collect()
     }
@@ -632,6 +941,7 @@ mod tests {
         describe_actions(&plan_tidy_actions(
             &judged,
             &scope,
+            &BTreeSet::new(),
             panes,
             own_pane,
             &quiet_shells,

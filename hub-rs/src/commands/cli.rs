@@ -392,9 +392,14 @@ pub enum Command {
     /// one, the states hub status shows. Kept sessions stay. Only tabs
     /// with this run's sessions change, the ones hub launch started from
     /// it, that reported to it, or that it handed off from. A to-close
-    /// session of another run closes with such a tab. Run it after hub
-    /// next names to-close or to-park sessions. --dry-run shows what it
-    /// would do.
+    /// session of another run closes with such a tab. One exception is
+    /// an auto hub it adopted. Once that hub is to-close, every tab in
+    /// its workspace and in the workspaces of the sessions its run
+    /// started can close too. A workspace where this hub or another open
+    /// hub runs keeps its tabs, and so does the desk. Herdr closes each
+    /// workspace with its last tab. Run it after hub next names to-close
+    /// or to-park sessions.
+    /// --dry-run shows what it would do.
     #[command(after_help = "Example: hub clean --dry-run")]
     Clean {
         #[command(flatten)]

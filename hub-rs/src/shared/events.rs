@@ -95,13 +95,16 @@ pub(crate) enum EventKind {
     /// `run_adopt` made `new` take over `old`. `review` is the handoff
     /// for the session review of `old`, which `run_next` with
     /// `start_reviews` set starts once that tab closes. Logs written
-    /// before reviews started this way have none.
+    /// before reviews started this way have none. `run` is the folder
+    /// of the auto run whose hub `old` was, set only by `run_adopt`.
     Handoff {
         old: String,
         tab: String,
         new: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         review: Option<PathBuf>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        run: Option<PathBuf>,
     },
     /// `run_next` printed that it started `reviewer` to review the old
     /// hub `old`, or found that review already running.
@@ -190,6 +193,10 @@ pub(crate) struct Memory {
     /// Every old hub a `handoff` event named, so each one closes even
     /// after a later handoff or adopt names another.
     pub handed_off: BTreeSet<String>,
+    /// The run folder of each adopted auto hub, by hub name, so
+    /// `run_clean` can close the workspaces of the sessions that run
+    /// started.
+    pub auto_runs: BTreeMap<String, PathBuf>,
     /// The review handoff of each old hub whose review has neither
     /// started nor failed.
     pub reviews_due: BTreeMap<String, PathBuf>,
@@ -299,9 +306,14 @@ fn fold_events(events: impl IntoIterator<Item = Event>) -> Memory {
             EventKind::Delivered { name, .. } => {
                 memory.last_delivered.insert(name, event.at);
             }
-            EventKind::Handoff { old, review, .. } => {
+            EventKind::Handoff {
+                old, review, run, ..
+            } => {
                 if let Some(review) = review {
                     memory.reviews_due.insert(old.clone(), review);
+                }
+                if let Some(run) = run {
+                    memory.auto_runs.insert(old.clone(), run);
                 }
                 memory.handed_off.insert(old);
             }
