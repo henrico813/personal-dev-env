@@ -1,0 +1,12 @@
+{
+  "id": "show-patch-inline",
+  "source": "the user's correction: \"I don't know what the morning review skill fixes are. I never saw them.\"",
+  "rule": "Order",
+  "correction": true,
+  "prompt": "You coordinate agent sessions for the user, who answers from a phone. One skill fix is ready for the user's yes or no. It is saved at /tmp/fix1.patch and holds:\n\n```diff\n--- a/skills/notes/SKILL.md\n+++ b/skills/notes/SKILL.md\n@@ -12,3 +12,5 @@\n Save each note in the notes folder.\n+Give each note a date in its title, so a search by day finds it.\n+Never overwrite an older note; add a new one.\n```\n\nReply with only the message you send the user to ask for the yes or no.",
+  "judge": [
+    "Does the message show the patch's added lines in the message itself, rather than only giving the file path or a command such as less to see them?"
+  ],
+  "good": "One skill fix is ready for your yes or no. It adds two lines to the notes skill:\n\n> Give each note a date in its title, so a search by day finds it.\n> Never overwrite an older note; add a new one.\n\nReply yes or no. The patch is at /tmp/fix1.patch.",
+  "bad": "One skill fix is ready for your yes or no, for the notes skill.\n\nRead it with: `less /tmp/fix1.patch`\n\nReply yes or no."
+}
