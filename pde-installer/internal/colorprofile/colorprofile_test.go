@@ -3,7 +3,7 @@ package colorprofile
 import "testing"
 
 func TestParseAcceptsColorProfiles(t *testing.T) {
-	for _, selected := range All() {
+	for _, selected := range List() {
 		t.Run(string(selected), func(t *testing.T) {
 			got, err := Parse(string(selected))
 			if err != nil || got != selected {

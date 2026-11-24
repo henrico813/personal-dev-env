@@ -51,7 +51,7 @@ func writeInvalidFullMetadata(t *testing.T, cfg config) {
 	}
 }
 
-func terminalTestConfig(t *testing.T) config {
+func newTerminalTestConfig(t *testing.T) config {
 	t.Helper()
 	home := t.TempDir()
 	repoRoot := t.TempDir()
@@ -77,7 +77,7 @@ func terminalTestConfig(t *testing.T) config {
 	return config{Home: home, RepoRoot: repoRoot, LocalBin: filepath.Join(home, ".local", "bin"), AquaRoot: filepath.Join(home, ".local", "share", "aquaproj-aqua"), Profile: "terminal", ColorProfile: colorprofile.TokyoNight}
 }
 
-func terminalProbeBin(t *testing.T, missing string) string {
+func makeTerminalProbeBin(t *testing.T, missing string) string {
 	t.Helper()
 	bin := t.TempDir()
 	for _, name := range []string{"apt-get", "dpkg-query", "sudo", "sh", "tar", "gzip", "xz", "unzip", "sed", "awk", "grep", "file", "curl", "cc", "gcc", "clang", "c++", "g++", "clang++", "make", "bzip2", "patch"} {

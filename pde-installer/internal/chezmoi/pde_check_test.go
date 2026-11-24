@@ -312,7 +312,7 @@ func TestPdeCheckMakesNewLogFolder(t *testing.T) {
 func runPdeCheck(t *testing.T, dir string, args ...string) (string, string, int) {
 	t.Helper()
 	script := filepath.Join(
-		repoRoot(t),
+		findRepoRoot(t),
 		"chezmoi",
 		"dot_local",
 		"bin",

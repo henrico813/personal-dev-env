@@ -31,9 +31,9 @@ type Item struct {
 
 // Returns the items whose tier the profile has, leaving out items for other
 // desktops.
-func ItemsFor(selected profile.Profile, desktop profile.Desktop) []Item {
+func ListItemsFor(selected profile.Profile, desktop profile.Desktop) []Item {
 	var result []Item
-	for _, item := range Items() {
+	for _, item := range ListItems() {
 		if selected.Has(item.Tier) && (item.Desktop == "" || item.Desktop == desktop) {
 			result = append(result, item)
 		}
@@ -41,12 +41,12 @@ func ItemsFor(selected profile.Profile, desktop profile.Desktop) []Item {
 	return result
 }
 
-// ByOwnerFor returns selected items assigned to one backend.
-func ByOwnerFor(selected profile.Profile, owner Backend) []Item {
+// Returns selected items assigned to one backend.
+func GroupByOwnerFor(selected profile.Profile, owner Backend) []Item {
 	var result []Item
 	// Desktop items are left out. Apt installs the Ubuntu ones from
 	// profiles.yaml, and BuildWallpaperPlayer builds the local ones.
-	for _, item := range ItemsFor(selected, "") {
+	for _, item := range ListItemsFor(selected, "") {
 		if item.Owner == owner {
 			result = append(result, item)
 		}
@@ -56,7 +56,7 @@ func ByOwnerFor(selected profile.Profile, owner Backend) []Item {
 
 // Find returns one item assigned to a backend.
 func Find(name string, owner Backend) (Item, bool) {
-	for _, item := range Items() {
+	for _, item := range ListItems() {
 		if item.Name == name && item.Owner == owner {
 			return item, true
 		}
@@ -64,8 +64,8 @@ func Find(name string, owner Backend) (Item, bool) {
 	return Item{}, false
 }
 
-// Items returns every item managed by the installer.
-func Items() []Item {
+// Returns every item managed by the installer.
+func ListItems() []Item {
 	return []Item{
 		{Name: "zsh", Owner: Ubuntu, Tier: profile.Terminal}, {Name: "git", Owner: Ubuntu, Tier: profile.Terminal},
 		{Name: "xclip", Owner: Ubuntu, Tier: profile.Terminal}, {Name: "unzip", Owner: Ubuntu, Tier: profile.Terminal},
@@ -216,7 +216,7 @@ func Items() []Item {
 // Validate rejects duplicate ownership and missing required pins.
 func Validate() error {
 	seen := map[string]Backend{}
-	for _, item := range Items() {
+	for _, item := range ListItems() {
 		if previous, ok := seen[item.Name]; ok {
 			return fmt.Errorf("%s has owners %s and %s", item.Name, previous, item.Owner)
 		}

@@ -14,7 +14,7 @@ import (
 )
 
 func TestCommandSecurityBoundaries(t *testing.T) {
-	repo := repositoryRoot(t)
+	repo := findRepositoryRoot(t)
 	if os.Geteuid() == 0 {
 		_, _, err := execute(t, t.TempDir(), "install", "full", "--dry-run", "--repo-root", repo)
 		if err == nil || !strings.Contains(err.Error(), "refuses UID 0") {
@@ -27,14 +27,14 @@ func TestCommandSecurityBoundaries(t *testing.T) {
 	// skill-lessons on PATH would hide a missing dry-run render step.
 	t.Setenv("PATH", "/usr/bin:/bin")
 	dryRunHome := t.TempDir()
-	dryRunBefore := treeState(t, dryRunHome)
+	dryRunBefore := readTreeState(t, dryRunHome)
 	dryRunStdout, _, dryRunErr := execute(t, dryRunHome, "install", "full", "--dry-run", "--repo-root", repo)
 
 	t.Run("dry run leaves home unchanged", func(t *testing.T) {
 		if dryRunErr != nil {
 			t.Fatal(dryRunErr)
 		}
-		if after := treeState(t, dryRunHome); after != dryRunBefore {
+		if after := readTreeState(t, dryRunHome); after != dryRunBefore {
 			t.Fatalf("HOME changed:\nbefore: %s\nafter:  %s", dryRunBefore, after)
 		}
 	})
@@ -87,7 +87,7 @@ func TestCommandSecurityBoundaries(t *testing.T) {
 		if content := mustReadFile(t, stage); content != "old\n" {
 			t.Fatalf("staged content = %q", content)
 		}
-		if err := journal.Rollback(); err != nil {
+		if err := journal.RollBack(); err != nil {
 			t.Fatal(err)
 		}
 		if content := mustReadFile(t, destination); content != "old\n" {
@@ -103,7 +103,7 @@ func TestDryRunRejectsPendingRecovery(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("mutating commands intentionally reject UID 0")
 	}
-	home, repo := t.TempDir(), repositoryRoot(t)
+	home, repo := t.TempDir(), findRepositoryRoot(t)
 	journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: home})
 	if err != nil {
 		t.Fatal(err)
@@ -113,12 +113,12 @@ func TestDryRunRejectsPendingRecovery(t *testing.T) {
 	if err := journal.RecordCreated(destination); err != nil {
 		t.Fatal(err)
 	}
-	before := treeState(t, home)
+	before := readTreeState(t, home)
 	_, _, err = execute(t, home, "install", "full", "--dry-run", "--repo-root", repo)
 	if err == nil || !strings.Contains(err.Error(), "rerun without --dry-run") {
 		t.Fatalf("pending recovery error = %v", err)
 	}
-	if after := treeState(t, home); after != before {
+	if after := readTreeState(t, home); after != before {
 		t.Fatalf("HOME changed:\nbefore: %s\nafter:  %s", before, after)
 	}
 }
@@ -135,7 +135,7 @@ func execute(t *testing.T, home string, arguments ...string) (string, string, er
 	return stdout.String(), stderr.String(), err
 }
 
-func repositoryRoot(t *testing.T) string {
+func findRepositoryRoot(t *testing.T) string {
 	t.Helper()
 	workingDirectory, err := os.Getwd()
 	if err != nil {
@@ -144,7 +144,7 @@ func repositoryRoot(t *testing.T) string {
 	return filepath.Dir(workingDirectory)
 }
 
-func treeState(t *testing.T, root string) string {
+func readTreeState(t *testing.T, root string) string {
 	t.Helper()
 	var entries []string
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
