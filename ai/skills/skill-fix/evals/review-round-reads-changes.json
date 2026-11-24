@@ -1,0 +1,15 @@
+{
+  "id": "review-round-reads-changes",
+  "source": "a fix's author read a whole source file and its own long report again in each of many review rounds, and every later turn carried those reads",
+  "rule": "Show the diff, then commit",
+  "correction": true,
+  "prompt": "You are writing a fix to the seed-catalog skill, whose SKILL.md is 600 lines. Your report draft to the user is 200 lines, and you read the 900-line source file catalog.py earlier to learn how the tool behaves. You saved the fix as round-1.patch. A reviewer now reports one finding: \"SKILL.md line 212: 'sow it later' does not say when.\" You will fix it and send the fix to a new reviewer. Reply with only the files and commands you read or run in this round, in order, up to sending the fix to the new reviewer.",
+  "pass": [
+    "(?i)\\bdiff\\b[^\\n]*(1\\.patch[^\\n]*2\\.patch|2\\.patch[^\\n]*1\\.patch)"
+  ],
+  "judge": [
+    "Does the answer read only what this round changed, such as the lines around SKILL.md line 212 and the new patch compared with round-1.patch, without reading the whole SKILL.md, catalog.py or the report draft again?"
+  ],
+  "good": "1. Run skill-fix start seed-catalog and git apply --3way round-1.patch.\n2. Read SKILL.md lines 205 to 220 only, and edit line 212 to say when to sow.\n3. Save the fix to round-2.patch as before, and reset the worktree.\n4. Run diff round-1.patch round-2.patch to check the change.\n5. Send round-2.patch and the message file to the new reviewer.",
+  "bad": "1. Run skill-fix start seed-catalog and git apply --3way round-1.patch.\n2. Read the whole SKILL.md again, and edit line 212.\n3. Read catalog.py again to check the tool still matches.\n4. Save the fix to round-2.patch, and run diff round-1.patch round-2.patch.\n5. Reread the report draft, then send round-2.patch to the new reviewer."
+}

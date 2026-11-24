@@ -139,8 +139,8 @@ func guardHome(home string, leafPolicy leafSymlinkPolicy, paths ...string) error
 	return nil
 }
 
-// FileSHA256 returns the lowercase SHA-256 digest of a file.
-func FileSHA256(path string) (digest string, err error) {
+// Returns the lowercase SHA-256 digest of a file.
+func HashFileSHA256(path string) (digest string, err error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return "", err
@@ -259,8 +259,8 @@ func CopyTree(source, destination string) error {
 	})
 }
 
-// BackupName returns a collision-resistant sibling backup path.
-func BackupName(path string) string {
+// Returns a collision-resistant sibling backup path.
+func MakeBackupName(path string) string {
 	return fmt.Sprintf("%s.pde-backup-%s-%d", path, time.Now().UTC().Format("20060102T150405.000000000Z"), os.Getpid())
 }
 
@@ -283,8 +283,8 @@ func Activate(stage, destination string) (string, error) {
 	return "", nil
 }
 
-// Rollback restores a destination from an activation backup.
-func Rollback(destination, backup string) error {
+// Restores a destination from an activation backup.
+func RestoreBackup(destination, backup string) error {
 	if backup != "" {
 		if _, err := os.Lstat(destination); err == nil {
 			if err := exchangePaths(backup, destination); err != nil {

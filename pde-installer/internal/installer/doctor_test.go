@@ -14,13 +14,13 @@ import (
 
 // Archive tools are required even without the full build toolchain.
 func TestDoctorRequiresTerminalTools(t *testing.T) {
-	t.Setenv("PATH", terminalProbeBin(t, "tar"))
-	cfg := terminalTestConfig(t)
+	t.Setenv("PATH", makeTerminalProbeBin(t, "tar"))
+	cfg := newTerminalTestConfig(t)
 	writeInvalidFullMetadata(t, cfg)
 	var stderr bytes.Buffer
-	err := hostPreflight(cfg, run.Runner{Stdout: &bytes.Buffer{}, Stderr: &stderr}, preflightQuiet)
+	err := runHostPreflight(cfg, run.Runner{Stdout: &bytes.Buffer{}, Stderr: &stderr}, preflightQuiet)
 	if err == nil || !strings.Contains(err.Error(), "doctor found 1 problem(s)") {
-		t.Fatalf("hostPreflight() error = %v", err)
+		t.Fatalf("runHostPreflight() error = %v", err)
 	}
 	if !strings.Contains(stderr.String(), "tar: install host tar") {
 		t.Fatalf("doctor diagnostic = %q", stderr.String())
@@ -29,20 +29,20 @@ func TestDoctorRequiresTerminalTools(t *testing.T) {
 
 // Terminal installs deliberately omit compilers and full-only metadata.
 func TestDoctorSkipsBuildTools(t *testing.T) {
-	t.Setenv("PATH", terminalProbeBin(t, "compiler"))
-	cfg := terminalTestConfig(t)
+	t.Setenv("PATH", makeTerminalProbeBin(t, "compiler"))
+	cfg := newTerminalTestConfig(t)
 	writeInvalidFullMetadata(t, cfg)
-	if err := hostPreflight(cfg, run.Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}, preflightQuiet); err != nil {
-		t.Fatalf("hostPreflight() error = %v", err)
+	if err := runHostPreflight(cfg, run.Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}, preflightQuiet); err != nil {
+		t.Fatalf("runHostPreflight() error = %v", err)
 	}
 }
 
 func TestDoctorRejectsInvalidProfile(t *testing.T) {
-	cfg := terminalTestConfig(t)
+	cfg := newTerminalTestConfig(t)
 	cfg.Profile = profile.Profile("desktop")
-	err := hostPreflight(cfg, run.Runner{}, preflightQuiet)
+	err := runHostPreflight(cfg, run.Runner{}, preflightQuiet)
 	if err == nil || !strings.Contains(err.Error(), `invalid profile "desktop"`) {
-		t.Fatalf("hostPreflight() error = %v", err)
+		t.Fatalf("runHostPreflight() error = %v", err)
 	}
 }
 
@@ -93,7 +93,7 @@ type copilotReportCase struct {
 }
 
 func TestDoctorCopilotReportModes(t *testing.T) {
-	for _, tt := range copilotReportCases() {
+	for _, tt := range buildCopilotReportCases() {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg, xdgConfig := newDoctorCopilotFixture(t, tt.profile)
 			if tt.createFiles {
@@ -106,7 +106,7 @@ func TestDoctorCopilotReportModes(t *testing.T) {
 	}
 }
 
-func copilotReportCases() []copilotReportCase {
+func buildCopilotReportCases() []copilotReportCase {
 	return []copilotReportCase{
 		{
 			name:        "full report finds installed files",
@@ -138,13 +138,13 @@ func copilotReportCases() []copilotReportCase {
 
 func newDoctorCopilotFixture(t *testing.T, selected profile.Profile) (config, string) {
 	t.Helper()
-	t.Setenv("PATH", terminalProbeBin(t, ""))
+	t.Setenv("PATH", makeTerminalProbeBin(t, ""))
 
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
-	repoRoot, ok := repository(filepath.Join(cwd, "..", "..", ".."))
+	repoRoot, ok := findRepositoryRoot(filepath.Join(cwd, "..", "..", ".."))
 	if !ok {
 		t.Fatalf("repository root not found from %q", cwd)
 	}
@@ -180,8 +180,8 @@ func createCopilotStatusFiles(t *testing.T, home, xdgConfig string) {
 func runDoctorPreflight(t *testing.T, cfg config, mode preflightMode) string {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	if err := hostPreflight(cfg, run.Runner{DryRun: true, Stdout: &stdout, Stderr: &stderr}, mode); err != nil {
-		t.Fatalf("hostPreflight() error = %v; stderr = %q", err, stderr.String())
+	if err := runHostPreflight(cfg, run.Runner{DryRun: true, Stdout: &stdout, Stderr: &stderr}, mode); err != nil {
+		t.Fatalf("runHostPreflight() error = %v; stderr = %q", err, stderr.String())
 	}
 	return stdout.String()
 }
@@ -206,7 +206,7 @@ type copilotStatusCase struct {
 }
 
 func TestCopilotStatusOutput(t *testing.T) {
-	for _, tt := range copilotStatusCases() {
+	for _, tt := range buildCopilotStatusCases() {
 		t.Run(tt.name, func(t *testing.T) {
 			home, xdgConfig := newCopilotStatusFixture(t)
 			if tt.createFiles {
@@ -219,7 +219,7 @@ func TestCopilotStatusOutput(t *testing.T) {
 	}
 }
 
-func copilotStatusCases() []copilotStatusCase {
+func buildCopilotStatusCases() []copilotStatusCase {
 	return []copilotStatusCase{
 		{
 			name:        "reports installed files",

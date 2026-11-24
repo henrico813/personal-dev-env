@@ -76,8 +76,8 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	}
 	assertBuildArtifactsRemoved(t, filepath.Join(home, ".local", "state", "pde", "build-stage"))
 	// Roll back as a failed later install step would.
-	if err := journal.Rollback(); err != nil {
-		t.Fatalf("Rollback() error = %v", err)
+	if err := journal.RollBack(); err != nil {
+		t.Fatalf("RollBack() error = %v", err)
 	}
 	for _, name := range []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "gh", "glimmer", "hub-next",
@@ -444,10 +444,10 @@ func writeBuildSources(t *testing.T, repoRoot string) {
 
 func newFixtureManager(t *testing.T, home, repoRoot, logPath string) Manager {
 	t.Helper()
-	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "go"), goFixture(logPath))
-	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "cargo"), cargoFixture(logPath))
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "go"), makeGoFixture(logPath))
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "cargo"), makeCargoFixture(logPath))
 	python := filepath.Join(t.TempDir(), "python3")
-	testfile.WriteExecutable(t, python, pythonFixture(logPath))
+	testfile.WriteExecutable(t, python, makePythonFixture(logPath))
 	manager := New(home, repoRoot, run.Runner{})
 	manager.python = python
 	return manager
@@ -464,7 +464,7 @@ func readBuildLog(t *testing.T, logPath string) string {
 
 // Called as "python3 -I build.py OUTPUT" from a Python tool's folder; other
 // leading arguments or a folder without build.py fail the build.
-func pythonFixture(logPath string) string {
+func makePythonFixture(logPath string) string {
 	return fmt.Sprintf(`#!/bin/sh
 set -eu
 [ "$1 $2" = "-I build.py" ] || { echo "unexpected arguments: $*" >&2; exit 2; }
@@ -472,10 +472,10 @@ set -eu
 printf '%%s\n' python >> %s
 printf '%%s\n' '#!/bin/sh' 'exit 0' '# built by python' > "$3"
 chmod +x "$3"
-`, shellQuote(logPath))
+`, quoteForShell(logPath))
 }
 
-func goFixture(logPath string) string {
+func makeGoFixture(logPath string) string {
 	return fmt.Sprintf(`#!/bin/sh
 set -eu
 printf '%%s\n' go >> %s
@@ -498,7 +498,7 @@ esac
 mkdir -p "$(dirname "$output")"
 printf '%%s\n' '#!/bin/sh' 'exit 0' '# built by go' > "$output"
 chmod +x "$output"
-`, shellQuote(logPath))
+`, quoteForShell(logPath))
 }
 
 // A broken plugin symlink is replaced and restored by rollback.
@@ -529,8 +529,8 @@ func TestInstallPluginReplacesBrokenSymlink(t *testing.T) {
 		t.Fatalf("destination mode = %s, want directory", info.Mode())
 	}
 	assertBuildFile(t, filepath.Join(destination, "lua", "fixture", "init.lua"), "return {}\n")
-	if err := journal.Rollback(); err != nil {
-		t.Fatalf("Rollback() error = %v", err)
+	if err := journal.RollBack(); err != nil {
+		t.Fatalf("RollBack() error = %v", err)
 	}
 	link, err := os.Readlink(destination)
 	if err != nil {
@@ -606,14 +606,14 @@ func TestBlinkCleanupPreservesRollback(t *testing.T) {
 	stateDir := filepath.Join(home, ".local", "state", "pde")
 	destination := filepath.Join(home, ".config", "nvim", "pack", "plugins", "start", "blink.cmp")
 
-	archive := blinkArchiveFixture(t)
+	archive := makeBlinkArchiveFixture(t)
 	digest := sha256.Sum256(archive)
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		_, _ = response.Write(archive)
 	}))
 	defer server.Close()
 
-	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "cargo"), blinkCargoFixture())
+	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "cargo"), makeBlinkCargoFixture())
 	testfile.WriteExecutable(t, filepath.Join(home, ".local", "bin", "nvim"), "#!/bin/sh\nexit 0\n")
 	writeBuildFile(t, filepath.Join(destination, "old"), "old plugin\n", 0o644)
 
@@ -629,8 +629,8 @@ func TestBlinkCleanupPreservesRollback(t *testing.T) {
 	assertBuildFile(t, filepath.Join(destination, "lib", "libblink_cmp_fuzzy.so"), "blink library\n")
 	assertBlinkArtifactsRemoved(t, stateDir)
 
-	if err := journal.Rollback(); err != nil {
-		t.Fatalf("Rollback() error = %v", err)
+	if err := journal.RollBack(); err != nil {
+		t.Fatalf("RollBack() error = %v", err)
 	}
 	assertBuildFile(t, filepath.Join(destination, "old"), "old plugin\n")
 }
@@ -651,8 +651,8 @@ func TestMpvpaperInstallsHolderAndRollsBack(t *testing.T) {
 	for _, name := range []string{"mpvpaper", "mpvpaper-holder"} {
 		assertBuildFile(t, filepath.Join(bin, name), "#!/bin/sh\nexit 0\n# built by ninja\n")
 	}
-	if err := journal.Rollback(); err != nil {
-		t.Fatalf("Rollback() error = %v", err)
+	if err := journal.RollBack(); err != nil {
+		t.Fatalf("RollBack() error = %v", err)
 	}
 	assertBuildFile(t, filepath.Join(bin, "mpvpaper"), "#!/bin/sh\nexit 0\n# old\n")
 	if _, err := os.Stat(filepath.Join(bin, "mpvpaper-holder")); !os.IsNotExist(err) {
@@ -697,7 +697,7 @@ func TestMpvpaperRebuildsOnlyWhenCheckFails(t *testing.T) {
 func newPlayerManager(t *testing.T, home string) (Manager, *atomic.Int32) {
 	t.Helper()
 	// The fake build ignores the source, so any archive works.
-	archive := blinkArchiveFixture(t)
+	archive := makeBlinkArchiveFixture(t)
 	digest := sha256.Sum256(archive)
 	var downloads atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
@@ -722,7 +722,7 @@ done
 	return manager, &downloads
 }
 
-func cargoFixture(logPath string) string {
+func makeCargoFixture(logPath string) string {
 	return fmt.Sprintf(`#!/bin/sh
 set -eu
 [ "$1 $2 $3" = "build --locked --release" ] || exit 2
@@ -745,10 +745,10 @@ if [ -f fail-help ]; then
   printf '%%s\n' '#!/bin/sh' 'exit 1' > "$output"
 fi
 chmod +x "$output"
-`, shellQuote(logPath))
+`, quoteForShell(logPath))
 }
 
-func shellQuote(value string) string {
+func quoteForShell(value string) string {
 	return "'" + value + "'"
 }
 
@@ -832,7 +832,7 @@ func assertBlinkArtifactsRemoved(t *testing.T, stateDir string) {
 	t.Fatal("blink workspace not found")
 }
 
-func blinkCargoFixture() string {
+func makeBlinkCargoFixture() string {
 	return `#!/bin/sh
 set -eu
 target=
@@ -850,7 +850,7 @@ chmod +x "$target/release/libblink_cmp_fuzzy.so"
 `
 }
 
-func blinkArchiveFixture(t *testing.T) []byte {
+func makeBlinkArchiveFixture(t *testing.T) []byte {
 	t.Helper()
 	var compressed bytes.Buffer
 	zipper := gzip.NewWriter(&compressed)

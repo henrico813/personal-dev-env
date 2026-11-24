@@ -15,8 +15,8 @@ type Font struct {
 	Name, Archive, SHA256 string
 }
 
-// Fonts returns the artifacts owned by the direct backend.
-func Fonts() []Font {
+// Returns the artifacts owned by the direct backend.
+func ListFonts() []Font {
 	return []Font{
 		{Name: "FiraCode", Archive: "FiraCode.zip", SHA256: "4ee8fbafecfc90460399b9828270b8ece30ccbf60b3ab875d64ff77696c6e262"},
 		{Name: "JetBrainsMono", Archive: "JetBrainsMono.tar.xz", SHA256: "6cf8822bc1ca18e34b06578c7499f380c019e6ffc883eed26df5f498dfcc4006"},
@@ -37,8 +37,8 @@ func New(home string, runner run.Runner) Manager {
 // Reconcile installs missing or outdated managed fonts.
 func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	allCurrent := true
-	for _, font := range Fonts() {
-		current, err := m.current(font)
+	for _, font := range ListFonts() {
+		current, err := m.isCurrent(font)
 		if err != nil {
 			return nil, err
 		}
@@ -50,8 +50,8 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		return &fsutil.Journal{}, nil
 	}
 	if m.Runner.DryRun {
-		for _, font := range Fonts() {
-			current, err := m.current(font)
+		for _, font := range ListFonts() {
+			current, err := m.isCurrent(font)
 			if err != nil {
 				return nil, err
 			}
@@ -100,8 +100,8 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	if err := os.MkdirAll(stage, 0o755); err != nil {
 		return nil, err
 	}
-	for _, font := range Fonts() {
-		current, err := m.current(font)
+	for _, font := range ListFonts() {
+		current, err := m.isCurrent(font)
 		if err != nil {
 			return nil, err
 		}
@@ -157,7 +157,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	return journal, nil
 }
 
-func (m Manager) current(font Font) (bool, error) {
+func (m Manager) isCurrent(font Font) (bool, error) {
 	data, err := os.ReadFile(filepath.Join(m.Home, ".local", "share", "fonts", "pde", font.Name, ".pde-checksum"))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -170,7 +170,7 @@ func (m Manager) current(font Font) (bool, error) {
 
 // Probe reports font state without hiding filesystem errors.
 func (m Manager) Probe(font Font) (string, error) {
-	current, err := m.current(font)
+	current, err := m.isCurrent(font)
 	if err != nil {
 		return "", err
 	}

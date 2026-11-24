@@ -43,18 +43,18 @@ func TestReleaseSupport(t *testing.T) {
 }
 
 func TestReconcileInstallsMissingTogether(t *testing.T) {
-	manager, log := fixtureManager(t, map[string]string{"git": "ii", "unzip": "rc"}, false)
+	manager, log := newFixtureManager(t, map[string]string{"git": "ii", "unzip": "rc"}, false)
 	if err := manager.Reconcile(); err != nil {
 		t.Fatal(err)
 	}
-	lines := fixtureLines(t, log)
+	lines := readFixtureLines(t, log)
 	if len(lines) != 2 {
 		t.Fatalf("sudo calls = %v, want two", lines)
 	}
 	if lines[0] != "apt-get update" {
 		t.Fatalf("update call = %q", lines[0])
 	}
-	want := "apt-get install -y --no-install-recommends " + strings.Join(missingExcept("git"), " ")
+	want := "apt-get install -y --no-install-recommends " + strings.Join(listPackagesExcept("git"), " ")
 	if lines[1] != want {
 		t.Fatalf("install call = %q, want %q", lines[1], want)
 	}
@@ -75,7 +75,7 @@ func TestDesktopsRequireUbuntu2404(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run("desktop "+string(test.desktop), func(t *testing.T) {
-			manager, _ := fixtureManager(t, nil, false)
+			manager, _ := newFixtureManager(t, nil, false)
 			manager.desktop = test.desktop
 			writeFixture(t, manager.osReleasePath, "ID=ubuntu\nVERSION_ID=22.04\n", 0o644)
 
@@ -97,36 +97,36 @@ func TestReconcileSkipsCurrentPackages(t *testing.T) {
 	for _, name := range profile.Profile("full").Packages() {
 		installed[name] = "ii"
 	}
-	manager, log := fixtureManager(t, installed, false)
+	manager, log := newFixtureManager(t, installed, false)
 	if err := manager.Reconcile(); err != nil {
 		t.Fatal(err)
 	}
-	if lines := fixtureLines(t, log); len(lines) != 0 {
+	if lines := readFixtureLines(t, log); len(lines) != 0 {
 		t.Fatalf("sudo calls = %v, want none", lines)
 	}
 }
 
 func TestDryRunDoesNotMutate(t *testing.T) {
-	manager, log := fixtureManager(t, nil, true)
+	manager, log := newFixtureManager(t, nil, true)
 	if err := manager.Reconcile(); err != nil {
 		t.Fatal(err)
 	}
-	if lines := fixtureLines(t, log); len(lines) != 0 {
+	if lines := readFixtureLines(t, log); len(lines) != 0 {
 		t.Fatalf("sudo calls = %v, want none", lines)
 	}
 }
 
 func TestProbeFailureStopsReconcile(t *testing.T) {
-	manager, log := fixtureManager(t, map[string]string{"git": "fail"}, false)
+	manager, log := newFixtureManager(t, map[string]string{"git": "fail"}, false)
 	if err := manager.Reconcile(); err == nil {
 		t.Fatal("Reconcile() error = nil, want probe failure")
 	}
-	if lines := fixtureLines(t, log); len(lines) != 0 {
+	if lines := readFixtureLines(t, log); len(lines) != 0 {
 		t.Fatalf("sudo calls = %v, want none", lines)
 	}
 }
 
-func fixtureManager(t *testing.T, installed map[string]string, dryRun bool) (Manager, string) {
+func newFixtureManager(t *testing.T, installed map[string]string, dryRun bool) (Manager, string) {
 	t.Helper()
 	root := t.TempDir()
 	bin := filepath.Join(root, "bin")
@@ -153,7 +153,7 @@ func fixtureManager(t *testing.T, installed map[string]string, dryRun bool) (Man
 	return manager, log
 }
 
-func missingExcept(current string) []string {
+func listPackagesExcept(current string) []string {
 	missing := make([]string, 0, len(profile.Profile("full").Packages())-1)
 	for _, name := range profile.Profile("full").Packages() {
 		if name != current {
@@ -170,7 +170,7 @@ func writeFixture(t *testing.T, path, contents string, mode os.FileMode) {
 	}
 }
 
-func fixtureLines(t *testing.T, path string) []string {
+func readFixtureLines(t *testing.T, path string) []string {
 	t.Helper()
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {

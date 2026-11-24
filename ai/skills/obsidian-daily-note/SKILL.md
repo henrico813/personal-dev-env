@@ -1,260 +1,189 @@
 ---
 name: obsidian-daily-note
-description: Adds a section or session summary to today's daily
-  note in the default Obsidian vault. Use when the user asks to add
-  something to the daily note, or says "put this in my notes" without
-  naming another note. When the vault has no daily-note folder or no
-  quick-note template, it asks the user which note to use. Never use
-  it to read, search, or summarize a daily note.
+description: Adds a section or session summary under the "# Notes"
+  heading of today's daily note in the default Obsidian vault, with
+  nobs. It needs no Obsidian app and no screen, and creates a missing
+  note from the vault's daily-note template. Use when the user asks
+  to add something to the daily note, or says "put this in my notes"
+  without naming another note. When the vault has no daily-note
+  folder or its template cannot be filled, it asks the user which
+  note to use. Never use it to read, search, or summarize a daily
+  note. A new Zettelkasten note belongs to `obsidian-zettel`.
 metadata:
   scope: personal
 ---
 
 # Obsidian Daily Note
 
-Add one approved section to today's daily note in the default vault,
-the one `nobs vault path` prints. Write a quick note in the format
-`_createQuickNote()` produces, then run the vault's
-`_appendCurrQuickNotes()` Templater command inside the Obsidian app.
-Do not change vault templates or scripts.
+Add one approved section under `# Notes` in today's daily note, in
+the default vault. Write with `nobs` only. Never use the Obsidian app
+or its `obsidian` command, and never check for a screen, since nobs
+needs neither.
+
+`ai/AGENTS.md` names this skill as the one exception to its ban on
+`nobs` commands that change a note. It uses these commands only:
+
+- `nobs append-note` adds the section. It writes a new copy of the
+  note and swaps it in, so a dropped link leaves the old note whole.
+- `nobs append` creates today's note only when it is missing. A cut
+  short write can then only hurt the new note, and the read-back
+  catches it.
+- `nobs read` checks each write afterwards.
 
 ## Privacy
 
-- Run no `obsidian` command other than those listed in this skill. Their
-  results are only a path, a boolean, a count, a status word, or the heading.
-  For example, never run `read`, `daily:read`, `search`, `daily`, or an
-  `eval` that returns note text.
-- Never read, list, search, or open anything under the daily-note folder
-  `<folder>`, and never edit a file there directly.
-- Summarize only this session's work. Leave out secrets, tokens,
-  credentials, private URLs, other people's details, and health, mood, or
-  personal-life content.
+- Pipe each `nobs read` into the `jq` checks below, which print only
+  counts or a word. Never print a note body. Never run `nobs today`,
+  since it prints the body.
+- Read no note other than today's. The other daily notes hold private
+  text from other days.
+- When the user gives the text, such as "put this in my notes: water
+  the ferns", write their words. When they ask for a session summary,
+  summarize only this session's work.
+- Leave out secrets, tokens, credentials, private URLs, other people's
+  details, and health, mood, or personal-life content.
 - Today only, default vault only.
 
 ## Block Rules
 
-The template appends the block as `## <heading>` and the content under the
-daily note's `# Notes` section.
+- Heading: a few words that name the topic, such as `Ferns` or
+  `Session summary`. The user can change it at approval.
+- The heading is one line of at most 80 characters, written as
+  `## <heading>`. Start with a letter and use only letters, digits,
+  spaces, and `-_.()/`, so it is safe inside the quoted commands below.
+- Content: Markdown with no `,,` and no `<%`. The vault's quick-note
+  script, which the user may run later, turns each `,,` into a blank
+  line and runs `<%` as template code.
+- No content line may start with `#` once spaces are trimmed, so the
+  section stays one block under `# Notes`.
 
-- Heading: one line of at most 80 characters with no leading or trailing
-  space. Start with a letter and use only letters, digits, spaces, and
-  `-_.()/`. It must not contain `task` in any case (the template moves it to
-  `# Tasks`) and must not be `true`, `false`, `null`, `yes`, `no`, `on`, or
-  `off` in any case. These rules keep the unquoted YAML value a string and
-  make it safe inside the quoted commands below.
-- Content: Markdown with no `,,` (the template turns every `,,` in the daily
-  note into a blank line), no `<%` (Templater would run it as template code
-  if file-creation triggers are enabled), and no line whose trimmed text
-  starts with `#`. End with one newline.
+## Steps
 
-## Commands
+Each tool call starts a new shell. Write each value a step prints
+into later commands in place of its `<name>`. Remove the list indent
+from each command before you run it. In step 6 the `SECTION_END` line
+must then start at the beginning of its line, or the shell does not
+see where the section ends.
 
-Each agent tool call starts a new shell, so define this helper in the same
-shell command as its uses. It selects the vault named `<vault-name>` and
-drops two noise lines:
-
-```sh
-obsidian_main() {
-  obsidian vault="<vault-name>" "$@" 2>&1 |
-    grep -v -e 'Loading updated app package' -e 'installer is out of date'
-}
-```
-
-Shell variables do not survive between tool calls. `<heading>` is the
-heading chosen before step 1; record `<vault>`, `<vault-name>` and
-`<folder>` in step 2, `<daily>` and
-`<parent>` in step 3, and `<name>` and `<quick>` in step 5. Substitute them
-literally in every later command. Keep paths and the heading inside the
-quotes shown; paths with spaces stay inside one quoted value.
-
-`eval` prints `=> <value>`; other `obsidian_main` commands print the bare
-value. A single-shot `obsidian_main` check passes only when it prints the
-exact expected output; any other output (an `Error:` line, `(no output)`, or
-nothing) means stop and report. Shell checks state their own output. A poll
-passes when it prints its target value; other values while polling are
-expected, and only a timeout fails.
-
-The CLI drops the result of any eval that takes more than about 10 ms, so
-evals that read the daily note or change tabs only start the work. They
-store a count or status word in `window.pdevDailyNote`, never note text.
-Read a stored `<key>` with this instant eval; it prints `=> none` when the
-value is missing or belongs to another run:
-
-```sh
-obsidian_main eval code='(r => r?.run === "<name>" ? r.<key> ?? "none" : "none")(window.pdevDailyNote)'
-```
-
-From step 6 on, end every run, including a stopped one, with
-`obsidian_main eval code='delete window.pdevDailyNote'`; ignore its output.
-
-## Pre-checks
-
-Choose the heading first; step 6 needs it. Run these checks before showing
-the full draft.
-
-1. Run
-   `[ -n "$DISPLAY$WAYLAND_DISPLAY" ] && echo "display ok" || echo "no display"`.
-   It passes on `display ok`. On `no display`, stop and report that
-   Obsidian needs a display.
-2. Record the output of `nobs vault path` as `<vault>`. If it fails,
-   stop and report its message; do not use another vault. Record the
-   output of `basename "<vault>"` as `<vault-name>`.
-   `obsidian_main vault info=path` must print exactly `<vault>`. Per the
-   Obsidian CLI docs, the first command launches Obsidian if it is not
-   running. Then find the daily-note folder in the vault's Obsidian
-   settings, which hold no note text:
+1. Find today's note from the vault's daily-note settings:
 
    ```sh
-   jq -r '.folder // empty' "<vault>/.obsidian/daily-notes.json"
-   test -f "<vault>/000 Meta/001 Templates/_appendCurrQuickNotes().md" &&
-     test -d "<vault>/500 Zettelkasten" && echo "template ok"
+   v=$(nobs vault path) && date +%F &&
+     jq -r '[.folder // "", .format // ""] | @tsv' \
+       "$v/.obsidian/daily-notes.json"
    ```
 
-   Record the folder it prints as `<folder>`. When the settings file is
-   missing, the folder is empty, or the second line does not print
-   `template ok`, the vault has no daily note this skill can add to.
-   Ask the user which note to put the section in, write nothing, and
-   end this skill.
-3. `obsidian_main daily:path` must print one path that starts with
-   `<folder>/` and ends in `.md`. Record it as `<daily>` and its
-   basename without `.md` as `<parent>`.
-4. Run `obsidian_main eval code='!!app.vault.getFileByPath("<daily>")'`
-   every 2 seconds until it prints `=> true`, for up to 60 seconds. If it
-   never does, stop and report that today's daily note does not exist. Do
-   not create it; never run `obsidian daily`.
-5. Run `date +%Y-%m-%dT%H-%M-%S` once and record `<name>` as
-   `Quick Note <timestamp>` and `<quick>` as `500 Zettelkasten/<name>.md`.
-   Never run `date` again for this run. `<name>` is also the run ID.
-   `test -e "<vault>/<quick>" && echo exists || echo absent` must print
-   `absent`, and
-   `obsidian_main eval code='app.vault.getMarkdownFiles().some(f => f.basename === "<name>")'`
-   must print `=> false`, because the template finds the note by basename.
-6. Start the daily note counts. This eval replaces any earlier
-   `window.pdevDailyNote` and defines `count()` for reuse; ignore its
-   output:
+   It prints `<date>`, then the folder and the date format. Today's
+   note is `<daily>`, which is `<folder>/<date>.md`. This skill
+   cannot find today's note in three cases: a command fails, the
+   folder is empty, or the format is neither empty nor `YYYY-MM-DD`.
+   Then ask the user which note to use, and write nothing.
+2. Choose the heading by the Block Rules, then check the note:
 
    ```sh
-   obsidian_main eval code='window.pdevDailyNote = { run: "<name>", count() { this.counts = "pending"; Promise.resolve().then(() => app.vault.read(app.vault.getFileByPath("<daily>"))).then(d => { const t = d.split("\n").map(x => x.trim()), i = t.indexOf("# Notes"); this.counts = [t.filter(x => x === "# Notes").length, i >= 0 && i + 1 < t.length ? 1 : 0, d.split(",,").length - 1, t.filter(x => x === "## <heading>").length].join(" "); }, () => { this.counts = "error"; }); } }; window.pdevDailyNote.count()'
+   nobs read "<daily>" | jq -r --arg h "## <heading>" '
+     .body | split("\n") |
+     "\(map(select(. == "# Notes")) | length) \(map(select(. == $h)) | length)"'
    ```
 
-   Read `counts` with the instant eval in Commands, `<key>` set to
-   `counts`, never a bare `window.pdevDailyNote.counts` eval. Read it
-   every 2 seconds, for up to 30 seconds, until it is not
-   `=> pending`. It must print `=> 1 1 0 0`; otherwise stop. The four
-   numbers are:
-   - `# Notes` lines: must be 1.
-   - A line after `# Notes`, because the template appends to that line:
-     must be 1.
-   - `,,` matches: must be 0, because the template would rewrite them.
-   - `## <heading>` lines: must be 0. If it is 1, the heading already
-     exists, possibly from an earlier unconfirmed run: do not add the same
-     content again. Ask for a new heading only for different content.
+   - `1 0`: go to step 4.
+   - `1 1`: an earlier run may have added this section. Add nothing,
+     and tell the user. To add different text, ask for a new heading.
+   - Another count: stop and report it. `append-note` needs exactly
+     one `# Notes` line.
+   - `note not found`: today's note is missing, and `nobs read`
+     exits 4. Go to step 3.
+3. Fill the daily-note template into a new note body. Obsidian's
+   template plugins do not run without the app, so the command fills
+   the tags they would. It prints one word:
 
-## Approval
+   ```sh
+   v=$(nobs vault path) &&
+     t=$(jq -r '.template // ""' "$v/.obsidian/daily-notes.json") &&
+     f="$v/${t%.md}.md" && n=~/.local/state/obsidian-daily-note/new.md &&
+     mkdir -p "${n%/*}" &&
+     if [ -z "$t" ]; then echo no-template
+     elif [ ! -f "$f" ]; then echo template-missing; ls "${f%/*}" | head -20
+     else sed -e "s/<% tp\.file\.creation_date() %>/$(date '+%F %H:%M')/g" \
+         -e 's/<% tp\.file\.cursor() %>//g' -e 's/{{date}}/<date>/g' \
+         -e 's/{{title}}/<date>/g' -e "s/{{time}}/$(date +%H:%M)/g" \
+         "$f" > "$n" &&
+       if grep -q -e '<%' -e '{{' "$n"; then echo template-code
+       elif [ "$(grep -cx '# Notes' "$n")" != 1 ]; then echo notes-count
+       else echo ok; fi
+     fi
+   ```
 
-Show the target date, heading, and content exactly as they will be written,
-in a fenced block. Write nothing until the user approves that exact text.
-Any later change needs new approval and new step 6 counts. Tell the user
-that a new Obsidian tab will open on the quick note and an empty tab may
-remain. Ask them not to edit today's daily note until the report; the
-template reads the note and then overwrites it.
+   - `ok`: go on.
+   - `no-template` or `template-missing`: the settings name no
+     template, or a file that is gone. Tell the user, and list the
+     file names printed after the word. When they name a template,
+     run this step again with the `t=$(jq ...)` line replaced by
+     `t="<template>" &&`. Do not change the settings.
+   - `template-code` or `notes-count`: the template has a tag this
+     step does not fill, or no single `# Notes` line. Ask the user
+     which note to use, and create nothing.
+4. Ask for approval. Show the date, heading and content exactly as
+   they will be written, in a fenced block. When step 3 ran, also
+   say that today's note will be created from the template. Write
+   nothing until the user approves that exact text. After any
+   change, show it again.
+5. Only when step 3 ran, create the note:
 
-## Append
+   ```sh
+   n=~/.local/state/obsidian-daily-note/new.md
+   nobs read "<daily>" > /dev/null 2>&1
+   [ $? = 4 ] && nobs append "<daily>" < "$n" > /dev/null &&
+     nobs read "<daily>" | jq -e --rawfile n "$n" '.body == $n' \
+       > /dev/null && echo created && rm "$n"
+   ```
 
-7. Rerun step 3 and both step 5 checks. Then restart the counts with
-   `obsidian_main eval code='window.pdevDailyNote?.run === "<name>" && window.pdevDailyNote.count()'`,
-   ignore its output, and read `counts` as in step 6. All must give the
-   same results as before; a different daily path means the date changed.
-8. Write `<vault>/<quick>` with exactly five frontmatter lines; the content
-   starts on line 6:
+   On `created`, go on. When it prints nothing, another device may
+   have made the note. Run step 2 again, and go on only on `1 0`.
+6. Run step 2 again, since the note may have changed. Then add the
+   section and read it back, in one command:
 
-   ```markdown
-   ---
-   parent:
-     - "[[<parent>]]"
-   heading: <heading>
-   ---
+   ```sh
+   s=$(cat <<'SECTION_END'
+   ## <heading>
+
    <content>
+   SECTION_END
+   ) && printf '%s\n' "$s" | nobs append-note "<daily>" &&
+     nobs read "<daily>" | jq -r --arg s "$s" '
+       .body | "\(split("\n") | map(select(. == "# Notes")) | length) \(split("\n\n" + $s + "\n") | length - 1)"'
    ```
 
-9. Run the eval below every 2 seconds until it prints `=> <heading>`, for
-   up to 30 seconds. `=> missing` and `=> waiting` are expected while
-   Obsidian indexes the note; only a timeout fails.
-
-   ```sh
-   obsidian_main eval code='(f => f ? app.metadataCache.getFileCache(f)?.frontmatter?.heading ?? "waiting" : "missing")(app.vault.getFileByPath("<quick>"))'
-   ```
-
-10. Open the quick note in a new tab, check that it is the active editor,
-    and run the template, all in one eval. This eval only opens a tab and
-    runs the command. It stores the result in `status`; ignore its output:
-
-    ```sh
-    obsidian_main eval code='(async () => { const r = window.pdevDailyNote, q = "<quick>"; if (r?.run !== "<name>") return; r.status = "pending"; await app.workspace.getLeaf(true).openFile(app.vault.getFileByPath(q), { active: true }); if (app.workspace.activeEditor?.file?.path !== q) { r.status = "not-active"; return; } r.status = app.commands.executeCommandById("templater-obsidian:000 Meta/001 Templates/_appendCurrQuickNotes().md") ? "fired" : "no-command"; })()'
-    ```
-
-11. Read `status` every 2 seconds until it prints `=> fired`,
-    `=> not-active`, or `=> no-command`, for up to 10 seconds. The step 10
-    eval sets `pending` before its first `await`, so `=> none` for the
-    whole poll means it never ran. Decide by this status, not by step 10
-    output: an `Error:` there may come from the command itself, so
-    `pending` still goes to step 12.
-12. On `=> fired`, or when step 11 times out on `=> pending`, run
-    `obsidian_main eval code='!!app.vault.getFileByPath("<quick>")'` every 2
-    seconds until it prints `=> false`, for up to 30 seconds. The command
-    returns before the template finishes writing over the NAS, and a
-    pending step 10 may still fire it. If Templater recreates the note as
-    an empty file, this poll runs the full 30 seconds; the rules below
-    treat that case as success.
-
-## Verification
-
-After step 12, restart the counts as in step 7 and read `counts`. The run
-succeeded when the last number is 1 and either:
-
-- the step 12 poll printed `=> false` and the step 5 file check prints
-  `absent`, or
-- `stat -c %s "<vault>/<quick>"` prints `0`. Templater may recreate the
-  deleted note as an empty file. Delete it only when it is exactly 0 bytes.
+   `append-note` puts the section right under the `# Notes` line.
+   When a `---` line comes right after `# Notes`, the section goes
+   below that `---` line. It prints a short JSON result. The
+   check prints `1 1` when the section is in the note once and whole.
 
 ## Failure Handling
 
-Never retry automatically. "Heading count" below is the last number of
-`counts`.
+Never retry on your own. Never repair the note with another `nobs`
+command, since a repair could overwrite what the user or sync changed.
 
-- Steps 1-7: stop and report; nothing was written.
-- Steps 8-9: delete `<vault>/<quick>`, confirm it is gone, then report.
-- Step 11 prints `=> not-active` or `=> no-command`, or prints `=> none`
-  for the whole poll: the command did not run. Delete `<vault>/<quick>`,
-  confirm it is gone, then report that nothing was written.
-- The quick note is not empty after step 12 and the heading count is 1:
-  report that the section was added to today's note but the quick note was
-  not deleted, and ask the user to remove `<quick>`. Do not suggest a retry.
-- The quick note is not empty after step 12 and the heading count is 0:
-  report the result as not confirmed, because NAS writes can outlast the
-  poll. Ask the user to check today's note in Obsidian and to delete
-  `<quick>` before any retry.
-- The quick note is gone but the heading count is not 1: report the count.
-  Do not edit the daily note.
-- Any other result, including `counts` that stay `pending`, print `none`,
-  or print `error`: report the step, the quick note check, and the heading
-  count if known. Delete nothing.
+- Steps 1 to 4 write nothing. Report the step and its message.
+- Step 5 prints nothing and step 2 then fails: report that today's
+  note may be incomplete, and ask the user to check it.
+- `append-note` fails: report its message. The note is unchanged.
+- The step 6 check does not print `1 1`: report that the result is
+  not confirmed, and ask the user to check today's note.
 
 ## Completion Report
 
-Report only the date and the result: added, not confirmed, or the failed
-step and reason. Do not quote the daily note.
+Report only the date and the result: added, added to a new note, not
+confirmed, or the failed step and reason. Do not quote the daily note.
 
 ## Remembering corrections
 
 Follow every lesson in the Lessons section below. Each is a correction
 the user made, so a lesson wins when it disagrees with the text above,
-except that you still never read, list, search or open anything under
-the daily-note folder, and never edit a file there directly. When the
-user corrects how you pick the heading, write the section, run the
-checks or report the result, follow [skill-fix](../skill-fix/SKILL.md)
-with the skill name `obsidian-daily-note`, and offer once to fix the
-skill's text.
+except that you still print no note text. When the user corrects how
+you pick the heading, write the section, run the checks or report the
+result, follow [skill-fix](../skill-fix/SKILL.md) with the skill name
+`obsidian-daily-note`, and offer once to fix the skill's text.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

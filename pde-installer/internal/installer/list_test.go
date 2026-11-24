@@ -13,8 +13,8 @@ import (
 
 // Terminal listing must not parse metadata for unselected backends.
 func TestListSkipsFullMetadata(t *testing.T) {
-	t.Setenv("PATH", terminalProbeBin(t, ""))
-	cfg := terminalTestConfig(t)
+	t.Setenv("PATH", makeTerminalProbeBin(t, ""))
+	cfg := newTerminalTestConfig(t)
 	writeInvalidFullMetadata(t, cfg)
 	var output bytes.Buffer
 	if err := list(cfg, run.Runner{Stdout: &output, Stderr: &bytes.Buffer{}}); err != nil {
@@ -31,8 +31,8 @@ func TestListSkipsFullMetadata(t *testing.T) {
 // Terminal builds no tools of its own, but a desktop still builds its player
 // into HOME.
 func TestListShowsTerminalDesktopsWallpaperPlayer(t *testing.T) {
-	t.Setenv("PATH", terminalProbeBin(t, ""))
-	cfg := terminalTestConfig(t)
+	t.Setenv("PATH", makeTerminalProbeBin(t, ""))
+	cfg := newTerminalTestConfig(t)
 	cfg.Desktop = "i3"
 	if err := os.MkdirAll(cfg.LocalBin, 0o755); err != nil {
 		t.Fatal(err)
@@ -52,7 +52,7 @@ func TestListShowsTerminalDesktopsWallpaperPlayer(t *testing.T) {
 }
 
 func TestListRejectsInvalidProfile(t *testing.T) {
-	cfg := terminalTestConfig(t)
+	cfg := newTerminalTestConfig(t)
 	cfg.Profile = profile.Profile("desktop")
 	err := list(cfg, run.Runner{})
 	if err == nil || !strings.Contains(err.Error(), `invalid profile "desktop"`) {

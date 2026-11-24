@@ -13,14 +13,14 @@ import (
 // A fresh Ubuntu user starts with bash, so new terminals miss the managed
 // ~/.zshrc until the install changes the passwd entry.
 func TestSetLoginShellRunsUsermod(t *testing.T) {
-	manager, bin, log := loginShellManager(t, "/bin/bash", false)
+	manager, bin, log := newLoginShellManager(t, "/bin/bash", false)
 
 	if err := manager.SetLoginShell("tester"); err != nil {
 		t.Fatal(err)
 	}
 
 	want := []string{"usermod -s " + filepath.Join(bin, "zsh") + " tester"}
-	if lines := fixtureLines(t, log); !slices.Equal(lines, want) {
+	if lines := readFixtureLines(t, log); !slices.Equal(lines, want) {
 		t.Fatalf("sudo calls = %q, want %q", lines, want)
 	}
 }
@@ -28,13 +28,13 @@ func TestSetLoginShellRunsUsermod(t *testing.T) {
 // Every install reruns this step, so a zsh user must not get a sudo prompt,
 // even when the passwd entry names another zsh path than PATH finds.
 func TestSetLoginShellKeepsAnyZsh(t *testing.T) {
-	manager, _, log := loginShellManager(t, "/bin/zsh", false)
+	manager, _, log := newLoginShellManager(t, "/bin/zsh", false)
 
 	if err := manager.SetLoginShell("tester"); err != nil {
 		t.Fatal(err)
 	}
 
-	if lines := fixtureLines(t, log); len(lines) != 0 {
+	if lines := readFixtureLines(t, log); len(lines) != 0 {
 		t.Fatalf("sudo calls = %q, want none", lines)
 	}
 }
@@ -42,14 +42,14 @@ func TestSetLoginShellKeepsAnyZsh(t *testing.T) {
 // chsh and PAM refuse a shell that /etc/shells leaves out, so setting one
 // could lock the user out of tools that check it.
 func TestSetLoginShellWarnsUnlistedZsh(t *testing.T) {
-	manager, _, log := loginShellManager(t, "/bin/bash", false)
+	manager, _, log := newLoginShellManager(t, "/bin/bash", false)
 	writeFixture(t, manager.shellsPath, "/bin/sh\n/bin/bash\n/usr/bin/zsh\n", 0o644)
 
 	if err := manager.SetLoginShell("tester"); err != nil {
 		t.Fatal(err)
 	}
 
-	if lines := fixtureLines(t, log); len(lines) != 0 {
+	if lines := readFixtureLines(t, log); len(lines) != 0 {
 		t.Fatalf("sudo calls = %q, want none", lines)
 	}
 	stderr := manager.runner.Err().(*strings.Builder).String()
@@ -61,7 +61,7 @@ func TestSetLoginShellWarnsUnlistedZsh(t *testing.T) {
 // A dry run on a fresh machine comes before apt installs zsh, and must still
 // show the change instead of failing.
 func TestSetLoginShellPreviewsMissingZsh(t *testing.T) {
-	manager, bin, _ := loginShellManager(t, "/bin/bash", true)
+	manager, bin, _ := newLoginShellManager(t, "/bin/bash", true)
 	if err := os.Remove(filepath.Join(bin, "zsh")); err != nil {
 		t.Fatal(err)
 	}
@@ -78,9 +78,9 @@ func TestSetLoginShellPreviewsMissingZsh(t *testing.T) {
 }
 
 // Returns a manager whose getent reports shell and whose PATH has a listed fake zsh, plus its bin folder and sudo log.
-func loginShellManager(t *testing.T, shell string, dryRun bool) (Manager, string, string) {
+func newLoginShellManager(t *testing.T, shell string, dryRun bool) (Manager, string, string) {
 	t.Helper()
-	manager, log := fixtureManager(t, nil, dryRun)
+	manager, log := newFixtureManager(t, nil, dryRun)
 	root := filepath.Dir(log)
 	bin := filepath.Join(root, "bin")
 	// Like the real getent, exit 2 for any other key, so a lookup of the wrong user fails.

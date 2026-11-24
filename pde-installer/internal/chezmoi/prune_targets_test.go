@@ -349,7 +349,7 @@ func runPruneTargets(t *testing.T, home, scratch string) string {
 		fakePRStatesGH,
 	)
 	script := filepath.Join(
-		repoRoot(t),
+		findRepoRoot(t),
 		"chezmoi",
 		"dot_local",
 		"bin",
@@ -360,7 +360,7 @@ func runPruneTargets(t *testing.T, home, scratch string) string {
 		script,
 	)
 	command.Env = append(
-		isolatedGitEnv(os.Environ()),
+		isolateGitEnv(os.Environ()),
 		"HOME="+home,
 		"TMPDIR="+scratch,
 		"PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),

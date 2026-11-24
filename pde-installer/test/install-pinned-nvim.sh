@@ -13,7 +13,7 @@ dir="${1:?usage: install-pinned-nvim.sh DIR}"
 # The first Version after the neovim name, on its line or a later one.
 version="$(awk '/Name: *"neovim"/ { neovim = 1 }
 	neovim && /Version:/ { sub(/.*Version: *"/, ""); sub(/".*/, ""); print; exit }' "$root/internal/manifest/manifest.go")"
-# The neovim checksum inside the amd64 case of toolsForPlatform.
+# The neovim checksum inside the amd64 case of listToolsForPlatform.
 sha="$(awk '/case "amd64":/ { amd64 = 1 } /case "arm64":/ { amd64 = 0 }
 	amd64 && /"neovim":/ { gsub(/[",]/, "", $2); print $2 }' "$root/internal/direct/tools.go")"
 if [ -z "$version" ] || [ "${#sha}" -ne 64 ]; then

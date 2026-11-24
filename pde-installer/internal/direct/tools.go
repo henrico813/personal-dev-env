@@ -49,12 +49,12 @@ type toolsState struct {
 	Tools    map[string]toolState `json:"tools"`
 }
 
-// Tools returns direct-release tools for the current platform.
-func Tools() ([]Tool, error) {
-	return toolsForPlatform(runtime.GOOS, runtime.GOARCH)
+// Returns direct-release tools for the current platform.
+func ListTools() ([]Tool, error) {
+	return listToolsForPlatform(runtime.GOOS, runtime.GOARCH)
 }
 
-func toolsForPlatform(goos, goarch string) ([]Tool, error) {
+func listToolsForPlatform(goos, goarch string) ([]Tool, error) {
 	if goos != "linux" {
 		return nil, fmt.Errorf("direct tools do not support %s/%s", goos, goarch)
 	}
@@ -114,13 +114,13 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 }
 
 // Returns the release tools that the manifest marks for the profile.
-func ToolsFor(selected profile.Profile) ([]Tool, error) {
-	tools, err := Tools()
+func ListToolsFor(selected profile.Profile) ([]Tool, error) {
+	tools, err := ListTools()
 	if err != nil {
 		return nil, err
 	}
 	wanted := map[string]bool{}
-	for _, item := range manifest.ByOwnerFor(selected, manifest.Direct) {
+	for _, item := range manifest.GroupByOwnerFor(selected, manifest.Direct) {
 		wanted[item.Name] = true
 	}
 	var result []Tool
@@ -135,11 +135,11 @@ func ToolsFor(selected profile.Profile) ([]Tool, error) {
 // Returns an error naming installed release tools the profile leaves out,
 // because installing the profile would delete them.
 func (m Manager) RejectToolRemoval(selected profile.Profile) error {
-	known, err := Tools()
+	known, err := ListTools()
 	if err != nil {
 		return err
 	}
-	profileTools, err := ToolsFor(selected)
+	profileTools, err := ListToolsFor(selected)
 	if err != nil {
 		return err
 	}
@@ -189,7 +189,7 @@ func (m Manager) RejectToolRemoval(selected profile.Profile) error {
 // Installs and activates the profile's release tools. Activation replaces
 // the whole releases folder, so it deletes tools the profile leaves out.
 func (m Manager) ReconcileTools(selected profile.Profile) (*fsutil.Journal, error) {
-	tools, err := ToolsFor(selected)
+	tools, err := ListToolsFor(selected)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +197,7 @@ func (m Manager) ReconcileTools(selected profile.Profile) (*fsutil.Journal, erro
 }
 
 func (m Manager) reconcileTools(tools []Tool) (*fsutil.Journal, error) {
-	current, err := m.toolsCurrent(tools)
+	current, err := m.isEachToolCurrent(tools)
 	if err != nil {
 		return nil, err
 	}
@@ -250,7 +250,7 @@ func (m Manager) reconcileTools(tools []Tool) (*fsutil.Journal, error) {
 	tracked := false
 	defer func() {
 		if !tracked {
-			_ = journal.Rollback()
+			_ = journal.RollBack()
 		}
 	}()
 	stage := filepath.Join(workspace, "releases")
@@ -430,7 +430,7 @@ func (m Manager) writeToolsState(stage string, tools []Tool) error {
 	return nil
 }
 
-func (m Manager) toolsCurrent(tools []Tool) (bool, error) {
+func (m Manager) isEachToolCurrent(tools []Tool) (bool, error) {
 	data, err := os.ReadFile(filepath.Join(m.ToolsRoot(), ".pde-state.json"))
 	if os.IsNotExist(err) {
 		return false, nil
@@ -448,7 +448,7 @@ func (m Manager) toolsCurrent(tools []Tool) (bool, error) {
 		if !ok || tool.ReleasesURL == "" && (installed.Version != tool.Version || installed.SHA256 != tool.SHA256) {
 			return false, nil
 		}
-		launchersCurrent, err := m.toolLaunchersCurrent(tool)
+		launchersCurrent, err := m.hasCurrentLaunchers(tool)
 		if err != nil {
 			return false, err
 		}
@@ -473,7 +473,7 @@ func (m Manager) verifyTools(root string, tools []Tool) error {
 			}
 		}
 		if tool.Kind == fileTool {
-			digest, err := fsutil.FileSHA256(filepath.Join(root, tool.Directory, "bin", tool.Binary))
+			digest, err := fsutil.HashFileSHA256(filepath.Join(root, tool.Directory, "bin", tool.Binary))
 			if err != nil {
 				return fmt.Errorf("hash %s: %w", tool.Name, err)
 			}
@@ -499,9 +499,9 @@ func (m Manager) ToolsRoot() string {
 	return filepath.Join(m.Home, ".local", "share", "pde", "releases")
 }
 
-// ToolProbe reports the installed version and state of a direct tool.
-func (m Manager) ToolProbe(name string) (string, string, error) {
-	tools, err := Tools()
+// Reports the installed version and state of a direct tool.
+func (m Manager) ProbeTool(name string) (string, string, error) {
+	tools, err := ListTools()
 	if err != nil {
 		return "", "", err
 	}
@@ -509,7 +509,7 @@ func (m Manager) ToolProbe(name string) (string, string, error) {
 		if tool.Name != name {
 			continue
 		}
-		launchersCurrent, err := m.toolLaunchersCurrent(tool)
+		launchersCurrent, err := m.hasCurrentLaunchers(tool)
 		if err != nil {
 			return "", "", err
 		}
@@ -523,7 +523,7 @@ func (m Manager) ToolProbe(name string) (string, string, error) {
 			return "", "", fmt.Errorf("stat %s: %w", name, err)
 		}
 		if tool.Kind == fileTool {
-			digest, err := fsutil.FileSHA256(filepath.Join(m.ToolsRoot(), tool.Directory, "bin", tool.Binary))
+			digest, err := fsutil.HashFileSHA256(filepath.Join(m.ToolsRoot(), tool.Directory, "bin", tool.Binary))
 			if err != nil {
 				return "", "", fmt.Errorf("hash %s: %w", name, err)
 			}
@@ -549,7 +549,7 @@ func (m Manager) ToolProbe(name string) (string, string, error) {
 	return "", "", fmt.Errorf("unknown direct tool %q", name)
 }
 
-func (m Manager) toolLaunchersCurrent(tool Tool) (bool, error) {
+func (m Manager) hasCurrentLaunchers(tool Tool) (bool, error) {
 	for _, name := range tool.Links {
 		launcher := filepath.Join(m.Home, ".local", "bin", name)
 		info, err := os.Lstat(launcher)

@@ -79,8 +79,11 @@ need a count or summary of a folder's contents that `hub status`
 does not cover, hand it to a worker as a `model-routing`
 `local-script` job, per Rules, instead of running `ls` directly.
 Before you tell the user a `you` session waits, read its newest
-lines with `herdr agent read`. When it asks nothing, its "needs you"
-mark is stale: run `hub unflag <name>` and leave it out.
+lines with `herdr agent read`. A session that handed off a card
+shows `you` while the card's question waits. It waits on that same
+question, so do not unflag it or list it as a second wait; close its
+tab once the session that took over runs. Any other `you` session
+that asks nothing is stale: run `hub unflag <name>`; leave it out.
 Tell the user what each `you` session waits on, and keep that in
 every later message until the session no longer waits on the user,
 as `status-updates` says. When such a session has never reported to
@@ -280,15 +283,20 @@ vault. A hub never reports to a hub on another machine.
   card. A short chat holds none. A card is one piece of work, so
   sessions on the same work share one card, and its `sessions` list
   keeps each of them.
-- Two limits, each across every project: 8 cards in `active` and 6
-  in `in-review`, as `card board` shows. `card` refuses a move into a
-  full stage unless the move has `--user`. While active has room,
-  start the oldest todo card, or the one the user names. Pass
-  `--user` past a limit only when the user says so. When in-review is
-  full, leave a finished card in `active` and tell the user its work
-  waits on them. When work is over a limit, propose which cards to
-  pause, and let the user decide. If `card` refuses a move that the
-  limits allow, pass `--user` and say so in `--why`.
+- You may release a draft to `todo` once it has a `- [ ]` line under
+  Acceptance Criteria and its title passes `card`'s title rules; a
+  refused `card move` prints why. Never add criteria yourself to release
+  a card; the user sets them. Only the user adopts running work or drops
+  a card. Note each release as `references/hub-brief.md` says.
+- Two limits, each across every project: 8 cards in `active` and 6 in
+  `in-review`, as `card board` shows. `card` refuses a move into a full
+  stage unless the move has `--user`. While active has room, start the
+  oldest todo card, or the one the user names. Pass `--user` past a
+  limit only when the user says so. When in-review is full, leave a
+  finished card in `active` and tell the user its work waits on them.
+  When work is over a limit, propose which cards to pause, and let the
+  user decide. If `card` refuses a move for a reason other than a limit
+  or a release's criteria or title, pass `--user` and say so in `--why`.
 - Move a card to `in-review` as soon as its work waits only on the user,
   such as an open pull request or a plan or question for the user,
   even when more work follows. When the user has answered or
@@ -309,11 +317,6 @@ vault. A hub never reports to a hub on another machine.
 - When one wake needs several card commands, such as `card note`,
   `card move` and `card add`, put them in one shell script and run it
   in one tool call.
-- Only the user moves a card from `draft` to `todo`, adopts work
-  already under way, or drops a card. Never release a card the user
-  described in a sentence: it stays in `draft` until the user has
-  refined it. Refining can take time and happen in any session; the
-  card keeps where it stands.
 - A card's key starts with its project's code, from the
   `Project code:` line in the project folder's `AGENTS.md`. For a
   project with none, propose the prefix its plans already use, or a
@@ -370,7 +373,7 @@ Put each question that waits on the user on the card it blocks with
 agree. Write the whole question to a file, so no message names it by
 number alone, and run `hub ask <key> <question file>`. Read
 [references/hub-brief.md](references/hub-brief.md) for a worked
-example of the question file.
+example of the question file, and what `hub ask` refuses and marks.
 
 The `If no reply:` line says what stays blocked and what the worker
 does meanwhile. The work the question asks about never goes ahead
@@ -378,32 +381,29 @@ without the user's answer, and no agent answers a question for the
 user. Add `Depends on:` when the question rests on an earlier
 decision, and name who made it. A question that blocks no card, such
 as which changes a session review makes, goes on a new draft card
-made with `card new <project> "<title>" --type <type>`, so every
+made with `card new <project> "<title>"`, so every
 reader finds it.
-
-`hub ask` refuses a question with a part missing. It also refuses a
-card that already waits on the user, since a card shows one open
-question. Keep the next question for that card in `notes.md`, and ask
-it with `hub ask` right after `hub answer`. `hub ask` marks the card
-needs-you, so `hub status` shows the card's sessions as `you`. While
-the mark is open, a session that handed off that card also shows
-`you`: that session waits on the same question, not a new one. Close
-its tab yourself once the session that took over runs.
 
 Before you list a question or task as waiting, even one a handoff
 carries, check where the user answers: your chat, the card's session
 panes, its Decisions and Log, `hub requests` and GitHub. Leave out what
-is settled; record a found answer with `hub answer`.
+is settled; record a found answer with `hub answer`. A plain reply in
+any of those places settles a question as fully as a reply key:
+
+- A direction, such as "do the small one first", makes the choice.
+- A reply that leaves the choice to you, such as "any order", picks
+  the `Recommended:` choice. The user made that call, not you.
+- A premise correction, such as "that changed", can leave no
+  choice to make. Run `hub answer <key> "moot: <why>"`.
+- For a reply that settles part, `hub answer` that part, then
+  `hub ask` the rest, quoting the reply the user thinks answered it.
 
 When the user answers, run `hub answer <key> "<answer>"`. It moves
 the question to the card's Decisions with the answer and marks the
 card answered. Record an answer that sets a rule for later work in
-`rules.md`. Bring the user everything that waits on them with:
-
-    hub brief --run "<run folder>"
-
-Read [references/hub-brief.md](references/hub-brief.md) for what it
-prints and how to show each part to the user.
+`rules.md`. Bring the user everything that waits on them with
+`hub brief --run "<run folder>"`, up to `Q9`, and show it as
+[references/hub-brief.md](references/hub-brief.md) says.
 
 ## Merges
 
