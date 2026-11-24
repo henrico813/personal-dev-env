@@ -185,6 +185,12 @@ own Herdr pane, with `HUB_RUN` set to your run folder.
      folder. Do not run step 4 again.
    - `timeout (hub 131k)`: nothing happened. Run step 4 again.
 
+   A second line
+   `hub pane has no name -> herdr agent rename w1:p3 NAME` means
+   Herdr dropped your pane's name, as it can after your OpenCode
+   restarts. Run that command with your own name for NAME before you
+   hand off.
+
    `hub read` exits 3 with `no unread report from demo-001-impl`
    when you already read it. Go on.
 

@@ -46,11 +46,11 @@ use crate::external::cards::CardKey;
 use crate::external::herdr::{Agent, AgentStatus, HerdrCode, HerdrError};
 use crate::external::opencode::OpenCodeDb;
 use crate::shared::events::{self as hub_events, Event, EventKind, Memory};
-use crate::shared::lifecycle;
 use crate::shared::messages::{self, Delivery, MessageCounts, Target};
 use crate::shared::questions::read_open_questions;
 use crate::shared::run_folder::{self, RecordedHub, ReportedNames, RunFolder};
 use crate::shared::{HubError, Tools};
+use crate::shared::{facts, lifecycle};
 use events::{WatchEvent, WatchMemory, append_watch_event, load_watch_memory};
 use wait::WaitFile;
 
@@ -972,7 +972,7 @@ fn find_hub_agent(tools: &Tools<'_>, session_id: Option<&str>) -> Result<Agent, 
             "run hub watch start in the hub's own Herdr pane".to_owned(),
         ));
     };
-    let hub = tools.herdr.get_agent(own_pane)?;
+    let hub = facts::read_named_hub_agent(tools, own_pane)?;
     match (session_id, hub.session_id.as_deref()) {
         (Some(wanted), Some(found)) if wanted != found => Err(HubError::NotDone(format!(
             "HERDR_PANE_ID names {}, which runs another OpenCode session",
