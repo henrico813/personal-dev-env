@@ -104,4 +104,5 @@ Each approval promise, and the tests that fail when it breaks:
 | After a merge, PRs based on its branch move to its base, unless GitHub moves them | `TestMergeMovesUnstackedDependentsToBase`, `TestMergeStackedFailureReportedWithoutMoves` |
 | A plain merge says the PR merged, unless `--auto` only queued it | `TestMergePlainReportsMergeUnlessAuto` |
 | A failed merge call counts as a merge only when GitHub then shows the PR merged | `TestMergeFailureFollowsPRState` |
+| After a merge, `card merged` gets the PR's URL, even when `card` is only in this program's folder, and a failure of `card` only warns | `TestMergeRunsCardOnlyWhenMerged`, `TestMergeOnlyWarnsWhenCardFails`, `TestMergeFindsCardBesideProgram` |
 | A new PR's base branch is the default branch or has an open PR | `TestCreateRefusesBaseWithoutOpenPR` |

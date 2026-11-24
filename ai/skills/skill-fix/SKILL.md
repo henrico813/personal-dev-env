@@ -99,11 +99,11 @@ agent, unless the linking skill names someone else.
 1. Save the fix and clear the worktree before you show it. Every
    session on this PC shares the fix worktree, and `start` refuses
    another skill's fix while yours waits there. Save the diff to a
-   new file under `/tmp`, then drop the edits. The first line of the
-   block below makes the diff show new files, such as a new
-   reference file. When you save a fix again, `git apply --3way` has
-   staged its earlier edits. Plain `git diff` leaves staged edits
-   out, so diff against `HEAD`:
+   new file under `/tmp`, such as `/tmp/<skill>-fix-1.patch`, then
+   drop the edits. The first line of the block below makes the diff
+   show new files, such as a new reference file. When you save a fix
+   again, `git apply --3way` has staged its earlier edits. Plain
+   `git diff` leaves staged edits out, so diff against `HEAD`:
 
    ```bash
    git -C <worktree> add --intent-to-add .
@@ -137,10 +137,10 @@ agent, unless the linking skill names someone else.
 
    To fix a hit in the diff, run `skill-fix start <skill>` and
    `git -C <worktree> apply --3way <patch file>`, edit the fix, and
-   save it again as above. Fix a hit
-   in the message file in place. Get a new review each time the patch
-   or message file changes, in this step or a later one. Show a fix
-   only after its review reports zero hits.
+   save it again as above. Fix a hit in the message file in place.
+   Get a new review each time the patch or message file changes, in
+   this step or a later one, and save and read each new round as
+   item 5 says. Show a fix only after its review reports zero hits.
 
 2. Offer the fix once, at the time the linking skill names. Show the
    user the message and the diff. To offer several fixes in one
@@ -164,11 +164,35 @@ agent, unless the linking skill names someone else.
    When `git apply` fails, such as when an earlier fix changed the
    same lines, the folder's edits are yours, since `start` found
    none. Drop them with `skill-fix start <skill> --reset`, write the
-   fix again on the new text, save it again as item 1 says, and show
-   the new diff.
+   fix again on the new text, save it again as items 1 and 5 say,
+   and show the new diff.
 4. When the user asks for a change, apply the diff as item 3 says,
-   edit the fix, save it again as item 1 says, and show the new diff.
-   When the user says no, delete the patch file.
+   edit the fix, save it again as items 1 and 5 say, and show the new
+   diff.
+   When the user says no, delete every round's patch file.
+5. A new review round starts each time a fix goes back for changes.
+   Edit the fix as the place listed for its reason says:
+   - The privacy review's hits: item 1.
+   - A change the user asks for: item 4.
+   - A `refused` reply: the table in step 4.
+   - A failed `git apply`: item 3.
+   - The findings of the `skill-development` skill's "Review a skill
+     change" section, from reviewers that you or a hub started: item
+     4, as for a change the user asks for.
+
+   In each round after the first:
+   - Save the round to a new patch file, such as
+     `/tmp/<skill>-fix-2.patch`, so that a `diff` of it against
+     `/tmp/<skill>-fix-1.patch` shows the change. From then on, "the
+     patch file" in these steps means the newest round's file. When
+     only the message file changed, keep the last patch file.
+   - Read only what changed: the lines each hit or finding points
+     to, the change the user asked for, and the new patch against
+     the last one. Do not read again the whole skill, a source file
+     you read to learn how a tool works, or a report you already
+     wrote, since every later turn re-reads what you read. When
+     `git apply` fails as item 3 says, also read the new text the fix
+     must fit.
 
 ### 4. Act on the reply
 
@@ -191,8 +215,9 @@ the table below says:
   guess the term.
 - `refused`: `rule` names the fix rule that failed, and `detail`
   names each file and line. Fix the text as the table below says,
-  save it again as step 3 item 1 says, and show the user the new
-  diff. On a yes, commit it as step 3 item 3 says.
+  save it again as a new round, as step 3 items 1 and 5 say, and
+  show the user the new diff. On a yes, commit it as step 3 item 3
+  says.
 - `error`: the tool failed, and `detail` says why. Tell the user the
   `detail` once. When it starts with `committed`, the fix is
   committed and only the sync failed. Otherwise nothing changed.

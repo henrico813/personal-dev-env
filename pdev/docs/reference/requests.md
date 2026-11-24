@@ -47,8 +47,11 @@ the result. When a merge without `--auto` fails, it reads the PR again
 and counts the merge as done if GitHub shows it merged. After a merge
 succeeds without `--auto`, it moves the open PRs based on the merged
 branch to the merged PR's base, except PRs in a GitHub stack, which
-GitHub moves itself. If it cannot look up the PR, it runs `gh pr merge`
-as given and moves nothing.
+GitHub moves itself. It then runs `card merged` with the PR's URL, so
+the kanban cards linked to the PR update, and shows card's output. If
+`card` is missing, fails, or runs over 20 seconds, it prints one warning
+and still exits 0. If it cannot look up the PR, it runs `gh pr merge` as
+given, moves nothing and skips `card`.
 
 ## States
 
@@ -395,7 +398,7 @@ approval popups.
 | Variable | Use |
 |---|---|
 | `XDG_STATE_HOME` | Root of the state directory; `~/.local/state` when unset |
-| `PATH` | Only full-path folders count, so an empty entry or `.` never picks a `gh` in the working directory. The `gh` run is the first executable one that is not this program, so with [the guard](#the-guard) linked as `gh` it is the real `gh`, or the newest aqua `gh` in place of aqua's shim. `herdr` is the first on `PATH`, otherwise the one in this program's folder: Herdr runs the inbox and popup with its server's `PATH`, which may lack `~/.local/bin`, where the installer puts both |
+| `PATH` | Only full-path folders count, so an empty entry or `.` never picks a `gh` in the working directory. The `gh` run is the first executable one that is not this program, so with [the guard](#the-guard) linked as `gh` it is the real `gh`, or the newest aqua `gh` in place of aqua's shim. `herdr` and `card` are each the first on `PATH`, otherwise the one in this program's folder: Herdr runs the inbox and popup with its server's `PATH`, which may lack `~/.local/bin`, where the installer puts them. A `card` from this program's folder runs with that folder first on its `PATH`, so it finds the programs it runs there |
 | `PDE_GH_WRITE` | Set to `1` for the approved `gh` only, so the guard lets it through |
 | `HERDR_ENV` | Herdr sets it to `1` in its terminals; then a new request opens the Herdr popup, shows a notification, sets the sidebar marker, looks up the Herdr agent, and makes the phone question wait until the request is 30 seconds old |
 | `PDE_REQUEST_ID` | Set by Herdr for `--herdr-popup`: the request to show first |

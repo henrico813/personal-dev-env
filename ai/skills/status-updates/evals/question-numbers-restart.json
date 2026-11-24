@@ -1,0 +1,16 @@
+{
+  "id": "question-numbers-restart",
+  "source": "the user's rule that question numbers never pass 9 and start again at Q1 once a batch is answered",
+  "rule": "Question numbers",
+  "correction": true,
+  "prompt": "Project: Lantern, a command-line tool that backs up a family photo library to a home file server.\n\nEarlier today you asked the user eight questions, Q1 to Q8, in one message. The user has answered all eight, and nothing else waits on them.\n\nNow two new questions come up:\n- Which night the weekly backup runs: Sunday or Wednesday. You recommend Sunday, when the server is idle.\n- Whether a failed backup texts the user or only sends an email. You recommend a text, since emails go unread for days.\n\nWrite the message that asks the user both questions.",
+  "pass": [
+    "\\bQ1\\b",
+    "\\bQ2\\b"
+  ],
+  "fail": [
+    "\\bQ(9|10)\\b"
+  ],
+  "good": "Lantern, the photo backup tool, has two new questions.\n\n**Q1. Weekly backup: which night does it run?**\n- A: Sunday **(rec)**\n- B: Wednesday\n\n**Q2. Failed backups: how do they reach you?**\n- A: a text **(rec)**\n- B: an email only\n\nReply like `Q1A Q2A`.\n\nOn Q1: the server is idle on Sundays. On Q2: emails go unread for days.",
+  "bad": "Lantern, the photo backup tool, has two new questions.\n\n**Q9. Weekly backup: which night does it run?**\n- A: Sunday **(rec)**\n- B: Wednesday\n\n**Q10. Failed backups: how do they reach you?**\n- A: a text **(rec)**\n- B: an email only\n\nReply like `Q9A Q10A`."
+}
