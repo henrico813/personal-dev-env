@@ -44,7 +44,8 @@ prints the time, such as `noted 0856`.
 
 `hub` looks at every session in Herdr on this machine, not only the
 ones this run folder knows. It closes nothing; only `hub clean`
-closes tabs. Check first:
+closes tabs, and only those of sessions this run folder knows. Check
+first:
 
 ```sh
 hub status

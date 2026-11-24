@@ -12,9 +12,11 @@ use crate::shared::run_folder::RunFolder;
 use crate::shared::tidy::{self, TAB_HOLDS_WORK, TidyAction, TidyOutcome};
 use crate::shared::{AgentName, HubError, Tools, events, facts};
 
-/// Runs the tidy pass now and prints one line per close, park, forget
-/// or keep, then `nothing to close` when nothing changed. With
-/// `dry_run`, it prints what it would do and changes nothing.
+/// Runs the tidy pass now on the sessions this run knows, as
+/// `tidy::list_run_session_names` finds them, so another hub's workers
+/// stay open. Prints one line per close, park, forget or keep, then
+/// `nothing to close` when nothing changed. With `dry_run`, it prints
+/// what it would do and changes nothing.
 ///
 /// # Errors
 ///
@@ -28,9 +30,10 @@ pub fn run_clean(
     clean_sessions(tools, run, None, dry_run, now)
 }
 
-/// Runs the tidy pass as `run_clean` does, but only on the sessions in
-/// `names`, such as the ones the board's clean dialog listed. A listed
-/// session the pass now keeps stays open, with a `kept` line.
+/// Runs the tidy pass as `run_clean` does, but on the sessions in
+/// `names` instead of this run's, such as the ones the board's clean
+/// dialog listed from every hub. A listed session the pass now keeps
+/// stays open, with a `kept` line.
 ///
 /// # Errors
 ///
@@ -44,7 +47,7 @@ pub fn run_clean_listed(
     clean_sessions(tools, run, Some(names), false, now)
 }
 
-/// Runs the tidy pass on every session, or on `only` when given.
+/// Runs the tidy pass on this run's sessions, or on `only` when given.
 fn clean_sessions(
     tools: &Tools<'_>,
     run: &RunFolder,
@@ -55,11 +58,13 @@ fn clean_sessions(
     let lock = tools.parked.take_tidy_lock()?;
     let memory = events::load_memory(run)?;
     let mut collected = facts::collect_session_facts(tools, run, &memory)?;
-    if let Some(names) = only {
-        collected
-            .sessions
-            .retain(|facts| names.contains(&facts.name));
-    }
+    let names: BTreeSet<String> = match only {
+        Some(names) => names.iter().cloned().collect(),
+        None => tidy::list_run_session_names(run, &memory)?,
+    };
+    collected
+        .sessions
+        .retain(|facts| names.contains(&facts.name));
     let outcomes = tidy::run_tidy_pass(tools, run, &collected, &lock, now, dry_run)?;
     let mut lines: Vec<String> = outcomes
         .iter()

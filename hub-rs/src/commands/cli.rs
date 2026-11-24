@@ -389,9 +389,11 @@ pub enum Command {
     /// Close and park finished tabs
     ///
     /// Closes the tab of each to-close session and parks each to-park
-    /// one, the states hub status shows. Kept sessions stay. Run it
-    /// after hub next names to-close or to-park sessions. --dry-run
-    /// shows what it would do.
+    /// one, the states hub status shows. Kept sessions stay. Only this
+    /// run's sessions count, the ones hub launch started from it, that
+    /// reported to it, or that it handed off from. Run it after hub next
+    /// names to-close or to-park sessions. --dry-run shows what it would
+    /// do.
     #[command(after_help = "Example: hub clean --dry-run")]
     Clean {
         #[command(flatten)]
