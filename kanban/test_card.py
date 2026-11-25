@@ -851,6 +851,34 @@ class TestSessions:
             "1 problems in 2 cards\n"
         )
 
+    def test_check_json_keeps_whole_problem_lines(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """card check --json gives each problem uncut, and still exits 1.
+
+        The text output cuts lines to 60 characters, which drops the end
+        of a long session ID. A script reading the JSON needs the whole
+        ID to find the session, and the exit code to know a problem exists.
+        """
+        session = "opencode ses_e4dc27c20ffeJkm3JZ8dwLh7rW"
+        for key in ("PDEV-KB-001", "PDEV-KB-002"):
+            path = write_card(projects, key, "active")
+            path.write_text(
+                card.set_field(path.read_text(), "sessions", [session]),
+            )
+
+        code = run_card(projects, "check", "--json")
+
+        assert code == 1
+        assert json.loads(capsys.readouterr().out) == {
+            "cards": 2,
+            "problems": [
+                f"PDEV-KB-002 session also on PDEV-KB-001: {session}",
+            ],
+        }
+
 
 class TestEdit:
     """One numbered item of a section can be replaced or removed."""
@@ -978,6 +1006,35 @@ class TestShow:
 
         assert code == 0
         assert "# PDEV-411 Fix some work\n" in capsys.readouterr().out
+
+    def test_show_json_gives_section_and_fields(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """card show --json --section gives the card's fields and that text.
+
+        An agent reads a card's criteria and stage in one call. Other
+        sections in the output, or a missing stage, would make it read
+        the card twice or act on the wrong stage.
+        """
+        write_card(projects, KEY, "active", criteria="- [ ] Uploads retry.")
+
+        code = run_card(
+            projects,
+            "show",
+            KEY,
+            "--section",
+            "Acceptance Criteria",
+            "--json",
+        )
+
+        assert code == 0
+        shown = json.loads(capsys.readouterr().out)
+        assert (shown["key"], shown["stage"]) == (KEY, "active")
+        assert shown["sections"] == {
+            "Acceptance Criteria": "- [ ] Uploads retry.",
+        }
 
 
 class TestAttach:
@@ -1137,6 +1194,57 @@ class TestList:
             "2 cards\n"
         )
 
+    def test_list_json_gives_sessions_and_question(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """card list --json gives whole titles, sessions and open questions.
+
+        The hub can read every card's state from this one call. A cut
+        title, a lost session, or an answered question still shown as
+        open would put the wrong state on the hub's board.
+        """
+        title = "Show subagent tokens and cost in the sidebar"
+        path = write_card(projects, KEY, "active", title=title)
+        path.write_text(
+            card.set_field(path.read_text(), "sessions", ["opencode ses_abc"]),
+        )
+        write_card(projects, "PDEV-KB-002", "active")
+        for key, mark in [
+            (KEY, "--needs-you"),
+            ("PDEV-KB-002", "--needs-you"),
+            ("PDEV-KB-002", "--answered"),
+        ]:
+            run_card(
+                projects,
+                "note",
+                key,
+                "which bucket?",
+                mark,
+                "--by",
+                "hub",
+            )
+        capsys.readouterr()
+
+        code = run_card(projects, "list", "--json")
+
+        assert code == 0
+        asked, answered = json.loads(capsys.readouterr().out)
+        assert asked == {
+            "key": KEY,
+            "title": title,
+            "stage": "active",
+            "kind": "build",
+            "project": "DevEnv",
+            "stage_date": "2026-11-06",
+            "plans": [],
+            "prs": [],
+            "sessions": ["opencode ses_abc"],
+            "needs_you": "which bucket?",
+        }
+        assert answered["needs_you"] is None
+
 
 class TestBoard:
     """The board shows what waits on the user, oldest first."""
@@ -1252,6 +1360,43 @@ class TestBoard:
             "  Fix some work\n"
         )
 
+    def test_board_json_gives_limits_and_waits(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """card board --json gives the limits and each blocked card's wait.
+
+        A script can then read the board without the text lines'
+        wording. A missing limit, wait or reason would hide an over-full
+        stage or send the user to chase the wrong team.
+        """
+        write_card(projects, "PDEV-KB-003", "in-review")
+        run_card(
+            projects,
+            "move",
+            "PDEV-KB-003",
+            "blocked",
+            "--why",
+            "platform team's review",
+            "--by",
+            "hub",
+        )
+        capsys.readouterr()
+
+        code = run_card(projects, "board", "--json")
+
+        assert code == 0
+        board = json.loads(capsys.readouterr().out)
+        assert board["limits"] == {"active": 8, "in-review": 6}
+        assert board["counts"]["blocked"] == 1
+        [blocked] = board["blocked"]
+        assert (blocked["key"], blocked["days"], blocked["reason"]) == (
+            "PDEV-KB-003",
+            0,
+            "platform team's review",
+        )
+
 
 class TestHandEditedCard:
     """Cards edited by hand in Obsidian keep working and keep the edits."""
@@ -1350,6 +1495,33 @@ class TestHandEditedCard:
         assert code == 1
         assert capsys.readouterr().out == (
             f"{KEY} Lost type.md has a card name but no type: card\n"
+            "1 problems in 0 cards\n"
+        )
+
+    def test_check_reports_new_card_missing_type(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """card check names a new-shape card that lost its type line.
+
+        A plan shares a new card's name shape, so the check tells them
+        apart by the card's stage field. Other commands skip the broken
+        card, so card check is where the user finds it, and plans must
+        not show up as problems beside it.
+        """
+        folder = projects / "DevEnv"
+        (folder / f"{NEW_KEY} Lost type.md").write_text(
+            "---\nstage: todo\nkind: build\n---\n\n# Lost type\n",
+        )
+        (folder / f"{NEW_KEY} Plan the retries.md").write_text(PLAN)
+        (folder / f"{NEW_KEY} Old plan.md").write_text("# Old plan\n")
+
+        code = run_card(projects, "check")
+
+        assert code == 1
+        assert capsys.readouterr().out == (
+            f"{NEW_KEY} Lost type.md has a card name but no type: card\n"
             "1 problems in 0 cards\n"
         )
 
