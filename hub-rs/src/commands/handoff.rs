@@ -18,9 +18,9 @@ use jiff::civil::Date;
 use super::{Outcome, sidebar};
 use crate::external::herdr::{Agent, AgentStart, Herdr, HerdrError, NewPlace, PlaceIds};
 use crate::shared::events::{self, Event, EventKind, Memory};
-use crate::shared::lifecycle;
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{AgentName, HubError, Tools};
+use crate::shared::{facts, lifecycle};
 use crate::watch;
 
 /// How long the next hub has to give its first reply.
@@ -85,7 +85,7 @@ pub fn run_handoff(
             "run hub handoff in the hub's own pane".to_owned(),
         ));
     };
-    let old = tools.herdr.get_agent(own_pane)?;
+    let old = facts::read_named_hub_agent(tools, own_pane)?;
     let Some(old_session) = old.session_id.as_deref() else {
         return Err(HubError::NotDone(
             "Herdr does not know this hub's OpenCode session".to_owned(),
@@ -190,7 +190,7 @@ pub fn run_adopt(
             "run hub adopt in the hub's own pane".to_owned(),
         ));
     };
-    let hub = tools.herdr.get_agent(own_pane)?;
+    let hub = facts::read_named_hub_agent(tools, own_pane)?;
     let memory = events::load_memory(run)?;
     let old_hub = tools.herdr.get_agent(old.as_str())?;
     if !lifecycle::can_adopt_hub(&hub.name, &old_hub.name, &memory.handed_off) {

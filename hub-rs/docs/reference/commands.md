@@ -159,7 +159,7 @@ no session: DEMO-KB-004 active
 
 `hub next [--run DIR] [--timeout SECONDS] [--json]
 [--start-reviews]` waits until something needs the hub, prints one
-line and exits 0. While it waits, it sends held messages. At most
+line, or two with a warning, and exits 0. While it waits, it sends held messages. At most
 once a minute it reads the board and finds finished sessions. It
 never closes or parks a session.
 
@@ -191,11 +191,17 @@ never closes or parks a session.
 
 Each report version, blocked state, timed message and board crossing
 prints once.
-`(hub -)` means the hub's context is unknown. `--json` prints one
-object with the same facts:
+`(hub -)` means the hub's context is unknown. When Herdr gives the
+hub's pane no name, as it can after the hub's OpenCode restarts, a
+second line follows every news line:
+`hub pane has no name -> herdr agent rename PANE NAME`. `hub status`
+prints the same line with its problems. The context is still read
+by pane ID. `hub handoff`, `hub adopt` and `hub watch start` stop
+with that line until the pane has a name again. `--json` prints one object with the same facts, the
+second line as `hub_warning`:
 
 ```json
-{"news":"report","name":"docs-fix","detail":null,"hub_context_tokens":131204}
+{"news":"report","name":"docs-fix","detail":null,"hub_context_tokens":131204,"hub_warning":null}
 ```
 
 ### send

@@ -168,6 +168,7 @@ impl InMemoryHerdr {
 impl Herdr for InMemoryHerdr {
     fn list_agents(&self) -> Result<Vec<Agent>, HerdrError> {
         self.take_failure("list_agents")?;
+        // As `HerdrCli` does, the list leaves out panes with no name.
         let mut agents = self.list_current_agents();
         agents.retain(|agent| !agent.name.is_empty());
         Ok(agents)

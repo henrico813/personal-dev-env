@@ -504,8 +504,9 @@ impl Herdr for HerdrCli {
 /// One agent as Herdr lists it.
 #[derive(Clone, Debug)]
 pub struct Agent {
-    /// Empty for an agent nobody named, which only
-    /// `Herdr::list_agent_panes` returns.
+    /// Empty when Herdr gives no name, either for an agent nobody
+    /// named, which only `Herdr::list_agent_panes` returns, or for a
+    /// pane that lost its name, as after the hub's OpenCode restarts.
     pub name: String,
     pub status: AgentStatus,
     pub kind: AgentKind,
@@ -774,8 +775,15 @@ fn parse_agent(raw: &Value, machine: Option<&str>) -> Result<Agent, HerdrError> 
         .map(PathBuf::from)
         .collect();
     folders.dedup();
+    // A pane can lose its name, as after the hub's OpenCode restarts
+    // there. `agent get` then leaves out `name`, and `agent list` gives
+    // null. `get_agent` still finds the pane by its ID.
+    let name = match raw.get("name") {
+        None | Some(Value::Null) => String::new(),
+        _ => read_text(raw, "name")?,
+    };
     Ok(Agent {
-        name: raw["name"].as_str().unwrap_or_default().to_owned(),
+        name,
         status,
         kind,
         session_id: raw["agent_session"]["value"].as_str().map(str::to_owned),
@@ -915,6 +923,21 @@ mod tests {
         let agent = parse_agent(&raw, None).unwrap();
 
         assert!(!agent.marked);
+    }
+
+    /// `agent get` leaves out `name` for a hub pane after the hub's
+    /// OpenCode restarts there. Failing on it hides the hub's context,
+    /// so `run_next` never tells the hub to hand off.
+    #[test]
+    fn parse_agent_reads_missing_name_as_empty() {
+        let answer: Value = serde_json::from_str(AGENT_LIST).unwrap();
+        let mut raw = answer["result"]["agents"][0].clone();
+        raw.as_object_mut().unwrap().remove("name");
+
+        let agent = parse_agent(&raw, None).unwrap();
+
+        assert_eq!(agent.name, "");
+        assert_eq!(agent.pane_id, "w1:p7");
     }
 
     /// Herdr lists a pane with no name when nobody started its agent by

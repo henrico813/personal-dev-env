@@ -148,7 +148,11 @@ pub fn run_next(
     let started = Instant::now();
     loop {
         if run.is_replaced(options.process_id)? {
-            return Ok(make_outcome(&News::Replaced, None, options.json));
+            return Ok(make_outcome(
+                &News::Replaced,
+                &HubLine::default(),
+                options.json,
+            ));
         }
         let now = Zoned::now();
         let hub = facts::read_hub_line(tools);
@@ -156,7 +160,7 @@ pub fn run_next(
             // A newer watcher that took over during the check finds this
             // news again, so this one records nothing.
             if run.is_replaced(options.process_id)? {
-                return Ok(make_outcome(&News::Replaced, None, options.json));
+                return Ok(make_outcome(&News::Replaced, &hub, options.json));
             }
             if let Some(kind) = record_news(&news) {
                 let event = Event {
@@ -165,17 +169,13 @@ pub fn run_next(
                 };
                 events::append_event(run, &event)?;
             }
-            return Ok(make_outcome(&news, hub.context_tokens, options.json));
+            return Ok(make_outcome(&news, &hub, options.json));
         }
         if options
             .timeout
             .is_some_and(|timeout| started.elapsed() >= timeout)
         {
-            return Ok(make_outcome(
-                &News::Timeout,
-                hub.context_tokens,
-                options.json,
-            ));
+            return Ok(make_outcome(&News::Timeout, &hub, options.json));
         }
         thread::sleep(options.poll);
     }
@@ -529,13 +529,23 @@ fn record_news(news: &News) -> Option<EventKind> {
     }
 }
 
-/// Returns the one line to print, as text or as JSON.
-fn make_outcome(news: &News, hub_tokens: Option<u64>, json: bool) -> Outcome {
-    Outcome::from_line(if json {
-        format_news_json(news, hub_tokens)
-    } else {
-        format_news_line(news, hub_tokens)
-    })
+/// Returns the line to print, as text or as JSON. A hub pane with no
+/// name adds a second text line, or a `hub_warning` in the JSON.
+fn make_outcome(news: &News, hub: &HubLine, json: bool) -> Outcome {
+    let warning = hub.format_pane_warning();
+    if json {
+        return Outcome::from_line(format_news_json(
+            news,
+            hub.context_tokens,
+            warning.as_deref(),
+        ));
+    }
+    Outcome {
+        lines: [format_news_line(news, hub.context_tokens)]
+            .into_iter()
+            .chain(warning)
+            .collect(),
+    }
 }
 
 /// Writes news as one line. Most lines end with the hub's own context,
@@ -587,8 +597,8 @@ fn format_news_line(news: &News, hub_tokens: Option<u64>) -> String {
 }
 
 /// Writes news as one JSON object with the same facts, such as
-/// `{"news":"report","name":"docs-fix","detail":null,"hub_context_tokens":131204}`.
-fn format_news_json(news: &News, hub_tokens: Option<u64>) -> String {
+/// `{"news":"report","name":"docs-fix","detail":null,"hub_context_tokens":131204,"hub_warning":null}`.
+fn format_news_json(news: &News, hub_tokens: Option<u64>, hub_warning: Option<&str>) -> String {
     let (word, name, detail) = match news {
         News::Report {
             name, missed: true, ..
@@ -626,6 +636,7 @@ fn format_news_json(news: &News, hub_tokens: Option<u64>) -> String {
         "name": name,
         "detail": detail,
         "hub_context_tokens": hub_tokens,
+        "hub_warning": hub_warning,
     })
     .to_string()
 }
@@ -787,7 +798,8 @@ mod tests {
                     missed: false,
                 },
                 Some(131_204),
-                r#"{"news":"report","name":"docs-fix","detail":null,"hub_context_tokens":131204}"#,
+                None,
+                r#"{"news":"report","name":"docs-fix","detail":null,"hub_context_tokens":131204,"hub_warning":null}"#,
             ),
             (
                 "not-sent",
@@ -796,7 +808,8 @@ mod tests {
                     reason: "the session is gone".to_owned(),
                 },
                 None,
-                r#"{"news":"not_sent","name":"docs-fix","detail":"the session is gone","hub_context_tokens":null}"#,
+                None,
+                r#"{"news":"not_sent","name":"docs-fix","detail":"the session is gone","hub_context_tokens":null,"hub_warning":null}"#,
             ),
             (
                 "board-over",
@@ -807,13 +820,21 @@ mod tests {
                     in_review_limit: 6,
                 }),
                 Some(131_204),
-                r#"{"news":"board_over","name":null,"detail":"active 10 of 8, in-review 18 of 6","hub_context_tokens":131204}"#,
+                None,
+                r#"{"news":"board_over","name":null,"detail":"active 10 of 8, in-review 18 of 6","hub_context_tokens":131204,"hub_warning":null}"#,
+            ),
+            (
+                "unnamed-hub-pane",
+                News::Timeout,
+                Some(131_204),
+                Some("hub pane has no name -> herdr agent rename w1:p3 NAME"),
+                r#"{"news":"timeout","name":null,"detail":null,"hub_context_tokens":131204,"hub_warning":"hub pane has no name -> herdr agent rename w1:p3 NAME"}"#,
             ),
         ];
 
-        for (case_name, news, hub_tokens, expected) in cases {
+        for (case_name, news, hub_tokens, hub_warning, expected) in cases {
             let printed: Value =
-                serde_json::from_str(&format_news_json(&news, hub_tokens)).unwrap();
+                serde_json::from_str(&format_news_json(&news, hub_tokens, hub_warning)).unwrap();
 
             let expected: Value = serde_json::from_str(expected).unwrap();
             assert_eq!(printed, expected, "{case_name}");

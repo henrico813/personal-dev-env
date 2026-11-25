@@ -53,6 +53,7 @@ pub fn run_status(
         })
         .collect();
     let mut problems = collected.problems;
+    problems.extend(hub.format_pane_warning());
     for old in run.find_old_send_files()? {
         problems.push(format!("old send file: {}", old.display()));
     }
@@ -447,6 +448,7 @@ mod tests {
                 name: Some("kanban-hub-18".to_owned()),
                 session_id: Some("ses_hub".to_owned()),
                 context_tokens: Some(131_204),
+                unnamed_pane: None,
             },
             watch_running: true,
             hub_next_running: false,
