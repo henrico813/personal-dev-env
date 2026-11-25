@@ -21,9 +21,10 @@ from collections import Counter
 from contextlib import closing
 from pathlib import Path
 
-DB = Path.home() / ".local/share/opencode/opencode.db"
+from opencode_source import DB, MODELS, OpenCodeSource, read_step_usage
+from usage_cost import describe_cost, describe_rates
+
 SKILLS = Path.home() / ".agents/skills"
-MODELS = Path.home() / ".cache/opencode/models.json"
 # Agents hand the rest of their work to a new session above this context.
 HANDOFF_LEVEL = 150_000
 # A successful read prints the skill's unindented frontmatter, maybe after a
@@ -77,6 +78,8 @@ def report_session(db: sqlite3.Connection, session: str) -> list[str]:
     ]
     users = sum(kind == "user" for kind, _, _ in messages)
     zero = sum(count_context_tokens(step) == 0 for _, step in steps)
+    source = OpenCodeSource(db)
+    main_model = json.loads(model or "{}")
     return [
         f"session {session} {title or ''}".rstrip(),
         f"model {format_model(model)}",
@@ -85,11 +88,19 @@ def report_session(db: sqlite3.Connection, session: str) -> list[str]:
         f" cache write {write:,}, uncached {uncached:,})",
         f"tokens written {output + reasoning:,} (output {output:,},"
         f" reasoning {reasoning:,})",
+        describe_cost([read_step_usage(step) for _, step in steps], source),
+        describe_rates(
+            main_model.get("providerID") or "?",
+            main_model.get("id") or "?",
+            source,
+        ),
         f"user messages {users}, model steps {len(steps)},"
         f" steps logged with zero tokens {zero}",
         describe_peak(steps),
         describe_compactions(messages),
         describe_skills(steps),
+        "subagents "
+        + describe_cost(source.list_subagent_usage(session), source),
         *describe_subagents(db, session),
         *describe_repeats(steps),
         *describe_carry(messages),

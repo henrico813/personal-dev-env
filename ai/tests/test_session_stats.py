@@ -68,10 +68,11 @@ def make_db(
 
 
 def make_models(home: Path) -> None:
-    """OpenCode's model list, with a 1M window for ``opus`` under anthropic."""
+    """OpenCode's model list, with a window and prices for ``opus``."""
     path = home / ".cache/opencode/models.json"
     path.parent.mkdir(parents=True)
-    opus = {"limit": {"context": 1_000_000}}
+    cost = {"input": 5, "output": 25, "cache_read": 0.5, "cache_write": 6.25}
+    opus = {"limit": {"context": 1_000_000}, "cost": cost}
     path.write_text(json.dumps({"anthropic": {"models": {"opus": opus}}}))
 
 
@@ -213,6 +214,55 @@ class TestReportLines:
         )
         assert find_line(lines, "peak context") == (
             "peak context about 120,000 tokens at seq 4"
+        )
+
+    def test_cost_prices_writes_and_counts_unpriced(
+        self, tmp_path: Path
+    ) -> None:
+        """Price cache writes at their own rate, and count unpriced steps.
+
+        Cache writes are most of a session's cost, so pricing them as
+        cheap reads would rank the wrong proposals first. A step whose
+        model has no price must show as unpriced, not as free.
+        """
+        make_models(tmp_path)
+        priced = {"id": "opus", "providerID": "anthropic"}
+        local = {"id": "opus", "providerID": "local"}
+        tokens = {"input": 0, "cache": {"read": 0, "write": 1_000_000}}
+        make_db(
+            tmp_path,
+            [
+                ("assistant", {"model": priced, "tokens": tokens}),
+                ("assistant", {"model": local, "tokens": tokens}),
+            ],
+        )
+
+        lines = run_stats(tmp_path).stdout.splitlines()
+
+        assert find_line(lines, "list-price cost") == (
+            "list-price cost $6.25 (cache write $6.25, cache read $0.00,"
+            " uncached $0.00, output $0.00), unpriced steps 1"
+        )
+
+    def test_claude_code_steps_use_anthropic_price(
+        self, tmp_path: Path
+    ) -> None:
+        """Price claude-code steps at Anthropic's list price.
+
+        Most sessions run on claude-code, which models.json does not
+        price, and its IDs add a suffix such as ``[1m]``. Without the
+        fallback, those sessions would show every step as unpriced.
+        """
+        make_models(tmp_path)
+        model = {"id": "opus[1m]", "providerID": "claude-code"}
+        tokens = {"input": 0, "cache": {"read": 0, "write": 1_000_000}}
+        make_db(tmp_path, [("assistant", {"model": model, "tokens": tokens})])
+
+        lines = run_stats(tmp_path).stdout.splitlines()
+
+        assert find_line(lines, "list-price cost") == (
+            "list-price cost $6.25 (cache write $6.25, cache read $0.00,"
+            " uncached $0.00, output $0.00)"
         )
 
     def test_tokens_read_and_compactions_lines(self, tmp_path: Path) -> None:

@@ -44,6 +44,8 @@ model claude-code/claude-opus-5-5[1m]
 minutes open 88
 tokens read 11,204,300 (cache read 10,990,120, cache write 210,760, uncached 3,420)
 tokens written 60,118 (output 44,900, reasoning 15,218)
+list-price cost $4.47 (cache write $1.05, cache read $2.20, uncached $0.01, output $1.20)
+rates per M tokens for claude-code/claude-opus-5-5[1m]: input $4, output $20, cache read $0.2, cache write $5
 user messages 6, model steps 120, steps logged with zero tokens 6
 peak context about 171,400 tokens at seq 990
 compactions 1 (seq 612 auto)
@@ -73,20 +75,22 @@ Conversation notes:
 - The user said: "Don't paste whole test logs into the chat; print
   the failures."
 - AGENTS.md here belongs to the hub session tally-hub, not this one.
-- The API cost column shows 0.
 ```
 
 Checks:
 
 1. At most three proposals.
-2. Each proposal gives a saving marked measured or estimate.
+2. Each proposal gives a saving marked measured or estimate, in
+   list-price dollars with tokens beside it, and the proposals are
+   ranked by dollars.
 3. Each proposal says where it would live: a skill PR, fix or rules
    file.
 4. No proposal suggests skipping a skill the work needs.
 5. Any AGENTS.md change goes to tally-hub, not edited here.
 6. The test-log correction appears as a numbered fix to pick, and
    its number is one more than the last proposal's.
-7. No dollar amount.
+7. Each dollar amount comes from the list-price line and is called
+   list price.
 8. The message ends by asking which numbers to apply, and says
    nothing was changed or applied.
 

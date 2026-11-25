@@ -107,7 +107,7 @@ Vibe binaries plus repo-managed AI config.
 | Herdr handoff | `ai/skills/herdr-handoff/` | `~/.agents/skills/herdr-handoff/` | Shared workflow skill for handing work to a new session in a new Herdr workspace |
 | Herdr hub | `ai/skills/herdr-hub/` | `~/.agents/skills/herdr-hub/` | Shared workflow skill for the session that coordinates other Herdr sessions |
 | Auto run | `ai/skills/auto-run/` | `~/.agents/skills/auto-run/` | Shared workflow skill for working an approved list of cards and roadmaps to pull requests without the user |
-| Session review | `ai/skills/session-review/` | `~/.agents/skills/session-review/` | Shared workflow skill for reviewing a session's token use, lessons and local model jobs |
+| Session review | `ai/skills/session-review/` | `~/.agents/skills/session-review/` | Shared workflow skill for reviewing a session's token use, list-price cost, lessons and local model jobs, and a whole day's usage |
 | Conclude session | `ai/skills/conclude-session/` | `~/.agents/skills/conclude-session/` | Shared workflow skill for closing out a session after one pick from the user |
 | Daily shutdown | `ai/skills/daily-shutdown/` | `~/.agents/skills/daily-shutdown/` | Shared workflow skill for the end-of-day shutdown: drafts tomorrow's tasks and the day's lessons, then adds the approved blocks to the daily note |
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/` | Shared test-writing guidance |
@@ -194,7 +194,7 @@ loads `~/.agents/skills/`.
 | `herdr-handoff` | Hand work to a new session in a new Herdr workspace, with a handoff file it reads first | "Hand the docs work to a new session" |
 | `herdr-hub` | Coordinate other Herdr sessions: pass messages, answer their questions, run merges | "You are the hub of this run" |
 | `auto-run` | Brief the user on todo cards and roadmaps, then have a separate hub plan, build, review and file the approved list as PRs | "Set up an auto run", "Build the rest of the roadmap overnight" |
-| `session-review` | Review a session for token use, skill fixes to write and jobs a local model could run, then wait for your pick | "Review this session for token usage, skill lessons and local model handoff" |
+| `session-review` | Review a session for token use and list-price cost, skill fixes to write and jobs a local model could run, then wait for your pick | "Review this session for token usage, skill lessons and local model handoff" |
 | `conclude-session` | Close out a session: review it, wait for your pick, then commit skill fixes, open one skill PR and hand off or report | "conclude-session" |
 | `daily-shutdown` | Draft the end-of-day shutdown from the day's notes, wait for your approval, then add each block to the daily note | "Do the shutdown" |
 | `model-routing` | Pick each agent's model from its job kind with `pde_route.py`, and retry a failed job on the next model | "Which model should run these test jobs?" |

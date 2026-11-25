@@ -82,9 +82,9 @@
 - When asked for an auto run, or to build several pull requests of
   an approved roadmap without the user reviewing each step, load and
   follow the `auto-run` skill.
-- When asked to review a session for token use, efficiency, skill
-  lessons or local model handoff, load and follow the
-  `session-review` skill.
+- When asked to review a session for token use, cost, efficiency,
+  skill lessons or local model handoff, or what a day of sessions
+  cost, load and follow the `session-review` skill.
 - When the user types `conclude-session` or asks to close out or
   wrap up a session, load and follow the `conclude-session` skill.
 - When the user asks to do the shutdown, or to close out the
