@@ -127,12 +127,12 @@ reason in its end brief instead.
 Keep one `hub next` running in the background at all times, started
 once the first session works:
 
-    hub next --run "<run folder>" --timeout 2700
+    hub next --run "<run folder>"
 
-The timeout ends it within 45 minutes, before OpenCode drops an idle
-folder's background commands, and its `timeout` line wakes you to
-start it again. If `hub status` says `watch stopped`, run
-`hub watch start` again; if it says `hub next stopped`, start one.
+Give it no `--timeout`: a timeout wakes you for nothing, and OpenCode
+keeps a quiet command for hours. When it ends with no output, or
+`hub status` says `hub next stopped`, start one and tell the user
+nothing. On `watch stopped`, run `hub watch start`.
 
 It waits until a session has news, prints one line and ends, so its
 end starts your turn. While it waits it sends held messages. It never
@@ -162,8 +162,8 @@ are off by default. Most lines end with your own context, such as
   the hub now, as Hand off the hub says.
 - `to-close <names>: <why>; run hub clean`, or the same with `to-park`:
   those sessions finished. Run `hub clean` as Cleanup says.
-- `timeout`: the `--timeout` you gave ran out with no news. Start it
-  again.
+- `timeout`: only an auto hub gets it, from the `--timeout` that
+  `auto-run` gives as a timer. Start it again and tell the user nothing.
 - `replaced by a newer hub next`: start nothing, since a newer
   `hub next` runs.
 
