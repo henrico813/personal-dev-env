@@ -1,7 +1,7 @@
 # New-reader checklist
 
-Use this list when a new reader must understand the code, such as
-before the owner reads a pull request. A new reader knows the
+Use this list when a new reader must understand the code or docs,
+such as before the owner reads a pull request. A new reader knows the
 language but has never seen this repository. Each line names one
 check and links the skill section that owns its rule. Read the rule
 there; this page does not repeat it.
