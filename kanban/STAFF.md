@@ -126,7 +126,7 @@ is missing, then renames the report to `report-<name>.read`.
 | See the board | `card board`, `card list --stage active` |
 | Find text | `card grep "nobs" --section Context` |
 | Move a card | `card move KEY in-review --why "PR #450 open"` |
-| Fix one item | `card show KEY --section "Acceptance Criteria"`, then `card edit KEY "Acceptance Criteria" N "new text"` or `N --remove` |
+| Fix one item | `card show KEY --section "Acceptance Criteria"`, then `card edit KEY "Acceptance Criteria" N "new text"`, `N --remove` or `N --tick` |
 | Attach a photo or file | `card attach KEY ~/photo.jpg` |
 | Record a question or answer | `card note KEY --needs-you "..."` |
 | Start a worker's card | `card move KEY active --session WORKER` |

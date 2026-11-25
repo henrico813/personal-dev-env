@@ -49,6 +49,7 @@ named vault. The shape of the key and the file name comes from the
 | `card attach KEY FILE` | Copies FILE to `attachments/<KEY> <file name>` in the card's project folder and adds a `![[...]]` line to Context. Refuses a missing file and never overwrites an attachment. |
 | `card edit KEY SECTION N TEXT` | Replaces the words of item N, as `card show KEY --section SECTION` numbers it. A checkbox or bullet stays, with its tick. Logs the old words. |
 | `card edit KEY SECTION N --remove` | Removes item N and logs its words. |
+| `card edit KEY SECTION N --tick` or `--untick` | Ticks or unticks item N's checkbox and keeps its words. Refuses an item with no checkbox or a box already in that state. Logs the item's words. |
 | `card set KEY title VALUE` | Changes the title heading and renames the file. Refuses a title that breaks a [title rule](#title-rules). |
 | `card set KEY kind VALUE` | Changes the kind. |
 | `card link KEY PLAN` | Adds `[[PLAN]]` to `plans`. |
@@ -67,9 +68,9 @@ types, so an agent passes it only when the user said so.
 An **item** of a section is a line that is not blank or indented,
 with the indented lines right after it. `card edit` refuses an item
 that changed since `card` read the card, so a hand edit is never
-replaced by mistake. Replacing changes only the item's first line;
-`--remove` also removes its indented lines. `card edit` takes no Log
-items, though each edit adds a note line to the Log.
+replaced by mistake. Replacing or ticking changes only the item's
+first line; `--remove` also removes its indented lines. `card edit`
+takes no Log items, though each edit adds a note line to the Log.
 
 `new`, `move`, `edit` and plain notes need an author for the Log.
 `--by NAME` gives one; otherwise `card` uses the name of the Herdr
@@ -362,6 +363,7 @@ Appendix.
 | `card merged` | `STAGE: by card merged for the user[. URL merged]` |
 | `card merged`, card stays | `note (card merged): URL merged, but the card stays STAGE: REASONS` |
 | `card edit` | `note (NAME): replaced SECTION item N, was "OLD"` or `note (NAME): removed SECTION item N, "OLD"` |
+| `card edit --tick` or `--untick` | `note (NAME): ticked SECTION item N, "WORDS"` or `note (NAME): unticked SECTION item N, "WORDS"` |
 | `--session` | `session: NAME (KIND SESSION_ID)` |
 | the Obsidian template | `draft: by the user in Obsidian` |
 
