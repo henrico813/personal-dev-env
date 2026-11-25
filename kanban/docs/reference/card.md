@@ -35,9 +35,9 @@ named vault. The shape of the key and the file name comes from the
 | `card new PROJECT TITLE [--kind K] [--user] [--why TEXT]` | Makes a card in `draft` and prints its name. Refuses a title that breaks a [title rule](#title-rules). |
 | `card new PROJECT --from FILE [--user] [--why TEXT]` | Makes a card in `draft` with the title, kind and section text from FILE, laid out as `card new --help` shows. Refuses any other heading, a repeated heading, and text before the first heading, so no line is lost. |
 | `card new PROJECT TITLE --adopt STAGE --user [--why TEXT] [--session [AGENT]]` | Makes a card straight in `active`, `in-review` or `blocked`, for work already under way. `blocked` needs `--why`. `--session` also records the agent's session, as `card link --session` does, but skips its check for a session on another card. |
-| `card list [--stage S] [--project P] [--kind K] [--tabs]` | Prints one line per card: key, stage, kind and title, in stage order. A long line is cut to 60 characters. With `--tabs`, each line holds the key, stage, kind, project folder and whole title, split by tabs, for scripts such as `hub board`. |
-| `card board` | Prints the count per stage, active and in-review each against its limit, and the in-review cards by `stage_date`, oldest first. When a card is blocked, it also prints their count and the oldest wait, and lists them, longest wait first, with days waited and the reason. See [Board](#board). |
-| `card show KEY [--section S]` | Prints the whole card, or one section with its items numbered from 1. |
+| `card list [--stage S] [--project P] [--kind K] [--tabs \| --json]` | Prints one line per card: key, stage, kind and title, in stage order. A long line is cut to 60 characters. With `--tabs`, each line holds the key, stage, kind, project folder and whole title, split by tabs, for scripts such as `hub board`. With `--json`, see [JSON output](#json-output). |
+| `card board [--json]` | Prints the count per stage, active and in-review each against its limit, and the in-review cards by `stage_date`, oldest first. When a card is blocked, it also prints their count and the oldest wait, and lists them, longest wait first, with days waited and the reason. See [Board](#board). |
+| `card show KEY [--section S] [--json]` | Prints the whole card, or one section with its items numbered from 1. |
 | `card grep PATTERN [--section S] [--stage S] [--project P] [--kind K]` | Prints each line that matches a regular expression, in any case, as `KEY Section: line`. Exits 1 when nothing matches. |
 | `card move KEY STAGE [--user] [--why TEXT]` | Moves a card, sets `stage_date` to today and adds a Log line. |
 | `card move KEY active --session [AGENT]` | Starts a card and records the worker's session in the same write. |
@@ -56,7 +56,7 @@ named vault. The shape of the key and the file name comes from the
 | `card merged URL` | Moves each open card whose `prs` holds URL to `done`, or logs why it stays. See [Moves](#moves). |
 | `card delete KEY --user` | Deletes the note. Use `dropped` instead to keep a record. |
 | `card rekey [--apply --user]` | Gives each open card with an old key, such as `PDEV-KB-012`, the next new key of its project, such as `PDEV-523`. It prints one `OLD NEW` line per card and one `relink PATH` line per note whose links change. Done and dropped cards keep their keys. Without `--apply`, it writes nothing. `--apply` needs `--user`. It prints its backup folder under `~/.local/state/card`, backs up each note before writing it, renames the cards and adds `old_key`, then points links in every note under Projects to the new names, and prints an `undo` command. Undo puts the notes the rekey wrote back as they were before it, so it drops any edit made to them since. After two runs, run the newer undo command first. It stops at a note that changed since it read it, still printing the undo command; run rekey again to finish, or run the undo command. Refuses while a Herdr agent on this computer works on one of the cards, by its name or a session in `sessions`, when Herdr cannot list its agents, when two cards hold one key as key or `old_key`, when a new name is taken, or when a card was written but not renamed; then run the last undo command and rekey again. A second run renames the cards still on old keys and fixes links still on their old names. |
-| `card check` | Lists cards with a broken layout, an unknown stage or kind, a key two cards share, a note named like an old `-KB-` card without `type: card`, a note with a new card name and a `stage` field but no `type`, a session two cards share, or an open card whose title breaks a [title rule](#title-rules). Exits 1 when it finds one. |
+| `card check [--json]` | Lists cards with a broken layout, an unknown stage or kind, a key two cards share, a note named like an old `-KB-` card without `type: card`, a note with a new card name and a `stage` field but no `type`, a session two cards share, or an open card whose title breaks a [title rule](#title-rules). Exits 1 when it finds one. |
 | `card name RULE VALUE...` | Prints the name a naming rule makes. The VALUEs fill the rule's fields in order, and the last field takes the rest: `card name branch feat retry uploads` prints `feat/retry-uploads`. Refuses a name the rule would not read back, such as one with an unknown branch type. Needs no vault. |
 | `card template` | Prints the Obsidian template, `001.09 Zettel-Kanban.md`. |
 
@@ -210,6 +210,40 @@ Days are whole days since `stage_date`. The third line of a
 blocked card is the `--why` of its newest move into the
 stage, left out when there is none. The `blocked` line and
 list appear only when a card is in the stage.
+
+## JSON output
+---
+
+`--json` on `card list`, `card show`, `card board` and
+`card check` prints indented JSON for scripts. Titles and
+problem lines are never cut, and exit codes stay the same.
+
+Each card is an object like this:
+
+```json
+{
+  "key": "DEMO-41",
+  "title": "Retry failed uploads",
+  "stage": "active",
+  "kind": "build",
+  "project": "Demo",
+  "stage_date": "2026-11-06",
+  "plans": [],
+  "prs": [],
+  "sessions": ["opencode ses_abc"],
+  "needs_you": "which bucket?"
+}
+```
+
+`needs_you` is the text of the newest `needs-you` Log line,
+or `null` when an `answered` line follows it or none exists.
+
+| Command | JSON |
+| --- | --- |
+| `card list --json` | A list of card objects, in the same order and with the same filters as the text. |
+| `card show KEY --json` | One card object plus `sections`, which maps each section name to its text. With `--section S`, `sections` holds only S. |
+| `card board --json` | `counts` per stage, `limits` for `active` and `in-review`, an `in-review` list of card objects oldest first, and a `blocked` list of card objects, longest wait first, each with `days` and `reason`. |
+| `card check --json` | `cards`, the number of cards read, and `problems`, one line per problem as the text prints it. |
 
 ## Frontmatter
 ---

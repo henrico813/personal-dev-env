@@ -24,9 +24,9 @@ Usage::
     card new PROJECT --from FILE [--user]  title, kind, sections
     card new PROJECT TITLE --adopt STAGE --user [--why TEXT]
                                        [--session [AGENT]]
-    card list [--stage S] [--project P] [--kind K] [--tabs]
-    card board                         counts and the review queue
-    card show KEY [--section S]
+    card list [--stage S] [--project P] [--kind K] [--tabs | --json]
+    card board [--json]                counts and the review queue
+    card show KEY [--section S] [--json]
     card grep PATTERN [--section S] [--stage S] [--project P]
     card move KEY STAGE [--user] [--why TEXT] [--session [AGENT]]
     card note KEY TEXT [--needs-you | --answered]
@@ -39,7 +39,7 @@ Usage::
     card merged PR_URL                 move cards linking it to done
     card delete KEY --user
     card rekey [--apply --user]        new keys for open old-key cards
-    card check                         cards with a broken layout or title
+    card check [--json]                cards with a broken layout or title
     card name RULE VALUE...            make a name, such as a branch
     card template                      print the Obsidian template
 
@@ -370,19 +370,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     listing = commands.add_parser("list", help="one line per card")
     add_filters(listing)
-    listing.add_argument(
+    output = listing.add_mutually_exclusive_group()
+    output.add_argument(
         "--tabs",
         action="store_true",
         help="whole lines for scripts: key, stage, kind, project, title",
     )
+    add_json_option(output)
     listing.set_defaults(run=run_list)
 
     board = commands.add_parser("board", help="counts and review queue")
+    add_json_option(board)
     board.set_defaults(run=run_board)
 
     show = commands.add_parser("show", help="print a card")
     show.add_argument("key")
     show.add_argument("--section", choices=SECTIONS)
+    add_json_option(show)
     show.set_defaults(run=run_show)
 
     grep = commands.add_parser("grep", help="search card text")
@@ -503,6 +507,7 @@ def build_parser() -> argparse.ArgumentParser:
     rekey.set_defaults(run=run_rekey)
 
     check = commands.add_parser("check", help="find broken cards")
+    add_json_option(check)
     check.set_defaults(run=run_check)
 
     name = commands.add_parser(
@@ -545,6 +550,22 @@ def add_session_option(parser: argparse.ArgumentParser, when: str) -> None:
         metavar="AGENT",
         help=f"{when}add the agent's session to sessions;"
         " no AGENT means this pane's agent",
+    )
+
+
+def add_json_option(
+    parser: argparse.ArgumentParser | argparse._MutuallyExclusiveGroup,
+) -> None:
+    """Add the --json option for commands that scripts read.
+
+    Args:
+        parser: The command's parser, or a group of options that
+            exclude each other, such as card list's --tabs.
+    """
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="print JSON for scripts, with whole titles",
     )
 
 
@@ -809,6 +830,8 @@ def find_next_number(projects: Path, code: str) -> int:
 def run_list(args: argparse.Namespace, projects: Path) -> int:
     """Print one line per card, in stage order.
 
+    With --json, print a list of describe_card objects instead.
+
     Args:
         args: The parsed arguments.
         projects: The vault's Projects folder.
@@ -818,6 +841,9 @@ def run_list(args: argparse.Namespace, projects: Path) -> int:
     """
     cards = filter_cards(load_all_cards(projects), args)
     cards.sort(key=lambda card: (rank_stage(card.stage), card.key))
+    if args.json:
+        print_json([describe_card(card) for card in cards])
+        return 0
     for card in cards:
         if args.tabs:
             fields = [card.key, card.stage, card.kind, card.project]
@@ -834,7 +860,8 @@ def run_board(args: argparse.Namespace, projects: Path) -> int:
     The hub reads the limits line, the blocked line and the BLOCKED
     list, so keep their words as they are. Both lists put the card that
     has waited longest first. The blocked line and list appear only
-    when a card is in that stage.
+    when a card is in that stage. With --json, print the same counts,
+    limits and lists as one object.
 
     Args:
         args: The parsed arguments.
@@ -847,13 +874,6 @@ def run_board(args: argparse.Namespace, projects: Path) -> int:
     counts = {stage: 0 for stage in STAGES}
     for card in cards:
         counts[card.stage] = counts.get(card.stage, 0) + 1
-    # Three lines of stages keep each one within 40 columns.
-    for stages in (STAGES[:3], STAGES[3:5], STAGES[5:]):
-        print("  ".join(f"{stage} {counts[stage]}" for stage in stages))
-    print(
-        f"{ACTIVE} {counts[ACTIVE]} of {ACTIVE_LIMIT},"
-        f" {IN_REVIEW} {counts[IN_REVIEW]} of {REVIEW_LIMIT}",
-    )
     today = date.today()
     blocked = [
         (count_days_since(card.stage_date, today), card)
@@ -861,11 +881,35 @@ def run_board(args: argparse.Namespace, projects: Path) -> int:
         if card.stage == BLOCKED
     ]
     blocked.sort(key=lambda entry: (-entry[0], entry[1].key))
+    in_review = [card for card in cards if card.stage == IN_REVIEW]
+    in_review.sort(key=lambda card: (card.stage_date, card.key))
+    if args.json:
+        print_json(
+            {
+                "counts": counts,
+                "limits": {ACTIVE: ACTIVE_LIMIT, IN_REVIEW: REVIEW_LIMIT},
+                IN_REVIEW: [describe_card(card) for card in in_review],
+                BLOCKED: [
+                    {
+                        **describe_card(card),
+                        "days": days,
+                        "reason": read_blocked_reason(card.text),
+                    }
+                    for days, card in blocked
+                ],
+            },
+        )
+        return 0
+    # Three lines of stages keep each one within 40 columns.
+    for stages in (STAGES[:3], STAGES[3:5], STAGES[5:]):
+        print("  ".join(f"{stage} {counts[stage]}" for stage in stages))
+    print(
+        f"{ACTIVE} {counts[ACTIVE]} of {ACTIVE_LIMIT},"
+        f" {IN_REVIEW} {counts[IN_REVIEW]} of {REVIEW_LIMIT}",
+    )
     if blocked:
         oldest = format_days(blocked[0][0])
         print(f"{BLOCKED} {len(blocked)}, oldest {oldest}")
-    in_review = [card for card in cards if card.stage == IN_REVIEW]
-    in_review.sort(key=lambda card: (card.stage_date, card.key))
     print(f"\n{IN_REVIEW.upper()}, oldest first ({len(in_review)})")
     for card in in_review:
         print(fit(f"- {card.key} {card.stage_date}", BOARD_WIDTH))
@@ -935,8 +979,72 @@ def read_blocked_reason(text: str) -> str:
     return reason
 
 
+def read_open_question(text: str) -> str | None:
+    """Return the text of the newest needs-you Log line, if unanswered.
+
+    card note writes ``- DATE needs-you: TEXT`` and ``- DATE answered:
+    TEXT``. An answered line after the needs-you line closes it.
+
+    Args:
+        text: The card text.
+
+    Returns:
+        The question, or None when nothing waits on the user.
+    """
+    question = None
+    for line in (read_section(text, "Log") or "").split("\n"):
+        words = line.split(" ", 2)
+        if len(words) < 3 or words[0] != "-":
+            continue
+        entry = words[2]
+        if entry.startswith("needs-you: "):
+            question = entry.removeprefix("needs-you: ").strip()
+        elif entry.startswith("answered: "):
+            question = None
+    return question
+
+
+def describe_card(card: Card) -> dict[str, Any]:
+    """Return the fields scripts read from a card, for --json output.
+
+    Titles stay whole. ``needs_you`` is read_open_question's result.
+
+    Args:
+        card: The card.
+
+    Returns:
+        A JSON-ready object keyed by field name.
+    """
+    fields = read_fields(card.text)
+    return {
+        "key": card.key,
+        "title": card.title,
+        "stage": card.stage,
+        "kind": card.kind,
+        "project": card.project,
+        "stage_date": card.stage_date,
+        "plans": as_list(fields.get("plans")),
+        "prs": as_list(fields.get("prs")),
+        "sessions": as_list(fields.get("sessions")),
+        "needs_you": read_open_question(card.text),
+    }
+
+
+def print_json(value: object) -> None:
+    """Print a value as indented JSON, keeping non-ASCII text as is.
+
+    Args:
+        value: Any value json.dumps accepts.
+    """
+    print(json.dumps(value, indent=2, ensure_ascii=False))
+
+
 def run_show(args: argparse.Namespace, projects: Path) -> int:
     """Print a whole card, or one section of it.
+
+    With --json, print describe_card's object plus ``sections``, which
+    maps each section name, or only --section, to its text. A section
+    the card lacks is left out.
 
     Args:
         args: The parsed arguments.
@@ -946,6 +1054,17 @@ def run_show(args: argparse.Namespace, projects: Path) -> int:
         The exit code.
     """
     card = find_card(projects, args.key)
+    if args.json:
+        names = [args.section] if args.section else SECTIONS
+        sections = {}
+        for name in names:
+            text = read_section(card.text, name)
+            if text is None and args.section:
+                raise CardError(f"{card.key} has no {name} section")
+            if text is not None:
+                sections[name] = text.strip()
+        print_json({**describe_card(card), "sections": sections})
+        return 0
     if not args.section:
         print(card.text, end="")
         return 0
@@ -2205,6 +2324,9 @@ def run_check(args: argparse.Namespace, projects: Path) -> int:
                 problems.append(
                     f"{card.key} session also on {holder}: {entry}",
                 )
+    if args.json:
+        print_json({"cards": len(cards), "problems": problems})
+        return 1 if problems else 0
     for problem in problems:
         print(fit(problem))
     print(f"{len(problems)} problems in {len(cards)} cards")
