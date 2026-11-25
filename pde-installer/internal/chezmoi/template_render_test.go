@@ -744,22 +744,33 @@ func TestPRDPropagatesGitHubFailure(t *testing.T) {
 // wrong one hides a note from its list, and a wrong path opens the wrong note.
 func TestNotesOpensPickFromLabeledList(t *testing.T) {
 	tests := map[string]struct {
-		script    string
-		wantInput string
-		wantArgs  string
+		script     string
+		wantInput  string
+		wantArgs   string
+		wantOpened string
 	}{
 		"type c lists only cards": {
-			script:    `n c card`,
-			wantInput: "c\tExample/A card.md\n",
-			wantArgs:  "--query\ncard\n",
+			script:     `n c card`,
+			wantInput:  "c\tExample/A card.md\n",
+			wantArgs:   "--query\ncard\n",
+			wantOpened: "Example/A card.md",
+		},
+		"type r lists RESEARCH file names": {
+			script: `n r`,
+			wantInput: "r\tExample/Research.md\n" +
+				"r\tExample/RESEARCH-Old findings.md\n",
+			wantArgs:   "--query\n\n",
+			wantOpened: "Example/Research.md",
 		},
 		"no type lists every note": {
 			script: `notes`,
 			wantInput: "c\tExample/A card.md\n" +
 				"r\tExample/Research.md\n" +
 				"-\tExample/Design.md\n" +
-				"p\tExample/A plan.md\n",
-			wantArgs: "--query\n\n",
+				"p\tExample/A plan.md\n" +
+				"r\tExample/RESEARCH-Old findings.md\n",
+			wantArgs:   "--query\n\n",
+			wantOpened: "Example/A card.md",
 		},
 	}
 	for name, tt := range tests {
@@ -770,6 +781,10 @@ func TestNotesOpensPickFromLabeledList(t *testing.T) {
 				home,
 			)
 			writeNotesVault(
+				t,
+				home,
+			)
+			writeUntypedResearchNote(
 				t,
 				home,
 			)
@@ -820,7 +835,8 @@ func TestNotesOpensPickFromLabeledList(t *testing.T) {
 			}
 			wantOpened := filepath.Join(
 				home,
-				"vault/500 Zettelkasten/Projects/Example/A card.md",
+				"vault/500 Zettelkasten/Projects",
+				tt.wantOpened,
 			) + "\n"
 			opened := readHomeFile(
 				t,
@@ -889,6 +905,29 @@ func writeNotesVault(t *testing.T, home string) {
 			t.Fatal(err)
 		}
 		modified = modified.Add(time.Minute)
+	}
+}
+
+// Writes a RESEARCH note with no type line, older than the notes of
+// writeNotesVault.
+func writeUntypedResearchNote(t *testing.T, home string) {
+	t.Helper()
+	path := filepath.Join(
+		home,
+		"vault/500 Zettelkasten/Projects/Example/RESEARCH-Old findings.md",
+	)
+	writeApplyFile(
+		t,
+		path,
+		"---\nproject: Example\n---\n\n# Old findings\n",
+	)
+	modified := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(
+		path,
+		modified,
+		modified,
+	); err != nil {
+		t.Fatal(err)
 	}
 }
 
