@@ -259,9 +259,9 @@ class TestNew:
     def test_new_writes_version_2_layout(self, projects: Path) -> None:
         """card new writes the seven sections in order, as version 2.
 
-        Agents and the hub find a card's parts by these headings and its
-        needs_you field. A section out of order, or a Log line below the
-        Appendix, would send them to the wrong text.
+        Agents and the hub find a card's parts by these headings. A
+        section out of order, or a Log line below the Appendix, would send
+        them to the wrong text.
         """
         code = run_card(
             projects,
@@ -285,7 +285,6 @@ class TestNew:
             "Appendix",
         ]
         assert "template_version: 2\n" in text
-        assert "kind: build\nneeds_you: null\n" in text
         assert read_log(text).strip() == f"- {TODAY} draft: by user"
 
     def test_new_adopt_logs_adoption_at_stage(self, projects: Path) -> None:
@@ -1148,14 +1147,14 @@ class TestReadParts:
 
         assert code == 0
         assert capsys.readouterr().out == (
-            "22-24     ## Context\n"
-            "25-29     ## Acceptance Criteria\n"
-            "30-32     ## Open Questions\n"
-            "33-35     ## Decisions\n"
-            "36-38     ## Notes\n"
-            "39-43     ## Log\n"
-            "44-49     ## Appendix\n"
-            "47-49       ### Agent Notes on Context\n"
+            "21-23     ## Context\n"
+            "24-28     ## Acceptance Criteria\n"
+            "29-31     ## Open Questions\n"
+            "32-34     ## Decisions\n"
+            "35-37     ## Notes\n"
+            "38-42     ## Log\n"
+            "43-48     ## Appendix\n"
+            "46-48       ### Agent Notes on Context\n"
         )
 
     @pytest.mark.parametrize(
@@ -1428,77 +1427,6 @@ class TestList:
             "needs_you": "which bucket?",
         }
         assert answered["needs_you"] is None
-
-
-class TestNeedsYou:
-    """A question for the user shows in needs_you until it is answered."""
-
-    def test_note_writes_quoted_question_to_frontmatter(
-        self,
-        projects: Path,
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        """card note --needs-you writes a question with quotes intact.
-
-        card show --json gives needs_you as what waits on the user. A
-        question that lost its quotes, or broke the frontmatter, would
-        show the user the wrong thing to do.
-        """
-        path = write_card(projects, KEY, "active")
-        question = 'Pick "a" or "b"?'
-
-        run_card(projects, "note", KEY, question, "--needs-you")
-        capsys.readouterr()
-        run_card(projects, "show", KEY, "--json")
-        shown = json.loads(capsys.readouterr().out)
-
-        assert 'needs_you: "Pick \\"a\\" or \\"b\\"?"\n' in path.read_text()
-        assert shown["needs_you"] == question
-
-    def test_list_keeps_open_waiting_cards(
-        self,
-        projects: Path,
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        """card list --needs-you lists every open card that waits on the user.
-
-        The user finds every waiting card with this one command. Missing a
-        question kept only in the field or only in the Log, failing on a
-        field typed by hand, or listing a done card would give a wrong list.
-        """
-        old = V1_CARD + f"- {TODAY} needs-you: which bucket?\n"
-        (projects / "DevEnv" / f"{KEY} Fix some work.md").write_text(old)
-        for key in ["PDEV-KB-002", "PDEV-KB-003"]:
-            write_card(projects, key, "active")
-        log_only = write_card(projects, "PDEV-KB-004", "active")
-        log_only.write_text(
-            log_only.read_text().replace(
-                "\n\n## Appendix",
-                f"\n- {TODAY} needs-you: which region?\n\n## Appendix",
-            ),
-        )
-        write_card(projects, "PDEV-KB-005", "done")
-        field_only = write_card(projects, "PDEV-KB-006", "active")
-        field_only.write_text(
-            field_only.read_text().replace(
-                "needs_you: null\n",
-                'needs_you: "Copy to C:\\path?"\n',
-            ),
-        )
-        run_card(projects, "note", "PDEV-KB-002", "ok?", "--needs-you")
-        run_card(projects, "note", "PDEV-KB-005", "ok?", "--needs-you")
-        capsys.readouterr()
-
-        code = run_card(projects, "list", "--needs-you", "--tabs")
-
-        assert code == 0
-        assert capsys.readouterr().out == (
-            f"{KEY}\tactive\tbuild\tDevEnv\tFix some work\n"
-            "PDEV-KB-002\tactive\tbuild\tDevEnv\tFix some work\n"
-            "PDEV-KB-004\tactive\tbuild\tDevEnv\tFix some work\n"
-            "PDEV-KB-006\tactive\tbuild\tDevEnv\tFix some work\n"
-            "4 cards\n"
-        )
 
 
 class TestBoard:
@@ -1797,32 +1725,6 @@ class TestVersionOneCard:
 
         assert code == 0
 
-    def test_note_changes_only_field_and_log(self, projects: Path) -> None:
-        """card note on an old card adds the field and one Log line only.
-
-        Old cards end with the Log and may hold sections the user added
-        by hand. A write that dropped such a section would lose the user's
-        text. A Log line under another heading would not show in the Log.
-        A plain note that set the field would wipe the open question.
-        """
-        path = projects / "DevEnv" / f"{KEY} Fix some work.md"
-        path.write_text(V1_CARD)
-
-        run_card(projects, "note", KEY, "which bucket?", "--needs-you")
-        asked = path.read_text()
-        run_card(projects, "note", KEY, "bucket picked", "--by", "hub")
-
-        assert asked == (
-            V1_CARD.replace(
-                "kind: build\n",
-                'kind: build\nneeds_you: "which bucket?"\n',
-            )
-            + f"- {TODAY} needs-you: which bucket?\n"
-        )
-        assert path.read_text() == (
-            asked + f"- {TODAY} note (hub): bucket picked\n"
-        )
-
     def test_show_gives_old_cards_every_section(
         self,
         projects: Path,
@@ -1853,6 +1755,27 @@ class TestVersionOneCard:
             "Appendix": "",
             "Risks": "- The bucket may be full.",
         }
+
+    def test_note_appends_exact_log_lines(self, projects: Path) -> None:
+        """card note adds each Log line in the exact form the hub matches.
+
+        The hub finds waiting cards by the ``- YYYY-MM-DD needs-you:`` and
+        ``answered:`` Log lines, so another date or wording hides the
+        user's questions. The write must also keep the sections a user
+        added by hand to an old card.
+        """
+        path = projects / "DevEnv" / f"{KEY} Fix some work.md"
+        path.write_text(V1_CARD)
+
+        run_card(projects, "note", KEY, "which bucket?", "--needs-you")
+        run_card(projects, "note", KEY, "the cold one", "--answered")
+        run_card(projects, "note", KEY, "bucket picked", "--by", "hub")
+
+        assert path.read_text() == V1_CARD + (
+            f"- {TODAY} needs-you: which bucket?\n"
+            f"- {TODAY} answered: the cold one\n"
+            f"- {TODAY} note (hub): bucket picked\n"
+        )
 
 
 class TestNamingRules:
