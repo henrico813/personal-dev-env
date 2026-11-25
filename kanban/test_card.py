@@ -82,6 +82,52 @@ kind: research
 ## acceptance criteria
 - [ ] A failed upload retries.
 """
+# A card as card wrote it before the version 2 layout, with a Risks
+# section the user added by hand.
+V1_CARD = f"""---
+tags:
+  - "#Kanban"
+type: card
+stage: active
+stage_date: 2026-11-01
+template_version: 1
+project: DevEnv
+kind: build
+date_created: 2026-11-01
+plans: []
+prs: []
+sessions: []
+topics:
+  - "[[DevEnv]]"
+---
+
+# {KEY} Fix some work
+---
+
+## Context
+---
+
+## Acceptance Criteria
+---
+
+- [ ] Uploads retry.
+
+## Open Questions
+---
+
+## Decisions
+---
+
+## Risks
+---
+
+- The bucket may be full.
+
+## Log
+---
+
+- 2026-11-01 active: by user
+"""
 
 
 class FixedDate(date):
@@ -149,6 +195,11 @@ def write_card(
     return path
 
 
+def read_log(text: str) -> str:
+    """Return a card's Log text, where card adds each new line."""
+    return card.read_section(text, "Log") or ""
+
+
 class TestNew:
     """Making a card picks its key from the cards and plans of its code."""
 
@@ -205,6 +256,38 @@ class TestNew:
         assert code == 0
         assert (projects / "DevEnv" / name).exists()
 
+    def test_new_writes_version_2_layout(self, projects: Path) -> None:
+        """card new writes the seven sections in order, as version 2.
+
+        Agents and the hub find a card's parts by these headings and its
+        needs_you field. A section out of order, or a Log line below the
+        Appendix, would send them to the wrong text.
+        """
+        code = run_card(
+            projects,
+            "new",
+            "DevEnv",
+            "Retry failed uploads",
+            "--by",
+            "user",
+        )
+
+        assert code == 0
+        path = projects / "DevEnv" / f"{NEW_KEY} Retry failed uploads.md"
+        text = path.read_text()
+        assert re.findall(r"^## (.*)$", text, re.M) == [
+            "Context",
+            "Acceptance Criteria",
+            "Open Questions",
+            "Decisions",
+            "Notes",
+            "Log",
+            "Appendix",
+        ]
+        assert "template_version: 2\n" in text
+        assert "kind: build\nneeds_you: null\n" in text
+        assert read_log(text).strip() == f"- {TODAY} draft: by user"
+
     def test_new_adopt_logs_adoption_at_stage(self, projects: Path) -> None:
         """Adopted work starts in its stage with an adoption Log line.
 
@@ -230,7 +313,7 @@ class TestNew:
         assert code == 0
         text = (projects / "DevEnv" / f"{NEW_KEY} Old work.md").read_text()
         assert f"stage: in-review\nstage_date: {TODAY}\n" in text
-        assert text.endswith(
+        assert read_log(text).endswith(
             f"- {TODAY} in-review: adopted by general-staff for the user."
             " PR #450 open\n",
         )
@@ -456,7 +539,9 @@ class TestMove:
         assert code == 0
         text = path.read_text()
         assert f"stage: todo\nstage_date: {TODAY}\n" in text
-        assert text.endswith(f"- {TODAY} todo: by hub. Clear enough\n")
+        assert read_log(text).endswith(
+            f"- {TODAY} todo: by hub. Clear enough\n",
+        )
 
     @pytest.mark.parametrize(
         ("source", "target", "steps"),
@@ -497,7 +582,7 @@ class TestMove:
         assert code == 0
         text = path.read_text()
         assert f"stage: {target}\nstage_date: {TODAY}\n" in text
-        assert text.endswith(
+        assert read_log(text).endswith(
             f"- {TODAY} {steps[0]}: by hub for the user\n"
             f"- {TODAY} {steps[1]}: by hub for the user. Looks good\n",
         )
@@ -712,7 +797,7 @@ class TestSessions:
         text = path.read_text()
         assert 'prs: []\nsessions:\n  - "opencode ses_abc"\ntopics:' in text
         assert text.count("session: worker-1 (opencode ses_abc)") == 1
-        assert text.endswith(
+        assert read_log(text).endswith(
             f"- {TODAY} session: worker-1 (opencode ses_abc)\n",
         )
 
@@ -763,7 +848,7 @@ class TestSessions:
         path = projects / "DevEnv" / f"{NEW_KEY} Fix some work.md"
         text = path.read_text()
         assert 'sessions:\n  - "opencode ses_abc"\n' in text
-        assert text.endswith(
+        assert read_log(text).endswith(
             f"- {TODAY} {stage_line}\n"
             f"- {TODAY} session: worker-1 (opencode ses_abc)\n",
         )
@@ -936,7 +1021,9 @@ class TestEdit:
         assert code == 0
         text = path.read_text()
         assert f"---\n\n{criteria}\n## Open Questions" in text
-        assert text.endswith(f"- {TODAY} note (kanban-rollout-2): {note}\n")
+        assert read_log(text).endswith(
+            f"- {TODAY} note (kanban-rollout-2): {note}\n",
+        )
 
     def test_show_section_numbers_items_for_edit(
         self,
@@ -1035,6 +1122,103 @@ class TestShow:
         assert shown["sections"] == {
             "Acceptance Criteria": "- [ ] Uploads retry.",
         }
+
+
+class TestReadParts:
+    """card outline and card show --section read one part of a card."""
+
+    def test_outline_lists_parts_with_line_ranges(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """card outline prints each section and Agent Notes part's lines.
+
+        Agents read one part with sed -n instead of the whole card. A
+        range one line off, or an Appendix that stopped at its first
+        part, would hand them the wrong text.
+        """
+        path = write_card(projects, KEY, "active", "- [ ] Uploads retry.")
+        path.write_text(
+            path.read_text()
+            + "\n### Agent Notes on Context\n\n- Read the hub code.\n",
+        )
+
+        code = run_card(projects, "outline", KEY)
+
+        assert code == 0
+        assert capsys.readouterr().out == (
+            "22-24     ## Context\n"
+            "25-29     ## Acceptance Criteria\n"
+            "30-32     ## Open Questions\n"
+            "33-35     ## Decisions\n"
+            "36-38     ## Notes\n"
+            "39-43     ## Log\n"
+            "44-49     ## Appendix\n"
+            "47-49       ### Agent Notes on Context\n"
+        )
+
+    @pytest.mark.parametrize(
+        ("text", "section", "expected"),
+        [
+            pytest.param(
+                V1_CARD,
+                "risks",
+                "## Risks\n1. - The bucket may be full.\n",
+                id="hand-made-section",
+            ),
+            pytest.param(
+                V1_CARD
+                + "\n## Appendix\n---\n\n### Agent Notes on Context\n"
+                + "\n- Read the hub code.\n",
+                "appendix",
+                "## Appendix\n1. ### Agent Notes on Context\n\n"
+                "2. - Read the hub code.\n",
+                id="appendix-parts",
+            ),
+        ],
+    )
+    def test_show_section_prints_any_heading_whole(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+        text: str,
+        section: str,
+        expected: str,
+    ) -> None:
+        """card show --section prints any section, with all its lines.
+
+        Users add sections by hand that card does not list, and the
+        Appendix holds ### Agent Notes parts. If show took only its own
+        names or their exact case, or cut the Appendix at its first
+        part, an agent would have to read the whole card.
+        """
+        (projects / "DevEnv" / f"{KEY} Fix some work.md").write_text(text)
+
+        code = run_card(projects, "show", KEY, "--section", section)
+
+        assert code == 0
+        assert capsys.readouterr().out == expected
+
+    def test_show_section_rejects_unknown_name(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """card show --section refuses a section name it does not know.
+
+        A typo must fail. An empty section would tell an agent the card
+        has no criteria.
+        """
+        write_card(projects, KEY, "active")
+        typo = "Acceptance Critera"
+
+        code = run_card(projects, "show", KEY, "--section", typo)
+
+        captured = capsys.readouterr()
+        assert code == 1
+        assert captured.out == ""
+        assert captured.err == f"card: {KEY} has no {typo} section\n"
 
 
 class TestAttach:
@@ -1244,6 +1428,77 @@ class TestList:
             "needs_you": "which bucket?",
         }
         assert answered["needs_you"] is None
+
+
+class TestNeedsYou:
+    """A question for the user shows in needs_you until it is answered."""
+
+    def test_note_writes_quoted_question_to_frontmatter(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """card note --needs-you writes a question with quotes intact.
+
+        card show --json gives needs_you as what waits on the user. A
+        question that lost its quotes, or broke the frontmatter, would
+        show the user the wrong thing to do.
+        """
+        path = write_card(projects, KEY, "active")
+        question = 'Pick "a" or "b"?'
+
+        run_card(projects, "note", KEY, question, "--needs-you")
+        capsys.readouterr()
+        run_card(projects, "show", KEY, "--json")
+        shown = json.loads(capsys.readouterr().out)
+
+        assert 'needs_you: "Pick \\"a\\" or \\"b\\"?"\n' in path.read_text()
+        assert shown["needs_you"] == question
+
+    def test_list_keeps_open_waiting_cards(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """card list --needs-you lists every open card that waits on the user.
+
+        The user finds every waiting card with this one command. Missing a
+        question kept only in the field or only in the Log, failing on a
+        field typed by hand, or listing a done card would give a wrong list.
+        """
+        old = V1_CARD + f"- {TODAY} needs-you: which bucket?\n"
+        (projects / "DevEnv" / f"{KEY} Fix some work.md").write_text(old)
+        for key in ["PDEV-KB-002", "PDEV-KB-003"]:
+            write_card(projects, key, "active")
+        log_only = write_card(projects, "PDEV-KB-004", "active")
+        log_only.write_text(
+            log_only.read_text().replace(
+                "\n\n## Appendix",
+                f"\n- {TODAY} needs-you: which region?\n\n## Appendix",
+            ),
+        )
+        write_card(projects, "PDEV-KB-005", "done")
+        field_only = write_card(projects, "PDEV-KB-006", "active")
+        field_only.write_text(
+            field_only.read_text().replace(
+                "needs_you: null\n",
+                'needs_you: "Copy to C:\\path?"\n',
+            ),
+        )
+        run_card(projects, "note", "PDEV-KB-002", "ok?", "--needs-you")
+        run_card(projects, "note", "PDEV-KB-005", "ok?", "--needs-you")
+        capsys.readouterr()
+
+        code = run_card(projects, "list", "--needs-you", "--tabs")
+
+        assert code == 0
+        assert capsys.readouterr().out == (
+            f"{KEY}\tactive\tbuild\tDevEnv\tFix some work\n"
+            "PDEV-KB-002\tactive\tbuild\tDevEnv\tFix some work\n"
+            "PDEV-KB-004\tactive\tbuild\tDevEnv\tFix some work\n"
+            "PDEV-KB-006\tactive\tbuild\tDevEnv\tFix some work\n"
+            "4 cards\n"
+        )
 
 
 class TestBoard:
@@ -1524,6 +1779,80 @@ class TestHandEditedCard:
             f"{NEW_KEY} Lost type.md has a card name but no type: card\n"
             "1 problems in 0 cards\n"
         )
+
+
+class TestVersionOneCard:
+    """Cards made before the version 2 layout keep working."""
+
+    def test_check_passes_without_new_sections(self, projects: Path) -> None:
+        """card check passes an old card that has no Notes or Appendix.
+
+        Cards made before version 2 have neither section. If card check
+        asked for them, it would flag every old card and hide the real
+        problems.
+        """
+        (projects / "DevEnv" / f"{KEY} Fix some work.md").write_text(V1_CARD)
+
+        code = run_card(projects, "check")
+
+        assert code == 0
+
+    def test_note_changes_only_field_and_log(self, projects: Path) -> None:
+        """card note on an old card adds the field and one Log line only.
+
+        Old cards end with the Log and may hold sections the user added
+        by hand. A write that dropped such a section would lose the user's
+        text. A Log line under another heading would not show in the Log.
+        A plain note that set the field would wipe the open question.
+        """
+        path = projects / "DevEnv" / f"{KEY} Fix some work.md"
+        path.write_text(V1_CARD)
+
+        run_card(projects, "note", KEY, "which bucket?", "--needs-you")
+        asked = path.read_text()
+        run_card(projects, "note", KEY, "bucket picked", "--by", "hub")
+
+        assert asked == (
+            V1_CARD.replace(
+                "kind: build\n",
+                'kind: build\nneeds_you: "which bucket?"\n',
+            )
+            + f"- {TODAY} needs-you: which bucket?\n"
+        )
+        assert path.read_text() == (
+            asked + f"- {TODAY} note (hub): bucket picked\n"
+        )
+
+    def test_show_gives_old_cards_every_section(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """card show gives an old card every section, empty when missing.
+
+        Scripts read old cards through card show --json and --section.
+        An error or a missing entry for Notes or the Appendix would
+        break them on every old card.
+        """
+        (projects / "DevEnv" / f"{KEY} Fix some work.md").write_text(V1_CARD)
+
+        section_code = run_card(projects, "show", KEY, "--section", "notes")
+        section_out = capsys.readouterr().out
+        json_code = run_card(projects, "show", KEY, "--json")
+        shown = json.loads(capsys.readouterr().out)
+
+        assert (section_code, section_out) == (0, "## Notes\n\n")
+        assert json_code == 0
+        assert shown["sections"] == {
+            "Context": "",
+            "Acceptance Criteria": "- [ ] Uploads retry.",
+            "Open Questions": "",
+            "Decisions": "",
+            "Notes": "",
+            "Log": "- 2026-11-01 active: by user",
+            "Appendix": "",
+            "Risks": "- The bucket may be full.",
+        }
 
 
 class TestNamingRules:
@@ -2277,7 +2606,7 @@ class TestMerged:
         assert code == 0
         text = path.read_text()
         assert f"stage: done\nstage_date: {TODAY}\n" in text
-        assert text.endswith(
+        assert read_log(text).endswith(
             f"- {TODAY} in-review: by card merged for the user\n"
             f"- {TODAY} done: by card merged for the user."
             f" {MERGED_PR} merged\n",
@@ -2368,7 +2697,7 @@ class TestMerged:
         assert code == 0
         text = path.read_text()
         assert "stage: active\n" in text
-        assert text.endswith(
+        assert read_log(text).endswith(
             f"- {TODAY} note (card merged): {MERGED_PR} merged,"
             f" but the card stays active: {reason}\n",
         )

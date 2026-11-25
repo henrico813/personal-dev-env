@@ -35,15 +35,16 @@ named vault. The shape of the key and the file name comes from the
 | `card new PROJECT TITLE [--kind K] [--user] [--why TEXT]` | Makes a card in `draft` and prints its name. Refuses a title that breaks a [title rule](#title-rules). |
 | `card new PROJECT --from FILE [--user] [--why TEXT]` | Makes a card in `draft` with the title, kind and section text from FILE, laid out as `card new --help` shows. Refuses any other heading, a repeated heading, and text before the first heading, so no line is lost. |
 | `card new PROJECT TITLE --adopt STAGE --user [--why TEXT] [--session [AGENT]]` | Makes a card straight in `active`, `in-review` or `blocked`, for work already under way. `blocked` needs `--why`. `--session` also records the agent's session, as `card link --session` does, but skips its check for a session on another card. |
-| `card list [--stage S] [--project P] [--kind K] [--tabs \| --json]` | Prints one line per card: key, stage, kind and title, in stage order. A long line is cut to 60 characters. With `--tabs`, each line holds the key, stage, kind, project folder and whole title, split by tabs, for scripts such as `hub board`. With `--json`, see [JSON output](#json-output). |
+| `card list [--stage S] [--project P] [--kind K] [--needs-you] [--tabs \| --json]` | Prints one line per card: card key, stage, kind and title, in stage order. With `--needs-you`, it keeps only the cards that wait on the user, whose `needs_you` in [JSON output](#json-output) is not `null`, and leaves out done and dropped cards. A long line is cut to 60 characters. With `--tabs`, each line holds the card key, stage, kind, project folder and whole title, split by tabs, for scripts such as `hub board`. With `--json`, see [JSON output](#json-output). |
 | `card board [--json]` | Prints the count per stage, active and in-review each against its limit, and the in-review cards by `stage_date`, oldest first. When a card is blocked, it also prints their count and the oldest wait, and lists them, longest wait first, with days waited and the reason. See [Board](#board). |
-| `card show KEY [--section S] [--json]` | Prints the whole card, or one section with its items numbered from 1. |
+| `card show KEY [--section S] [--json]` | Prints the whole card, or one section with its items numbered from 1. S is any `##` heading of the card in any case, such as `"open questions"`. A section from [Sections](#sections) that the card lacks prints its heading alone. |
+| `card outline KEY` | Prints each `##` and `###` heading with the lines its part covers. See [Sections](#sections). |
 | `card grep PATTERN [--section S] [--stage S] [--project P] [--kind K]` | Prints each line that matches a regular expression, in any case, as `KEY Section: line`. Exits 1 when nothing matches. |
 | `card move KEY STAGE [--user] [--why TEXT]` | Moves a card, sets `stage_date` to today and adds a Log line. |
 | `card move KEY active --session [AGENT]` | Starts a card and records the worker's session in the same write. |
 | `card note KEY TEXT` | Adds a dated note to the Log. |
-| `card note KEY TEXT --needs-you` | Logs a question, approval or failure that waits on the user. |
-| `card note KEY TEXT --answered` | Logs the user's answer. |
+| `card note KEY TEXT --needs-you` | Logs a question, approval or failure that waits on the user, and sets `needs_you` to TEXT. |
+| `card note KEY TEXT --answered` | Logs the user's answer and sets `needs_you` to `null`. |
 | `card add KEY SECTION TEXT` | Adds a bullet to Context, Open Questions or Decisions, or a `- [ ]` item to Acceptance Criteria. |
 | `card attach KEY FILE` | Copies FILE to `attachments/<KEY> <file name>` in the card's project folder and adds a `![[...]]` line to Context. Refuses a missing file and never overwrites an attachment. |
 | `card edit KEY SECTION N TEXT` | Replaces the words of item N, as `card show KEY --section SECTION` numbers it. A checkbox or bullet stays, with its tick. Logs the old words. |
@@ -235,13 +236,15 @@ Each card is an object like this:
 }
 ```
 
-`needs_you` is the text of the newest `needs-you` Log line,
-or `null` when an `answered` line follows it or none exists.
+`needs_you` is the card's `needs_you` field. When the field is
+missing, empty or `null`, as on a card made before the field existed,
+`needs_you` is the text of the newest `needs-you` Log line, or `null`
+when an `answered` line follows it or none exists.
 
 | Command | JSON |
 | --- | --- |
 | `card list --json` | A list of card objects, in the same order and with the same filters as the text. |
-| `card show KEY --json` | One card object plus `sections`, which maps each section name to its text. With `--section S`, `sections` holds only S. |
+| `card show KEY --json` | One card object plus `sections`, which maps each section name to its text: the seven layout sections, then each other `##` heading of the card in file order. A section the card lacks maps to `""`. With `--section S`, `sections` holds only S. |
 | `card board --json` | `counts` per stage, `limits` for `active` and `in-review`, an `in-review` list of card objects oldest first, and a `blocked` list of card objects, longest wait first, each with `days` and `reason`. |
 | `card check --json` | `cards`, the number of cards read, and `problems`, one line per problem as the text prints it. |
 
@@ -254,9 +257,10 @@ tags:
 type: card
 stage: draft
 stage_date: 2026-11-06
-template_version: 1
+template_version: 2
 project: DevEnv
 kind: build
+needs_you: null
 date_created: 2026-11-06
 plans: []
 prs: []
@@ -271,9 +275,10 @@ topics:
 | `type` | Always `card`. |
 | `stage` | One of the stages above. |
 | `stage_date` | The day of the last move, or of creation. The board sorts by it. |
-| `template_version` | The layout version, now 1. |
+| `template_version` | The layout version, now 2. Cards made before it have 1; see [Sections](#sections). |
 | `project` | The project folder name. |
 | `kind` | `build` ends in a change to code, config or the running setup; `research` ends in a document or a decision. |
+| `needs_you` | The question, approval or failure that waits on the user, which `card note --needs-you` sets, or `null`. `card note --answered` sets it back to `null`. |
 | `date_created` | The day the card was made. |
 | `plans` | Links to plan notes, added by `card link`. |
 | `prs` | Pull request URLs, added by `card link`. |
@@ -297,7 +302,9 @@ only, with no hint or placeholder text.
 | Acceptance Criteria | What must be true for this issue to be considered complete? Each item is an observable, verifiable condition; relevant tests and validation pass. |
 | Open Questions | What remains unresolved that could affect the implementation or outcome? |
 | Decisions | Record significant decisions made while working on this issue, including rationale when useful. |
+| Notes | The user's own free text. Agents never write here. |
 | Log | Record meaningful progress, findings, and milestones that future contributors need to understand. |
+| Appendix | Agent notes only, as one `### Agent Notes on SECTION` part for each section they expand, such as `### Agent Notes on Context`. |
 
 Each acceptance criterion is a checkbox line, and the last one is
 usually the tests:
@@ -311,15 +318,44 @@ A card moves to `todo` only when Acceptance Criteria holds at least
 one checkbox line. `card add KEY "Acceptance Criteria" TEXT` adds one
 as `- [ ] TEXT`.
 
-Cards made before this layout have Why, Outcome and "Open questions"
+`card add` and `card edit` take Context, Acceptance Criteria, Open
+Questions and Decisions. Only `card` writes the Log.
+
+`card outline KEY` prints each `##` and `###` heading with the lines
+its part covers, counted from 1 as `sed -n` counts them. A part runs
+to the next heading of its level or higher, so the Appendix covers
+its Agent Notes parts:
+
+```text
+22-24     ## Context
+25-29     ## Acceptance Criteria
+30-32     ## Open Questions
+33-35     ## Decisions
+36-38     ## Notes
+39-43     ## Log
+44-49     ## Appendix
+47-49       ### Agent Notes on Context
+```
+
+`sed -n '47,49p'` on the card's file then prints that Agent Notes
+part.
+
+Cards made with `template_version: 1` have no Notes or Appendix
+section, and no `needs_you` field until `card note --needs-you` or
+`--answered` adds one. `card` reads a missing section as empty and a
+missing `needs_you` from the Log, as [JSON output](#json-output)
+says. `card check` does not report them missing.
+Cards made before that layout have Why, Outcome and "Open questions"
 sections, hints between `%%` marks, and no `sessions` field.
-`kanban/migrate_sections.py` moves them to this layout; see its
-`--help`. A second run changes nothing.
+`kanban/migrate_sections.py` moves them to the version 1 layout; see
+its `--help`. A second run changes nothing.
 
 ## Log lines
 ---
 
 Each line starts with `- YYYY-MM-DD`. Text in brackets is optional.
+`card` adds each line at the end of the Log section, above the
+Appendix.
 
 | Written by | Form |
 | --- | --- |

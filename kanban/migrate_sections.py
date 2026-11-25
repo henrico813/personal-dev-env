@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Move cards from the old sections to the ones card writes now.
+"""Move cards from the old sections to the version 1 layout.
 
 Old cards have Why, Outcome and "Open questions", some also a Context
-section, and hint lines between ``%%`` marks. New cards have Context,
-Acceptance Criteria and "Open Questions", with no hints, and a
-``sessions`` field after ``prs``. Each Outcome sentence or bullet
+section, and hint lines between ``%%`` marks. Version 1 cards
+have Context, Acceptance Criteria and "Open Questions", with no hints,
+and a ``sessions`` field after ``prs``. Each Outcome sentence or bullet
 becomes one ``- [ ]`` item, in its own words.
 
-A card already in the new layout is left as it is, so running this
-again changes nothing.
+A card already in the version 1 layout or a later one is left
+as it is, so running this again changes nothing.
 
 Usage::
 
@@ -72,7 +72,7 @@ def main(argv: list[str]) -> int:
 
 
 def migrate_text(text: str) -> str:
-    """Return a card's text in the new section layout.
+    """Return a card's text in the version 1 section layout.
 
     Args:
         text: The card text.
