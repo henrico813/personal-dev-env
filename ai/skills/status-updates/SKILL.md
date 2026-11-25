@@ -27,6 +27,7 @@ short form in
 [references/waiting-on-you.md](references/waiting-on-you.md), except
 the one plain sentence that Question numbers allows, and
 each reply to one is matched to its question as that file says. A
+hub shows the questions on its cards as `herdr-hub` says instead. A
 question on its own also passes the checker in Review before sending.
 It names the project only when the user may not know which work it
 is about.
@@ -34,7 +35,8 @@ is about.
 ## Question numbers
 
 Number questions `Q1` to `Q9`, so each reply key, such as `Q3A`, has
-one digit and is quick to type on a phone.
+one digit and is quick to type on a phone. A hub numbers no question
+itself, since `hub waiting` numbers the questions on its cards.
 
 - A batch of questions starts with the first question you ask when
   no earlier question waits on the user. It ends when no question in
@@ -151,7 +153,8 @@ message, fix each miss, and send it only when every check passes:
    command opens that file, not its card.
 5. Every question and approval still waiting is in the update, and
    each question is in the short form. Held questions show only as
-   a count, as Question numbers says.
+   a count, as Question numbers says. A hub's questions on its cards
+   show as `herdr-hub` says instead.
 6. You checked every number, and the update names what you did not.
 7. The update repeats no side item that an earlier message raised.
 

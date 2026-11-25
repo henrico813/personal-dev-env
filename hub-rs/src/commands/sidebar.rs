@@ -352,7 +352,7 @@ fn find_machine_place(herdr: &dyn Herdr) -> Result<u8, HerdrError> {
 /// worker that loops on `hub next` has a worker name. With none, it is
 /// the live `kanban-hub-N` with the highest N, since a hub of an older
 /// build records nothing.
-fn find_front_hub<'a>(
+pub(crate) fn find_front_hub<'a>(
     runs_folder: &Path,
     agents: &'a [Agent],
 ) -> Result<Option<&'a Agent>, HubError> {

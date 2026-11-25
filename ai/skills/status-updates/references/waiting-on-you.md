@@ -11,11 +11,11 @@ own, ask for an approval, or list pull requests to review.
 ## Ask in the short form
 
 The user answers on a phone. Every question to the user, from any
-agent, including a hub that runs other sessions, takes this form, in
-an update or on its own. Two cases skip it: the plain sentence that
-SKILL.md's "Question numbers" allows once the batch has a `Q9`, and
-a list where the user picks any number of items, as the last item
-below says. The form:
+agent, takes this form, in an update or on its own. Three cases skip
+it: the plain sentence that SKILL.md's "Question numbers" allows once
+the batch has a `Q9`, a list where the user picks any number of
+items, as the last item below says, and a hub's questions on its
+cards, which the hub shows as `herdr-hub` says. The form:
 
 ```markdown
 **Q7. Lessons rework: how the repeat search survives squash merges**

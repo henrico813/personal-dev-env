@@ -281,6 +281,28 @@ Blocked (no action needed)
   platform team's review
 ```
 
+### waiting
+
+`hub waiting [--run DIR]` prints each card's open question for the
+user, who reads it at the end of every hub message. The first line is
+`2 questions wait on you.`, then each question oldest first, by the
+day of its needs-you mark, then card key. Each starts
+`**QN. TITLE (KEY)**`, then its lines as `hub ask` saved them, and a
+`Reply like `QNA`.` line ends the list. With no open question it
+prints only `No question waits on you.`
+
+- A question keeps its number while any numbered question waits, so
+  a reply key names the same question in each message. A new
+  question takes the number after the highest. Once none waits, the
+  next question is `Q1` again. The numbers live in
+  `question-numbers.txt` in the run folder.
+- It labels the front hub's sidebar row `hub busy, N for you` or
+  `hub free, N for you`, or plain `hub busy` and `hub free` when
+  nothing waits. When that fails, a last line starts
+  `Sidebar count not set:`.
+- When `card` cannot list the questions, it prints only
+  `Questions could not be read: REASON` and changes nothing.
+
 ### ask
 
 `hub ask KEY FILE` puts the question in FILE on card KEY. It adds the

@@ -1,7 +1,8 @@
-# What hub brief prints and hub ask takes
+# What hub brief and hub waiting print, and hub ask takes
 
 Read this when you run `hub brief` to bring the user what waits on
-them, or when you write a question for `hub ask`.
+them, when you end a message with `hub waiting`, or when you write a
+question for `hub ask`.
 
 Its first line is `board active A of 8, in-review R of 6; K questions`.
 When cards are blocked, a `blocked W, oldest D days`
@@ -25,15 +26,13 @@ again.
 A `Check first: the user wrote in NAME TIME` line under a question's
 title names a session on its card where the user typed on or after
 the day the question was asked. Read that session's pane before you
-show the question. When the user answered there, run `hub answer`
-with that answer and leave the question out. Never show the line to
-the user.
+run `hub waiting`. When the user answered there, run `hub answer`
+with that answer, so `hub waiting` leaves the question out. Never
+show the line to the user.
 
-Show `reviews.md` as printed, and each question in the short form of
-`status-updates`: its title's words, question, then key; `(rec)` on
-the `Recommended:` choice; its reason and other lines after the reply
-line. Number them, and hold any past `Q9`, as "Question numbers" in
-`status-updates` says.
+Show `reviews.md` as printed. Leave the questions out of your own
+text, since the `hub waiting` output that ends each message shows
+them.
 
 When you release a draft, as SKILL.md's Cards section allows, record it
 with a `hub note` line that starts `released KEY`. `hub brief` does not
@@ -44,6 +43,24 @@ yet. Each list line holds the card's key and its current title and
 stage. Take the title and stage from `card show KEY`. Leave the list out
 when it would be empty. It is news for the user, not a question. Then
 add a `hub note` line `brief shown`.
+
+## End each message with hub waiting
+
+SKILL.md's "Questions for the user" says when to run
+`hub waiting --run "<run folder>"` and that its output ends every
+message, word for word.
+
+- It prints each question whole, oldest first, with the number its
+  reply key uses, such as `Q2A`. A number stays until no numbered
+  question waits, so match a reply to the number the output gave.
+  Numbers may pass `Q9`, since every open question shows.
+- It also shows the count on your sidebar row, such as
+  `hub free, 2 for you`.
+- Check your own text with the `status-updates` checker before you
+  add the output, since its form is not the checker's.
+- Ask about a reply, such as which question it answers, in one plain
+  sentence with no number, so its number never clashes with one that
+  `hub waiting` gives.
 
 ## A question file
 
@@ -59,6 +76,10 @@ A `hub ask <key> <question file>` file looks like this:
     Recommended: A, since you want to test it in the morning.
     If no reply: nothing deploys; the worker goes on with its tests.
     Depends on: your rule of 2026-11-09 to test it in the morning.
+
+The `If no reply:` line says what stays blocked and what the worker
+does meanwhile. Add `Depends on:` when the question rests on an
+earlier decision, and name who made it.
 
 ## What hub ask refuses and marks
 
