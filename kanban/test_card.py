@@ -1353,6 +1353,33 @@ class TestHandEditedCard:
             "1 problems in 0 cards\n"
         )
 
+    def test_check_reports_new_card_missing_type(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """card check names a new-shape card that lost its type line.
+
+        A plan shares a new card's name shape, so the check tells them
+        apart by the card's stage field. Other commands skip the broken
+        card, so card check is where the user finds it, and plans must
+        not show up as problems beside it.
+        """
+        folder = projects / "DevEnv"
+        (folder / f"{NEW_KEY} Lost type.md").write_text(
+            "---\nstage: todo\nkind: build\n---\n\n# Lost type\n",
+        )
+        (folder / f"{NEW_KEY} Plan the retries.md").write_text(PLAN)
+        (folder / f"{NEW_KEY} Old plan.md").write_text("# Old plan\n")
+
+        code = run_card(projects, "check")
+
+        assert code == 1
+        assert capsys.readouterr().out == (
+            f"{NEW_KEY} Lost type.md has a card name but no type: card\n"
+            "1 problems in 0 cards\n"
+        )
+
 
 class TestNamingRules:
     """card makes and reads names with the rules in the rules file."""

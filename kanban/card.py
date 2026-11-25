@@ -70,7 +70,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 STATE_DIR = Path.home() / ".local/state/card"
 PROJECTS_SUBDIR = "500 Zettelkasten/Projects"
@@ -2169,7 +2169,8 @@ def write_undo_script(
 def run_check(args: argparse.Namespace, projects: Path) -> int:
     """Print cards whose layout or fields card cannot use.
 
-    It also prints notes named like old -KB- cards that are not cards.
+    It also prints notes named like old -KB- cards that are not cards,
+    and new-named notes with a card's stage field but no type.
 
     Args:
         args: The parsed arguments.
@@ -2189,8 +2190,10 @@ def run_check(args: argparse.Namespace, projects: Path) -> int:
     # No plan has an old -KB- name, so such a note without the card type
     # is a broken card or a misnamed note, which every other command skips.
     card_paths = {card.path for card in cards}
-    for path in sorted(projects.glob("*/*-KB-*.md")):
-        if path not in card_paths and read_card_key(path.name):
+    for path in sorted(projects.glob("*/*.md")):
+        if path in card_paths or not read_card_key(path.name):
+            continue
+        if "-KB-" in path.name or is_card_without_type(path):
             problems.append(f"{path.name} has a card name but no type: card")
     # The hub maps a session to one card, so a session on two cards
     # shows one worker's state on the wrong card.
@@ -2913,15 +2916,45 @@ def read_card_note(path: Path) -> Card | None:
         return None
     mtime_ns = path.stat().st_mtime_ns
     with path.open(encoding="utf-8") as note:
-        head = note.readline()
-        if head.strip() == "---":
-            while line := note.readline():
-                head += line
-                if line.strip() == "---":
-                    break
+        head = read_head(note)
         if read_fields(head).get("type") != "card":
             return None
         return Card(path, key, head + note.read(), mtime_ns)
+
+
+def read_head(note: TextIO) -> str:
+    """Read an open note's first line, and its front matter if it has one.
+
+    Args:
+        note: The note, open at its start.
+
+    Returns:
+        The text read, which leaves the note open after it.
+    """
+    head = note.readline()
+    if head.strip() == "---":
+        while line := note.readline():
+            head += line
+            if line.strip() == "---":
+                break
+    return head
+
+
+def is_card_without_type(path: Path) -> bool:
+    """Tell whether a note's front matter has a card's stage but no type.
+
+    A plan's name can hold a card key too, but a plan has a type and no
+    stage, and old plans have no front matter at all.
+
+    Args:
+        path: The note.
+
+    Returns:
+        True when the note looks like a card that lost its type line.
+    """
+    with path.open(encoding="utf-8") as note:
+        fields = read_fields(read_head(note))
+    return "type" not in fields and "stage" in fields
 
 
 def load_card(path: Path) -> Card:
