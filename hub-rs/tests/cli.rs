@@ -287,12 +287,13 @@ fn find_run_folder_rejects_missing_folder() {
     );
 }
 
-/// The desk's `hub board` pane has no `HUB_RUN`. The search must take
-/// the folder whose `hub next` holds the lock, even when another run
-/// wrote events later. Between `hub next` runs no lock is held, and
-/// the board must still show the hub that worked last, not an older
-/// finished run or an error. The two no-lock cases swap the ages, so
-/// the order the folders are listed in cannot decide the answer.
+/// `hub status` with no `--run`, in a pane with no `HUB_RUN`, falls
+/// back to the search. It must take the folder whose `hub next` holds
+/// the lock, even when another run wrote events later. Between
+/// `hub next` runs no lock is held, and the command must still read the
+/// hub that worked last, not an older finished run or an error. The
+/// two no-lock cases swap the ages, so the order the folders are listed
+/// in cannot decide the answer.
 #[test]
 fn find_run_folder_picks_running_else_newest() {
     const HOUR: u64 = 60 * 60;
@@ -348,8 +349,8 @@ fn find_run_folder_picks_running_else_newest() {
 }
 
 /// During an auto run the user's hub and the auto hub both run. The
-/// user's `hub board` must show their own hub, not stop with an error
-/// or show the auto run. Only the auto run's folder has `approved.md`.
+/// user's `hub status` must read their own hub, not stop with an error
+/// or read the auto run. Only the auto run's folder has `approved.md`.
 #[test]
 fn find_run_folder_skips_running_auto_run() {
     let local_state = TempFolder::new();
@@ -364,7 +365,7 @@ fn find_run_folder_skips_running_auto_run() {
 
 /// While the user's hub handles a line, its `hub next` is not running,
 /// so during two auto runs only the auto runs hold a lock. The user's
-/// `hub board` must still show their own hub, the folder without an
+/// `hub status` must still read their own hub, the folder without an
 /// `approved.md` written to last, not stop with an error. A finished
 /// auto run written to later must not win.
 #[test]

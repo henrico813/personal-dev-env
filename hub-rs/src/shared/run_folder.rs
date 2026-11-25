@@ -24,6 +24,10 @@ const MINUTE_MARK_FILE: &str = ".minute-pass.json";
 /// `hub watch start` in the run.
 const RECORDED_HUB_FILE: &str = ".recorded-hub.json";
 
+/// The file `run_auto_approve` writes once the user approves an auto
+/// run. No other run folder has one.
+pub(crate) const APPROVED_FILE: &str = "approved.md";
+
 /// One unread `report-NAME.md`.
 #[derive(Clone, Debug)]
 pub(crate) struct ReportFile {
@@ -312,6 +316,13 @@ impl RunFolder {
         let rules = self.read_optional_file("rules.md")?;
         let last = RULES_MODEL.captures_iter(&rules).last();
         Ok(last.map(|found| found[1].to_owned()))
+    }
+
+    /// Tells whether this folder holds an auto run the user approved.
+    /// The run-folder search uses it to tell auto runs from the user's
+    /// own hub.
+    pub(crate) fn is_approved_auto_run(&self) -> Result<bool, HubError> {
+        Ok(self.read_file_if_exists(APPROVED_FILE)?.is_some())
     }
 
     /// Returns the last minute mark, or `None` before the first pass or

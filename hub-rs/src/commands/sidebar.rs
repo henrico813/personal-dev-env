@@ -21,7 +21,6 @@ use std::path::Path;
 use std::time::SystemTime;
 
 use super::Outcome;
-use super::cli::is_auto_run;
 use crate::external::herdr::{
     Agent, AgentStatus, Herdr, HerdrError, NewPlace, PaneDestination, Workspace,
 };
@@ -389,7 +388,7 @@ fn find_recorded_hub<'a>(
         let Ok(run) = RunFolder::open(&path) else {
             continue;
         };
-        if is_auto_run(&run)? {
+        if run.is_approved_auto_run()? {
             continue;
         }
         let Some((recorded, recorded_at)) = run.read_recorded_hub()? else {
