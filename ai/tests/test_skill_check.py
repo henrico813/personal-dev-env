@@ -310,6 +310,11 @@ class TestSkillText:
                 id="fenced-example",
             ),
             pytest.param(
+                "````markdown\n```text\n"
+                "Load the `mulch` skill; see [it](mulch.md).\n```\n````",
+                id="nested-fenced-example",
+            ),
+            pytest.param(
                 "    Load the `mulch` skill; see [it](mulch.md).",
                 id="indented-example",
             ),

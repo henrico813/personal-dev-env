@@ -40,7 +40,9 @@ SKILL_NAME = re.compile(
 )
 LESSONS_NAME = re.compile(r"with\s+the\s+skill\s+name\s+`([^`]+)`")
 INLINE_CODE = re.compile(r"`[^`\n]*`")
-FENCE = re.compile(r"^\s*(```|~~~)")
+# A fence closes only on a bare run of its own mark at least as long,
+# so a ```` block can show a ``` block inside it.
+FENCE = re.compile(r"^\s*(`{3,}|~{3,})(.*)$")
 LIST_MARKER = re.compile(r"^\s*(?:[-*+]|\d+[.)])?\s*")
 WORD = re.compile(r"[a-z0-9][a-z0-9'_./-]*")
 HUNK = re.compile(r"^@@ -\S+ \+(\d+)(?:,(\d+))? @@")
@@ -335,7 +337,7 @@ def blank_code_lines(text: str) -> list[str]:
             frontmatter = number == 0 or line != "---"
             kept.append("")
         elif fence:
-            if opening and opening.group(1) == fence:
+            if is_closing_fence(opening, fence):
                 fence = None
             kept.append("")
         elif opening:
@@ -349,6 +351,18 @@ def blank_code_lines(text: str) -> list[str]:
             kept.append("" if indented else line)
         previous = line
     return kept
+
+
+def is_closing_fence(match: re.Match[str] | None, fence: str) -> bool:
+    """Return whether a ``FENCE`` match closes the block ``fence`` opened.
+
+    A bare run of four backticks closes a block opened by four, but a
+    run of three, or a run followed by text such as ``text``, does not.
+    """
+    if match is None or match.group(2).strip():
+        return False
+    run = match.group(1)
+    return run[0] == fence[0] and len(run) >= len(fence)
 
 
 def check_links(skills: Skills) -> list[Problem]:
