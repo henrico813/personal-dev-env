@@ -19,11 +19,11 @@ func TestRemoveTargetsAvoidManagedSources(t *testing.T) {
 		}
 	}
 
-	produced := managedSourceTargets(t)
+	produced := listManagedSourceTargets(t)
 	produced = append(produced, renderedExternalTargets(renderProfileTemplate(t, ".chezmoiexternal.toml.tmpl", "full"))...)
 	for _, removed := range removeTargets {
 		for _, target := range produced {
-			if pathsOverlap(removed, target) {
+			if doPathsOverlap(removed, target) {
 				t.Errorf("removal target %q overlaps produced target %q", removed, target)
 			}
 		}
@@ -42,9 +42,9 @@ func renderedExternalTargets(text string) []string {
 	return targets
 }
 
-func managedSourceTargets(t *testing.T) []string {
+func listManagedSourceTargets(t *testing.T) []string {
 	t.Helper()
-	root := filepath.Join(repoRoot(t), "chezmoi")
+	root := filepath.Join(findRepoRoot(t), "chezmoi")
 	var targets []string
 	err := filepath.WalkDir(root, func(name string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -94,6 +94,6 @@ func translateSourceName(name string) string {
 	return strings.TrimSuffix(name, ".tmpl")
 }
 
-func pathsOverlap(first, second string) bool {
+func doPathsOverlap(first, second string) bool {
 	return first == second || strings.HasPrefix(first, second+"/") || strings.HasPrefix(second, first+"/")
 }

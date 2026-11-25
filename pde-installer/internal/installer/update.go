@@ -281,7 +281,7 @@ func loadUpdateConfig(home, flagRoot string) (config, updateSettings, error) {
 		if candidate == "" {
 			continue
 		}
-		root, ok := repository(candidate)
+		root, ok := findRepositoryRoot(candidate)
 		if !ok {
 			return config{}, updateSettings{}, fmt.Errorf(
 				"%s is not a personal-dev-env checkout",

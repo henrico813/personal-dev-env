@@ -416,12 +416,13 @@ the review tool's comment check in the repository, as
 Read it before the first run, for how to act on each finding. Fix
 each failure and run the check again until none is left.
 
-`verb-first` fails a new name whose first word is no English verb,
-such as `path`, and only reports a verb missing from its list of
-common verbs, such as `card`, which may be a noun in the name.
-`restated-name` is reported, never failed. Rename the function when
-its word is a noun, or when the call fails the caller test in
-"Function names". Otherwise list it in your final message.
+`verb-first` fails a new name whose first word is no verb, such as
+`path`, is mostly a noun, such as `title`, or is a past or `-ing` form
+of an uncommon verb, one not on its list of common verbs, such as
+`capped`. It only reports any other uncommon verb, such as `tool`, which
+may be a noun in the name. `restated-name` is only reported. Rename the
+function when its word is a noun, or when the call fails the caller test
+in "Function names". Otherwise list it in your final message.
 
 If `glimmer` is not on `PATH`, say in your final message
 that the comment check did not run, and check these rules yourself.

@@ -33,15 +33,15 @@ func NewCommand() *cobra.Command {
 	}
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.PersistentFlags().StringVar(&repoRoot, "repo-root", "", "personal-dev-env checkout")
-	root.AddCommand(mutatingCommand("install [terminal|client|full|i3|sway]", "Install pinned PDE components", &repoRoot, reconcile))
-	root.AddCommand(readCommand("doctor", "Check host prerequisites and managed paths", &repoRoot, doctor))
+	root.AddCommand(newMutatingCommand("install [terminal|client|full|i3|sway]", "Install pinned PDE components", &repoRoot, reconcile))
+	root.AddCommand(readCommand("doctor", "Check host prerequisites and managed paths", &repoRoot, runDoctor))
 	root.AddCommand(readCommand("list", "List ownership and installed state", &repoRoot, list))
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newUpdateCommand(&repoRoot))
 	return root
 }
 
-func mutatingCommand(use, description string, repoRoot *string, action func(config, run.Runner) error) *cobra.Command {
+func newMutatingCommand(use, description string, repoRoot *string, action func(config, run.Runner) error) *cobra.Command {
 	var dryRun bool
 	var requestedColorProfile string
 	command := &cobra.Command{
@@ -134,7 +134,7 @@ func findInstalledRoot(flagRoot string) string {
 	if err != nil {
 		return ""
 	}
-	if root, ok := repository(settings.InstallPath); ok {
+	if root, ok := findRepositoryRoot(settings.InstallPath); ok {
 		return root
 	}
 	return ""
@@ -192,7 +192,7 @@ func reconcile(config config, runner run.Runner) error {
 	if err := ubuntu.New(config.Profile, config.Desktop, runner).Reconcile(); err != nil {
 		return fmt.Errorf("Ubuntu packages: %w", err)
 	}
-	if err := hostPreflight(config, runner, preflightQuiet); err != nil {
+	if err := runHostPreflight(config, runner, preflightQuiet); err != nil {
 		return err
 	}
 	// Keep successful stages reversible until every stage succeeds.
@@ -200,7 +200,7 @@ func reconcile(config config, runner run.Runner) error {
 	fail := func(stage string, err error) error {
 		failures := []error{err}
 		for i := len(journals) - 1; i >= 0; i-- {
-			if rollbackErr := journals[i].Rollback(); rollbackErr != nil {
+			if rollbackErr := journals[i].RollBack(); rollbackErr != nil {
 				failures = append(failures, fmt.Errorf("rollback: %w", rollbackErr))
 			}
 		}

@@ -181,7 +181,7 @@ func (m Manager) Probe() (string, string, error) {
 		}
 		return "", "broken", err
 	}
-	output, err := m.Runner.Query("read tmux version", run.Command{Name: binary, Args: []string{"-V"}, Env: m.environment()})
+	output, err := m.Runner.Query("read tmux version", run.Command{Name: binary, Args: []string{"-V"}, Env: m.buildEnvironment()})
 	if err != nil {
 		return "", "broken", err
 	}
@@ -192,7 +192,7 @@ func (m Manager) Probe() (string, string, error) {
 	return strings.TrimPrefix(installed, "tmux "), "outdated", nil
 }
 
-func (m Manager) environment() []string {
+func (m Manager) buildEnvironment() []string {
 	path := filepath.Join(m.Home, ".local", "bin") + string(os.PathListSeparator) + os.Getenv("PATH")
 	return []string{"PATH=" + path}
 }

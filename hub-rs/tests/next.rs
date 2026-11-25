@@ -109,7 +109,7 @@ fn add_due_review(test_tools: &mut TestTools) -> PathBuf {
     let run_path = test_tools.run_path();
     fs::write(
         run_path.join("rules.md"),
-        "- start hubs with `--model 'claude-code/claude-opus-5-5[1m]#medium'`.\n",
+        "- start hubs with `--model 'claude-code/claude-opus-5-5#medium'`.\n",
     )
     .unwrap();
     let review = test_tools
@@ -209,6 +209,24 @@ fn run_next_tells_hub_hand_off_once() {
 
     assert_eq!(first, "hand off now: hub at 150k");
     assert_eq!(second, "timeout (hub 150k)");
+}
+
+/// Herdr can drop the hub pane's name after the hub's OpenCode
+/// restarts. The hub must still be told to hand off, and told how to
+/// name its pane again, or it runs out of context with no warning.
+#[test]
+fn run_next_hands_off_unnamed_hub_pane() {
+    let mut test_tools = TestTools::new();
+    set_hub_context(&mut test_tools, 150_000);
+    test_tools.herdr.agents[0].name = String::new();
+
+    let line = check_once(&test_tools);
+
+    assert_eq!(
+        line,
+        "hand off now: hub at 150k\n\
+         hub pane has no name -> herdr agent rename w1:kanban-hub NAME"
+    );
 }
 
 /// A crash can cut the log's last line short, and a newer hub can
@@ -508,7 +526,7 @@ fn run_next_starts_review_once_old_closes() {
     assert_eq!(created_tabs[0].1.label, "review-kanban-hub-1");
     assert_eq!(
         test_tools.herdr.started.borrow()[0].args,
-        ["--model", "claude-code/claude-opus-5-5[1m]#high", "--auto"]
+        ["--model", "claude-code/claude-opus-5-5#high", "--auto"]
     );
     let prompts = test_tools.herdr.prompts.borrow();
     assert_eq!(prompts.len(), 1);

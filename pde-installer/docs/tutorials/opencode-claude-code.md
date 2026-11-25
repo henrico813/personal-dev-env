@@ -36,6 +36,6 @@ opencode models --standalone | grep '^claude-code/'
 ```
 
 The installer sets OpenCode's default model to
-`claude-code/claude-opus-5-5[1m]` only when
+`claude-code/claude-opus-5-5` only when
 `~/.config/opencode/opencode.json` has no `model`. To use another default
 on one machine, set `model` in that file; later installs keep it.

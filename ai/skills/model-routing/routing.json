@@ -3,7 +3,7 @@
     "effort": "high",
     "skills": ["review-plan"],
     "opencode": [
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["opus"]
   },
@@ -12,7 +12,7 @@
     "skills": ["review-plan"],
     "opencode": [
       ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
   },
@@ -20,7 +20,7 @@
     "effort": "high",
     "skills": ["behavior-focused-testing", "review-plan"],
     "opencode": [
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["opus"]
   },
@@ -29,7 +29,7 @@
     "skills": ["behavior-focused-testing"],
     "opencode": [
       ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
   },
@@ -38,7 +38,7 @@
     "skills": [],
     "opencode": [
       ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
   },
@@ -47,7 +47,7 @@
     "skills": [],
     "opencode": [
       ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
   },
@@ -56,7 +56,7 @@
     "skills": [],
     "opencode": [
       ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
   },
@@ -65,7 +65,7 @@
     "skills": [],
     "opencode": [
       ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
   },
@@ -74,7 +74,7 @@
     "skills": [],
     "opencode": [
       ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
   },
@@ -83,7 +83,7 @@
     "skills": [],
     "opencode": [
       ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
   },
@@ -92,7 +92,7 @@
     "skills": [],
     "opencode": [
       ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
   },
@@ -100,7 +100,7 @@
     "effort": "high",
     "skills": [],
     "opencode": [
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["opus"]
   },
@@ -110,7 +110,7 @@
     "opencode": [
       ["openai/gpt-6-luna", "opencode-go/gpt-6-luna", "claude-code/claude-haiku-4-5-20251001"],
       ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["haiku", "sonnet", "opus"]
   },
@@ -120,7 +120,7 @@
     "opencode": [
       ["openai/gpt-6-luna", "opencode-go/gpt-6-luna", "claude-code/claude-haiku-4-5-20251001"],
       ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["haiku", "sonnet", "opus"]
   },
@@ -129,14 +129,14 @@
     "skills": [],
     "opencode": [
       ["goog/qwen3.8-flash", "goog/qwen3.8"],
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ]
   },
   "step-fix": {
     "effort": "high",
     "skills": [],
     "opencode": [
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["opus"]
   },
@@ -147,7 +147,7 @@
       ["goog/qwen3.8-flash", "goog/qwen3.8"],
       ["openai/gpt-6-luna", "opencode-go/gpt-6-luna", "claude-code/claude-haiku-4-5-20251001"],
       ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ]
   },
   "local-read": {
@@ -157,7 +157,7 @@
       ["goog/qwen3.8-flash", "goog/qwen3.8"],
       ["openai/gpt-6-luna", "opencode-go/gpt-6-luna", "claude-code/claude-haiku-4-5-20251001"],
       ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ]
   },
   "merge-script": {
@@ -167,7 +167,7 @@
       ["goog/qwen3.8-flash", "goog/qwen3.8"],
       ["openai/gpt-6-luna", "opencode-go/gpt-6-luna", "claude-code/claude-haiku-4-5-20251001"],
       ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ]
   },
   "merge-session": {
@@ -175,7 +175,7 @@
     "skills": [],
     "opencode": [
       ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
   },
@@ -183,7 +183,7 @@
     "effort": "low",
     "skills": [],
     "opencode": [
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["opus"]
   },
@@ -191,7 +191,7 @@
     "effort": "medium",
     "skills": [],
     "opencode": [
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["opus"]
   },
@@ -200,7 +200,7 @@
     "skills": [],
     "opencode": [
       ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
-      ["claude-code/claude-opus-5-5[1m]", "github-copilot/claude-opus-5.5"]
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
   }

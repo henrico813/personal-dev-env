@@ -309,6 +309,26 @@ fn run_status_names_hub_left_without_handoff() {
     );
 }
 
+/// After the hub's OpenCode restarts, Herdr can drop its pane's name.
+/// `run_status` must say so with the command that names it again,
+/// since the hub line alone shows only `hub -`.
+#[test]
+fn run_status_warns_hub_pane_without_name() {
+    let mut test_tools = TestTools::new();
+    test_tools.herdr.agents = vec![Agent {
+        name: String::new(),
+        ..make_agent("kanban-hub-4", AgentStatus::Working)
+    }];
+    test_tools.own_pane = Some("w1:kanban-hub-4".to_owned());
+
+    let status = read_status_json(&test_tools);
+
+    assert_eq!(
+        status["problems"],
+        json!(["hub pane has no name -> herdr agent rename w1:kanban-hub-4 NAME"])
+    );
+}
+
 /// A hub that adopts an old hub after a handoff must still close the
 /// hub it took over first. Before, only the hub of the last `handoff`
 /// event closed, so the first old hub stayed open for good. The same

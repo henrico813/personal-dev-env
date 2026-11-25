@@ -19,7 +19,7 @@ type packageSpec struct {
 	Integrity string `json:"integrity"`
 }
 
-func packages() []packageSpec {
+func listPackages() []packageSpec {
 	specs := []packageSpec{
 		{Name: "@opencode/cli", Binary: "opencode", Integrity: "sha512-d1UjPf053y2KR1sQx9+7M8tMRkYD3qjAt9VTfBjZwHLWBzbvwI1+cP8+HTSWSi4Z1WQFnS3vaktKgnDPFkj5IQ=="},
 		{Name: "@openai/codex", Binary: "codex", Integrity: "sha512-st1R2MhP3ndngOqj2SVh1qk6ED1lpgtlDxipDUyxlKfbsna0imwU2FdTnCjohFQpVh4bR5D5m1hA05AuW2v8Xg=="},
@@ -28,7 +28,7 @@ func packages() []packageSpec {
 		{
 			Name:      "@anthropic-ai/claude-code",
 			Binary:    "claude",
-			Integrity: "sha512-/8Y1pe7M15qMOU7RwUEjpFcM8XGVXNzWrWRXXp/0HlGm1k8FcOCxYMA9VR237JUUzzx5DkcQaGvELAo4si7TwA==",
+			Integrity: "sha512-E6IE7pon8YAtlzIBB0yhhQgopGvsYuSjnCaoP9ATw64T/f3I4ZfwVcj5jWV9yD7XkrSQZCwO7PgS+qMcP817gA==",
 		},
 	}
 	for index := range specs {
@@ -83,7 +83,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		}
 		return &fsutil.Journal{}, nil
 	}
-	if m.current(m.Root()) {
+	if m.isCurrent(m.Root()) {
 		return &fsutil.Journal{}, nil
 	}
 	if info, err := os.Stat(npmBinary); err != nil || info.Mode()&0o111 == 0 {
@@ -116,7 +116,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		}
 	}
 	cache := filepath.Join(workspace, "cache")
-	environment := m.environment(cache)
+	environment := m.buildEnvironment(cache)
 	if err := m.Runner.Retry("npm ci", 3, func() error {
 		if err := fsutil.GuardHome(m.Home, workspace, stage); err != nil {
 			return err
@@ -148,7 +148,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		return nil, journal.Revert(err)
 	}
 	tracked = true
-	for _, pkg := range packages() {
+	for _, pkg := range listPackages() {
 		destination := filepath.Join(m.Home, ".local", "bin", pkg.Binary)
 		if err := fsutil.GuardHome(m.Home, filepath.Dir(destination)); err != nil {
 			return nil, journal.Revert(err)
@@ -198,8 +198,8 @@ func (m Manager) ValidateLock() error {
 		return fmt.Errorf("decode npm package manifest: %w", err)
 	}
 	rootEntry := lock.Packages[""]
-	if len(manifest.Dependencies) != len(packages()) || len(rootEntry.Dependencies) != len(packages()) {
-		return fmt.Errorf("npm manifest and lock must contain exactly %d top-level packages", len(packages()))
+	if len(manifest.Dependencies) != len(listPackages()) || len(rootEntry.Dependencies) != len(listPackages()) {
+		return fmt.Errorf("npm manifest and lock must contain exactly %d top-level packages", len(listPackages()))
 	}
 	for path, entry := range lock.Packages {
 		if path == "" || entry.Link {
@@ -209,7 +209,7 @@ func (m Manager) ValidateLock() error {
 			return fmt.Errorf("incomplete npm lock entry %s", path)
 		}
 	}
-	for _, pkg := range packages() {
+	for _, pkg := range listPackages() {
 		entry, ok := lock.Packages["node_modules/"+pkg.Name]
 		if !ok || manifest.Dependencies[pkg.Name] != pkg.Version || rootEntry.Dependencies[pkg.Name] != pkg.Version || entry.Version != pkg.Version || entry.Integrity != pkg.Integrity || !strings.HasPrefix(entry.Integrity, "sha512-") {
 			return fmt.Errorf("npm lock mismatch for %s", pkg.Name)
@@ -218,24 +218,24 @@ func (m Manager) ValidateLock() error {
 	return nil
 }
 
-// Version returns an installed package's declared version.
-func (m Manager) Version(name string) (string, error) { return packageVersion(m.Root(), name) }
+// Returns an installed package's declared version.
+func (m Manager) ReadVersion(name string) (string, error) { return readPackageVersion(m.Root(), name) }
 
-func (m Manager) current(root string) bool {
+func (m Manager) isCurrent(root string) bool {
 	if m.verify(root) != nil || m.verifyLaunchers() != nil {
 		return false
 	}
-	wanted, err := fsutil.FileSHA256(filepath.Join(m.RepoRoot, "pde-installer", "package-lock.json"))
+	wanted, err := fsutil.HashFileSHA256(filepath.Join(m.RepoRoot, "pde-installer", "package-lock.json"))
 	if err != nil {
 		return false
 	}
-	installed, err := fsutil.FileSHA256(filepath.Join(root, "package-lock.json"))
+	installed, err := fsutil.HashFileSHA256(filepath.Join(root, "package-lock.json"))
 	return err == nil && installed == wanted
 }
 
 func (m Manager) verify(root string) error {
-	for _, pkg := range packages() {
-		version, err := packageVersion(root, pkg.Name)
+	for _, pkg := range listPackages() {
+		version, err := readPackageVersion(root, pkg.Name)
 		if err != nil || version != pkg.Version {
 			return fmt.Errorf("%s version is %q, want %s", pkg.Name, version, pkg.Version)
 		}
@@ -250,7 +250,7 @@ func (m Manager) verify(root string) error {
 		if info.Mode()&0o111 == 0 {
 			return fmt.Errorf("npm executable missing: %s", binary)
 		}
-		output, err := m.Runner.Query("verify "+pkg.Binary, run.Command{Name: binary, Args: []string{"--version"}, Env: m.environment()})
+		output, err := m.Runner.Query("verify "+pkg.Binary, run.Command{Name: binary, Args: []string{"--version"}, Env: m.buildEnvironment()})
 		if err != nil {
 			return fmt.Errorf("%s executable version check failed: %w", pkg.Binary, err)
 		}
@@ -262,7 +262,7 @@ func (m Manager) verify(root string) error {
 }
 
 func (m Manager) verifyLaunchers() error {
-	for _, pkg := range packages() {
+	for _, pkg := range listPackages() {
 		binary := filepath.Join(m.Home, ".local", "bin", pkg.Binary)
 		info, err := os.Stat(binary)
 		if err != nil {
@@ -274,7 +274,7 @@ func (m Manager) verifyLaunchers() error {
 		if info.Mode()&0o111 == 0 {
 			return fmt.Errorf("npm launcher missing: %s", binary)
 		}
-		output, err := m.Runner.Query("verify "+pkg.Binary+" launcher", run.Command{Name: binary, Args: []string{"--version"}, Env: m.environment()})
+		output, err := m.Runner.Query("verify "+pkg.Binary+" launcher", run.Command{Name: binary, Args: []string{"--version"}, Env: m.buildEnvironment()})
 		if err != nil {
 			return fmt.Errorf("%s launcher version check failed: %w", pkg.Binary, err)
 		}
@@ -285,7 +285,7 @@ func (m Manager) verifyLaunchers() error {
 	return nil
 }
 
-func packageVersion(root, name string) (string, error) {
+func readPackageVersion(root, name string) (string, error) {
 	parts := strings.Split(name, "/")
 	pathParts := append([]string{root, "node_modules"}, parts...)
 	pathParts = append(pathParts, "package.json")
@@ -302,7 +302,7 @@ func packageVersion(root, name string) (string, error) {
 	return metadata.Version, nil
 }
 
-func (m Manager) environment(cache ...string) []string {
+func (m Manager) buildEnvironment(cache ...string) []string {
 	path := filepath.Join(m.Home, ".local", "bin") + string(os.PathListSeparator) + os.Getenv("PATH")
 	environment := []string{"PATH=" + path}
 	if len(cache) > 0 {

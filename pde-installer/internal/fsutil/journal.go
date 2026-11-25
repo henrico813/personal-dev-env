@@ -70,7 +70,7 @@ type Journal struct {
 
 // NewJournal creates a journal that persists when its first change is added.
 func NewJournal(config JournalConfig) (*Journal, error) {
-	directory, err := journalDirectory(config)
+	directory, err := resolveJournalDirectory(config)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func NewJournal(config JournalConfig) (*Journal, error) {
 
 // HasPendingJournals reports whether recovery would inspect durable journals.
 func HasPendingJournals(config JournalConfig) (bool, error) {
-	directory, err := journalDirectory(config)
+	directory, err := resolveJournalDirectory(config)
 	if err != nil {
 		return false, err
 	}
@@ -100,7 +100,7 @@ func HasPendingJournals(config JournalConfig) (bool, error) {
 
 // RecoverJournals rolls back unfinished journals and finishes committed cleanup.
 func RecoverJournals(config JournalConfig) error {
-	directory, err := journalDirectory(config)
+	directory, err := resolveJournalDirectory(config)
 	if err != nil {
 		return err
 	}
@@ -175,14 +175,14 @@ func (j *Journal) Activate(stage, destination string) error {
 		return err
 	}
 	if err := syncDirectory(filepath.Dir(destination)); err != nil {
-		return errors.Join(err, Rollback(destination, backup))
+		return errors.Join(err, RestoreBackup(destination, backup))
 	}
 	index := len(j.state.Changes) - 1
 	j.state.Changes[index].Backup = backup
 	j.state.Changes[index].Complete = true
 	j.Changes = append(j.Changes, j.state.Changes[index].Change)
 	if err := j.persist(); err != nil {
-		return errors.Join(err, Rollback(destination, backup))
+		return errors.Join(err, RestoreBackup(destination, backup))
 	}
 	return nil
 }
@@ -211,14 +211,14 @@ func (j *Journal) AddCleanup(path string) error {
 	return j.persist()
 }
 
-// Rollback restores all recorded destinations in reverse order.
-func (j *Journal) Rollback() error {
+// Restores all recorded destinations in reverse order.
+func (j *Journal) RollBack() error {
 	return j.rollback()
 }
 
 // Revert joins a primary failure with any rollback failure.
 func (j *Journal) Revert(cause error) error {
-	if err := j.Rollback(); err != nil {
+	if err := j.RollBack(); err != nil {
 		return errors.Join(cause, fmt.Errorf("rollback: %w", err))
 	}
 	return cause
@@ -226,7 +226,7 @@ func (j *Journal) Revert(cause error) error {
 
 // CommitJournals durably commits every journal before cleaning any backup.
 func CommitJournals(journals ...*Journal) error {
-	active, err := activeJournals(journals)
+	active, err := listActiveJournals(journals)
 	if err != nil {
 		return err
 	}
@@ -279,7 +279,7 @@ func (j *Journal) ready() error {
 	if j.Home == "" || j.path != "" {
 		return nil
 	}
-	directory, err := journalDirectory(JournalConfig{Home: j.Home, Directory: j.directory})
+	directory, err := resolveJournalDirectory(JournalConfig{Home: j.Home, Directory: j.directory})
 	if err != nil {
 		return err
 	}
@@ -314,7 +314,7 @@ func (j *Journal) rollback() error {
 		}
 	}
 	for i := len(j.state.Changes) - 1; i >= 0; i-- {
-		if err := j.rollbackChange(j.state.Changes[i]); err != nil {
+		if err := j.rollBackChange(j.state.Changes[i]); err != nil {
 			return err
 		}
 		j.state.Changes = j.state.Changes[:i]
@@ -329,14 +329,14 @@ func (j *Journal) rollback() error {
 	return j.removeJournal()
 }
 
-func (j *Journal) rollbackChange(change journalChange) error {
+func (j *Journal) rollBackChange(change journalChange) error {
 	if j.Home != "" {
 		if err := GuardHomeAllowLeafSymlink(j.Home, change.Destination, change.Backup, change.Stage); err != nil {
 			return err
 		}
 	}
 	if change.Stage != "" {
-		if err := rollbackActivation(change); err != nil {
+		if err := rollBackActivation(change); err != nil {
 			return err
 		}
 		return syncDirectory(filepath.Dir(change.Destination))
@@ -351,7 +351,7 @@ func (j *Journal) rollbackChange(change journalChange) error {
 		return nil
 	}
 	if change.BackupID == (pathIdentity{}) {
-		return Rollback(change.Destination, change.Backup)
+		return RestoreBackup(change.Destination, change.Backup)
 	}
 	destinationID, destinationErr := identifyPath(change.Destination)
 	if destinationErr == nil && destinationID == change.BackupID {
@@ -359,7 +359,7 @@ func (j *Journal) rollbackChange(change journalChange) error {
 	}
 	backupID, backupErr := identifyPath(change.Backup)
 	if backupErr == nil && backupID == change.BackupID {
-		return Rollback(change.Destination, change.Backup)
+		return RestoreBackup(change.Destination, change.Backup)
 	}
 	if destinationErr == nil && os.IsNotExist(backupErr) {
 		return fmt.Errorf("mutation backup disappeared: %s", change.Backup)
@@ -367,7 +367,7 @@ func (j *Journal) rollbackChange(change journalChange) error {
 	return fmt.Errorf("mutation paths changed unexpectedly: %s", change.Destination)
 }
 
-func rollbackActivation(change journalChange) error {
+func rollBackActivation(change journalChange) error {
 	destinationID, destinationErr := identifyPath(change.Destination)
 	stageID, stageErr := identifyPath(change.Stage)
 	if change.Existed {
@@ -378,7 +378,7 @@ func rollbackActivation(change journalChange) error {
 			return ignoreNotExist(stageErr)
 		}
 		if destinationErr == nil && destinationID == change.StageID && stageErr == nil && stageID == change.OriginalID {
-			return Rollback(change.Destination, change.Stage)
+			return RestoreBackup(change.Destination, change.Stage)
 		}
 		return fmt.Errorf("activation paths changed unexpectedly: %s", change.Destination)
 	}
@@ -470,7 +470,7 @@ func (j *Journal) removeJournal() error {
 	return err
 }
 
-func journalDirectory(config JournalConfig) (string, error) {
+func resolveJournalDirectory(config JournalConfig) (string, error) {
 	if config.Home == "" {
 		return "", fmt.Errorf("journal HOME is required")
 	}
@@ -484,7 +484,7 @@ func journalDirectory(config JournalConfig) (string, error) {
 	return directory, nil
 }
 
-func activeJournals(journals []*Journal) ([]*Journal, error) {
+func listActiveJournals(journals []*Journal) ([]*Journal, error) {
 	active := make([]*Journal, 0, len(journals))
 	var home, directory string
 	for _, journal := range journals {

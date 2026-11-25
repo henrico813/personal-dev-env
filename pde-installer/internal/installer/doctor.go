@@ -17,8 +17,8 @@ import (
 	"pde-installer/internal/ubuntu"
 )
 
-func doctor(config config, runner run.Runner) error {
-	return hostPreflight(config, runner, preflightReport)
+func runDoctor(config config, runner run.Runner) error {
+	return runHostPreflight(config, runner, preflightReport)
 }
 
 type preflightMode uint8
@@ -28,7 +28,7 @@ const (
 	preflightReport
 )
 
-func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
+func runHostPreflight(config config, runner run.Runner, mode preflightMode) error {
 	if err := config.validate(); err != nil {
 		return err
 	}
@@ -48,13 +48,13 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 	}
 	if !runner.DryRun || mode == preflightReport {
 		if config.Profile.Has(profile.Development) {
-			cc := firstExecutable("cc", "gcc", "clang")
+			cc := findFirstExecutable("cc", "gcc", "clang")
 			if cc == "" {
 				failures = append(failures, "C compiler: install a host C compiler and libc development headers")
 			} else if err := check("C compile/link probe", run.Command{Name: cc, Args: []string{"-x", "c", "-", "-o", "/dev/null"}, Stdin: "#include <stdio.h>\n#include <stdlib.h>\n#include <sys/types.h>\nint main(void){puts(\"ok\");return 0;}\n"}, "install working C compiler and libc development headers"); err != nil {
 				return err
 			}
-			cxx := firstExecutable("c++", "g++", "clang++")
+			cxx := findFirstExecutable("c++", "g++", "clang++")
 			if cxx == "" {
 				failures = append(failures, "C++ compiler: install a host C++ compiler and standard library headers")
 			} else if err := check("C++ compile/link probe", run.Command{Name: cxx, Args: []string{"-x", "c++", "-", "-o", "/dev/null"}, Stdin: "#include <iostream>\nint main(){std::cout << \"ok\";}\n"}, "install working C++ compiler and standard library headers"); err != nil {
@@ -64,13 +64,13 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 				return err
 			}
 			for _, tool := range []string{"bzip2", "patch"} {
-				if err := check(tool, run.Command{Name: tool, Args: probeArgs(tool)}, "install host "+tool); err != nil {
+				if err := check(tool, run.Command{Name: tool, Args: chooseProbeArgs(tool)}, "install host "+tool); err != nil {
 					return err
 				}
 			}
 		}
 		for _, tool := range []string{"sh", "tar", "gzip", "xz", "unzip", "sed", "awk", "grep", "file"} {
-			command := run.Command{Name: tool, Args: probeArgs(tool)}
+			command := run.Command{Name: tool, Args: chooseProbeArgs(tool)}
 			if tool == "grep" {
 				command.Stdin = "pde\n"
 			}
@@ -78,7 +78,7 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 				return err
 			}
 		}
-		if firstExecutable("curl", "fetch") == "" {
+		if findFirstExecutable("curl", "fetch") == "" {
 			failures = append(failures, "fetcher: install curl or fetch")
 		} else if mode == preflightReport {
 			if _, err := fmt.Fprintln(runner.Out(), "ok      curl or fetch"); err != nil {
@@ -108,7 +108,7 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 		if err := npm.New(config.Home, config.RepoRoot, runner).ValidateLock(); err != nil {
 			failures = append(failures, "npm lock: "+err.Error())
 		}
-		if _, err := direct.Tools(); err != nil {
+		if _, err := direct.ListTools(); err != nil {
 			failures = append(failures, "direct tools: "+err.Error())
 		}
 	}
@@ -117,10 +117,10 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 		paths = append(paths, direct.New(config.Home, runner).ToolsRoot())
 	}
 	for _, path := range paths {
-		if !within(config.Home, path) {
+		if !isWithin(config.Home, path) {
 			failures = append(failures, "destination outside HOME: "+path)
 		}
-		if ancestor, ok := writableAncestor(path); !ok {
+		if ancestor, ok := checkAncestorWritable(path); !ok {
 			failures = append(failures, "unwritable destination: "+path+" (fix ownership or permissions on "+ancestor+")")
 		}
 	}
@@ -151,7 +151,7 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 
 func reportCopilotStatus(home string, out io.Writer) error {
 	plugin := filepath.Join(home, ".config", "nvim", "pack", "plugins", "start", "copilot.lua", "lua", "copilot", "init.lua")
-	if regularFile(plugin) {
+	if isRegularFile(plugin) {
 		if _, err := fmt.Fprintln(out, "status  GitHub Copilot plugin: installed"); err != nil {
 			return err
 		}
@@ -159,8 +159,8 @@ func reportCopilotStatus(home string, out io.Writer) error {
 		return err
 	}
 
-	credentials := filepath.Join(xdgConfigHome(home), "github-copilot", "auth.db")
-	if regularFile(credentials) {
+	credentials := filepath.Join(resolveXDGConfigHome(home), "github-copilot", "auth.db")
+	if isRegularFile(credentials) {
 		if _, err := fmt.Fprintln(out, "status  GitHub Copilot credentials: present"); err != nil {
 			return err
 		}
@@ -192,19 +192,19 @@ func reportUpdateState(home, root string, runner run.Runner) error {
 	return nil
 }
 
-func xdgConfigHome(home string) string {
+func resolveXDGConfigHome(home string) string {
 	if configured := os.Getenv("XDG_CONFIG_HOME"); filepath.IsAbs(configured) {
 		return configured
 	}
 	return filepath.Join(home, ".config")
 }
 
-func regularFile(path string) bool {
+func isRegularFile(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.Mode().IsRegular()
 }
 
-func probeArgs(tool string) []string {
+func chooseProbeArgs(tool string) []string {
 	switch tool {
 	case "sh":
 		return []string{"-c", ":"}
@@ -221,7 +221,7 @@ func probeArgs(tool string) []string {
 	}
 }
 
-func writableAncestor(path string) (string, bool) {
+func checkAncestorWritable(path string) (string, bool) {
 	ancestor := path
 	for {
 		info, err := os.Stat(ancestor)
@@ -234,7 +234,7 @@ func writableAncestor(path string) (string, bool) {
 			if int(stat.Uid) == os.Geteuid() {
 				return ancestor, mode&0o300 == 0o300
 			}
-			for _, group := range currentGroups() {
+			for _, group := range listCurrentGroups() {
 				if int(stat.Gid) == group {
 					return ancestor, mode&0o030 == 0o030
 				}
@@ -252,7 +252,7 @@ func writableAncestor(path string) (string, bool) {
 	}
 }
 
-func currentGroups() []int {
+func listCurrentGroups() []int {
 	groups, err := os.Getgroups()
 	if err != nil {
 		return []int{os.Getegid()}
@@ -260,7 +260,7 @@ func currentGroups() []int {
 	return append(groups, os.Getegid())
 }
 
-func firstExecutable(names ...string) string {
+func findFirstExecutable(names ...string) string {
 	path := os.Getenv("PATH")
 	for _, name := range names {
 		if executable, err := run.LookPath(name, path); err == nil {

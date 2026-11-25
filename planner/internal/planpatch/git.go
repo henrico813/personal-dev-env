@@ -58,9 +58,9 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-// gitEnv prevents ambient Git variables and user-wide configuration from
+// Prevents ambient Git variables and user-wide configuration from
 // redirecting our index, enabling external helpers, or fetching missing objects.
-func gitEnv() []string {
+func buildGitEnv() []string {
 	env := make([]string, 0, len(os.Environ())+6)
 	for _, item := range os.Environ() {
 		key, _, _ := strings.Cut(item, "=")
@@ -77,7 +77,7 @@ func runGit(dir string, input []byte, args ...string) ([]byte, error) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git",
 		append([]string{"--literal-pathspecs", "-C", dir}, args...)...)
-	cmd.Env = gitEnv()
+	cmd.Env = buildGitEnv()
 	cmd.Stdin = bytes.NewReader(input)
 	var out, diagnostic limitedBuffer
 	cmd.Stdout, cmd.Stderr = &out, &diagnostic
@@ -94,7 +94,7 @@ func runGit(dir string, input []byte, args ...string) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-func emptySession(format string) (*Session, error) {
+func newEmptySession(format string) (*Session, error) {
 	dir, err := os.MkdirTemp("", "planner-git-*")
 	if err != nil {
 		return nil, err
@@ -106,7 +106,7 @@ func emptySession(format string) (*Session, error) {
 		s.Close()
 		return nil, err
 	}
-	if _, err = s.git(nil, "read-tree", "--empty"); err != nil {
+	if _, err = s.runGit(nil, "read-tree", "--empty"); err != nil {
 		s.Close()
 		return nil, err
 	}
@@ -118,7 +118,7 @@ func emptySession(format string) (*Session, error) {
 // them.
 func Open(repo, baseCommit string) (*Session, error) {
 	if !objectID.MatchString(baseCommit) {
-		return nil, failure(CodeBaseCommitInvalid, "use a full commit ID, not HEAD or a branch name")
+		return nil, newFailure(CodeBaseCommitInvalid, "use a full commit ID, not HEAD or a branch name")
 	}
 	root, err := filepath.Abs(repo)
 	if err != nil {
@@ -126,10 +126,10 @@ func Open(repo, baseCommit string) (*Session, error) {
 	}
 	resolved, err := runGit(root, nil, "rev-parse", "--verify", "--end-of-options", baseCommit+"^{commit}")
 	if err != nil {
-		return nil, failure(CodeBaseUnavailable, "%w", err)
+		return nil, newFailure(CodeBaseUnavailable, "%w", err)
 	}
 	if strings.TrimSpace(string(resolved)) != baseCommit {
-		return nil, failure(CodeBaseCommitInvalid, "expected a commit, not a tag object")
+		return nil, newFailure(CodeBaseCommitInvalid, "expected a commit, not a tag object")
 	}
 	format := "sha1"
 	if len(baseCommit) == 64 {
@@ -143,7 +143,7 @@ func Open(repo, baseCommit string) (*Session, error) {
 	if !filepath.IsAbs(objectDir) || strings.ContainsAny(objectDir, "\r\n\x00") {
 		return nil, fmt.Errorf("unsupported source object directory")
 	}
-	s, err := emptySession(format)
+	s, err := newEmptySession(format)
 	if err != nil {
 		return nil, err
 	}
@@ -152,16 +152,16 @@ func Open(repo, baseCommit string) (*Session, error) {
 	err = os.WriteFile(filepath.Join(s.dir, "objects", "info", "alternates"),
 		[]byte(objectDir+"\n"), 0600)
 	if err == nil {
-		_, err = s.git(nil, "read-tree", baseCommit)
+		_, err = s.runGit(nil, "read-tree", baseCommit)
 	}
 	if err != nil {
 		s.Close()
-		return nil, failure(CodeBaseUnavailable, "%w", err)
+		return nil, newFailure(CodeBaseUnavailable, "%w", err)
 	}
 	return s, nil
 }
 
-func (s *Session) git(input []byte, args ...string) ([]byte, error) {
+func (s *Session) runGit(input []byte, args ...string) ([]byte, error) {
 	return runGit(s.dir, input, args...)
 }
 
@@ -173,53 +173,53 @@ func (s *Session) Close() { _ = os.RemoveAll(s.dir) }
 func ValidatePath(name string) error {
 	if name == "" || path.IsAbs(name) || path.Clean(name) != name ||
 		strings.ContainsAny(name, "\\\x00\r\n\t:") {
-		return failure(CodeUnsupportedPath, "%q", name)
+		return newFailure(CodeUnsupportedPath, "%q", name)
 	}
 	for _, part := range strings.Split(name, "/") {
 		if part == ".." || part == "." || strings.EqualFold(part, ".git") {
-			return failure(CodeUnsupportedPath, "%q", name)
+			return newFailure(CodeUnsupportedPath, "%q", name)
 		}
 	}
 	return nil
 }
 
-// Syntax asks Git to parse a single-file text patch. It does not prove that the
+// Asks Git to parse a single-file text patch. It does not prove that the
 // patch applies; Apply checks that against the current disposable index.
-func (s *Session) Syntax(change Change) error {
+func (s *Session) CheckSyntax(change Change) error {
 	if err := ValidatePath(change.Filename); err != nil {
 		return err
 	}
 	if len(change.Diff) == 0 || len(change.Diff) > MaxPayload {
-		return failure(CodePatchInvalid, "empty or oversized diff")
+		return newFailure(CodePatchInvalid, "empty or oversized diff")
 	}
 	for _, line := range bytes.Split(change.Diff, []byte("\n")) {
 		// These are transport delimiters, not legal unprefixed unified-diff
 		// body lines. Do not silently remove them or alter quoted code lines.
 		if bytes.HasPrefix(line, []byte("*** ")) {
-			return failure(CodePatchEnvelope, "pass raw unified diff, without *** delimiters")
+			return newFailure(CodePatchEnvelope, "pass raw unified diff, without *** delimiters")
 		}
 	}
-	stat, err := s.git(withFinalNewline(change.Diff), "apply", "--numstat", "-z", "-")
+	stat, err := s.runGit(ensureFinalNewline(change.Diff), "apply", "--numstat", "-z", "-")
 	if err != nil {
-		return failure(CodePatchInvalid, "%w", err)
+		return newFailure(CodePatchInvalid, "%w", err)
 	}
 	records := bytes.Split(stat, []byte{0})
 	if len(records) != 2 || len(records[1]) != 0 {
-		return failure(CodePatchPathMismatch, "expected exactly one file patch")
+		return newFailure(CodePatchPathMismatch, "expected exactly one file patch")
 	}
 	fields := bytes.SplitN(records[0], []byte("\t"), 3)
 	if len(fields) != 3 || string(fields[2]) != change.Filename {
-		return failure(CodePatchPathMismatch, "expected %q", change.Filename)
+		return newFailure(CodePatchPathMismatch, "expected %q", change.Filename)
 	}
 	for _, count := range fields[:2] {
 		if _, err := strconv.ParseUint(string(count), 10, 64); err != nil {
-			return failure(CodePatchUnsupported, "binary or malformed patch")
+			return newFailure(CodePatchUnsupported, "binary or malformed patch")
 		}
 	}
 	return nil
 }
 
-func withFinalNewline(raw []byte) []byte {
+func ensureFinalNewline(raw []byte) []byte {
 	if bytes.HasSuffix(raw, []byte("\n")) {
 		return raw
 	}
@@ -231,7 +231,7 @@ func (s *Session) Read(name string) (*File, error) {
 	if err := ValidatePath(name); err != nil {
 		return nil, err
 	}
-	raw, err := s.git(nil, "ls-files", "--stage", "-z", "--", name)
+	raw, err := s.runGit(nil, "ls-files", "--stage", "-z", "--", name)
 	if err != nil {
 		return nil, err
 	}
@@ -240,22 +240,22 @@ func (s *Session) Read(name string) (*File, error) {
 	}
 	records := bytes.Split(raw, []byte{0})
 	if len(records) != 2 {
-		return nil, failure(CodePatchUnsupported, "ambiguous index entry %q", name)
+		return nil, newFailure(CodePatchUnsupported, "ambiguous index entry %q", name)
 	}
 	meta, gotPath, ok := strings.Cut(string(records[0]), "\t")
 	fields := strings.Fields(meta)
 	if !ok || gotPath != name || len(fields) != 3 || fields[2] != "0" {
-		return nil, failure(CodePatchUnsupported, "invalid index entry")
+		return nil, newFailure(CodePatchUnsupported, "invalid index entry")
 	}
 	if fields[0] != "100644" && fields[0] != "100755" {
-		return nil, failure(CodePatchUnsupported, "symlink or submodule %q", name)
+		return nil, newFailure(CodePatchUnsupported, "symlink or submodule %q", name)
 	}
-	data, err := s.git(nil, "cat-file", "blob", fields[1])
+	data, err := s.runGit(nil, "cat-file", "blob", fields[1])
 	if err != nil {
 		return nil, err
 	}
 	if bytes.IndexByte(data, 0) >= 0 {
-		return nil, failure(CodePatchUnsupported, "binary file %q", name)
+		return nil, newFailure(CodePatchUnsupported, "binary file %q", name)
 	}
 	return &File{Data: data, Mode: fields[0]}, nil
 }
@@ -270,29 +270,29 @@ func (s *Session) Apply(change Change) error {
 	fail := func(err error) error {
 		return fmt.Errorf("%s (%s): %w", change.Target, change.Filename, err)
 	}
-	if err := s.Syntax(change); err != nil {
+	if err := s.CheckSyntax(change); err != nil {
 		return fail(err)
 	}
 	if _, err := s.Read(change.Filename); err != nil {
 		return fail(err)
 	}
-	before, err := s.git(nil, "write-tree")
+	before, err := s.runGit(nil, "write-tree")
 	if err != nil {
 		return fail(err)
 	}
 	// --cached both checks and applies against our private index. Never use
 	// --3way, --recount, --unsafe-paths, or whitespace rewriting implicitly.
-	if _, err = s.git(withFinalNewline(change.Diff), "apply", "--cached",
+	if _, err = s.runGit(ensureFinalNewline(change.Diff), "apply", "--cached",
 		"--whitespace=nowarn", "-"); err != nil {
-		return fail(failure(CodePatchNotApplicable, "%w", err))
+		return fail(newFailure(CodePatchNotApplicable, "%w", err))
 	}
-	changed, err := s.git(nil, "diff", "--cached", "--name-only", "-z",
+	changed, err := s.runGit(nil, "diff", "--cached", "--name-only", "-z",
 		"--no-renames", strings.TrimSpace(string(before)), "--")
 	if err != nil {
 		return fail(err)
 	}
 	if string(changed) != change.Filename+"\x00" {
-		return fail(failure(CodePatchPathMismatch, "rename, no-op, or undeclared file change"))
+		return fail(newFailure(CodePatchPathMismatch, "rename, no-op, or undeclared file change"))
 	}
 	if _, err = s.Read(change.Filename); err != nil {
 		return fail(err)
@@ -303,7 +303,7 @@ func (s *Session) Apply(change Change) error {
 // rejectPlaceholder names an unfinished plan change before Git parses it.
 func rejectPlaceholder(change Change) error {
 	if bytes.Equal(bytes.TrimSpace(change.Diff), []byte("PLACEHOLDER")) {
-		return failure(CodePatchInvalid,
+		return newFailure(CodePatchInvalid,
 			"%s (%s) is still PLACEHOLDER; fill it with inspect --before and patch",
 			change.Target, change.Filename)
 	}
@@ -328,7 +328,7 @@ func ApplyToBase(repo, baseCommit string, changes []Change) (*Session, error) {
 
 // Export reads files straight from Git objects, so no hooks or filters run.
 func (s *Session) Export(dir string) error {
-	entries, err := s.git(nil, "ls-files", "--stage", "-z")
+	entries, err := s.runGit(nil, "ls-files", "--stage", "-z")
 	if err != nil {
 		return err
 	}
@@ -346,7 +346,7 @@ func (s *Session) Export(dir string) error {
 		meta, name, ok := strings.Cut(string(record), "\t")
 		fields := strings.Fields(meta)
 		if !ok || len(fields) != 3 || fields[2] != "0" {
-			return failure(CodePatchUnsupported, "invalid tracked-file entry")
+			return newFailure(CodePatchUnsupported, "invalid tracked-file entry")
 		}
 		if err := ValidatePath(name); err != nil {
 			return err
@@ -359,7 +359,7 @@ func (s *Session) Export(dir string) error {
 			continue
 		}
 		if fields[0] != "100644" && fields[0] != "100755" && fields[0] != "120000" {
-			return failure(CodePatchUnsupported, "unsupported mode %q", fields[0])
+			return newFailure(CodePatchUnsupported, "unsupported mode %q", fields[0])
 		}
 		files = append(files, exportEntry{mode: fields[0], oid: fields[1], name: name})
 		input.WriteString(fields[1])
@@ -368,7 +368,7 @@ func (s *Session) Export(dir string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "--literal-pathspecs", "-C", s.dir, "cat-file", "--batch")
-	cmd.Env = gitEnv()
+	cmd.Env = buildGitEnv()
 	cmd.Stdin = strings.NewReader(input.String())
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -410,11 +410,11 @@ func exportBlob(reader *bufio.Reader, dir string, file struct {
 	}
 	fields := strings.Fields(header)
 	if len(fields) != 3 || fields[0] != file.oid || fields[1] != "blob" {
-		return failure(CodePatchUnsupported, "invalid cat-file batch header")
+		return newFailure(CodePatchUnsupported, "invalid cat-file batch header")
 	}
 	size, err := strconv.ParseInt(fields[2], 10, 64)
 	if err != nil || size < 0 {
-		return failure(CodePatchUnsupported, "invalid cat-file blob size")
+		return newFailure(CodePatchUnsupported, "invalid cat-file blob size")
 	}
 	target := filepath.Join(dir, filepath.FromSlash(file.name))
 	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
@@ -422,7 +422,7 @@ func exportBlob(reader *bufio.Reader, dir string, file struct {
 	}
 	if file.mode == "120000" {
 		if size > MaxPayload {
-			return failure(CodePatchUnsupported, "oversized symlink target")
+			return newFailure(CodePatchUnsupported, "oversized symlink target")
 		}
 		data := make([]byte, size)
 		if _, err := io.ReadFull(reader, data); err != nil {
@@ -454,7 +454,7 @@ func exportBlob(reader *bufio.Reader, dir string, file struct {
 	}
 	separator, err := reader.ReadByte()
 	if err != nil || separator != '\n' {
-		return failure(CodePatchUnsupported, "invalid cat-file blob terminator")
+		return newFailure(CodePatchUnsupported, "invalid cat-file blob terminator")
 	}
 	return nil
 }
@@ -466,51 +466,51 @@ func Generate(name string, before, after *File) ([]byte, error) {
 		return nil, err
 	}
 	if before == nil && after == nil {
-		return nil, failure(CodePatchNoChange, "both files are absent")
+		return nil, newFailure(CodePatchNoChange, "both files are absent")
 	}
-	s, err := emptySession("sha1")
+	s, err := newEmptySession("sha1")
 	if err != nil {
 		return nil, err
 	}
 	defer s.Close()
 	put := func(file *File) error {
 		if file == nil {
-			_, err := s.git([]byte("0 "+strings.Repeat("0", 40)+"\t"+name+"\x00"),
+			_, err := s.runGit([]byte("0 "+strings.Repeat("0", 40)+"\t"+name+"\x00"),
 				"update-index", "-z", "--index-info")
 			return err
 		}
 		if len(file.Data) > MaxPayload || bytes.IndexByte(file.Data, 0) >= 0 {
-			return failure(CodePatchUnsupported, "binary or oversized file")
+			return newFailure(CodePatchUnsupported, "binary or oversized file")
 		}
 		if file.Mode != "100644" && file.Mode != "100755" {
-			return failure(CodePatchUnsupported, "mode %q", file.Mode)
+			return newFailure(CodePatchUnsupported, "mode %q", file.Mode)
 		}
-		oid, err := s.git(file.Data, "hash-object", "-w", "--stdin")
+		oid, err := s.runGit(file.Data, "hash-object", "-w", "--stdin")
 		if err != nil {
 			return err
 		}
-		_, err = s.git(nil, "update-index", "--add", "--cacheinfo", file.Mode,
+		_, err = s.runGit(nil, "update-index", "--add", "--cacheinfo", file.Mode,
 			strings.TrimSpace(string(oid)), name)
 		return err
 	}
 	if err := put(before); err != nil {
 		return nil, err
 	}
-	tree, err := s.git(nil, "write-tree")
+	tree, err := s.runGit(nil, "write-tree")
 	if err != nil {
 		return nil, err
 	}
 	if err := put(after); err != nil {
 		return nil, err
 	}
-	diff, err := s.git(nil, "diff", "--cached", "--no-color", "--no-ext-diff",
+	diff, err := s.runGit(nil, "diff", "--cached", "--no-color", "--no-ext-diff",
 		"--no-textconv", "--no-renames", "--src-prefix=a/", "--dst-prefix=b/",
 		strings.TrimSpace(string(tree)), "--", name)
 	if err != nil {
 		return nil, err
 	}
 	if len(diff) == 0 {
-		return nil, failure(CodePatchNoChange,
+		return nil, newFailure(CodePatchNoChange,
 			"remove the obsolete plan change rather than storing an empty patch")
 	}
 	return diff, nil

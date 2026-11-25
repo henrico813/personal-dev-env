@@ -202,7 +202,7 @@ fn run_launch_successor_takes_over_from_caller() {
         session: "ses_007",
         kind: "assistant",
         updated_ms: 0,
-        data: json!({"model": {"providerID": "claude-code", "id": "claude-opus-5-5[1m]", "variant": "high"}}),
+        data: json!({"model": {"providerID": "claude-code", "id": "claude-opus-5-5", "variant": "high"}}),
     };
     write_opencode_db(&test_tools.build_opencode_path(), &[reply]);
     let request = LaunchRequest {
@@ -220,7 +220,7 @@ fn run_launch_successor_takes_over_from_caller() {
     assert_eq!(test_tools.herdr.created_tabs.borrow()[0].0, "w3");
     assert_eq!(
         test_tools.herdr.started.borrow()[0].args,
-        ["--model", "claude-code/claude-opus-5-5[1m]#high", "--auto"]
+        ["--model", "claude-code/claude-opus-5-5#high", "--auto"]
     );
     assert_eq!(*test_tools.herdr.cleared.borrow(), ["w3:demo-kb-007-impl"]);
     let asks = fs::read_to_string(test_tools.state_folder().join("hub/handoff-asks.json")).unwrap();

@@ -12,8 +12,11 @@ use crate::shared::run_folder::RunFolder;
 use crate::shared::tidy::{self, TAB_HOLDS_WORK, TidyAction, TidyOutcome};
 use crate::shared::{AgentName, HubError, Tools, events, facts};
 
-/// Runs the tidy pass now and prints one line per close, park, forget
-/// or keep, then `nothing to close` when nothing changed. With
+/// Runs the tidy pass now on the sessions this run knows, as
+/// `tidy::list_run_session_names` finds them, so a tab with none of
+/// them stays open. A finished `to-close` agent of another run closes
+/// with a tab it shares with them. Prints one line per close, park,
+/// forget or keep, then `nothing to close` when nothing changed. With
 /// `dry_run`, it prints what it would do and changes nothing.
 ///
 /// # Errors
@@ -28,9 +31,11 @@ pub fn run_clean(
     clean_sessions(tools, run, None, dry_run, now)
 }
 
-/// Runs the tidy pass as `run_clean` does, but only on the sessions in
-/// `names`, such as the ones the board's clean dialog listed. A listed
-/// session the pass now keeps stays open, with a `kept` line.
+/// Runs the tidy pass as `run_clean` does, but on the sessions in
+/// `names` instead of this run's, such as the ones the board's clean
+/// dialog listed from every hub. A listed session the pass now keeps
+/// stays open, with a `kept` line. An unlisted agent keeps its tab, so
+/// the dialog's y key closes no session it did not name.
 ///
 /// # Errors
 ///
@@ -44,7 +49,9 @@ pub fn run_clean_listed(
     clean_sessions(tools, run, Some(names), false, now)
 }
 
-/// Runs the tidy pass on every session, or on `only` when given.
+/// Runs the tidy pass with this run's sessions as the scope, or with
+/// `only` as the scope. With `only`, every other session is dropped
+/// first, so its agent keeps its tab.
 fn clean_sessions(
     tools: &Tools<'_>,
     run: &RunFolder,
@@ -55,12 +62,18 @@ fn clean_sessions(
     let lock = tools.parked.take_tidy_lock()?;
     let memory = events::load_memory(run)?;
     let mut collected = facts::collect_session_facts(tools, run, &memory)?;
-    if let Some(names) = only {
+    let scope: BTreeSet<String> = match only {
+        Some(names) => names.iter().cloned().collect(),
+        None => tidy::list_run_session_names(run, &memory)?,
+    };
+    // An agent with no facts keeps its tab. Plain clean keeps every
+    // session, so another run's finished agent can close with a shared tab.
+    if only.is_some() {
         collected
             .sessions
-            .retain(|facts| names.contains(&facts.name));
+            .retain(|facts| scope.contains(&facts.name));
     }
-    let outcomes = tidy::run_tidy_pass(tools, run, &collected, &lock, now, dry_run)?;
+    let outcomes = tidy::run_tidy_pass(tools, run, &collected, &scope, &lock, now, dry_run)?;
     let mut lines: Vec<String> = outcomes
         .iter()
         .map(|outcome| outcome.format_line(dry_run))
@@ -104,7 +117,8 @@ pub fn run_park(
     let verdict = decide_lifecycle(facts);
     let is_park = verdict.state == Lifecycle::ToPark;
     let judged = [(facts, verdict)];
-    let actions = tidy::plan_tidy_actions(&judged, &panes, tools.own_pane, &quiet_shells);
+    let scope = BTreeSet::from([name.to_owned()]);
+    let actions = tidy::plan_tidy_actions(&judged, &scope, &panes, tools.own_pane, &quiet_shells);
     if is_park && !matches!(actions.as_slice(), [TidyAction::Park { .. }]) {
         return Err(make_stays_error(TAB_HOLDS_WORK));
     }

@@ -8,7 +8,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line as TextLine;
 use ratatui::widgets::Paragraph;
 
-use super::away::AwayEvent;
+use super::away::{self, AwayEvent};
 use super::draw;
 use super::elements::{Element, HiddenBy};
 use super::groups::{self, Group, Item};
@@ -154,22 +154,30 @@ pub(super) struct PanelText {
     pub text: String,
 }
 
-/// Returns one row per event, such as ` 10:40 api-build reported`, cut
-/// to `width`.
+/// Returns one line per event for the AWAY block, the list of what
+/// happened while the user was away, cut to `width`. A line about a
+/// card starts with its card key, such as
+/// ` 10:40 DEMO-KB-001 demo-kb-001-build reported`.
 pub(super) fn format_away_lines(events: &[AwayEvent], width: usize) -> Vec<PanelText> {
     events
         .iter()
-        .map(|event| PanelText {
-            is_heading: false,
-            is_high: false,
-            text: fit(&format!(" {} {}", event.time, event.text), width),
+        .map(|event| {
+            let card = away::find_event_card(event);
+            let words = groups::put_card_key_first(card.as_ref(), &event.text);
+            PanelText {
+                is_heading: false,
+                is_high: false,
+                text: fit(&format!(" {} {words}", event.time), width),
+            }
         })
         .collect()
 }
 
-/// Returns the NEXT lines, such as ` you: answer Deploy tonight?`, cut
-/// to `width`. The you and hub parts give at most `each` lines, so the
-/// glance page's block, with `each` 1, shows one line of each part.
+/// Returns the lines of the NEXT block, which says what the user and
+/// the hub do next, cut to `width`. An example is
+/// ` you: answer DEMO-KB-001 Deploy tonight?`. The `you` and `hub`
+/// parts give at most `each` lines, so the glance page, the board's
+/// first screen, shows one line of each with `each` 1.
 pub(super) fn format_next_lines(
     groups: &[(Group, Vec<Item>)],
     no_hub: bool,

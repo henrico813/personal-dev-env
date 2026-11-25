@@ -192,9 +192,15 @@ pub struct Tools<'a> {
     /// This hub's own pane, from `HERDR_PANE_ID`, or `None` outside
     /// Herdr. Nothing closes it, and it is never a status row.
     pub own_pane: Option<&'a str>,
+    /// This hub's own OpenCode session, from `OPENCODE_SESSION_ID`, or
+    /// `None` outside OpenCode.
+    pub own_session: Option<&'a str>,
     /// This project's state folder, `~/.local/state/pde`, which holds
     /// the handoffs and session reviews.
     pub state_folder: &'a Path,
+    /// `~/.local/state`, which holds each hub's `herdr-hub.*` run
+    /// folder.
+    pub runs_folder: &'a Path,
     /// The wait between reads of a reopened agent's session ID, one
     /// second outside tests. Herdr learns the ID only after OpenCode
     /// starts.
@@ -211,7 +217,9 @@ pub struct OwnedTools {
     pub requests: RequestFolder,
     pub parked: ParkedFolder,
     pub own_pane: Option<String>,
+    pub own_session: Option<String>,
     pub state_folder: PathBuf,
+    pub runs_folder: PathBuf,
     pub reopen_poll: Duration,
 }
 
@@ -225,7 +233,9 @@ impl OwnedTools {
             requests: &self.requests,
             parked: &self.parked,
             own_pane: self.own_pane.as_deref(),
+            own_session: self.own_session.as_deref(),
             state_folder: &self.state_folder,
+            runs_folder: &self.runs_folder,
             reopen_poll: self.reopen_poll,
         }
     }

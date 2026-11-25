@@ -20,6 +20,9 @@ static RULES_MODEL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"--model '([^
 
 /// The file that keeps the last minute pass's mark.
 const MINUTE_MARK_FILE: &str = ".minute-pass.json";
+/// The file that names the hub that last ran `hub next` or
+/// `hub watch start` in the run.
+const RECORDED_HUB_FILE: &str = ".recorded-hub.json";
 
 /// One unread `report-NAME.md`.
 #[derive(Clone, Debug)]
@@ -60,6 +63,15 @@ pub(crate) struct FinishedSession {
     pub state: String,
     /// Why, as `run_clean` prints it, such as `DEMO-KB-007 done`.
     pub why: String,
+}
+
+/// The hub that last ran `hub next` or `hub watch start` in the run,
+/// by its OpenCode session ID, else by its Herdr pane. Herdr may list
+/// that hub with no name, so its name is not kept.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub(crate) struct RecordedHub {
+    pub session_id: Option<String>,
+    pub pane_id: Option<String>,
 }
 
 /// Holds a lock file, such as `.watcher.lock` while a `run_next`
@@ -144,6 +156,23 @@ impl RunFolder {
             }
             names.any.insert(name.to_owned());
         }
+        Ok(names)
+    }
+
+    /// Returns each NAME from the `- HHMM started NAME (PANE) from HANDOFF`
+    /// lines that `run_launch` adds to `notes.md`.
+    pub(crate) fn list_started_names(&self) -> Result<BTreeSet<String>, HubError> {
+        let notes = self.read_optional_file("notes.md")?;
+        let names = notes
+            .lines()
+            .filter_map(|line| {
+                let (_, text) = line.strip_prefix("- ")?.split_once(' ')?;
+                let (name, _) = text.strip_prefix("started ")?.split_once(" (")?;
+                // A note the hub wrote by hand can start with `started` too.
+                name.parse::<AgentName>().ok()
+            })
+            .map(|name| name.as_str().to_owned())
+            .collect();
         Ok(names)
     }
 
@@ -306,6 +335,32 @@ impl RunFolder {
     /// older `run_next` process to stop.
     pub(crate) fn claim_watcher(&self, process_id: u32) -> Result<(), HubError> {
         write_file_whole(&self.path.join(".watcher-pid"), &format!("{process_id}\n"))
+    }
+
+    /// Names the hub that runs the command now as the run's hub, so the
+    /// sidebar finds it by its work, whatever its name.
+    pub(crate) fn record_hub(&self, hub: &RecordedHub) -> Result<(), HubError> {
+        let path = self.path.join(RECORDED_HUB_FILE);
+        let text = serde_json::to_string(hub).map_err(|error| HubError::File {
+            path: path.clone(),
+            source: error.into(),
+        })?;
+        write_file_whole(&path, &text)
+    }
+
+    /// Returns the recorded hub and when it was recorded, or `None`
+    /// when no hub was recorded or the file does not parse.
+    pub(crate) fn read_recorded_hub(&self) -> Result<Option<(RecordedHub, SystemTime)>, HubError> {
+        let path = self.path.join(RECORDED_HUB_FILE);
+        let Some(text) = self.read_file_if_exists(RECORDED_HUB_FILE)? else {
+            return Ok(None);
+        };
+        let recorded_at = fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .map_err(|source| HubError::File { path, source })?;
+        Ok(serde_json::from_str(&text)
+            .ok()
+            .map(|hub| (hub, recorded_at)))
     }
 
     /// Waits for the lock on `.watcher.lock` and holds it.

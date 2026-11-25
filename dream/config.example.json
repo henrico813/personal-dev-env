@@ -12,6 +12,6 @@
   },
   "model": {
     "adapter": "opencode-run",
-    "name": "claude-code/claude-opus-5-5[1m]"
+    "name": "claude-code/claude-opus-5-5"
   }
 }

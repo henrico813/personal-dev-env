@@ -290,7 +290,7 @@ func runHerdrSetup(
 // .chezmoi.destDir pointed at the test's home.
 func renderHerdrSetup(t *testing.T, home string) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), "chezmoi", "run_after_link_herdr_plugins.sh.tmpl"))
+	data, err := os.ReadFile(filepath.Join(findRepoRoot(t), "chezmoi", "run_after_link_herdr_plugins.sh.tmpl"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +316,7 @@ type herdrShellKey struct {
 func readHerdrShellKeys(t *testing.T) []herdrShellKey {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(
-		repoRoot(t),
+		findRepoRoot(t),
 		"chezmoi",
 		"dot_config",
 		"herdr",

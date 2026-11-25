@@ -704,7 +704,7 @@ def route_repo(tmp_path: Path) -> Path:
         "plan-review": {
             "effort": "high",
             "skills": ["garden"],
-            "opencode": [["claude-code/claude-opus-5-5[1m]"]],
+            "opencode": [["claude-code/claude-opus-5-5"]],
         },
         "web-lookup": {
             "effort": "none",
@@ -964,7 +964,7 @@ class TestRouteChecks:
                     "plan-review": {
                         "effort": "high",
                         "skills": ["review-plan"],
-                        "opencode": [["claude-code/claude-opus-5-5[1m]"]],
+                        "opencode": [["claude-code/claude-opus-5-5"]],
                     }
                 }
             )

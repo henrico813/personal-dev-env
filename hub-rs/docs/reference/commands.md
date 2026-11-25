@@ -159,7 +159,7 @@ no session: DEMO-KB-004 active
 
 `hub next [--run DIR] [--timeout SECONDS] [--json]
 [--start-reviews]` waits until something needs the hub, prints one
-line and exits 0. While it waits, it sends held messages. At most
+line, or two with a warning, and exits 0. While it waits, it sends held messages. At most
 once a minute it reads the board and finds finished sessions. It
 never closes or parks a session.
 
@@ -191,11 +191,17 @@ never closes or parks a session.
 
 Each report version, blocked state, timed message and board crossing
 prints once.
-`(hub -)` means the hub's context is unknown. `--json` prints one
-object with the same facts:
+`(hub -)` means the hub's context is unknown. When Herdr gives the
+hub's pane no name, as it can after the hub's OpenCode restarts, a
+second line follows every news line:
+`hub pane has no name -> herdr agent rename PANE NAME`. `hub status`
+prints the same line with its problems. The context is still read
+by pane ID. `hub handoff`, `hub adopt` and `hub watch start` stop
+with that line until the pane has a name again. `--json` prints one object with the same facts, the
+second line as `hub_warning`:
 
 ```json
-{"news":"report","name":"docs-fix","detail":null,"hub_context_tokens":131204}
+{"news":"report","name":"docs-fix","detail":null,"hub_context_tokens":131204,"hub_warning":null}
 ```
 
 ### send
@@ -447,17 +453,24 @@ result it sends the phone one notification, titled
 the reason. The same result again sends nothing, even after a restart,
 since the watch keeps the last result in `hub/update-seen.json`.
 
-The watch also does what `hub restore-sidebar` does in each check,
-but sets the filter only when something was missing. Every 5 minutes
-it tags the hubs and shows the desk row on each saved machine too,
-for a machine whose Herdr runs without the `pde.hub` plugin. The
-user's Herdr lists those machines' agents through its own filter.
+The watch also does what `hub restore-sidebar` does in each check.
+Every 5 minutes it sets the missing `go_to` tags and the desk row on
+each saved machine too, for a machine whose Herdr runs without the
+`pde.hub` plugin, and clears none there. The user's Herdr lists those
+machines' agents through its own filter.
 
 ### clean
 
 `hub clean [--run DIR] [--dry-run]` closes the tab of each `to-close`
-session and parks each `to-park` session. It looks at every session
-in Herdr on this machine. Only `clean` and `park` close tabs.
+session and parks each `to-park` session. It acts only on tabs that
+hold a session of DIR's run: those `hub launch` started from DIR,
+those that reported to DIR, and the old hubs DIR handed off from. A
+tab with none of them stays open. A finished `to-close` session of
+another run closes with a tab it shares with DIR's sessions, and the
+`closed` line names it. Any other agent there keeps the tab. Another
+run's sessions get no `parked` line, and a `kept` line only when the
+planned close of a tab they share stops. Only `clean` and `park`
+close tabs.
 
 - `closed NAME: WHY` and `parked NAME: KEY in-review`.
 - `forgot NAME`: a parked session that is live again.
@@ -508,6 +521,15 @@ QUEUE; from 100 columns they sit side by side.
   the user, one `then:` line counting the cards in review, and one
   `hub:` line per Todo card in `card list` order. The block shows
   the first of each; the next view shows them all.
+- A line about a card starts with its card key, the ID at the start
+  of the card's name, such as `DEMO-KB-001`. So the QUEUE line
+  `run  Faster search` shows as `run  DEMO-KB-001 Faster search`.
+  An AWAY line is only text, with no card field. So the board takes
+  its card key from the first word that holds one, such as
+  `DEMO-KB-001` from the session name `demo-kb-001-build`. A QUEUE
+  line of a waiting session takes its card key from the session name
+  the same way. A line about no card, such as `hub: no hub running`,
+  gets no card key.
 - Keys 1 to 5 open full views, named away, queue, next, sessions
   and machine, each under a `< name` breadcrumb. Tab steps through
   the views and back to the glance page. A tap on a block or its
@@ -552,9 +574,9 @@ QUEUE; from 100 columns they sit side by side.
   sessions, each marked `close` or `park`, and ends in `+ N more`
   when they do not fit. The list does not change while it is
   open. y, once the list has been open 1 second and no key came
-  for 0.7 seconds, closes and parks the listed sessions as
-  `hub clean` does and shows its output, with a `kept` line for
-  any it now keeps. Any other key or a tap cancels. With nothing
+  for 0.7 seconds, closes and parks the listed sessions,
+  from any hub, and shows its output, with a `kept` line for any
+  it now keeps. Any other key or a tap cancels. With nothing
   to close or no hub running, c says so and changes nothing.
 - A visit is one stretch of the user using the board, ended by
   10 quiet minutes with no key or tap. The board saves the time
@@ -607,28 +629,42 @@ The steps of an auto run, in order. Each takes `--run DIR`.
 
 - `hub flag NAME` marks NAME's pane "needs you" and prints
   `flagged NAME`. `hub unflag NAME` clears it and prints
-  `unflagged NAME`.
+  `unflagged NAME`. Without `--machine`, each then sets the agent
+  list as `hub restore-sidebar` does, and adds
+  `could not set the go to list: REASON` when that fails.
 - `hub alive SESSION` prints an OpenCode session's activity, such as
   `42 messages, newest 14:05:09, last tool bash, working`. The last
   word is `working`, `finished` or `stopped`. Exits 1 with
   `no OpenCode session SESSION on this machine`.
 - `hub go` shows the next hub in the sidebar and prints
   `showing NAME`. `hub gather` moves the hubs' workspaces, and the
-  desk, to the top of the sidebar, cuts Herdr's agent list to the
-  hubs and the sessions that wait on the user, and prints
+  desk, to the top of the sidebar, sets Herdr's agent list as
+  `hub restore-sidebar` does, and prints
   `at the top: IDS` with the workspace IDs. Both exit 3 with
   `no hub is running`.
 - `hub desk` makes the `desk` workspace when it is missing, with
   `hub board` in its first tab and a shell in its second, and moves
   it below the kanban hubs. It prints `made desk: board, then shell`
   or `desk is open`.
-- `hub restore-sidebar [--start-board]` puts back what a Herdr
-  restart drops from the agent list on this machine: the tag of each
-  hub, the desk row and the filter. It moves no workspace. With
+- `hub desk add NAME` moves NAME's pane into the desk as its last
+  tab and prints `NAME is on the desk`. `hub desk rm NAME` moves it
+  into a new workspace named NAME and prints `NAME is off the desk`.
+  `hub desk move NAME N` makes it the Nth agent on the desk and
+  prints `NAME is at place N on the desk`. Each exits 3 with
+  `no desk is open; hub desk makes one`, and `rm` and `move` with
+  `NAME is not on the desk`. `move` exits 2 with
+  `the place must be 1 to COUNT`.
+- `hub restore-sidebar [--start-board]` sets the agent list, headed
+  `go to`, on this machine: the front hub, the desk's board and
+  agents in tab order, then only the sessions that wait on the user.
+  The front hub is the live agent that last ran `hub next` or
+  `hub watch start` in a run folder without `approved.md`, when it
+  has no name or a hub name other than an auto hub's. Else it is the
+  live `kanban-hub-N` with the highest N. It moves no workspace. With
   `--start-board`, it also runs `hub board` in the desk's first pane
   when that pane's shell runs nothing. It prints
-  `put back: NAMES` with each hub it tagged and `desk`, or
-  `nothing was missing`, then `started the board in the desk` or
+  `changed: NAMES` with each pane whose tag it changed and `desk`, or
+  `nothing changed`, then `started the board in the desk` or
   `could not start the board: REASON`. The `pde.hub` Herdr plugin
   runs it with `--start-board` when Herdr starts, and without it each
-  time Herdr detects an agent.
+  time Herdr detects an agent or moves a pane or tab.

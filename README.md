@@ -154,7 +154,7 @@ configuration. Installation does not authenticate Claude Code; authenticate it
 with `claude auth login --claudeai`. The supported pairing is:
 
 - OpenCode: `@opencode/cli@2.0.26`,
-- Claude adapter: `@openchamber/opencode-claude@1.1.0`,
+- Claude adapter: `@openchamber/opencode-claude@1.7.0`,
 
 The managed-plugin merge removes stale entries for managed Claude and memory
 plugins, preserves unrelated plugins and settings, and appends the pinned

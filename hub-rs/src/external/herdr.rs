@@ -15,14 +15,10 @@ const LABEL_SOURCE: &str = "pde-hub";
 /// What the desk's board pane reports as its agent program.
 const DESK_AGENT: &str = "desk";
 const NEEDS_YOU: &str = "needs you";
-/// The pane token that keeps the desk and the hubs at the top of the
-/// filtered agent list. Herdr sorts its values as text, so their numbers
-/// set the order. The user's Herdr lists the agents of every connected
-/// machine together, so each machine's kanban hub sorts beside the others.
+/// The pane token that keeps the front hubs and the desk at the top of
+/// the filtered agent list. Herdr sorts its values as text, and
+/// `commands::sidebar` picks values that sort in the user's order.
 const GO_TO_TOKEN: &str = "go_to";
-const GO_TO_KANBAN_HUB: &str = "1-kanban-hub";
-const GO_TO_DESK: &str = "2-desk";
-const GO_TO_OTHER_HUB: &str = "3-hub";
 /// The pane token that keeps a flagged session in the agent filter.
 const NEEDS_YOU_TOKEN: &str = "needs_you";
 const PROMPT_TIME_LIMIT_MS: &str = "30000";
@@ -36,6 +32,9 @@ const SOCKET_TIME_LIMIT: Duration = Duration::from_secs(10);
 pub trait Herdr {
     /// Returns every named agent, the hub's own included.
     fn list_agents(&self) -> Result<Vec<Agent>, HerdrError>;
+    /// Returns every agent pane, each agent nobody named included with
+    /// an empty name.
+    fn list_agent_panes(&self) -> Result<Vec<Agent>, HerdrError>;
     /// Returns one agent by name or pane ID.
     fn get_agent(&self, target: &str) -> Result<Agent, HerdrError>;
     /// Submits text and waits up to 30 seconds until the agent works
@@ -52,20 +51,24 @@ pub trait Herdr {
     fn mark_needs_you(&self, pane_id: &str, states: &[AgentStatus]) -> Result<(), HerdrError>;
     /// Removes the hub's state labels and "needs you" token from a pane.
     fn clear_marks(&self, pane_id: &str) -> Result<(), HerdrError>;
-    /// Tags a hub's pane, so the filtered agent list keeps it in its
-    /// kind's place, and labels its row "hub busy" or "hub free".
-    fn tag_hub_pane(&self, pane_id: &str, kind: HubKind) -> Result<(), HerdrError>;
+    /// Sets a hub's `go_to` token, which keeps it in the filtered agent
+    /// list in that place, and labels its row "hub busy" or "hub free".
+    fn tag_hub_pane(&self, pane_id: &str, go_to: &str) -> Result<(), HerdrError>;
+    /// Sets a pane's `go_to` token, or clears it with `None`.
+    fn set_go_to(&self, pane_id: &str, go_to: Option<&str>) -> Result<(), HerdrError>;
     /// Returns the desk's first pane, where the board runs.
     fn find_desk_board(&self, workspace_id: &str) -> Result<DeskBoard, HerdrError>;
-    /// Reports the desk's board pane as an agent named `desk`, so the
-    /// filtered agent list can show it first.
-    fn show_desk_as_agent(&self, board_pane_id: &str) -> Result<(), HerdrError>;
-    /// Makes Herdr's agent list, headed "go to", show only the desk,
-    /// the hubs and the sessions that wait on the user, through
-    /// Herdr's socket.
+    /// Reports the desk's board pane as an agent named `desk` with the
+    /// `go_to` token, so the filtered agent list shows it.
+    fn show_desk_as_agent(&self, board_pane_id: &str, go_to: &str) -> Result<(), HerdrError>;
+    /// Makes Herdr's agent list, headed "go to", show only the panes
+    /// with a `go_to` token, in its order, and the sessions that wait
+    /// on the user, through Herdr's socket.
     fn filter_agent_list(&self) -> Result<(), HerdrError>;
     /// Returns every pane with its tab and focus, plain shells included.
     fn list_panes(&self) -> Result<Vec<Pane>, HerdrError>;
+    /// Returns a workspace's tab IDs in tab order.
+    fn list_tabs(&self, workspace_id: &str) -> Result<Vec<String>, HerdrError>;
     /// Returns a pane's shell process and the process group in front.
     fn read_process_info(&self, pane_id: &str) -> Result<ProcessInfo, HerdrError>;
     /// Returns workspaces in sidebar order, top first.
@@ -85,6 +88,12 @@ pub trait Herdr {
     /// Moves workspaces into one block before another, through
     /// Herdr's socket.
     fn move_workspaces(&self, ids: &[String], before_id: &str) -> Result<(), HerdrError>;
+    /// Moves a pane, with its running agent, into a new tab. Herdr gives
+    /// the moved pane a new pane ID.
+    fn move_pane(&self, pane_id: &str, destination: &PaneDestination) -> Result<(), HerdrError>;
+    /// Moves a tab before the tab at `index`, 0 first, or to the end
+    /// when `index` is the tab count.
+    fn move_tab(&self, tab_id: &str, index: usize) -> Result<(), HerdrError>;
     /// Returns a Herdr for a saved machine, for a held message sent
     /// with `--machine`.
     fn clone_for_machine(&self, label: &str) -> Box<dyn Herdr + '_>;
@@ -179,12 +188,21 @@ impl HerdrCli {
 impl Herdr for HerdrCli {
     fn list_agents(&self) -> Result<Vec<Agent>, HerdrError> {
         let printed = self.run_herdr(&["agent", "list"])?;
-        parse_agent_list(&read_result(&printed)?, self.machine.as_deref())
+        parse_agent_list(&read_result(&printed)?, self.machine.as_deref(), false)
+    }
+
+    fn list_agent_panes(&self) -> Result<Vec<Agent>, HerdrError> {
+        let printed = self.run_herdr(&["agent", "list"])?;
+        parse_agent_list(&read_result(&printed)?, self.machine.as_deref(), true)
     }
 
     fn get_agent(&self, target: &str) -> Result<Agent, HerdrError> {
         let printed = self.run_herdr(&["agent", "get", target])?;
-        parse_agent(&read_result(&printed)?["agent"], self.machine.as_deref())
+        let agent = parse_agent(&read_result(&printed)?["agent"], self.machine.as_deref())?;
+        if agent.name.is_empty() {
+            return Err(make_missing_field_error("name"));
+        }
+        Ok(agent)
     }
 
     fn prompt(&self, name: &str, text: &str) -> Result<(), HerdrError> {
@@ -253,11 +271,7 @@ impl Herdr for HerdrCli {
         self.report_pane_labels(pane_id, &options)
     }
 
-    fn tag_hub_pane(&self, pane_id: &str, kind: HubKind) -> Result<(), HerdrError> {
-        let go_to = match kind {
-            HubKind::Kanban => GO_TO_KANBAN_HUB,
-            HubKind::Other => GO_TO_OTHER_HUB,
-        };
+    fn tag_hub_pane(&self, pane_id: &str, go_to: &str) -> Result<(), HerdrError> {
         let token = format!("{GO_TO_TOKEN}={go_to}");
         let options = [
             "--token",
@@ -270,6 +284,16 @@ impl Herdr for HerdrCli {
             "done=hub free",
         ];
         self.report_pane_labels(pane_id, &options)
+    }
+
+    fn set_go_to(&self, pane_id: &str, go_to: Option<&str>) -> Result<(), HerdrError> {
+        match go_to {
+            Some(go_to) => {
+                let token = format!("{GO_TO_TOKEN}={go_to}");
+                self.report_pane_labels(pane_id, &["--token", token.as_str()])
+            }
+            None => self.report_pane_labels(pane_id, &["--clear-token", GO_TO_TOKEN]),
+        }
     }
 
     fn find_desk_board(&self, workspace_id: &str) -> Result<DeskBoard, HerdrError> {
@@ -285,7 +309,7 @@ impl Herdr for HerdrCli {
         })
     }
 
-    fn show_desk_as_agent(&self, board_pane_id: &str) -> Result<(), HerdrError> {
+    fn show_desk_as_agent(&self, board_pane_id: &str, go_to: &str) -> Result<(), HerdrError> {
         let report = [
             "pane",
             "report-agent",
@@ -298,7 +322,7 @@ impl Herdr for HerdrCli {
             "idle",
         ];
         self.run_herdr(&report)?;
-        let token = format!("{GO_TO_TOKEN}={GO_TO_DESK}");
+        let token = format!("{GO_TO_TOKEN}={go_to}");
         let options = [
             "--token",
             token.as_str(),
@@ -313,7 +337,7 @@ impl Herdr for HerdrCli {
     fn filter_agent_list(&self) -> Result<(), HerdrError> {
         // Herdr's `done` is an idle agent the user has not looked at yet.
         // A flagged session shows while idle or done, as its mark does.
-        // Panes without the token sort after the desk and the hubs.
+        // Panes without the token sort after those with it.
         let params = json!({
             "source": LABEL_SOURCE,
             "label": "go to",
@@ -337,6 +361,18 @@ impl Herdr for HerdrCli {
     fn list_panes(&self) -> Result<Vec<Pane>, HerdrError> {
         let printed = self.run_herdr(&["pane", "list"])?;
         parse_pane_list(&read_result(&printed)?)
+    }
+
+    fn list_tabs(&self, workspace_id: &str) -> Result<Vec<String>, HerdrError> {
+        let printed = self.run_herdr(&["tab", "list", "--workspace", workspace_id])?;
+        let result = read_result(&printed)?;
+        let raw_tabs = result["tabs"]
+            .as_array()
+            .ok_or_else(|| HerdrError::Failed("Herdr's tab list has no tabs".to_owned()))?;
+        raw_tabs
+            .iter()
+            .map(|raw| read_text(raw, "tab_id"))
+            .collect()
     }
 
     fn read_process_info(&self, pane_id: &str) -> Result<ProcessInfo, HerdrError> {
@@ -418,6 +454,25 @@ impl Herdr for HerdrCli {
         call_socket(&self.socket, "workspace.move_block", params)
     }
 
+    fn move_pane(&self, pane_id: &str, destination: &PaneDestination) -> Result<(), HerdrError> {
+        let destination = match destination {
+            PaneDestination::NewTab {
+                workspace_id,
+                label,
+            } => json!({"type": "new_tab", "workspace_id": workspace_id, "label": label}),
+            PaneDestination::NewWorkspace { label } => {
+                json!({"type": "new_workspace", "label": label, "tab_label": label})
+            }
+        };
+        let params = json!({"pane_id": pane_id, "destination": destination, "focus": false});
+        call_socket(&self.socket, "pane.move", params)
+    }
+
+    fn move_tab(&self, tab_id: &str, index: usize) -> Result<(), HerdrError> {
+        let params = json!({"tab_id": tab_id, "insert_index": index});
+        call_socket(&self.socket, "tab.move", params)
+    }
+
     fn clone_for_machine(&self, label: &str) -> Box<dyn Herdr + '_> {
         Box::new(HerdrCli {
             program: self.program.clone(),
@@ -449,6 +504,9 @@ impl Herdr for HerdrCli {
 /// One agent as Herdr lists it.
 #[derive(Clone, Debug)]
 pub struct Agent {
+    /// Empty when Herdr gives no name, either for an agent nobody
+    /// named, which only `Herdr::list_agent_panes` returns, or for a
+    /// pane that lost its name, as after the hub's OpenCode restarts.
     pub name: String,
     pub status: AgentStatus,
     pub kind: AgentKind,
@@ -468,18 +526,9 @@ pub struct Agent {
     pub folders: Vec<PathBuf>,
     /// The saved machine it runs on, or `None` for this one.
     pub machine: Option<String>,
-    /// The pane has the `go_to` token that `Herdr::tag_hub_pane` sets.
-    /// Herdr drops the token when its server restarts.
-    pub go_to_tagged: bool,
-}
-
-/// A hub's place in the filtered agent list, by what the hub does.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum HubKind {
-    /// A hub the user works the kanban board with, such as
-    /// `kanban-hub-13`. These come first.
-    Kanban,
-    Other,
+    /// The pane's `go_to` token, which sets its place in the filtered
+    /// agent list. Herdr drops the token when its server restarts.
+    pub go_to: Option<String>,
 }
 
 /// Herdr's state for an agent.
@@ -561,6 +610,16 @@ pub struct NewPlace {
     pub cwd: PathBuf,
     /// Set in the pane's environment, such as `HUB_RUN`.
     pub env: Vec<(String, String)>,
+}
+
+/// Where `Herdr::move_pane` puts a pane. Each makes a new tab named
+/// `label`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PaneDestination {
+    /// A new last tab in an open workspace.
+    NewTab { workspace_id: String, label: String },
+    /// A new workspace, named `label` like its one tab.
+    NewWorkspace { label: String },
 }
 
 /// The IDs Herdr gives a new workspace or tab.
@@ -667,20 +726,25 @@ fn read_result(printed: &[u8]) -> Result<Value, HerdrError> {
     }
 }
 
-/// Turns `agent list`'s result into agents, leaving out panes where
-/// Herdr found an agent nobody named.
-fn parse_agent_list(result: &Value, machine: Option<&str>) -> Result<Vec<Agent>, HerdrError> {
+/// Turns `agent list`'s result into agents. Leaves out panes where
+/// Herdr found an agent nobody named, unless `keep_unnamed` is set.
+fn parse_agent_list(
+    result: &Value,
+    machine: Option<&str>,
+    keep_unnamed: bool,
+) -> Result<Vec<Agent>, HerdrError> {
     let raw_agents = result["agents"]
         .as_array()
         .ok_or_else(|| HerdrError::Failed("Herdr's agent list has no agents".to_owned()))?;
     raw_agents
         .iter()
-        .filter(|raw| raw["name"].as_str().is_some_and(|name| !name.is_empty()))
+        .filter(|raw| keep_unnamed || raw["name"].as_str().is_some_and(|name| !name.is_empty()))
         .map(|raw| parse_agent(raw, machine))
         .collect()
 }
 
-/// Turns one agent from Herdr's JSON into an `Agent` on `machine`.
+/// Turns one agent from Herdr's JSON into an `Agent` on `machine`,
+/// with an empty name when Herdr gives none.
 fn parse_agent(raw: &Value, machine: Option<&str>) -> Result<Agent, HerdrError> {
     let status = match raw["agent_status"].as_str() {
         Some("working") => AgentStatus::Working,
@@ -711,8 +775,15 @@ fn parse_agent(raw: &Value, machine: Option<&str>) -> Result<Agent, HerdrError> 
         .map(PathBuf::from)
         .collect();
     folders.dedup();
+    // A pane can lose its name, as after the hub's OpenCode restarts
+    // there. `agent get` then leaves out `name`, and `agent list` gives
+    // null. `get_agent` still finds the pane by its ID.
+    let name = match raw.get("name") {
+        None | Some(Value::Null) => String::new(),
+        _ => read_text(raw, "name")?,
+    };
     Ok(Agent {
-        name: read_text(raw, "name")?,
+        name,
         status,
         kind,
         session_id: raw["agent_session"]["value"].as_str().map(str::to_owned),
@@ -728,7 +799,7 @@ fn parse_agent(raw: &Value, machine: Option<&str>) -> Result<Agent, HerdrError> 
             .ok_or_else(|| make_missing_field_error("state_change_seq"))?,
         folders,
         machine: machine.map(str::to_owned),
-        go_to_tagged: raw["tokens"][GO_TO_TOKEN].is_string(),
+        go_to: raw["tokens"][GO_TO_TOKEN].as_str().map(str::to_owned),
     })
 }
 
@@ -814,8 +885,9 @@ mod tests {
     /// at once. `run_handoff` names the old hub's session and tab from
     /// it, so a misread one sends the session review to the wrong place.
     /// `run_status` reads the mark, folders and machine to decide what
-    /// may close. A misread `go_to` token leaves a hub that lost it out
-    /// of the "go to" list, since gather and the watch skip tagged hubs.
+    /// may close. The sidebar pass writes a `go_to` token only where it
+    /// differs from the one read here, so a misread one leaves a row
+    /// out of the "go to" list or in the wrong place.
     #[test]
     fn parse_agent_reads_herdr_fields() {
         let answer: Value = serde_json::from_str(AGENT_LIST).unwrap();
@@ -834,7 +906,7 @@ mod tests {
         assert_eq!(agent.state_seq, 12);
         assert_eq!(agent.folders, [PathBuf::from("/home/u/wt/demo-kb-007")]);
         assert_eq!(agent.machine.as_deref(), Some("laptop"));
-        assert!(agent.go_to_tagged);
+        assert_eq!(agent.go_to.as_deref(), Some("3-hub"));
     }
 
     /// Herdr keeps a label for each state, and a pane shows only the
@@ -853,17 +925,38 @@ mod tests {
         assert!(!agent.marked);
     }
 
+    /// `agent get` leaves out `name` for a hub pane after the hub's
+    /// OpenCode restarts there. Failing on it hides the hub's context,
+    /// so `run_next` never tells the hub to hand off.
+    #[test]
+    fn parse_agent_reads_missing_name_as_empty() {
+        let answer: Value = serde_json::from_str(AGENT_LIST).unwrap();
+        let mut raw = answer["result"]["agents"][0].clone();
+        raw.as_object_mut().unwrap().remove("name");
+
+        let agent = parse_agent(&raw, None).unwrap();
+
+        assert_eq!(agent.name, "");
+        assert_eq!(agent.pane_id, "w1:p7");
+    }
+
     /// Herdr lists a pane with no name when nobody started its agent by
     /// name. Reading that pane as a session would break `run_go` and
-    /// `run_gather` whenever such a pane is open.
+    /// `run_gather` whenever such a pane is open. The sidebar pass must
+    /// still see it, since a front hub can run with no name.
     #[test]
-    fn parse_agent_list_skips_unnamed_agents() {
+    fn parse_agent_list_keeps_unnamed_when_asked() {
         let answer: Value = serde_json::from_str(AGENT_LIST).unwrap();
 
-        let agents = parse_agent_list(&answer["result"], None).unwrap();
+        let named = parse_agent_list(&answer["result"], None, false).unwrap();
+        let every_pane = parse_agent_list(&answer["result"], None, true).unwrap();
 
-        let names: Vec<&str> = agents.iter().map(|agent| agent.name.as_str()).collect();
-        assert_eq!(names, ["demo-kb-007-impl"]);
+        let read_panes = |agents: &[Agent]| -> Vec<String> {
+            agents.iter().map(|agent| agent.pane_id.clone()).collect()
+        };
+        assert_eq!(read_panes(&named), ["w1:p7"]);
+        assert_eq!(read_panes(&every_pane), ["w1:p7", "w2:p1"]);
+        assert_eq!(every_pane[1].name, "");
     }
 
     /// Herdr lists a new agent by name before it detects which program
@@ -906,7 +999,7 @@ mod tests {
             },
         ]});
 
-        let agents = parse_agent_list(&result, None).unwrap();
+        let agents = parse_agent_list(&result, None, false).unwrap();
 
         let states: Vec<(&str, AgentStatus)> = agents
             .iter()

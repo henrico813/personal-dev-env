@@ -389,9 +389,12 @@ pub enum Command {
     /// Close and park finished tabs
     ///
     /// Closes the tab of each to-close session and parks each to-park
-    /// one, the states hub status shows. Kept sessions stay. Run it
-    /// after hub next names to-close or to-park sessions. --dry-run
-    /// shows what it would do.
+    /// one, the states hub status shows. Kept sessions stay. Only tabs
+    /// with this run's sessions change, the ones hub launch started from
+    /// it, that reported to it, or that it handed off from. A to-close
+    /// session of another run closes with such a tab. Run it after hub
+    /// next names to-close or to-park sessions. --dry-run shows what it
+    /// would do.
     #[command(after_help = "Example: hub clean --dry-run")]
     Clean {
         #[command(flatten)]
@@ -480,9 +483,9 @@ pub enum Command {
     ///
     /// Moves every hub's workspace on this machine to the top of the
     /// sidebar. Hubs named kanban-hub-N come first, then the desk, then
-    /// the other hubs. It also cuts the agent list to those hubs and
-    /// the sessions that wait on the user. A hub runs it when it
-    /// starts.
+    /// the other hubs. It also cuts the agent list to the front hub,
+    /// the agents on the desk and the sessions that wait on the user.
+    /// A hub runs it when it starts.
     #[command(after_help = "Example: hub gather")]
     Gather,
     /// Make the user's desk
@@ -490,16 +493,21 @@ pub enum Command {
     /// Makes the desk workspace when it is missing, with hub board in
     /// its first tab and a shell in its second. Then it moves the desk
     /// below the hubs named kanban-hub-N, as hub gather does. Run it to
-    /// set up the workspace you watch from a phone.
+    /// set up the workspace you watch from a phone. Its steps put an
+    /// agent on the desk, take it off, or set its place.
     #[command(after_help = "Example: hub desk")]
-    Desk,
+    Desk {
+        #[command(subcommand)]
+        step: Option<DeskStep>,
+    },
     /// Put back hubs and desk
     ///
-    /// Tags each hub on this machine that lost its tag, shows the desk
-    /// in the agent list again, and cuts the agent list as hub gather
-    /// does. It moves no workspace. A Herdr restart drops all three,
-    /// and the pde.hub Herdr plugin runs this command when Herdr starts
-    /// and when it detects an agent.
+    /// Sets the agent list again on this machine. It shows the front
+    /// hub, then the agents on the desk in tab order, then the sessions
+    /// that wait on the user. It moves no workspace. The pde.hub Herdr
+    /// plugin runs it when Herdr starts, when it detects an agent and
+    /// when a pane or tab moves, and hub watch runs it every 5
+    /// seconds.
     #[command(after_help = "Example: hub restore-sidebar")]
     RestoreSidebar {
         /// Also run hub board in the desk's first pane when its shell
@@ -625,6 +633,43 @@ pub enum AutoStep {
     },
 }
 
+// `hub desk` alone makes the desk. Hubs run these steps only when the
+// user asks, as the `herdr-hub` skill says.
+#[derive(clap::Subcommand)]
+pub enum DeskStep {
+    /// Put an agent on the desk
+    ///
+    /// Moves the agent's pane into the desk as its last tab, named
+    /// after the agent. The go to agent list then shows it below the
+    /// hubs, and after a Herdr restart too.
+    #[command(after_help = "Example: hub desk add routine")]
+    Add {
+        /// The agent's name
+        name: AgentName,
+    },
+    /// Take an agent off the desk
+    ///
+    /// Moves the agent's pane out of the desk into a new workspace
+    /// named after the agent. The go to agent list then shows it only
+    /// while it waits on the user.
+    #[command(after_help = "Example: hub desk rm routine")]
+    Rm {
+        /// The agent's name
+        name: AgentName,
+    },
+    /// Set an agent's place on the desk
+    ///
+    /// Moves the agent's tab so it is the Nth agent on the desk, 1
+    /// first. The go to agent list shows the desk in this order.
+    #[command(after_help = "Example: hub desk move routine 1")]
+    Move {
+        /// The agent's name
+        name: AgentName,
+        /// Its place among the desk's agents, 1 first
+        place: usize,
+    },
+}
+
 impl Command {
     /// Returns the name the user typed, such as `go`.
     pub fn name(&self) -> &'static str {
@@ -654,7 +699,7 @@ impl Command {
             Command::Requests { .. } => "requests",
             Command::Go => "go",
             Command::Gather => "gather",
-            Command::Desk => "desk",
+            Command::Desk { .. } => "desk",
             Command::RestoreSidebar { .. } => "restore-sidebar",
             Command::Board { .. } => "board",
         }
@@ -825,7 +870,7 @@ fn find_hub_folder(local_state: &Path) -> Result<RunFolder, HubError> {
 
 /// Tells whether `run` is an auto run's folder, which alone holds an
 /// `approved.md`.
-fn is_auto_run(run: &RunFolder) -> Result<bool, HubError> {
+pub(crate) fn is_auto_run(run: &RunFolder) -> Result<bool, HubError> {
     Ok(run.read_file_if_exists("approved.md")?.is_some())
 }
 
@@ -870,7 +915,7 @@ pub fn can_take_machine(command: &Command) -> bool {
         | Command::Requests { .. }
         | Command::Go
         | Command::Gather
-        | Command::Desk
+        | Command::Desk { .. }
         | Command::RestoreSidebar { .. }
         | Command::Board { .. } => false,
     }
@@ -890,12 +935,17 @@ mod tests {
     fn command_help_has_long_text_and_example() {
         let hub = Cli::command();
         let auto = hub.find_subcommand("auto").unwrap();
+        let desk = hub.find_subcommand("desk").unwrap();
         let commands = hub
             .get_subcommands()
             .map(|command| (format!("hub {}", command.get_name()), command))
             .chain(
                 auto.get_subcommands()
                     .map(|step| (format!("hub auto {}", step.get_name()), step)),
+            )
+            .chain(
+                desk.get_subcommands()
+                    .map(|step| (format!("hub desk {}", step.get_name()), step)),
             );
 
         for (path, command) in commands {
@@ -1035,7 +1085,7 @@ mod tests {
             ),
             ("go", Command::Go, false),
             ("gather", Command::Gather, false),
-            ("desk", Command::Desk, false),
+            ("desk", Command::Desk { step: None }, false),
         ];
 
         for (case_name, command, expected) in cases {

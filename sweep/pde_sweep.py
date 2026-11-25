@@ -590,9 +590,30 @@ def find_card_pr_urls(card_text: str) -> list[str]:
     Returns:
         Each link once, sorted.
     """
-    parts = card_text.split("---\n", 2)
-    front_matter = parts[1] if card_text.startswith("---\n") else ""
+    lines = card_text.split("\n")
+    front_matter = "\n".join(lines[1 : find_frontmatter_end(lines)])
     return sorted(set(PR_URL_RE.findall(front_matter)))
+
+
+def find_frontmatter_end(lines: list[str]) -> int:
+    """Return the index of the line that closes the front matter.
+
+    It copies ``find_frontmatter_end`` in kanban/card.py, which sweep
+    cannot import, since card.py needs Python 3.11 and sweep runs on
+    3.10.
+
+    Args:
+        lines: The card text split into lines.
+
+    Returns:
+        The index, or 0 when the card has no front matter.
+    """
+    if not lines or lines[0].strip() != "---":
+        return 0
+    for index in range(1, len(lines)):
+        if lines[index].strip() == "---":
+            return index
+    return 0
 
 
 def list_repos(projects: Path) -> list[Path]:

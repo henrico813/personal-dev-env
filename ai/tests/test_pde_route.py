@@ -21,7 +21,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "ai/skills/model-routing/scripts/pde_route.py"
-OPUS_CC = "claude-code/claude-opus-5-5[1m]"
+OPUS_CC = "claude-code/claude-opus-5-5"
 OPUS_GH = "github-copilot/claude-opus-5.5"
 SONNET_CC = "claude-code/claude-sonnet-5"
 SONNET_GH = "github-copilot/claude-sonnet-5"
@@ -44,7 +44,7 @@ ALL_NAMES = [
 WITHOUT_OPUS_CC = [name for name in ALL_NAMES if name != OPUS_CC]
 OPUS_HIGH = {
     "providerID": "claude-code",
-    "id": "claude-opus-5-5[1m]",
+    "id": "claude-opus-5-5",
     "variant": "high",
 }
 PICKED = "the picked model"

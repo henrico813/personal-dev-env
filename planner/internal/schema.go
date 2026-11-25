@@ -142,7 +142,7 @@ func BuildPlanTemplate() Plan {
 	}
 }
 
-func ValidationRules() []string {
+func ListValidationRules() []string {
 	return []string{
 		"title, overview, definition_of_done.narrative, definition_of_done.current_state, and definition_of_done.module_shape must be non-empty",
 		fmt.Sprintf("definition_of_done.goals must contain between 1 and %d items", MaxDoDGoals),

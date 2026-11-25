@@ -53,7 +53,7 @@ func (m Manager) Apply() (*fsutil.Journal, error) {
 	if m.Runner.DryRun {
 		arguments := m.arguments()
 		arguments[9] = ""
-		diffCommand := run.Command{Name: binary, Args: append(arguments, "--refresh-externals=never", "diff", "--exclude", "externals,scripts", "--no-pager"), Env: m.environment()}
+		diffCommand := run.Command{Name: binary, Args: append(arguments, "--refresh-externals=never", "diff", "--exclude", "externals,scripts", "--no-pager"), Env: m.buildEnvironment()}
 		if err := m.Runner.Plan("preview chezmoi changes", &diffCommand); err != nil {
 			return nil, err
 		}
@@ -70,7 +70,7 @@ func (m Manager) Apply() (*fsutil.Journal, error) {
 	if err != nil {
 		return nil, err
 	}
-	stateBackup := fsutil.BackupName(statePath)
+	stateBackup := fsutil.MakeBackupName(statePath)
 	if _, err := os.Lstat(statePath); err == nil {
 		if err := fsutil.CopyPath(statePath, stateBackup); err != nil {
 			return nil, fmt.Errorf("back up chezmoi state: %w", err)
@@ -85,7 +85,7 @@ func (m Manager) Apply() (*fsutil.Journal, error) {
 	} else {
 		return nil, fmt.Errorf("inspect chezmoi state: %w", err)
 	}
-	status, err := m.Runner.Query("preflight chezmoi status", run.Command{Name: binary, Args: append(m.arguments(), "status", "--exclude", "dirs,scripts", "--path-style", "absolute"), Env: m.environment()})
+	status, err := m.Runner.Query("preflight chezmoi status", run.Command{Name: binary, Args: append(m.arguments(), "status", "--exclude", "dirs,scripts", "--path-style", "absolute"), Env: m.buildEnvironment()})
 	if err != nil {
 		return nil, journal.Revert(err)
 	}
@@ -106,7 +106,7 @@ func (m Manager) Apply() (*fsutil.Journal, error) {
 		} else if err != nil {
 			return nil, journal.Revert(err)
 		}
-		name := fsutil.BackupName(path)
+		name := fsutil.MakeBackupName(path)
 		if err := fsutil.GuardHome(m.Home, name); err != nil {
 			return nil, journal.Revert(err)
 		}
@@ -132,12 +132,12 @@ func (m Manager) Apply() (*fsutil.Journal, error) {
 	command := run.Command{
 		Name: binary,
 		Args: append(m.arguments(), "apply", "--force", "--no-tty"),
-		Env:  m.environment(),
+		Env:  m.buildEnvironment(),
 	}
 	if err := m.Runner.Run("apply repository chezmoi source", command); err != nil {
 		return nil, journal.Revert(err)
 	}
-	remaining, err := m.Runner.Query("verify chezmoi state", run.Command{Name: binary, Args: append(m.arguments(), "status", "--exclude", "dirs,scripts", "--path-style", "absolute"), Env: m.environment()})
+	remaining, err := m.Runner.Query("verify chezmoi state", run.Command{Name: binary, Args: append(m.arguments(), "status", "--exclude", "dirs,scripts", "--path-style", "absolute"), Env: m.buildEnvironment()})
 	if err != nil {
 		return nil, journal.Revert(err)
 	}
@@ -160,7 +160,7 @@ func (m Manager) Probe() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	output, err := m.Runner.Query("read chezmoi status", run.Command{Name: binary, Args: append(m.arguments(), "status", "--exclude", "externals,scripts"), Env: m.environment()})
+	output, err := m.Runner.Query("read chezmoi status", run.Command{Name: binary, Args: append(m.arguments(), "status", "--exclude", "externals,scripts"), Env: m.buildEnvironment()})
 	if err != nil {
 		return "", err
 	}
@@ -224,7 +224,7 @@ func encodeTemplateData(selected profile.Profile, desktop profile.Desktop, updat
 	return string(data)
 }
 
-func (m Manager) environment() []string {
+func (m Manager) buildEnvironment() []string {
 	path := filepath.Join(m.AquaRoot, "bin") + string(os.PathListSeparator) + os.Getenv("PATH")
 	configName, checksumsName := m.Profile.AquaFiles()
 	aquaConfig := filepath.Join(m.Source(), "dot_config", "aquaproj-aqua")
@@ -365,7 +365,7 @@ func (m Manager) changedPaths(status string) ([]string, error) {
 		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 			return nil, fmt.Errorf("chezmoi target outside HOME: %s", clean)
 		}
-		root, err := m.mutationRoot(clean)
+		root, err := m.findMutationRoot(clean)
 		if err != nil {
 			return nil, err
 		}
@@ -388,7 +388,7 @@ func (m Manager) changedPaths(status string) ([]string, error) {
 	return collapsed, nil
 }
 
-func (m Manager) mutationRoot(path string) (string, error) {
+func (m Manager) findMutationRoot(path string) (string, error) {
 	relative, _ := filepath.Rel(m.Home, path)
 	current := m.Home
 	firstMissing := ""

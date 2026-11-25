@@ -104,7 +104,7 @@ func findStaleProcesses(home string) ([]staleProcess, error) {
 			executable,
 			" (deleted)",
 		)
-		if err != nil || !deleted || !within(home, path) {
+		if err != nil || !deleted || !isWithin(home, path) {
 			continue
 		}
 		name, _ := os.ReadFile(filepath.Join(
