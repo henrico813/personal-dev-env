@@ -35,6 +35,7 @@ Usage::
     card add KEY SECTION TEXT          add a bullet or criteria checkbox
     card attach KEY FILE               copy FILE to attachments, embed it
     card edit KEY SECTION N TEXT|--remove  replace or remove item N
+    card edit KEY SECTION N --tick|--untick  tick or untick item N
     card set KEY title|kind VALUE
     card link KEY PLAN|PR_URL
     card link KEY --session [AGENT]    record a Herdr agent's session
@@ -486,7 +487,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     edit = commands.add_parser(
         "edit",
-        help="replace or remove one item of a section",
+        help="replace, remove, tick or untick one item of a section",
         description="N is the item's number in card show KEY --section S.",
     )
     edit.add_argument("key")
@@ -494,6 +495,16 @@ def build_parser() -> argparse.ArgumentParser:
     edit.add_argument("number", type=int, metavar="N")
     edit.add_argument("text", nargs="?", help="the item's new text")
     edit.add_argument("--remove", action="store_true", help="remove item N")
+    edit.add_argument(
+        "--tick",
+        action="store_true",
+        help="set item N's checkbox to - [x]",
+    )
+    edit.add_argument(
+        "--untick",
+        action="store_true",
+        help="set item N's checkbox to - [ ]",
+    )
     add_author(edit)
     edit.set_defaults(run=run_edit)
 
@@ -1803,9 +1814,11 @@ def copy_to_new_file(source: Path, target: Path) -> None:
 
 
 def run_edit(args: argparse.Namespace, projects: Path) -> int:
-    """Replace or remove one numbered item of a section, and log it.
+    """Replace, remove, tick or untick one numbered item, and log it.
 
-    A replaced item keeps its bullet or checkbox, with its tick.
+    A replaced item keeps its bullet or checkbox, with its tick. Tick
+    and untick keep the words, and refuse an item with no checkbox or a
+    box already in that state.
 
     Args:
         args: The parsed arguments.
@@ -1814,8 +1827,9 @@ def run_edit(args: argparse.Namespace, projects: Path) -> int:
     Returns:
         The exit code.
     """
-    if (args.text is None) != args.remove:
-        raise CardError("give either the new text or --remove")
+    changes = [args.text is not None, args.remove, args.tick, args.untick]
+    if changes.count(True) != 1:
+        raise CardError("give the new text, --remove, --tick or --untick")
     if args.text is not None and not split_item(args.text.strip())[1]:
         raise CardError("the new text is empty; use --remove")
     card = find_card(projects, args.key)
@@ -1825,7 +1839,15 @@ def run_edit(args: argparse.Namespace, projects: Path) -> int:
     old = lines[find_item(lines, card.key, args.section, args.number)[0]]
     prefix, old_words = split_item(old)
     label = f"{args.section} item {args.number}"
-    if args.remove:
+    if args.tick or args.untick:
+        box = "- [x] " if args.tick else "- [ ] "
+        verb = "ticked" if args.tick else "unticked"
+        if not prefix.startswith("- ["):
+            raise CardError(f"{card.key} {label} has no checkbox")
+        if prefix.lower() == box:
+            raise CardError(f"{card.key} {label} is already {verb}")
+        note = f"{verb} {label}, {json.dumps(old_words)}"
+    elif args.remove:
         note = f"removed {label}, {json.dumps(old_words)}"
     else:
         note = f"replaced {label}, was {json.dumps(old_words)}"
@@ -1844,6 +1866,8 @@ def run_edit(args: argparse.Namespace, projects: Path) -> int:
                 lines[start - 1].strip() or lines[start].strip()
             ):
                 del lines[start]
+        elif args.tick or args.untick:
+            lines[start] = box + old_words
         else:
             # The item keeps its own bullet or box, so a given one is
             # used only on a plain line.

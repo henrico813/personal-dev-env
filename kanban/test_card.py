@@ -966,44 +966,60 @@ class TestSessions:
 
 
 class TestEdit:
-    """One numbered item of a section can be replaced or removed."""
+    """One numbered item can be replaced, removed, ticked or unticked."""
 
     @pytest.mark.parametrize(
-        ("flags", "criteria", "note"),
+        ("item_args", "criteria", "note"),
         [
             pytest.param(
-                ["- [ ] Second, sharper."],
-                "- [x] First.\n- [ ] Second, sharper.\n- [ ] Third.\n",
+                ["2", "- [ ] Second, sharper."],
+                (
+                    "- [x] First.\n- [ ] Second, sharper.\n"
+                    "  more words\n- [ ] Third.\n"
+                ),
                 'replaced Acceptance Criteria item 2, was "Second."',
                 id="replace",
             ),
             pytest.param(
-                ["--remove"],
+                ["2", "--remove"],
                 "- [x] First.\n- [ ] Third.\n",
                 'removed Acceptance Criteria item 2, "Second."',
                 id="remove",
+            ),
+            pytest.param(
+                ["2", "--tick"],
+                "- [x] First.\n- [x] Second.\n  more words\n- [ ] Third.\n",
+                'ticked Acceptance Criteria item 2, "Second."',
+                id="tick",
+            ),
+            pytest.param(
+                ["1", "--untick"],
+                "- [ ] First.\n- [ ] Second.\n  more words\n- [ ] Third.\n",
+                'unticked Acceptance Criteria item 1, "First."',
+                id="untick",
             ),
         ],
     )
     def test_edit_changes_item_n_and_logs(
         self,
         projects: Path,
-        flags: list[str],
+        item_args: list[str],
         criteria: str,
         note: str,
     ) -> None:
-        """Editing item 2 changes that item only, keeps its box, and logs it.
+        """Editing one item changes that item only and logs it.
 
-        Agents fix vague criteria by the numbers card show prints. An
-        off-by-one would rewrite the wrong criterion, a lost checkbox
-        would hide it from the todo check, and the Log line is the only
-        record of the old words.
+        Agents fix vague criteria and tick met ones by the numbers card
+        show prints. An off-by-one would change the wrong criterion, a
+        lost checkbox would hide it from the todo check, a tick that
+        dropped the words would lose the criterion, and the Log line is
+        the only record of the old words.
         """
         path = write_card(projects, KEY, "todo", "- [ ] First.")
         path.write_text(
             path.read_text().replace(
                 "- [ ] First.\n",
-                "- [x] First.\n- [ ] Second.\n- [ ] Third.\n",
+                "- [x] First.\n- [ ] Second.\n  more words\n- [ ] Third.\n",
             ),
         )
 
@@ -1012,8 +1028,7 @@ class TestEdit:
             "edit",
             KEY,
             "Acceptance Criteria",
-            "2",
-            *flags,
+            *item_args,
             "--by",
             "kanban-rollout-2",
         )
