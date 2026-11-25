@@ -62,7 +62,7 @@ path or command. Say where to run each command.
   for keys.
 - Quote content the user must approve, such as a patch or a diff,
   in the message itself, one `>` line per changed line. The user
-  answers from a phone and cannot run `less` there, so a path or
+  answers from a phone and cannot open a file there, so a path or
   command alone leaves nothing to approve. A `>` quote wraps on a
   phone; a code block does not, and the checker refuses its long
   lines. This content needs no command to open it; its path may
