@@ -24,8 +24,7 @@ Usage::
     card new PROJECT --from FILE [--user]  title, kind, sections
     card new PROJECT TITLE --adopt STAGE --user [--why TEXT]
                                        [--session [AGENT]]
-    card list [--stage S] [--project P] [--kind K] [--needs-you]
-              [--tabs | --json]
+    card list [--stage S] [--project P] [--kind K] [--tabs | --json]
     card board [--json]                counts and the review queue
     card show KEY [--section S] [--json]  S is any section, in any case
     card outline KEY                   sections with their line numbers
@@ -139,7 +138,6 @@ FIELDS = [
     "template_version",
     "project",
     "kind",
-    "needs_you",
     "date_created",
     "plans",
     "prs",
@@ -242,18 +240,6 @@ class Card:
         """The title from the first heading, else from the file name."""
         title = read_title(self.text, self.key)
         return title or self.path.stem.removeprefix(self.key).strip()
-
-    @property
-    def needs_you(self) -> str | None:
-        """The question waiting on the user, or None when nothing waits.
-
-        An empty or null field falls back to the newest open Log
-        question, since older versions of card wrote it only there.
-        """
-        value = str(read_fields(self.text).get("needs_you", ""))
-        if value in ("", "null"):
-            return read_open_question(self.text)
-        return value
 
 
 @dataclass(frozen=True)
@@ -396,11 +382,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     listing = commands.add_parser("list", help="one line per card")
     add_filters(listing)
-    listing.add_argument(
-        "--needs-you",
-        action="store_true",
-        help="only open cards waiting on the user",
-    )
     output = listing.add_mutually_exclusive_group()
     output.add_argument(
         "--tabs",
@@ -888,12 +869,6 @@ def run_list(args: argparse.Namespace, projects: Path) -> int:
         The exit code.
     """
     cards = filter_cards(load_all_cards(projects), args)
-    if args.needs_you:
-        cards = [
-            card
-            for card in cards
-            if card.needs_you and card.stage not in (DONE, DROPPED)
-        ]
     cards.sort(key=lambda card: (rank_stage(card.stage), card.key))
     if args.json:
         print_json([describe_card(card) for card in cards])
@@ -1061,7 +1036,7 @@ def read_open_question(text: str) -> str | None:
 def describe_card(card: Card) -> dict[str, Any]:
     """Return the fields scripts read from a card, for --json output.
 
-    Titles stay whole.
+    Titles stay whole. ``needs_you`` is read_open_question's result.
 
     Args:
         card: The card.
@@ -1080,7 +1055,7 @@ def describe_card(card: Card) -> dict[str, Any]:
         "plans": as_list(fields.get("plans")),
         "prs": as_list(fields.get("prs")),
         "sessions": as_list(fields.get("sessions")),
-        "needs_you": card.needs_you,
+        "needs_you": read_open_question(card.text),
     }
 
 
@@ -1687,9 +1662,6 @@ def read_pr_state(url: str) -> str:
 def run_note(args: argparse.Namespace, projects: Path) -> int:
     """Add a dated note, question or answer to a card's Log.
 
-    A question also sets the needs_you field, and an answer sets it to
-    null.
-
     Args:
         args: The parsed arguments.
         projects: The vault's Projects folder.
@@ -1699,23 +1671,13 @@ def run_note(args: argparse.Namespace, projects: Path) -> int:
     """
     card = find_card(projects, args.key)
     today = date.today().isoformat()
-    needs_you = None
     if args.needs_you:
         entry = f"- {today} needs-you: {args.text}"
-        needs_you = json.dumps(args.text, ensure_ascii=False)
     elif args.answered:
         entry = f"- {today} answered: {args.text}"
-        needs_you = "null"
     else:
         entry = f"- {today} note ({find_author(args)}): {args.text}"
-
-    def change(text: str) -> str:
-        """Add the Log line, and set needs_you for a question or answer."""
-        if needs_you is not None:
-            text = set_field(text, "needs_you", needs_you)
-        return add_to_section(text, "Log", entry)
-
-    update_card(card, change)
+    update_card(card, lambda text: add_to_section(text, "Log", entry))
     print(f"{card.key} Log: {entry}")
     return 0
 
@@ -2666,7 +2628,6 @@ def render_card(
         "template_version": "2",
         "project": project,
         "kind": kind,
-        "needs_you": "null",
         "date_created": today,
         "plans": [],
         "prs": [],
@@ -2844,9 +2805,7 @@ def parse_value(value: str) -> str | list[str]:
 
 
 def unquote(value: str) -> str:
-    """Strip one pair of matching quotes, and decode a double-quoted value.
-
-    A value such as ``"a \\"b\\""`` reads as ``a "b"``.
+    """Strip one pair of matching quotes.
 
     Args:
         value: A YAML value.
@@ -2855,16 +2814,9 @@ def unquote(value: str) -> str:
         The value without its quotes.
     """
     value = value.strip()
-    if len(value) < 2 or value[0] != value[-1] or value[0] not in "\"'":
-        return value
-    # card writes double-quoted values with json.dumps, which escapes
-    # any quote inside them.
-    if value[0] == '"':
-        try:
-            return json.loads(value)
-        except json.JSONDecodeError:
-            return value[1:-1]
-    return value[1:-1]
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
 
 
 def as_list(value: str | list[str] | None) -> list[str]:
