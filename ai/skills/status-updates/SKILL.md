@@ -110,6 +110,10 @@ path or command. Say where to run each command.
   pass", and say what you did not check. Leave out or mark unchecked
   any other claim. Never make up a number, link or time.
 - Correct a wrong earlier claim in its own line.
+- Before you repeat the steps of an older plan or update, in its
+  words or your own, drop each step that the user has since said is
+  done. A repeated step reads as work still waiting on them. One line
+  may still say which steps are done.
 - Leave out private details you read in notes.
 
 ## Restraint

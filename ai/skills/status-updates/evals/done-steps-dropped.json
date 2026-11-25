@@ -1,0 +1,17 @@
+{
+  "id": "done-steps-dropped",
+  "source": "an update quoted the steps of an older plan, including steps the user had already said were done, so the user read them as work still waiting",
+  "rule": "Real results",
+  "correction": true,
+  "prompt": "You help the user move their notes app to a new server. This morning you sent this plan:\n\n1. Back up the notes database.\n2. Copy the backup to the new server.\n3. Point the app at the new server.\n4. Turn off the old server.\n\nAn hour ago the user wrote: \"Backup done and copied over.\" Since then nothing else has happened. The user now asks: \"What's left?\"\n\nWrite your one short reply to the user.",
+  "pass": [
+    "(?i)point (the )?app",
+    "(?i)\\bturn off\\b|shut down"
+  ],
+  "fail": [
+    "(?im)^\\W*\\d?\\W*back(ed)? ?up",
+    "(?im)^\\W*\\d?\\W*cop(y|ied)"
+  ],
+  "good": "Two steps are left for the notes app move: point the app at the new server, then turn off the old server. The backup and copy are done, as you said.",
+  "bad": "Here is the plan:\n1. Back up the notes database.\n2. Copy the backup to the new server.\n3. Point the app at the new server.\n4. Turn off the old server."
+}
