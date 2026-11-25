@@ -82,6 +82,131 @@ kind: research
 ## acceptance criteria
 - [ ] A failed upload retries.
 """
+# A card as card wrote it before the version 2 layout, with a Risks
+# section the user added by hand.
+V1_CARD = f"""---
+tags:
+  - "#Kanban"
+type: card
+stage: active
+stage_date: 2026-11-01
+template_version: 1
+project: DevEnv
+kind: build
+date_created: 2026-11-01
+plans: []
+prs: []
+sessions: []
+topics:
+  - "[[DevEnv]]"
+---
+
+# {KEY} Fix some work
+---
+
+## Context
+---
+
+## Acceptance Criteria
+---
+
+- [ ] Uploads retry.
+
+## Open Questions
+---
+
+## Decisions
+---
+
+## Risks
+---
+
+- The bucket may be full.
+
+## Log
+---
+
+- 2026-11-01 active: by user
+"""
+# A version 2 card with every section filled and one Agent Notes part
+# for each section, in section order.
+FULL_CARD = f"""---
+tags:
+  - "#Kanban"
+type: card
+stage: active
+stage_date: 2026-11-01
+template_version: 2
+project: DevEnv
+kind: build
+date_created: 2026-11-01
+plans: []
+prs: []
+sessions: []
+topics:
+  - "[[DevEnv]]"
+---
+
+# {KEY} Fix some work
+---
+
+## Context
+---
+
+- Uploads fail on a slow link.
+
+## Acceptance Criteria
+---
+
+- [ ] Uploads retry.
+
+## Open Questions
+---
+
+- How many retries?
+
+## Decisions
+---
+
+- Retry three times.
+
+## Notes
+---
+
+Ask about the cold bucket.
+
+## Log
+---
+
+- 2026-11-01 active: by user
+
+## Appendix
+---
+
+### Agent Notes on Context
+
+- The upload code is in sync.py.
+
+### Agent Notes on Acceptance Criteria
+
+- A test can fake the slow link.
+
+### Agent Notes on Open Questions
+
+- The hub retries twice today.
+
+### Agent Notes on Decisions
+
+- Three matches the hub.
+
+### Agent Notes on Notes
+
+- The cold bucket is in the archive project.
+
+### Agent Notes on Log
+
+- Started on 2026-11-01.
+"""
 
 
 class FixedDate(date):
@@ -149,6 +274,11 @@ def write_card(
     return path
 
 
+def read_log(text: str) -> str:
+    """Return a card's Log text, where card adds each new line."""
+    return card.read_section(text, "Log") or ""
+
+
 class TestNew:
     """Making a card picks its key from the cards and plans of its code."""
 
@@ -205,6 +335,37 @@ class TestNew:
         assert code == 0
         assert (projects / "DevEnv" / name).exists()
 
+    def test_new_writes_version_2_layout(self, projects: Path) -> None:
+        """card new writes the seven sections in order, as version 2.
+
+        Agents and the hub find a card's parts by these headings. A
+        section out of order, or a Log line below the Appendix, would send
+        them to the wrong text.
+        """
+        code = run_card(
+            projects,
+            "new",
+            "DevEnv",
+            "Retry failed uploads",
+            "--by",
+            "user",
+        )
+
+        assert code == 0
+        path = projects / "DevEnv" / f"{NEW_KEY} Retry failed uploads.md"
+        text = path.read_text()
+        assert re.findall(r"^## (.*)$", text, re.M) == [
+            "Context",
+            "Acceptance Criteria",
+            "Open Questions",
+            "Decisions",
+            "Notes",
+            "Log",
+            "Appendix",
+        ]
+        assert "template_version: 2\n" in text
+        assert read_log(text).strip() == f"- {TODAY} draft: by user"
+
     def test_new_adopt_logs_adoption_at_stage(self, projects: Path) -> None:
         """Adopted work starts in its stage with an adoption Log line.
 
@@ -230,7 +391,7 @@ class TestNew:
         assert code == 0
         text = (projects / "DevEnv" / f"{NEW_KEY} Old work.md").read_text()
         assert f"stage: in-review\nstage_date: {TODAY}\n" in text
-        assert text.endswith(
+        assert read_log(text).endswith(
             f"- {TODAY} in-review: adopted by general-staff for the user."
             " PR #450 open\n",
         )
@@ -456,7 +617,9 @@ class TestMove:
         assert code == 0
         text = path.read_text()
         assert f"stage: todo\nstage_date: {TODAY}\n" in text
-        assert text.endswith(f"- {TODAY} todo: by hub. Clear enough\n")
+        assert read_log(text).endswith(
+            f"- {TODAY} todo: by hub. Clear enough\n",
+        )
 
     @pytest.mark.parametrize(
         ("source", "target", "steps"),
@@ -497,7 +660,7 @@ class TestMove:
         assert code == 0
         text = path.read_text()
         assert f"stage: {target}\nstage_date: {TODAY}\n" in text
-        assert text.endswith(
+        assert read_log(text).endswith(
             f"- {TODAY} {steps[0]}: by hub for the user\n"
             f"- {TODAY} {steps[1]}: by hub for the user. Looks good\n",
         )
@@ -712,7 +875,7 @@ class TestSessions:
         text = path.read_text()
         assert 'prs: []\nsessions:\n  - "opencode ses_abc"\ntopics:' in text
         assert text.count("session: worker-1 (opencode ses_abc)") == 1
-        assert text.endswith(
+        assert read_log(text).endswith(
             f"- {TODAY} session: worker-1 (opencode ses_abc)\n",
         )
 
@@ -763,7 +926,7 @@ class TestSessions:
         path = projects / "DevEnv" / f"{NEW_KEY} Fix some work.md"
         text = path.read_text()
         assert 'sessions:\n  - "opencode ses_abc"\n' in text
-        assert text.endswith(
+        assert read_log(text).endswith(
             f"- {TODAY} {stage_line}\n"
             f"- {TODAY} session: worker-1 (opencode ses_abc)\n",
         )
@@ -936,7 +1099,9 @@ class TestEdit:
         assert code == 0
         text = path.read_text()
         assert f"---\n\n{criteria}\n## Open Questions" in text
-        assert text.endswith(f"- {TODAY} note (kanban-rollout-2): {note}\n")
+        assert read_log(text).endswith(
+            f"- {TODAY} note (kanban-rollout-2): {note}\n",
+        )
 
     def test_show_section_numbers_items_for_edit(
         self,
@@ -1035,6 +1200,171 @@ class TestShow:
         assert shown["sections"] == {
             "Acceptance Criteria": "- [ ] Uploads retry.",
         }
+
+
+class TestReadParts:
+    """card reads one part of a card, and its writes keep every part."""
+
+    def test_full_card_reads_and_keeps_parts(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """card reads each part of a full card, and its writes keep them.
+
+        Agents read a card part by part, through outline, --section and
+        --json. A wrong range or a part cut short hands them the wrong text.
+        A write that drops an Agent Notes part, or puts a Log line in the
+        Appendix, garbles an agent's notes.
+        """
+        path = projects / "DevEnv" / f"{KEY} Fix some work.md"
+        path.write_text(FULL_CARD)
+
+        # Read the outline, each section and the JSON before any write.
+        run_card(projects, "outline", KEY)
+        outline = capsys.readouterr().out
+        sections = {}
+        for name in card.SECTIONS:
+            run_card(projects, "show", KEY, "--section", name)
+            sections[name] = capsys.readouterr().out
+        run_card(projects, "show", KEY, "--json")
+        shown = json.loads(capsys.readouterr().out)
+        # Add a criterion, edit a decision and add a Log note.
+        run_card(
+            projects,
+            "add",
+            KEY,
+            "Acceptance Criteria",
+            "Retries back off.",
+        )
+        run_card(
+            projects,
+            "edit",
+            KEY,
+            "Decisions",
+            "1",
+            "Retry four times.",
+            "--by",
+            "hub",
+        )
+        run_card(projects, "note", KEY, "bucket picked", "--by", "hub")
+
+        assert outline == (
+            "21-25     ## Context\n"
+            "26-30     ## Acceptance Criteria\n"
+            "31-35     ## Open Questions\n"
+            "36-40     ## Decisions\n"
+            "41-45     ## Notes\n"
+            "46-50     ## Log\n"
+            "51-76     ## Appendix\n"
+            "54-57       ### Agent Notes on Context\n"
+            "58-61       ### Agent Notes on Acceptance Criteria\n"
+            "62-65       ### Agent Notes on Open Questions\n"
+            "66-69       ### Agent Notes on Decisions\n"
+            "70-73       ### Agent Notes on Notes\n"
+            "74-76       ### Agent Notes on Log\n"
+        )
+        assert sections == {
+            "Context": "## Context\n1. - Uploads fail on a slow link.\n",
+            "Acceptance Criteria": (
+                "## Acceptance Criteria\n1. - [ ] Uploads retry.\n"
+            ),
+            "Open Questions": "## Open Questions\n1. - How many retries?\n",
+            "Decisions": "## Decisions\n1. - Retry three times.\n",
+            "Notes": "## Notes\n1. Ask about the cold bucket.\n",
+            "Log": "## Log\n1. - 2026-11-01 active: by user\n",
+            "Appendix": (
+                "## Appendix\n"
+                "1. ### Agent Notes on Context\n\n"
+                "2. - The upload code is in sync.py.\n\n"
+                "3. ### Agent Notes on Acceptance Criteria\n\n"
+                "4. - A test can fake the slow link.\n\n"
+                "5. ### Agent Notes on Open Questions\n\n"
+                "6. - The hub retries twice today.\n\n"
+                "7. ### Agent Notes on Decisions\n\n"
+                "8. - Three matches the hub.\n\n"
+                "9. ### Agent Notes on Notes\n\n"
+                "10. - The cold bucket is in the archive project.\n\n"
+                "11. ### Agent Notes on Log\n\n"
+                "12. - Started on 2026-11-01.\n"
+            ),
+        }
+        assert shown["sections"] == {
+            "Context": "- Uploads fail on a slow link.",
+            "Acceptance Criteria": "- [ ] Uploads retry.",
+            "Open Questions": "- How many retries?",
+            "Decisions": "- Retry three times.",
+            "Notes": "Ask about the cold bucket.",
+            "Log": "- 2026-11-01 active: by user",
+            "Appendix": (
+                "### Agent Notes on Context\n\n"
+                "- The upload code is in sync.py.\n\n"
+                "### Agent Notes on Acceptance Criteria\n\n"
+                "- A test can fake the slow link.\n\n"
+                "### Agent Notes on Open Questions\n\n"
+                "- The hub retries twice today.\n\n"
+                "### Agent Notes on Decisions\n\n"
+                "- Three matches the hub.\n\n"
+                "### Agent Notes on Notes\n\n"
+                "- The cold bucket is in the archive project.\n\n"
+                "### Agent Notes on Log\n\n"
+                "- Started on 2026-11-01."
+            ),
+        }
+        assert path.read_text() == (
+            FULL_CARD.replace(
+                "- [ ] Uploads retry.\n",
+                "- [ ] Uploads retry.\n- [ ] Retries back off.\n",
+            )
+            .replace("- Retry three times.\n", "- Retry four times.\n")
+            .replace(
+                "- 2026-11-01 active: by user\n",
+                "- 2026-11-01 active: by user\n"
+                f"- {TODAY} note (hub): replaced Decisions item 1,"
+                ' was "Retry three times."\n'
+                f"- {TODAY} note (hub): bucket picked\n",
+            )
+        )
+
+    def test_show_section_prints_hand_made_section(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """card show --section prints a hand-made section, in any case.
+
+        Users add sections by hand that card does not list. If show took
+        only its own names or their exact case, an agent would have to
+        read the whole card.
+        """
+        (projects / "DevEnv" / f"{KEY} Fix some work.md").write_text(V1_CARD)
+
+        code = run_card(projects, "show", KEY, "--section", "risks")
+
+        assert code == 0
+        assert capsys.readouterr().out == (
+            "## Risks\n1. - The bucket may be full.\n"
+        )
+
+    def test_show_section_rejects_unknown_name(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """card show --section refuses a section name it does not know.
+
+        A typo must fail. An empty section would tell an agent the card
+        has no criteria.
+        """
+        write_card(projects, KEY, "active")
+        typo = "Acceptance Critera"
+
+        code = run_card(projects, "show", KEY, "--section", typo)
+
+        captured = capsys.readouterr()
+        assert code == 1
+        assert captured.out == ""
+        assert captured.err == f"card: {KEY} has no {typo} section\n"
 
 
 class TestAttach:
@@ -1523,6 +1853,75 @@ class TestHandEditedCard:
         assert capsys.readouterr().out == (
             f"{NEW_KEY} Lost type.md has a card name but no type: card\n"
             "1 problems in 0 cards\n"
+        )
+
+
+class TestVersionOneCard:
+    """Cards made before the version 2 layout keep working."""
+
+    def test_check_passes_without_new_sections(self, projects: Path) -> None:
+        """card check passes an old card that has no Notes or Appendix.
+
+        Cards made before version 2 have neither section. If card check
+        asked for them, it would flag every old card and hide the real
+        problems.
+        """
+        (projects / "DevEnv" / f"{KEY} Fix some work.md").write_text(V1_CARD)
+
+        code = run_card(projects, "check")
+
+        assert code == 0
+
+    def test_show_gives_old_cards_every_section(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """card show gives an old card every section, empty when missing.
+
+        Scripts read old cards through card show --json and --section.
+        An error or a missing entry for Notes or the Appendix would
+        break them on every old card.
+        """
+        (projects / "DevEnv" / f"{KEY} Fix some work.md").write_text(V1_CARD)
+
+        section_code = run_card(projects, "show", KEY, "--section", "notes")
+        section_out = capsys.readouterr().out
+        json_code = run_card(projects, "show", KEY, "--json")
+        shown = json.loads(capsys.readouterr().out)
+
+        assert (section_code, section_out) == (0, "## Notes\n\n")
+        assert json_code == 0
+        assert shown["sections"] == {
+            "Context": "",
+            "Acceptance Criteria": "- [ ] Uploads retry.",
+            "Open Questions": "",
+            "Decisions": "",
+            "Notes": "",
+            "Log": "- 2026-11-01 active: by user",
+            "Appendix": "",
+            "Risks": "- The bucket may be full.",
+        }
+
+    def test_note_appends_exact_log_lines(self, projects: Path) -> None:
+        """card note adds each Log line in the exact form the hub matches.
+
+        The hub finds waiting cards by the ``- YYYY-MM-DD needs-you:`` and
+        ``answered:`` Log lines, so another date or wording hides the
+        user's questions. The write must also keep the sections a user
+        added by hand to an old card.
+        """
+        path = projects / "DevEnv" / f"{KEY} Fix some work.md"
+        path.write_text(V1_CARD)
+
+        run_card(projects, "note", KEY, "which bucket?", "--needs-you")
+        run_card(projects, "note", KEY, "the cold one", "--answered")
+        run_card(projects, "note", KEY, "bucket picked", "--by", "hub")
+
+        assert path.read_text() == V1_CARD + (
+            f"- {TODAY} needs-you: which bucket?\n"
+            f"- {TODAY} answered: the cold one\n"
+            f"- {TODAY} note (hub): bucket picked\n"
         )
 
 
@@ -2277,7 +2676,7 @@ class TestMerged:
         assert code == 0
         text = path.read_text()
         assert f"stage: done\nstage_date: {TODAY}\n" in text
-        assert text.endswith(
+        assert read_log(text).endswith(
             f"- {TODAY} in-review: by card merged for the user\n"
             f"- {TODAY} done: by card merged for the user."
             f" {MERGED_PR} merged\n",
@@ -2368,7 +2767,7 @@ class TestMerged:
         assert code == 0
         text = path.read_text()
         assert "stage: active\n" in text
-        assert text.endswith(
+        assert read_log(text).endswith(
             f"- {TODAY} note (card merged): {MERGED_PR} merged,"
             f" but the card stays active: {reason}\n",
         )

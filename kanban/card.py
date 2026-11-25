@@ -26,7 +26,8 @@ Usage::
                                        [--session [AGENT]]
     card list [--stage S] [--project P] [--kind K] [--tabs | --json]
     card board [--json]                counts and the review queue
-    card show KEY [--section S] [--json]
+    card show KEY [--section S] [--json]  S is any section, in any case
+    card outline KEY                   sections with their line numbers
     card grep PATTERN [--section S] [--stage S] [--project P]
     card move KEY STAGE [--user] [--why TEXT] [--session [AGENT]]
     card note KEY TEXT [--needs-you | --answered]
@@ -147,11 +148,19 @@ SECTIONS = [
     "Acceptance Criteria",
     "Open Questions",
     "Decisions",
+    "Notes",
     "Log",
+    "Appendix",
 ]
+# Sections the version 2 layout added. card check does not ask old
+# cards for them.
+VERSION_2_SECTIONS = ["Notes", "Appendix"]
 # Sections that `run_add` and `run_edit` may fill, as may the input
-# file of `run_new`. Only this program writes the Log.
-WRITABLE_SECTIONS = [name for name in SECTIONS if name != "Log"]
+# file of `run_new`. Notes is the user's own text, the Appendix holds
+# agent notes parts, and only this program writes the Log.
+WRITABLE_SECTIONS = [
+    name for name in SECTIONS if name not in ("Notes", "Log", "Appendix")
+]
 CRITERIA = "Acceptance Criteria"
 TITLE_LIMIT = 50
 
@@ -174,6 +183,8 @@ PROJECT_CODE_RE = re.compile(r"Project code:\s*`?([A-Z][A-Z0-9]*)`?")
 FIELD_RE = re.compile(r"^([A-Za-z_][\w-]*):(.*)$")
 LIST_ITEM_RE = re.compile(r"^\s+-\s+(.*)$")
 HEADING_RE = re.compile(r"^(#{1,2})\s+(.*?)\s*$")
+# A #, ## or ### heading, the levels card outline reads.
+OUTLINE_HEADING_RE = re.compile(r"^(#{1,3})\s+\S")
 CHECKBOX_RE = re.compile(r"^\s*- \[[ xX]\] \S", re.M)
 UNTICKED_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)]) \[[^xX\]]\] \S", re.M)
 # A GitHub pull request URL, maybe followed by a page such as /files.
@@ -385,9 +396,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     show = commands.add_parser("show", help="print a card")
     show.add_argument("key")
-    show.add_argument("--section", choices=SECTIONS)
+    show.add_argument("--section", help="any ## heading, in any case")
     add_json_option(show)
     show.set_defaults(run=run_show)
+
+    outline = commands.add_parser(
+        "outline",
+        help="list sections with their line numbers",
+    )
+    outline.add_argument("key")
+    outline.set_defaults(run=run_outline)
 
     grep = commands.add_parser("grep", help="search card text")
     grep.add_argument("pattern", help="regular expression, any case")
@@ -1042,9 +1060,10 @@ def print_json(value: object) -> None:
 def run_show(args: argparse.Namespace, projects: Path) -> int:
     """Print a whole card, or one section of it.
 
-    With --json, print describe_card's object plus ``sections``, which
-    maps each section name, or only --section, to its text. A section
-    the card lacks is left out.
+    --section takes any ``##`` heading in any case, and a SECTIONS name the
+    card lacks prints as empty. With --json, print describe_card's object
+    plus ``sections``, which maps each name from list_section_names, or
+    only --section, to its text.
 
     Args:
         args: The parsed arguments.
@@ -1054,37 +1073,108 @@ def run_show(args: argparse.Namespace, projects: Path) -> int:
         The exit code.
     """
     card = find_card(projects, args.key)
+    lines = card.text.split("\n")
+    section = None
+    if args.section:
+        section = find_section_name(lines, args.section)
+        if section is None:
+            raise CardError(f"{card.key} has no {args.section} section")
     if args.json:
-        names = [args.section] if args.section else SECTIONS
-        sections = {}
-        for name in names:
-            text = read_section(card.text, name)
-            if text is None and args.section:
-                raise CardError(f"{card.key} has no {name} section")
-            if text is not None:
-                sections[name] = text.strip()
+        names = [section] if section else list_section_names(lines)
+        sections = {
+            name: (read_section(card.text, name) or "").strip()
+            for name in names
+        }
         print_json({**describe_card(card), "sections": sections})
         return 0
-    if not args.section:
+    if section is None:
         print(card.text, end="")
         return 0
-    text = read_section(card.text, args.section)
-    if text is None:
-        raise CardError(f"{card.key} has no {args.section} section")
-    lines = card.text.split("\n")
     numbers = {
         start: number
-        for number, (start, _) in enumerate(list_items(lines, args.section), 1)
+        for number, (start, _) in enumerate(list_items(lines, section), 1)
     }
-    bounds = find_section(lines, args.section)
-    assert bounds is not None, "read_section found the section"
+    # A known section the card lacks has no lines to show.
+    bounds = find_section(lines, section) or (0, 0)
     shown = [
         f"{numbers[index]}. {lines[index]}"
         if index in numbers
         else lines[index]
         for index in range(*bounds)
     ]
-    print(f"## {args.section}\n" + "\n".join(shown).strip())
+    print(f"## {section}\n" + "\n".join(shown).strip())
+    return 0
+
+
+def find_section_name(lines: list[str], name: str) -> str | None:
+    """Return a section name as the card's heading or SECTIONS spells it.
+
+    Args:
+        lines: The card text split into lines.
+        name: A section name in any case, such as ``open questions``.
+
+    Returns:
+        The name, such as ``Open Questions``, or None when the card has
+        no such heading and SECTIONS does not name it.
+    """
+    index = find_heading(lines, name)
+    if index is not None:
+        heading = HEADING_RE.match(lines[index])
+        assert heading, "find_heading matched this line"
+        return heading[2]
+    known = [
+        section for section in SECTIONS if section.lower() == name.lower()
+    ]
+    return known[0] if known else None
+
+
+def list_section_names(lines: list[str]) -> list[str]:
+    """List SECTIONS, then each other ``##`` heading of the card in order.
+
+    Args:
+        lines: The card text split into lines.
+
+    Returns:
+        The names, with the card's other headings as it spells them.
+    """
+    names = list(SECTIONS)
+    seen = {name.lower() for name in names}
+    for line in lines[find_frontmatter_end(lines) + 1 :]:
+        heading = HEADING_RE.match(line)
+        if heading and heading[1] == "##" and heading[2].lower() not in seen:
+            names.append(heading[2])
+            seen.add(heading[2].lower())
+    return names
+
+
+def run_outline(args: argparse.Namespace, projects: Path) -> int:
+    """Print each ``##`` and ``###`` heading with the lines its part covers.
+
+    Lines count from 1, as ``sed -n`` counts them, such as
+    ``21-26     ## Context``. A part ends before the next heading of its
+    level or higher, so the Appendix covers its Agent Notes parts.
+
+    Args:
+        args: The parsed arguments.
+        projects: The vault's Projects folder.
+
+    Returns:
+        The exit code.
+    """
+    card = find_card(projects, args.key)
+    lines = card.text.splitlines()
+    headings = []
+    for index in range(find_frontmatter_end(lines) + 1, len(lines)):
+        heading = OUTLINE_HEADING_RE.match(lines[index])
+        if heading:
+            headings.append((index, len(heading[1])))
+    for position, (index, level) in enumerate(headings):
+        if level == 1:
+            continue
+        later = headings[position + 1 :]
+        ends = [other for other, other_level in later if other_level <= level]
+        span = f"{index + 1}-{ends[0] if ends else len(lines)}"
+        print(f"{span:<9} {'  ' * (level - 2)}{lines[index]}")
     return 0
 
 
@@ -2351,7 +2441,8 @@ def find_card_issues(card: Card) -> list[str]:
     if card.kind not in KINDS:
         issues.append(f"unknown kind {card.kind!r}")
     for name in SECTIONS:
-        if find_heading(lines, name) is None:
+        missing = find_heading(lines, name) is None
+        if missing and name not in VERSION_2_SECTIONS:
             issues.append(f"no {name} section")
     # Closed cards keep the titles they closed with.
     if card.stage not in (DONE, DROPPED):
@@ -2510,7 +2601,7 @@ def render_card(
         "type": "card",
         "stage": stage,
         "stage_date": today,
-        "template_version": "1",
+        "template_version": "2",
         "project": project,
         "kind": kind,
         "date_created": today,
@@ -2526,10 +2617,11 @@ def render_card(
     sections = sections or {}
     for name in SECTIONS:
         lines += [f"## {name}", "---", ""]
-        if name in sections:
+        if name == "Log":
+            lines += [f"- {today} {log_entry}", ""]
+        elif name in sections:
             lines += [sections[name], ""]
-    lines.append(f"- {today} {log_entry}")
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines).rstrip("\n") + "\n"
 
 
 def render_template() -> str:
