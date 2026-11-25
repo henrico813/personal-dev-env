@@ -34,6 +34,13 @@ Show `reviews.md` as printed, and each question in the short form of
 the `Recommended:` choice; its reason and other lines after the reply
 line.
 
+Before you show `reviews.md`, run `card board` and count the cards
+in its `review` stage. Compare that count with the entries in
+`reviews.md`. A card can reach `review` with no entry, such as when
+its worker closed or paused before writing one. When the counts
+differ, name each review-stage card with no entry, and give it a
+`next:` card note if it lacks one, so it is not silently stuck.
+
 ## A question file
 
 A `hub ask <key> <question file>` file looks like this:

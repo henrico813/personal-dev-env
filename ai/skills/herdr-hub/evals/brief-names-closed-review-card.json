@@ -1,0 +1,12 @@
+{
+  "id": "brief-names-closed-review-card",
+  "source": "the reviews.md counting rule moved from SKILL.md to references/hub-brief.md; this case checks the hub still follows it from there",
+  "rule": "Questions for the user",
+  "correction": true,
+  "prompt": "You run the hub of a long run of agent sessions. You are about to show the user the brief. `card board` lists two cards in the `review` stage: DOC-2 (install guide) and DOC-5 (API examples). The run folder's reviews.md has an entry for DOC-2 only. DOC-5's worker closed before writing its entry, and DOC-5 already has the card note `next: restart worker to write reviews.md entry`. Reply with only what you do and say before and while showing the brief, including any command you run.",
+  "judge": [
+    "Does the reply name DOC-5 as a review-stage card missing from reviews.md, without adding a second `next:` note to DOC-5?"
+  ],
+  "good": "`card board` has 2 cards in review, but reviews.md lists only 1. DOC-5 (API examples) has no entry: its worker closed before writing one, and its `next:` note already says to restart it.\n\nReviews ready for you:\n1. DOC-2: install guide.",
+  "bad": "Reviews ready for you:\n1. DOC-2: install guide.\n\nReply with the number you want to review first."
+}
