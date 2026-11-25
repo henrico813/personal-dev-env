@@ -370,12 +370,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     listing = commands.add_parser("list", help="one line per card")
     add_filters(listing)
-    listing.add_argument(
+    output = listing.add_mutually_exclusive_group()
+    output.add_argument(
         "--tabs",
         action="store_true",
         help="whole lines for scripts: key, stage, kind, project, title",
     )
-    add_json_option(listing)
+    add_json_option(output)
     listing.set_defaults(run=run_list)
 
     board = commands.add_parser("board", help="counts and review queue")
@@ -552,11 +553,14 @@ def add_session_option(parser: argparse.ArgumentParser, when: str) -> None:
     )
 
 
-def add_json_option(parser: argparse.ArgumentParser) -> None:
+def add_json_option(
+    parser: argparse.ArgumentParser | argparse._MutuallyExclusiveGroup,
+) -> None:
     """Add the --json option for commands that scripts read.
 
     Args:
-        parser: The command's parser.
+        parser: The command's parser, or a group of options that
+            exclude each other, such as card list's --tabs.
     """
     parser.add_argument(
         "--json",
