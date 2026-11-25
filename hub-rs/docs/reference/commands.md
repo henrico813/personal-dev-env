@@ -357,9 +357,12 @@ review handoff PATH
 `hub adopt [--run DIR] OLD` takes over OLD, an older hub of the run
 that no `handoff` named, or an auto run's hub, such as `auto-hub-2`,
 once its run is over. It writes OLD's review handoff and records a
-handoff, so `clean` closes OLD once it is idle. Run it in the hub's
-own pane. Prints `adopted OLD; hub clean closes its tab once it is
-idle, then hub next --start-reviews starts review-OLD`.
+handoff, so `clean` closes OLD once it is idle. For an auto hub, the
+handoff also names its run, the one `~/.local/state/herdr-hub.*`
+folder whose event log names OLD as its hub. When none or more than
+one does, it names no run, and `clean` closes only OLD's tab. Run it
+in the hub's own pane. Prints `adopted OLD; hub clean closes its tab
+once it is idle, then hub next --start-reviews starts review-OLD`.
 
 - Exits 3 with `OLD is not an auto hub or an older hub left without
   hub handoff`.
@@ -465,17 +468,40 @@ machines' agents through its own filter.
 session and parks each `to-park` session. It acts only on tabs that
 hold a session of DIR's run: those `hub launch` started from DIR,
 those that reported to DIR, and the old hubs DIR handed off from. A
-tab with none of them stays open. A finished `to-close` session of
+tab with none of them stays open, except in a finished auto run's
+workspace, as the next paragraph says. A finished `to-close` session of
 another run closes with a tab it shares with DIR's sessions, and the
 `closed` line names it. Any other agent there keeps the tab. Another
 run's sessions get no `parked` line, and a `kept` line only when the
 planned close of a tab they share stops. Only `clean` and `park`
 close tabs.
 
+When an auto hub that DIR adopted is `to-close`, every tab in its
+workspace, and in the workspace of each session its run's `notes.md`
+says it started, may change too. A workspace that holds this hub's
+own pane or another hub that stays open is left out, and so is the
+user's `desk` workspace. Each agent there is judged by its own
+state. A tab of shells that run nothing closes. Herdr closes the
+workspace with its last tab. A pane that keeps one of those tabs
+open gets a `kept` line. Without `HERDR_PANE_ID`, or when Herdr or
+the run folder cannot be read, no workspace closes this way, and only
+the old hub's tab closes.
+
 - `closed NAME: WHY` and `parked NAME: KEY in-review`.
+- `closed pane PANE-ID: run over` for a tab of shells that run
+  nothing, naming each pane, such as
+  `closed pane P1, pane P2: run over`, and
+  `closed workspace LABEL: run over` once the workspace closed.
 - `forgot NAME`: a parked session that is live again.
 - `kept NAME: WHY` for each kept session, and for a finished one
   whose tab also holds other work, with `its tab holds other work`.
+  In a closing workspace, an agent that is not finished gets one too,
+  such as `kept NAME: working`.
+- `kept pane PANE-ID: WHY` for a pane that keeps a tab of a closing
+  workspace open: `shell in use`, `agent with no name` or `focused`.
+- `kept workspaces of OLD: WHY` when clean cannot tell which
+  workspaces of OLD's run may close, such as
+  `this hub's pane is unknown`.
 - `nothing to close` when nothing changed.
 - `kept every session: REASON` when `card` or a request file cannot
   be read.

@@ -446,6 +446,40 @@ fn run_adopt_needs_auto_hub_end_brief() {
     assert_eq!(events[0]["old"], "auto-hub-2");
 }
 
+/// Adopting an auto hub must record the run folder whose log names it,
+/// so `hub clean` can close that run's workspaces. Adopting a kanban
+/// hub must record none, or clean would close the user's own tabs.
+#[test]
+fn run_adopt_records_only_auto_hub_run() {
+    let cases = [("auto-hub-2", true), ("kanban-hub-3", false)];
+
+    for (old, records_run) in cases {
+        let mut test_tools = TestTools::new();
+        test_tools.herdr.agents = vec![
+            make_agent("kanban-hub-4", AgentStatus::Working),
+            Agent {
+                session_id: Some("ses_old".to_owned()),
+                ..make_agent(old, AgentStatus::Idle)
+            },
+        ];
+        test_tools.own_pane = Some("w1:kanban-hub-4".to_owned());
+        let end_brief = test_tools
+            .run_path()
+            .join(format!("report-{old}.1200.read"));
+        fs::write(end_brief, "done").unwrap();
+        let old_run = test_tools.path().join("herdr-hub.old");
+        fs::create_dir(&old_run).unwrap();
+        let started = json!({"at": "2026-11-11T20:00:00Z", "event": "watch_started", "hub": old});
+        fs::write(old_run.join("events.jsonl"), format!("{started}\n")).unwrap();
+
+        adopt_hub(&test_tools, old).unwrap();
+
+        let events = read_events(&test_tools.run_path());
+        let expected = records_run.then(|| old_run.to_str().unwrap());
+        assert_eq!(events[0]["run"].as_str(), expected, "{old}");
+    }
+}
+
 /// A hub `kanban-hub-4` in its own pane that can adopt `kanban-hub-3`,
 /// both in workspace `w1`, below a worker's workspace `w2`.
 fn make_adopt_tools() -> TestTools {
