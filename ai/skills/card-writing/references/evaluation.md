@@ -1,19 +1,20 @@
 # Evaluation
 
-Nine cases check whether the skill changes what an agent keeps,
-shows and asks about a card. Six of them sit in `evals/` and run
+Eight cases check whether the skill changes what an agent keeps,
+shows and asks about a card. Five of them sit in `evals/` and run
 with `trials.py`. The three below are hand-run cases, added for what
 a `trials.py` case cannot check: a long reply, a question in the form
 another skill owns, and a card that must not copy a plan.
 
 An answer passes a case when it meets every check under it, one
-point each. `trials.py` runs each `evals/` case several times. An
-`evals/` case passes when at least half of its runs pass, such as
-2 of 3. `trials.py --gate` blocks a case when more than half of its
-runs fail. A hand case runs once, and it passes only when its
-answer meets every check. The skill counts as working when each
-case passes with the skill and loses at least one check with no
-skill, on the same model.
+point each. The `session-review` skill's `references/trials.md`
+owns how many runs an `evals/` case gets and when `--gate` blocks
+one. A hand case runs once, and it passes only when its answer
+meets every check. The counts `trials.py --without` prints are
+runs passed with the skill and with none. The skill counts as
+working when more runs pass with the skill than with none for
+each `evals/` case, on the same model. For a hand case, the
+answer with no skill must miss at least one check.
 
 The `evals/` cases carry their checks as fields instead of prose:
 `pass` and `fail` hold patterns, and `judge` holds questions a
@@ -31,7 +32,7 @@ question.
 
 ## How to run
 
-Run the six `evals/` cases from the top folder of the checkout that
+Run the five `evals/` cases from the top folder of the checkout that
 holds the skills, with the skill and with no skill:
 
 ```bash

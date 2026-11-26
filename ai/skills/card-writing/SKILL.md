@@ -90,10 +90,12 @@ card list --project PROJECT --tabs
   speech-to-text errors, case, punctuation and fillers. These fixes
   stay the user's words, so they get no "(my wording)" mark. Before
   any yes, fixes are just draft text.
-- Never shorten a dictated title. A dictated sentence stays in the
-  field the user dictated it for, even when it reads off topic.
-  Never move it to "Not part of the card"; ask about it in a
-  question below the card instead.
+- Never shorten a dictated title. Everything the user dictates after a
+  field name, such as "Context:", stays there until the next field
+  name, even a sentence that reads like a request, a reminder or
+  another topic. Never move it to "Not part of the card": the user
+  dictated it for this card, so moving it out changes what the user
+  asked for. Ask below the card instead.
 - After the user's yes, a plain fix such as a capital first letter
   or no final period needs no new approval; any other change does.
 - Wrong user text means a fact or name you can show is wrong, such
@@ -130,10 +132,10 @@ card list --project PROJECT --tabs
    `- [ ]` lines under Acceptance Criteria. That folder survives a
    reboot and is not shared like `/tmp`.
 3. Run `card new PROJECT --from FILE --by <your agent name>`. `--by`
-   names who acts, for the Log: your agent name, such as this session's
-   Herdr agent name, else a short name for yourself. `--user` records in
-   the Log that the user asked for the card. Pass it only when the user
-   tells you to; a yes to the card text alone is not that.
+   names who acts, for the Log: your agent name, such as this
+   session's Herdr agent name, else a short name for yourself.
+   `--user` records in the Log that the user asked for the card.
+   Pass it only when the user tells you to; a yes alone is not that.
 4. `card new` prints the new card's file name, whose first word is
    its key. Read the card back with `card show KEY`, and check it
    against the approved text. When it differs, show the user the
@@ -212,25 +214,23 @@ Reply like `Q1A`.
 ## Guardrails
 
 - Never copy a plan or research note into a card section: the reader
-  at the board needs only the card's own words; ask about such text
-  below the card.
+  needs only the card's own words; ask about such text below the card.
 - Text the user dictates wins over that rule: keep dictated words
   that came from a plan, and ask about them below the proposed card.
 
 ## When a tool is missing
 
-- When `card` is not installed, skip the search, and draft and show
-  the card as usual. After the user's yes, write the approved text
-  file from "Make the card" step 2 and give the user its path, so
-  the user or a later session can run `card new --from` on it once
-  `card` is installed.
+- When `card` is not installed, skip the search, and draft and show the
+  card as usual. After the user's yes, write the approved text file from
+  "Make the card" step 2 and give its path, so a later session or the
+  user can run `card new --from` once `card` is installed.
 
 ## Final checks
 
 - You ran `card grep`, and `card list --project PROJECT --tabs`,
   before writing the card, unless `card` is not installed.
-- Words the user dictated are kept as given, and each line you
-  wrote is marked "(my wording)" in the message, not in the file.
+- Dictated words are kept as given, each in the field it was dictated
+  for. Your lines are marked "(my wording)" in the message only.
 - Each Context line starts with `- `.
 - The criteria are the user's, or yours and marked as yours. None is
   a README, and each names the card's own result.
