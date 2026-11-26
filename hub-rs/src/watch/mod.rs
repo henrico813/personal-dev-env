@@ -78,7 +78,7 @@ const STALL_ALERT_EVERY: SignedDuration = SignedDuration::from_mins(60);
 /// The oldest approval whose run can still alert a stall. An overnight
 /// run approved late in the evening still counts the next morning, and
 /// old run folders stay quiet.
-const STALL_ALERT_MAX_AGE: SignedDuration = SignedDuration::from_hours(24);
+pub(crate) const STALL_ALERT_MAX_AGE: SignedDuration = SignedDuration::from_hours(24);
 
 /// The start of each run folder's name. The herdr-hub and auto-run
 /// skills make run folders as `~/.local/state/herdr-hub.XXXXXX`.

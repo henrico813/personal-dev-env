@@ -8,11 +8,12 @@
 //! Only the live board saves when the user last used it, in `seen.rs`.
 //! `--print`, `--dump` and `--control` read that time but never write
 //! it, so an agent's look at the board does not hide news from the
-//! user.
+//! user. The live board also saves each read, in `snapshot.rs`, and
+//! draws the last saved one while its first read runs.
 //!
 //! A second thread reads the hubs' state every 10 seconds, or at once
 //! when the user presses r. A read calls Herdr, `card` and OpenCode
-//! and takes about a second, so the keys and the mouse would freeze if
+//! and can take half a minute, so the keys and the mouse would freeze if
 //! the drawing thread waited for it. For the same reason, a details
 //! page reads its card's note on a thread of its own. The reading
 //! thread also runs a jump to a session and the clean pass after c
@@ -27,9 +28,11 @@ mod groups;
 mod listen;
 mod machine;
 mod panels;
+mod pull_requests;
 mod queue;
 mod seen;
 mod sessions;
+mod snapshot;
 mod terminal;
 mod view;
 
@@ -159,6 +162,7 @@ pub fn run_board(
     let (note_sender, notes) = mpsc::channel();
     let cards = tools.cards.clone();
     let mut visits = Visits::start(&tools.state_folder, Timestamp::now());
+    let saved = snapshot::load_snapshot(&tools.state_folder);
     // The thread is never joined, so q quits at once even while a read
     // runs. The thread ends at its next send or wait after the
     // channels close, or with the process.
@@ -170,6 +174,9 @@ pub fn run_board(
     // https://no-color.org asks.
     let color = std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty());
     let mut board = Board::new(color);
+    if let Some(queue) = saved {
+        board.show_saved_reading(queue);
+    }
     board.show_visit(visits.since(), visits.measure_time_away());
     let mut screen = Screen::start().map_err(wrap_terminal_error)?;
     screen.draw(&mut board).map_err(wrap_terminal_error)?;
@@ -336,7 +343,13 @@ fn read_until_closed(
 ) {
     let tools = tools.lend();
     loop {
-        let reading = read_queue(&tools, hubs, time_zone).map_err(|error| error.to_string());
+        let reading = read_queue(&tools, hubs, time_zone).map(|mut queue| {
+            if let Err(error) = snapshot::save_snapshot(tools.state_folder, &queue) {
+                queue.problems.push(format!("snapshot: {error}"));
+            }
+            queue
+        });
+        let reading = reading.map_err(|error| error.to_string());
         if replies.send(Reply::Reading(Box::new(reading))).is_err() {
             return;
         }

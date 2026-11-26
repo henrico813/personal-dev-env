@@ -1,6 +1,7 @@
 mod common;
 
-use std::fs;
+use std::fs::{self, File};
+use std::time::{Duration, SystemTime};
 
 use hub::board::{self, Hubs, ScreenSize};
 use hub::external::cards::{CardNote, OpenItem, Stage};
@@ -8,7 +9,7 @@ use hub::external::herdr::AgentStatus;
 use hub::shared::HubError;
 use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use common::{TestTools, make_agent};
 
@@ -57,6 +58,46 @@ fn print_board_shows_card_failure_on_top() {
     assert_eq!(outcome.lines[5], "QUEUE                                [2]");
     assert!(outcome.lines[6].starts_with(" !    questions: card: no"));
     assert!(outcome.lines[7].starts_with(" !    cards: card: no default"));
+}
+
+/// With no watcher, no report or stall alert reaches the phone, and a
+/// stalled auto run waits all night. Both faults must lead the QUEUE block,
+/// where the user looks first, or the user finds out hours later. The
+/// run is approved an hour ago, and its one card has no worker.
+#[test]
+fn print_board_shows_faults_on_top() {
+    let mut test_tools = TestTools::new();
+    let run = test_tools.path().join("herdr-hub.auto");
+    fs::create_dir(&run).unwrap();
+    let started = r#"{"at":"2026-11-12T08:00:00Z","event":"watch_started","hub":"auto-hub-3"}"#;
+    fs::write(run.join("events.jsonl"), format!("{started}\n")).unwrap();
+    let approved = Timestamp::now()
+        .checked_sub(SignedDuration::from_mins(60))
+        .unwrap()
+        .to_zoned(TimeZone::UTC);
+    let approved_text = format!(
+        "# Auto run 3 approved\n\nApproved: {}\n\n# Auto run 3\n\n## Run\n\
+         - DEMO-KB-001 demo: retry\n",
+        approved.strftime("%Y-%m-%d %H:%M")
+    );
+    fs::write(run.join("approved.md"), approved_text).unwrap();
+    test_tools
+        .herdr
+        .agents
+        .push(make_agent("auto-hub-3", AgentStatus::Idle));
+    let hubs = Hubs::Live(test_tools.path().to_owned());
+
+    let outcome = board::print_board(&test_tools.tools(), &hubs, &TimeZone::UTC, PHONE).unwrap();
+
+    let screen = outcome.lines.join("\n");
+    assert!(
+        outcome.lines[6].starts_with(" !    hub watcher stopped"),
+        "{screen}"
+    );
+    assert!(
+        outcome.lines[7].starts_with(" !    auto run 3 stalled"),
+        "{screen}"
+    );
 }
 
 /// The user opens the board from any shell, with no run folder named,
@@ -128,6 +169,54 @@ fn print_board_gathers_live_hubs_and_questions() {
         .find(|line| line.contains("DEMO-KB-009 Q1"));
     let tag = question.map(|line| line.split_whitespace().last().unwrap_or_default());
     assert_eq!(tag, Some("Demo"), "{screen}");
+}
+
+/// A worker sits idle in Herdr between steps, yet a status file it
+/// wrote lately shows it is at work. Its card must read `run` then, or
+/// work in progress looks stuck. A status file older than 30 minutes
+/// must not keep a stopped card `run`.
+#[test]
+fn print_board_marks_run_from_fresh_status() {
+    let mut test_tools = TestTools::new();
+    let worker = "demo-kb-007-impl";
+    let run = test_tools.run_path();
+    fs::write(run.join(format!("report-{worker}.md")), "Half done.").unwrap();
+    let status = run.join(format!("status-{worker}.md"));
+    fs::write(&status, "Step 2 of 3 is built.\n").unwrap();
+    test_tools
+        .herdr
+        .agents
+        .push(make_agent(worker, AgentStatus::Idle));
+    test_tools
+        .cards
+        .stages
+        .insert("DEMO-KB-007".to_owned(), Stage::Active);
+    test_tools
+        .cards
+        .card_notes
+        .insert("DEMO-KB-007".to_owned(), CardNote::default());
+    let cases = [
+        ("fresh", 0, " run  DEMO-KB-007"),
+        ("stale", 31, " idle DEMO-KB-007"),
+    ];
+
+    for (case_name, minutes_ago, expected) in cases {
+        let written = SystemTime::now() - Duration::from_secs(minutes_ago * 60);
+        let file = File::options().write(true).open(&status).unwrap();
+        file.set_modified(written).unwrap();
+
+        let outcome = board::print_board(
+            &test_tools.tools(),
+            &Hubs::Given(run.clone()),
+            &TimeZone::UTC,
+            PHONE,
+        )
+        .unwrap();
+
+        let screen = outcome.lines.join("\n");
+        let found = outcome.lines.iter().any(|line| line.starts_with(expected));
+        assert!(found, "{case_name}: {screen}");
+    }
 }
 
 /// A `notes.md` entry from `ago` before now, under its UTC day's
@@ -341,4 +430,30 @@ fn control_board_stops_at_unknown_id() {
     );
     assert_eq!(error.exit_code(), 2);
     assert_eq!(screens.len(), 2);
+}
+
+/// The user reads pull requests from the In review group, so its
+/// heading must count the open ones and those with a failed check, by
+/// the `prs` tool's rule. A pull request with no checks yet, or with a
+/// check still running, has not failed, so it must not raise the
+/// failing count.
+#[test]
+fn control_board_counts_prs_in_review_heading() {
+    let test_tools = TestTools::new();
+    let check_run = |status: &str, conclusion: Option<&str>| json!([{"__typename": "CheckRun", "status": status, "conclusion": conclusion}]);
+    let list = json!({"pullRequests": [
+        {"statusCheckRollup": check_run("COMPLETED", Some("SUCCESS"))},
+        {"statusCheckRollup": check_run("COMPLETED", Some("FAILURE"))},
+        {"statusCheckRollup": check_run("IN_PROGRESS", None)},
+        {"statusCheckRollup": null},
+    ]});
+    fs::create_dir_all(test_tools.pr_list.parent().unwrap()).unwrap();
+    fs::write(&test_tools.pr_list, list.to_string()).unwrap();
+
+    let (result, screens) = control(&test_tools, "tap block:queue\n");
+
+    result.unwrap();
+    let lines = screens[1]["lines"].as_array().unwrap();
+    let heading = Value::from("v In review 0 · 4 PRs, 1 failing");
+    assert!(lines.contains(&heading), "{lines:?}");
 }

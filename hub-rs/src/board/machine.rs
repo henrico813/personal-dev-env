@@ -8,6 +8,7 @@ use std::process::Command;
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
+use serde::{Deserialize, Serialize};
 
 use crate::shared::run_folder::RunFolder;
 
@@ -15,7 +16,7 @@ use crate::shared::run_folder::RunFolder;
 pub(super) const FEED_LENGTH: usize = 6;
 
 /// One gauge's use against its limit, such as 116 of 128 watch slots.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Usage {
     pub used: u64,
     pub limit: u64,
@@ -23,7 +24,7 @@ pub(crate) struct Usage {
 
 /// What the gauges show, `None` where a read failed or the system has
 /// no such number, as on macOS for watch slots.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Gauges {
     /// inotify instances the user's processes hold, against the
     /// kernel's `max_user_instances`.
@@ -33,7 +34,7 @@ pub(crate) struct Gauges {
 }
 
 /// One report file in the feed.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct FeedLine {
     /// When the file last changed, such as `11:41`.
     pub at: String,

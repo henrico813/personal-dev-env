@@ -134,18 +134,18 @@ fn read_saved_time(path: &Path) -> Option<Timestamp> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
 
     /// A state folder of its own under the system's temporary folder,
     /// removed on drop.
-    struct TempState {
-        path: PathBuf,
+    pub(crate) struct TempState {
+        pub(crate) path: PathBuf,
     }
 
     impl TempState {
         /// Makes an empty state folder named after `test`.
-        fn new(test: &str) -> TempState {
+        pub(crate) fn new(test: &str) -> TempState {
             let path = std::env::temp_dir().join(format!("hub-{test}-{}", std::process::id()));
             let _ = fs::remove_dir_all(&path);
             fs::create_dir_all(&path).unwrap();
