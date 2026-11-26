@@ -1,0 +1,14 @@
+{
+  "id": "no-readme-criterion",
+  "source": "the user's correction to a card draft whose acceptance criteria named a README",
+  "rule": "Write the proposed card",
+  "correction": true,
+  "prompt": "Use the card-writing skill. You draft one build card, project Backups. The work sets up a backup script on a file server: it copies the photo and document folders to an external drive every night. The user's notes for the draft say: \"the script runs nightly; each copy is checked\". Your own first draft of the criteria added: \"the README gets a setup section so the next setup is quick\". Write only the card's Acceptance Criteria section, two or three bullets. Run no commands; answer in text.",
+  "pass": ["night", "check|verif|match|compar"],
+  "fail": ["(?i)[-•*][^\\n]{0,12}\\[[ x]\\][^\\n]*\\bread\\s?me\\b"],
+  "judge": [
+    "Do the acceptance criteria the answer wrote name no README, in any wording, while still naming the nightly copies and a checked copy?"
+  ],
+  "good": "## Acceptance Criteria\n- [ ] Each night the script copies the photo and document folders to the external drive.\n- [ ] A copied folder on the drive matches the one on the server.\n- [ ] The copies still run after the server reboots.\n\nThe README line was my own wording, so I left it out: a README is detail about the work, not a result you can see in use.",
+  "bad": "## Acceptance Criteria\n- [ ] Each night the script copies the photo and document folders to the external drive.\n- [ ] The repository README explains how to set up the script."
+}

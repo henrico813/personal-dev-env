@@ -1,0 +1,19 @@
+{
+  "id": "keep-dictated-words",
+  "source": "the user's correction after an agent cut a dictated sentence from a card's Context",
+  "rule": "Keep the user's words",
+  "correction": true,
+  "prompt": "Use the card-writing skill. The user dictates a build card, saying exactly: \"Title: Retry failed uploads. um, Context: Uploads fail when the network link drops, and a failed upload never runs again. I also want a note about the old upload job for next month.\" Show the card's title and Context as they will go in the card, plus anything you need to ask. Run no commands; answer in text.",
+  "pass": [
+    "Uploads fail when the network link drops",
+    "(?is)context\\b(?:(?!\\?)[\\s\\S]){0,300}upload job for next month"
+  ],
+  "fail": [
+    "(?i)\\b(?:i|we) (?:have |had )?(?:cut|dropped|removed|left out)\\b[\\s\\S]{0,80}?(?:from|out of) (?:the )?context\\b"
+  ],
+  "judge": [
+    "Does the Context the answer shows still hold both dictated sentences, including the one about the old upload job for next month, with any question about that sentence placed below the card?"
+  ],
+  "good": "Title: Retry failed uploads\n\n## Context\n- Uploads fail when the network link drops, and a failed upload never runs again. I also want a note about the old upload job for next month.\n\n**Q1. Upload card (the note about next month): keep the last dictated sentence, or move it?**\n- A: keep it in Context **(rec)**\n- B: move it out of the card\n\nReply like `Q1A`.",
+  "bad": "Title: Retry failed uploads\n\nContext: Uploads fail when the network link drops, so the queue fills up and uploads must be started again by hand. I cut the dictated sentence about next month, since the card does not need it."
+}

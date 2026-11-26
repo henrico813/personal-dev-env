@@ -128,6 +128,7 @@ Vibe binaries plus repo-managed AI config.
 | Git messages | `ai/skills/git-messages/` | `~/.agents/skills/git-messages/` | Shared commit and PR guidance |
 | Obsidian Zettel | `ai/skills/obsidian-zettel/` | `~/.agents/skills/obsidian-zettel/` | Template-aligned vault note creation |
 | Obsidian daily note | `ai/skills/obsidian-daily-note/` | `~/.agents/skills/obsidian-daily-note/` | Approved sections appended to today's daily note |
+| Card writing | `ai/skills/card-writing/` | `~/.agents/skills/card-writing/` | Shared skill for kanban cards: writes and reviews the cards the `card` command keeps, and waits for your approval before `card new` runs |
 | OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands,cli.json,pde-herdr-opencode,pde-usage}`, `opencode.json` permission merge | OpenCode commands, agents, synchronized TUI theme, bidirectional agent cycling (`Tab` next, `Shift+Tab` previous), a Herdr pane that stays working while background subagents run, and subagent usage above the prompt, in the sidebar and on a `/usage` screen |
 | Herdr layout | `chezmoi/dot_config/herdr/` | `~/.config/herdr/config.toml` (client and full) | Mobile-first agent workspace UI; Herdr is the installer-managed Herdr release |
 | OpenCode Inline | `nvim-plugins/opencode-inline.nvim/` | `~/.config/nvim/pack/plugins/start/opencode-inline.nvim`, `~/.local/bin/opencode-inline-shim` | CodeCompanion inline plugin and OpenAI-compatible bridge |
@@ -197,6 +198,7 @@ loads `~/.agents/skills/`.
 | `session-review` | Review a session for token use, skill fixes to write and jobs a local model could run, then wait for your pick | "Review this session for token usage, skill lessons and local model handoff" |
 | `conclude-session` | Close out a session: review it, wait for your pick, then commit skill fixes, open one skill PR and hand off or report | "conclude-session" |
 | `daily-shutdown` | Draft the end-of-day shutdown from the day's notes, wait for your approval, then add each block to the daily note | "Do the shutdown" |
+| `card-writing` | Write or review a kanban card, with your approval before `card new` makes it | "Draft a card: the nightly backup skips my notes folder" |
 | `model-routing` | Pick each agent's model from its job kind with `pde_route.py`, and retry a failed job on the next model | "Which model should run these test jobs?" |
 | `review-plan` | Review a plan, PR, commit, or diff for architecture, bugs, completeness | "Use review-plan on docs/design-auth.md with focus on security" |
 

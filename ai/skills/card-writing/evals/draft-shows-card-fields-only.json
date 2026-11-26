@@ -1,0 +1,16 @@
+{
+  "id": "draft-shows-card-fields-only",
+  "source": "the user's correction to a draft that mixed the duplicate search into the card's own sections",
+  "rule": "Show the proposed card and get approval",
+  "correction": true,
+  "prompt": "Use the card-writing skill. The user dictated a build card for the DevEnv project: title \"Retry failed uploads\", Context \"Uploads fail on a slow link, and a failed upload never runs again.\" Your search of open cards found the card DE-012, which may cover the same work. Show the user the proposed card for approval. Run no commands; answer in text.",
+  "pass": ["not part of the card", "acceptance criteria"],
+  "fail": [
+    "(?i)(?:## Context|## Acceptance Criteria)[^\\n]*(?:\\n[^\\n]*){0,3}card grep"
+  ],
+  "judge": [
+    "Does the answer keep its note about the open card DE-012 out of every card section, and show that note below the card under \"Not part of the card\"?"
+  ],
+  "good": "Proposed card, project DevEnv, kind build:\n\ntitle: Retry failed uploads\n\n## Context\n- Uploads fail on a slow link, and a failed upload never runs again.\n\n## Acceptance Criteria\n- [ ] A failed upload retries on its own. (my wording)\n- [ ] The user sees each retry in the log. (my wording)\n\nNothing is made yet; say yes and I run `card new` for this card.\n\nNot part of the card:\n- The open card DE-012 may cover the same work.\n\n**Q1. Retry uploads (DE-012): reuse the open card or add this one?**\n- A: reuse DE-012, drop this card **(rec)**\n- B: keep both cards\n\nReply like `Q1A`.",
+  "bad": "Proposed card, project DevEnv, kind build:\n\ntitle: Retry failed uploads\n\n## Context\n- Uploads fail on a slow link, and a failed upload never runs again.\n\nSearch: `card grep upload` found DE-012 open, which may cover this.\n\n## Acceptance Criteria\n- [ ] A failed upload retries on its own. (my wording)"
+}
