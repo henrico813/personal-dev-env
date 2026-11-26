@@ -253,13 +253,16 @@ pub(crate) fn judge_quiet_run(
     }
     let mut waiting = Vec::new();
     for card in &quiet.cards {
-        let question = questions.iter().find(|question| question.key == card.key);
+        let card_questions: Vec<&OpenQuestion> = questions
+            .iter()
+            .filter(|question| question.key == card.key)
+            .collect();
         let stage = stages
             .iter()
             .find(|listed| listed.key == card.key)
             .map(|listed| listed.stage);
-        let reason = if let Some(question) = question {
-            format!("waits on your question: {}", question.title)
+        let reason = if !card_questions.is_empty() {
+            describe_questions(&card_questions)
         } else if !card.has_status && card.live.is_empty() {
             "not started".to_owned()
         } else if card.has_status && matches!(stage, Some(Stage::InReview | Stage::Done)) {
@@ -282,6 +285,30 @@ pub(crate) fn judge_quiet_run(
         total: quiet.cards.len(),
         waiting,
     })
+}
+
+/// Returns the stall reason that names each of one card's open
+/// questions, such as
+/// `waits on your questions DEMO-KB-002 Q1: Which name? and Q3: Deploy?`.
+fn describe_questions(questions: &[&OpenQuestion]) -> String {
+    let items: Vec<String> = questions
+        .iter()
+        .enumerate()
+        .map(|(place, question)| {
+            let id = if place == 0 {
+                question.format_id()
+            } else {
+                format!("Q{}", question.number)
+            };
+            format!("{id}: {}", question.title)
+        })
+        .collect();
+    let noun = if items.len() == 1 {
+        "question"
+    } else {
+        "questions"
+    };
+    format!("waits on your {noun} {}", items.join(" and "))
 }
 
 /// Tells whether NAME, such as `demo-kb-002-auto-2`, names a card of

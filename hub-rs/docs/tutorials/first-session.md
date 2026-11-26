@@ -82,7 +82,7 @@ row per session. Your numbers and other rows differ:
 ```text
 hub - -, watch stopped, hub next stopped
 board active 5 of 8, in-review 19 of 6
-open 1: 0 working, 0 hub, 0 you,
+open 1: 0 working, 0 hub, 0 flagged,
   1 kept, 0 to-close, 0 to-park; 0 parked
 unread 0
 

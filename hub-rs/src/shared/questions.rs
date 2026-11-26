@@ -1,6 +1,6 @@
-//! Reads the questions that wait on the user from the cards. `run_ask`
-//! puts each one in its card's Open Questions and marks the card
-//! needs-you with the question's title, so the open mark finds the item.
+//! Reads the questions that wait on the user from the cards. Each one
+//! is an Open Questions item on a card in `LISTED_STAGES`, which
+//! `card` numbers and dates.
 
 use std::sync::LazyLock;
 
@@ -9,7 +9,7 @@ use jiff::civil::Date;
 use jiff::tz::TimeZone;
 use regex::Regex;
 
-use crate::external::cards::{CardError, CardKey, Cards};
+use crate::external::cards::{CardError, CardKey, Cards, Stage};
 use crate::external::opencode::{OpenCodeDb, OpenCodeError};
 use crate::shared::messages::SEND_PREFIX;
 use crate::watch::PROD_PREFIX;
@@ -21,56 +21,83 @@ static OLD_AGENT_TEXT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^(?:From (?:the hub|\S+-hub-\d+)\b|Your context is about )").unwrap()
 });
 
-/// A card's open question.
+/// The stages whose cards' Open Questions items wait on the user. A
+/// draft card is still being written, and a done or dropped card needs
+/// nothing more.
+pub(crate) const LISTED_STAGES: [Stage; 4] =
+    [Stage::Todo, Stage::Active, Stage::InReview, Stage::Blocked];
+
+/// One Open Questions item that waits on the user.
 #[derive(Debug)]
 pub(crate) struct OpenQuestion {
     pub key: CardKey,
     /// The card's project, such as `DevEnv`.
     pub project: String,
-    /// The text of the card's open needs-you mark.
+    /// The item's Q number, which stays until the item is answered.
+    pub number: u32,
+    /// The item's first line, after its `Q3 asked 2026-11-25: ` head.
     pub title: String,
-    /// The Open Questions item's lines after its title, or none when the
-    /// mark names no item, as when a worker marked the card itself.
+    /// The item's later lines, such as its choices.
     pub lines: Vec<String>,
     /// The card's OpenCode session IDs, oldest first.
     pub sessions: Vec<String>,
-    /// The date of the needs-you mark.
+    /// The day the item was asked, or `None` for an item typed by hand.
     pub asked_on: Option<Date>,
 }
 
-/// Returns the open question of each card whose needs-you mark is open,
-/// in key order. A card answered between the search and its read is
-/// left out.
+impl OpenQuestion {
+    /// Returns the key and Q number that name the item, such as
+    /// `DEMO-516 Q3`.
+    pub(crate) fn format_id(&self) -> String {
+        format!("{} Q{}", self.key.as_str(), self.number)
+    }
+
+    /// Returns the key, Q number and date, such as
+    /// `DEMO-516 Q3, asked 2026-11-25` or `DEMO-516 Q3, undated`.
+    pub(crate) fn format_label(&self) -> String {
+        match self.asked_on {
+            Some(date) => format!("{}, asked {date}", self.format_id()),
+            None => format!("{}, undated", self.format_id()),
+        }
+    }
+}
+
+/// Returns every Open Questions item on cards in `LISTED_STAGES`, from
+/// one `card list` call. The oldest comes first, items asked on one
+/// day go in key and number order, and undated items come last.
 ///
 /// # Errors
 ///
-/// The first `card` failure, so no caller shows a partial list as
-/// all that waits.
+/// The `card` failure, so no caller shows a partial list as all that
+/// waits.
 pub(crate) fn read_open_questions(cards: &dyn Cards) -> Result<Vec<OpenQuestion>, CardError> {
-    let keys = cards.list_needs_you()?;
-    let notes = cards.read_cards(&keys);
     let mut questions = Vec::new();
-    for (key, note) in keys.into_iter().zip(notes) {
-        let note = note?;
-        let Some(title) = note.needs_you else {
+    for card in cards.list_cards()? {
+        if !LISTED_STAGES.contains(&card.stage) {
             continue;
-        };
-        // `run_ask` adds its item last, after any older item with that title.
-        let lines = note
-            .open_questions
-            .into_iter()
-            .rfind(|item| item.first() == Some(&title))
-            .map(|item| item[1..].to_vec())
-            .unwrap_or_default();
-        questions.push(OpenQuestion {
-            key,
-            project: note.project,
-            title,
-            lines,
-            sessions: note.sessions,
-            asked_on: note.needs_you_date,
-        });
+        }
+        for item in card.open_questions {
+            questions.push(OpenQuestion {
+                key: card.key.clone(),
+                project: card.project.clone(),
+                number: item.number,
+                title: item.text,
+                lines: item.lines,
+                sessions: card.sessions.clone(),
+                asked_on: item.asked,
+            });
+        }
     }
+    questions.sort_by_key(|question| {
+        // `None` sorts before every date, so this puts undated items last.
+        let undated = question.asked_on.is_none();
+        (
+            undated,
+            question.asked_on,
+            question.key.clone(),
+            question.number,
+        )
+    });
     Ok(questions)
 }
 
@@ -79,8 +106,8 @@ pub(crate) fn read_open_questions(cards: &dyn Cards) -> Result<Vec<OpenQuestion>
 /// message's time. The user may have answered there, so the hub reads
 /// that pane before it asks again. Messages that start like the hub's
 /// or the watch's, now or in older builds, are not a person's. The
-/// card Log gives only the
-/// day, so a message typed earlier that day counts too.
+/// item gives only the day, so a message typed earlier that day counts
+/// too.
 ///
 /// # Errors
 ///

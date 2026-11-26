@@ -4,18 +4,27 @@ Read this when you run `hub brief` to bring the user what waits on
 them, when you end a message with `hub waiting`, or when you write a
 question for `hub ask`.
 
-Its first line is `board active A of 8, in-review R of 6; K questions`.
+## Contents
+
+- What `hub brief` prints: right below.
+- [End each message with hub
+  waiting](#end-each-message-with-hub-waiting)
+- [A question file](#a-question-file)
+- [What hub ask refuses](#what-hub-ask-refuses)
+
+`hub brief`'s first line is
+`board active A of 8, in-review R of 6; K questions`.
 When cards are blocked, a `blocked W, oldest D days`
 line follows. Then it prints one line per pull request approval
 that waits on the user, read fresh from the request files, with its
 reference, time before it expires, repository, number and action,
 such as `approval A0016cd 1h12m left personal-dev-env #515 merge`.
 `hub requests` lists the same reference. Then come
-`reviews.md` and every card's open question, each starting
-`Question KEY: TITLE`, and last the "Blocked (no action needed)"
-list, with each card's days in the stage, title and reason. That
-list is news for the user, such as for a standup, never a
-question, so do not repeat it in other messages unless the user
+`reviews.md` and every open question of each card, each starting
+`Question KEY Q3, asked DATE: TITLE`, and last the "Blocked (no
+action needed)" list, with each card's days in the stage, title and
+reason. That list is news for the user, such as for a standup, never
+a question, so do not repeat it in other messages unless the user
 asks.
 
 When `card` cannot list the questions, the first line ends
@@ -50,10 +59,21 @@ SKILL.md's "Questions for the user" says when to run
 `hub waiting --run "<run folder>"` and that its output ends every
 message, word for word.
 
-- It prints each question whole, oldest first, with the number its
-  reply key uses, such as `Q2A`. A number stays until no numbered
-  question waits, so match a reply to the number the output gave.
-  Numbers may pass `Q9`, since every open question shows.
+- It prints each question whole, oldest first, with its card key and
+  the Q number its reply key uses, such as `DEMO-516 Q2A`. `card`
+  never gives that number to another question on the card, even after
+  the answer, so a key from an older message still names one
+  question. Match a reply to its key and number, and pass both to
+  `hub answer`.
+- When `hub answer` says it added the answer but the question stays
+  open, find the question in `hub waiting`, since a hand edit can
+  renumber a hand-typed item. Remove it with its Q number, as in
+  `card edit DEMO-516 "Open Questions" Q4 --remove`; a bare `4` picks
+  the fourth item instead. Never run `hub answer` for it again, since
+  that adds a second answer.
+- A reply with no card key, such as `Q1A`, answers a question only
+  when exactly one waiting question has that number. Otherwise ask
+  which card it answers, as the last item here says.
 - It also shows the count on your sidebar row, such as
   `hub free, 2 for you`.
 - Check your own text with the `status-updates` checker before you
@@ -81,10 +101,14 @@ The `If no reply:` line says what stays blocked and what the worker
 does meanwhile. Add `Depends on:` when the question rests on an
 earlier decision, and name who made it.
 
-## What hub ask refuses and marks
+## What hub ask refuses
 
-`hub ask` refuses a question with a part missing. It also refuses a
-card that already waits on the user, since a card shows one open
-question. Keep the next question for that card in `notes.md`, and ask
-it with `hub ask` right after `hub answer`. `hub ask` marks the card
-needs-you, so `hub status` shows the card's sessions as `you`.
+`hub ask` refuses a question with a part missing. Every part of the
+file above is needed except `Depends on:`: the `## ` title, the
+question, two or more `- ` choices, `Recommended:` and
+`If no reply:`. It also refuses a card that is not in todo, active,
+in-review or blocked, since the hub lists questions only on those
+cards, and a question whose title an open question on the card
+already has. A card can hold several open
+questions, each with its own Q number. While a card has one,
+`hub status` shows the card's sessions as `flagged`.

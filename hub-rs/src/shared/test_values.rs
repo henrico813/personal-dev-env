@@ -31,7 +31,7 @@ pub(crate) fn make_agent(name: &str, status: AgentStatus) -> Agent {
 
 /// One finished worker, the state table's base row, which parks. It is
 /// an idle OpenCode agent with session `ses_worker`, its card needing
-/// the user's review with no needs-you note, its report read, nothing
+/// the user's review with no open question, its report read, nothing
 /// waiting, its worktree clean, no approval and no open wait.
 pub(crate) fn make_facts(name: &str) -> SessionFacts {
     SessionFacts {
@@ -44,7 +44,7 @@ pub(crate) fn make_facts(name: &str) -> SessionFacts {
         card: Some(CardFacts {
             key: CardKey::find_in_name(name).unwrap_or_else(|| "DEMO-KB-007".parse().unwrap()),
             stage: Stage::InReview,
-            needs_you_open: false,
+            has_open_question: false,
             newer_session_live: false,
             from_report: false,
         }),

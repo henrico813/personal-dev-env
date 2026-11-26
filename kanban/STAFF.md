@@ -4,13 +4,14 @@ This is a draft handoff for the Herdr session `general-staff`. It
 supervises the user's other agent sessions. It keeps the card board,
 watches the sessions, and brings the user only what needs them.
 
-Example. A worker on card `PDEV-KB-004` writes in its report file
+Example. A worker on card `DEMO-KB-004` writes in its report file
 that it needs the user to approve its plan. The staff agent runs
-`card note PDEV-KB-004 --needs-you "approve plan PDEV-415"`, then
+`card add DEMO-KB-004 "Open Questions" "approve plan DEMO-415"`,
+which gives the item the card's next Q number, such as Q1. It then
 shows the user that one item in its own pane. The user approves. The
-staff agent runs `card note PDEV-KB-004 --answered "approved"` first.
-It then sends the answer with
-`herdr agent prompt pdev-kb-004-impl "approved"`, and checks in
+staff agent runs `hub answer DEMO-KB-004 Q1 "approved"` first. It
+then sends the answer with
+`herdr agent prompt demo-kb-004-impl "approved"`, and checks in
 `fleet` that the worker started again.
 
 ## Its cycle
@@ -39,7 +40,7 @@ wait for the next report.
   in-review is full, it leaves finished cards in active and tells the
   user.
 - Watches sessions with `fleet`. Each worker session is named after
-  its card key, such as `pdev-kb-004-impl`.
+  its card key, such as `demo-kb-004-impl`.
 - Retires sessions. When a card is `done` or `dropped`, it closes
   that card's tab with `herdr tab close`.
 - Never writes code, never merges, and never edits a plan.
@@ -52,7 +53,8 @@ item is one line, with a path to the full report or PR, so the user
 reads the evidence only when they want to.
 
 1. A question that blocks work. The worker's report asks it, and the
-   card's Log gets a `needs-you` line.
+   card's Open Questions section gets a numbered item. No later
+   question on that card gets its number, even after the answer.
 2. Work to accept. These are cards in `in-review`; `card board` lists
    them oldest first.
 3. An approval, such as a plan, or a PR write waiting in
@@ -113,9 +115,9 @@ rebuilds its picture from five places:
 
 It processes every unread report before it builds the queue, both
 when it wakes and after a restart. For each one, it checks whether
-the card's Log already has that `needs-you` line, since `card note`
-adds a line twice if asked twice. It copies the line in only when it
-is missing, then renames the report to `report-<name>.read`.
+the card's Open Questions section already has that question, since
+`card add` adds an item twice if asked twice. It adds the item only
+when it is missing, then renames the report to `report-<name>.read`.
 
 ## Tools
 ---
@@ -128,9 +130,9 @@ is missing, then renames the report to `report-<name>.read`.
 | Move a card | `card move KEY in-review --why "PR #450 open"` |
 | Fix one item | `card show KEY --section "Acceptance Criteria"`, then `card edit KEY "Acceptance Criteria" N "new text"`, `N --remove` or `N --tick` |
 | Attach a photo or file | `card attach KEY ~/photo.jpg` |
-| Record a question or answer | `card note KEY --needs-you "..."` |
+| Record a question or answer | `card add KEY "Open Questions" "..."`, then `hub answer KEY N "..."` |
 | Start a worker's card | `card move KEY active --session WORKER` |
-| Link work | `card link KEY "PDEV-415 Title"`, `card link KEY URL`, `card link KEY --session WORKER` |
+| Link work | `card link KEY "DEMO-415 Title"`, `card link KEY URL`, `card link KEY --session WORKER` |
 | Check hand edits | `card check` |
 | Find who needs the user | `fleet next` |
 | Send a worker the user's answer | `herdr agent prompt NAME "..."` |

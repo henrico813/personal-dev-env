@@ -6,8 +6,8 @@ When you hand the hub to a new session, write its handoff with
 `herdr-handoff`, holding only the run's state. First put each
 question that waits on the user on its card with `hub ask`, as
 Questions for the user says, so the new hub reads it from
-`hub brief`. Copy into the handoff only a question its card cannot
-take yet, since that card already waits on another. Never paste
+`hub brief`. Copy into the handoff only a question that no card
+could hold, which you asked in your own message. Never paste
 `hub brief` output into the handoff: a copied question stays in the
 next hub's list after the user answers it. The new hub runs
 `hub brief` itself and checks each question and task as Questions

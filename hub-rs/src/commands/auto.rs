@@ -173,8 +173,9 @@ pub fn run_auto_approve(
 /// A card's line is the first non-empty line of its worker's status
 /// file. It says `(needs you)` while the card holds an open question.
 /// A `Questions for you: N` line follows, then one line per open
-/// question of the run's cards, such as `- DEMO-KB-002 Deploy
-/// tonight?`. Last come `STALLED since ...` lines while the run has
+/// question of the run's cards, such as
+/// `- DEMO-KB-002 Q1, asked 2026-11-25 Deploy tonight?`. Last come
+/// `STALLED since ...` lines while the run has
 /// stalled, or `Run ended` lines, as `stall::describe_stall_or_end`
 /// says; a failed stall check adds a warning line to the output only.
 /// It then puts the hubs at the top of the sidebar, and a
@@ -217,7 +218,7 @@ pub fn run_auto_now(tools: &Tools<'_>, run: &RunFolder, now: &Zoned) -> Result<O
     lines.extend(
         questions
             .iter()
-            .map(|question| format!("- {} {}", question.key.as_str(), question.title)),
+            .map(|question| format!("- {} {}", question.format_label(), question.title)),
     );
     let stall = stall::describe_stall_or_end(
         tools,
@@ -422,6 +423,8 @@ mod tests {
             stage,
             project: String::new(),
             title: String::new(),
+            sessions: Vec::new(),
+            open_questions: Vec::new(),
         })
         .collect();
 

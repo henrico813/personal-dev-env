@@ -626,24 +626,21 @@ mod card_cli {
     #[test]
     fn card_cli_reads_sessions_from_card_show() {
         let folder = TempFolder::new();
-        let card_show = "---\n\
-                         stage: active\n\
-                         sessions:\n  \
-                           - \"opencode ses_0a1b2c3d4e5f\"\n  \
-                           - \"opencode ses_9f8e7d6c5b4a\"\n\
-                         project: DevEnv\n\
-                         ---\n\
-                         \n\
-                         # DEMO-KB-007 Retry failed uploads\n\
-                         \n\
-                         - opencode ses_not_a_session\n";
+        let card_show = r#"{
+            "key": "DEMO-KB-007",
+            "stage": "active",
+            "sessions": ["opencode ses_0a1b2c3d4e5f", "opencode ses_9f8e7d6c5b4a"]
+        }"#;
         let script = folder.write_script("card", card_show, "", 0);
         let cards = CardCli::new(script.clone());
 
         let note = cards.read_card(&"DEMO-KB-007".parse().unwrap()).unwrap();
 
         assert_eq!(note.sessions, ["ses_0a1b2c3d4e5f", "ses_9f8e7d6c5b4a"]);
-        assert_eq!(read_script_calls(&script), [["show", "DEMO-KB-007"]]);
+        assert_eq!(
+            read_script_calls(&script),
+            [["show", "DEMO-KB-007", "--json"]]
+        );
     }
 
     /// The hub pairs each note with its key by position, to decide
@@ -654,12 +651,12 @@ mod card_cli {
     #[test]
     fn card_cli_read_cards_keeps_key_order() {
         let folder = TempFolder::new();
-        // The fake `card show KEY` prints a note titled `Card KEY`, and
-        // fails for the fifth key.
+        // The fake `card show KEY --json` prints a card titled
+        // `Card KEY`, and fails for the fifth key.
         let script = folder.path().join("card");
         let body = "#!/bin/sh\n\
                     [ \"$2\" = DEMO-KB-005 ] && { echo \"card: no card $2\" >&2; exit 1; }\n\
-                    printf -- '---\\n---\\n\\n# %s Card %s\\n' \"$2\" \"$2\"\n";
+                    printf '{\"key\": \"%s\", \"title\": \"Card %s\"}' \"$2\" \"$2\"\n";
         fs::write(&script, body).unwrap();
         fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
         let keys: Vec<CardKey> = (1..=10)
@@ -691,9 +688,10 @@ mod card_cli {
     #[test]
     fn card_cli_lists_todo_keys_in_order() {
         let folder = TempFolder::new();
-        let card_list = "DEMO-KB-007\ttodo\ttask\tDemo\tRetry failed uploads\n\
-                         DEMO-KB-003\ttodo\ttask\tDemo\tFix the docs\n\
-                         2 cards\n";
+        let card_list = r#"[
+            {"key": "DEMO-KB-007", "stage": "todo", "title": "Retry failed uploads"},
+            {"key": "DEMO-KB-003", "stage": "todo", "title": "Fix the docs"}
+        ]"#;
         let script = folder.write_script("card", card_list, "", 0);
         let cards = CardCli::new(script.clone());
 
@@ -703,7 +701,7 @@ mod card_cli {
         assert_eq!(keys, ["DEMO-KB-007", "DEMO-KB-003"]);
         assert_eq!(
             read_script_calls(&script),
-            [["list", "--tabs", "--stage", "todo"]]
+            [["list", "--json", "--stage", "todo"]]
         );
     }
 
@@ -726,52 +724,33 @@ mod card_cli {
         );
     }
 
-    /// `hub brief` and `hub board` list a question only while its card's
-    /// newest mark is needs-you. A card answered since would show as
-    /// waiting, and one missed would hide a question from the user.
-    /// `card grep` cuts long lines with `…`, so a cut line must still
-    /// count.
+    /// `hub answer` removes the answered item by its Q number, which
+    /// stays the same when the user adds or removes other items by
+    /// hand. A position number, or the key and section swapped, would
+    /// remove another question or none.
     #[test]
-    fn card_cli_lists_needs_you_from_grep() {
+    fn card_cli_removes_question_by_q_number() {
         let folder = TempFolder::new();
-        let card_grep = "DEMO-KB-003 Log: - 2026-11-17 needs-you: Which bucket?\n\
-                         DEMO-KB-003 Log: - 2026-11-18 answered: B\n\
-                         DEMO-KB-007 Log: - 2026-11-18 needs-you: Deploy the new mo…\n\
-                         3 matches in 2 cards\n";
-        let script = folder.write_script("card", card_grep, "", 0);
-        let cards = CardCli::new(script);
+        let script = folder.write_script("card", "", "", 0);
+        let cards = CardCli::new(script.clone());
 
-        let keys = cards.list_needs_you().unwrap();
+        cards
+            .remove_question(&"DEMO-KB-007".parse().unwrap(), 3)
+            .unwrap();
 
-        let keys: Vec<&str> = keys.iter().map(CardKey::as_str).collect();
-        assert_eq!(keys, ["DEMO-KB-007"]);
-    }
-
-    /// `card grep` exits 1 both when no card waits and when it fails. A
-    /// failure read as no match gives the user a false all-clear, and no
-    /// match read as a failure shows an error whenever nothing waits.
-    #[test]
-    fn list_needs_you_tells_failure_from_none() {
-        let cases = [
-            ("no-match", "0 matches in 0 cards\n", "", Ok(0)),
-            (
-                "failure",
-                "",
-                "card: no default vault\n",
-                Err("card: no default vault"),
-            ),
-        ];
-        for (name, stdout, stderr, expected) in cases {
-            let folder = TempFolder::new();
-            let script = folder.write_script("card", stdout, stderr, 1);
-
-            let result = CardCli::new(script).list_needs_you();
-
-            let result = result
-                .map(|keys| keys.len())
-                .map_err(|error| error.to_string());
-            assert_eq!(result, expected.map_err(str::to_owned), "{name}");
-        }
+        assert_eq!(
+            read_script_calls(&script),
+            [[
+                "edit",
+                "--remove",
+                "--by",
+                "hub",
+                "--",
+                "DEMO-KB-007",
+                "Open Questions",
+                "Q3"
+            ]]
+        );
     }
 
     /// `run_brief` shows `card`'s own reason on its board line, such as a

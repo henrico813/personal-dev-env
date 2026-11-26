@@ -130,7 +130,7 @@ own Herdr pane, with `HUB_RUN` set to your run folder.
 
    Read the line that starts with `open` and the line that starts with
    `unread`. In the table, STATE says who acts: `working` needs
-   nothing, `hub` waits on you, `you` waits on the user, `kept`,
+   nothing, `hub` waits on you, `flagged` waits on the user, `kept`,
    `to-close`, `to-park` and `parked` need nothing from you.
 
 4. Wait for news:

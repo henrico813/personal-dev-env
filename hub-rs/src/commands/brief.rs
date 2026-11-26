@@ -10,7 +10,7 @@ use crate::shared::run_folder::RunFolder;
 use crate::shared::{HubError, Tools, format_span};
 
 /// Prints the board line, one line per pending approval request,
-/// read fresh at `now`, `reviews.md`, then each card's open question in
+/// read fresh at `now`, `reviews.md`, then each open question in
 /// full, so the user never has to ask what a question was. Under a
 /// question's title come `Check first:` lines for sessions on its card
 /// where the user typed since it was asked, since the user may have
@@ -48,7 +48,7 @@ pub fn run_brief(tools: &Tools<'_>, run: &RunFolder, now: Timestamp) -> Result<O
             for question in questions {
                 let mut section = vec![format!(
                     "Question {}: {}",
-                    question.key.as_str(),
+                    question.format_label(),
                     question.title
                 )];
                 section.extend(check_typed_replies(tools, question, &time_zone));

@@ -3,7 +3,7 @@ mod common;
 use std::fs;
 
 use hub::board::{self, Hubs, ScreenSize};
-use hub::external::cards::{CardNote, Stage};
+use hub::external::cards::{CardNote, OpenItem, Stage};
 use hub::external::herdr::AgentStatus;
 use hub::shared::HubError;
 use jiff::tz::TimeZone;
@@ -99,11 +99,20 @@ fn print_board_gathers_live_hubs_and_questions() {
         .cards
         .card_notes
         .insert("DEMO-KB-007".to_owned(), CardNote::default());
+    test_tools
+        .cards
+        .stages
+        .insert("DEMO-KB-009".to_owned(), Stage::Todo);
     test_tools.cards.card_notes.insert(
         "DEMO-KB-009".to_owned(),
         CardNote {
             project: "Demo".to_owned(),
-            needs_you: Some("Deploy tonight?".to_owned()),
+            open_questions: vec![OpenItem {
+                number: 1,
+                asked: Some("2026-11-24".parse().unwrap()),
+                text: "Deploy tonight?".to_owned(),
+                lines: Vec::new(),
+            }],
             ..CardNote::default()
         },
     );
@@ -116,7 +125,7 @@ fn print_board_gathers_live_hubs_and_questions() {
     let question = outcome
         .lines
         .iter()
-        .find(|line| line.contains("Deploy tonight?"));
+        .find(|line| line.contains("DEMO-KB-009 Q1"));
     let tag = question.map(|line| line.split_whitespace().last().unwrap_or_default());
     assert_eq!(tag, Some("Demo"), "{screen}");
 }
@@ -237,7 +246,10 @@ fn print_board_hubless_shows_cards_and_note() {
         .position(|line| line.starts_with("NEXT"));
     let next = next.unwrap();
     assert_eq!(outcome.lines[next + 1], " you: no hub running");
-    assert_eq!(outcome.lines[next + 3], " hub: start DEMO-KB-007");
+    assert_eq!(
+        outcome.lines[next + 3],
+        " hub: start DEMO-KB-007 Retry failed up~"
+    );
 }
 
 /// The one criterion in the note of `make_tools_with_todo_card`.

@@ -30,7 +30,7 @@ Usage::
     card outline KEY                   sections with their line numbers
     card grep PATTERN [--section S] [--stage S] [--project P]
     card move KEY STAGE [--user] [--why TEXT] [--session [AGENT]]
-    card note KEY TEXT [--needs-you | --answered]
+    card note KEY TEXT                 add a dated line to the Log
     card add KEY SECTION TEXT          add a bullet or criteria checkbox
     card attach KEY FILE               copy FILE to attachments, embed it
     card edit KEY SECTION N TEXT|--remove  replace or remove item N
@@ -163,6 +163,8 @@ WRITABLE_SECTIONS = [
     name for name in SECTIONS if name not in ("Notes", "Log", "Appendix")
 ]
 CRITERIA = "Acceptance Criteria"
+OPEN_QUESTIONS = "Open Questions"
+DECISIONS = "Decisions"
 TITLE_LIMIT = 50
 
 WIDTH = 60
@@ -195,6 +197,10 @@ PR_URL_RE = re.compile(
 )
 # A section item's bullet or checkbox, then its words.
 ITEM_PREFIX_RE = re.compile(r"^(- \[[ xX]\] |[-*] )?(.*)$")
+# An Open Questions item's words after the bullet, such as
+# `Q4 asked 2026-11-25: Deploy tonight?` or `Q2: Which bucket?`. A Q
+# number over six digits reads as words, since the hub keeps it in 32 bits.
+QUESTION_RE = re.compile(r"^Q(\d{1,6})(?: asked (\d{4}-\d\d-\d\d))?: (.*)$")
 # Characters Obsidian refuses in file names, plus link syntax.
 BAD_NAME_CHARS_RE = re.compile(r'[\\/:*?"<>|#^\[\]]')
 # The target of a wikilink, before any #heading or |alias.
@@ -435,17 +441,6 @@ def build_parser() -> argparse.ArgumentParser:
     note = commands.add_parser("note", help="add a note to the Log")
     note.add_argument("key")
     note.add_argument("text")
-    signal = note.add_mutually_exclusive_group()
-    signal.add_argument(
-        "--needs-you",
-        action="store_true",
-        help="a question, approval or failure waiting on the user",
-    )
-    signal.add_argument(
-        "--answered",
-        action="store_true",
-        help="the user's answer",
-    )
     add_author(note)
     note.set_defaults(run=run_note)
 
@@ -469,11 +464,12 @@ def build_parser() -> argparse.ArgumentParser:
     edit = commands.add_parser(
         "edit",
         help="replace, remove, tick or untick one item of a section",
-        description="N is the item's number in card show KEY --section S.",
+        description="N is the item's number in card show KEY --section S,"
+        " or Q<n> for the Open Questions item numbered Q<n>.",
     )
     edit.add_argument("key")
     edit.add_argument("section", choices=WRITABLE_SECTIONS)
-    edit.add_argument("number", type=int, metavar="N")
+    edit.add_argument("number", metavar="N")
     edit.add_argument("text", nargs="?", help="the item's new text")
     edit.add_argument("--remove", action="store_true", help="remove item N")
     edit.add_argument(
@@ -1008,35 +1004,10 @@ def read_blocked_reason(text: str) -> str:
     return reason
 
 
-def read_open_question(text: str) -> str | None:
-    """Return the text of the newest needs-you Log line, if unanswered.
-
-    card note writes ``- DATE needs-you: TEXT`` and ``- DATE answered:
-    TEXT``. An answered line after the needs-you line closes it.
-
-    Args:
-        text: The card text.
-
-    Returns:
-        The question, or None when nothing waits on the user.
-    """
-    question = None
-    for line in (read_section(text, "Log") or "").split("\n"):
-        words = line.split(" ", 2)
-        if len(words) < 3 or words[0] != "-":
-            continue
-        entry = words[2]
-        if entry.startswith("needs-you: "):
-            question = entry.removeprefix("needs-you: ").strip()
-        elif entry.startswith("answered: "):
-            question = None
-    return question
-
-
 def describe_card(card: Card) -> dict[str, Any]:
     """Return the fields scripts read from a card, for --json output.
 
-    Titles stay whole. ``needs_you`` is read_open_question's result.
+    Titles stay whole. ``open_questions`` is list_questions' result.
 
     Args:
         card: The card.
@@ -1055,8 +1026,63 @@ def describe_card(card: Card) -> dict[str, Any]:
         "plans": as_list(fields.get("plans")),
         "prs": as_list(fields.get("prs")),
         "sessions": as_list(fields.get("sessions")),
-        "needs_you": read_open_question(card.text),
+        "open_questions": list_questions(card.text),
     }
+
+
+def list_questions(text: str) -> list[dict[str, Any]]:
+    """Return each Open Questions item with its Q number and asked date.
+
+    An item with no ``Q<n>`` gets the highest number written in Open
+    Questions or Decisions plus its place among such items, so
+    ``- Q3: a`` then ``- b`` gives Q3 and Q4.
+
+    Args:
+        text: The card text.
+
+    Returns:
+        One object per item, in note order, such as ``{"number": 4,
+        "asked": "2026-11-25", "text": "Deploy tonight?", "lines":
+        ["- A. Yes"]}``. ``asked`` is None for an undated item.
+    """
+    lines = text.split("\n")
+    items = []
+    for start, stop in list_items(lines, OPEN_QUESTIONS):
+        words = split_item(lines[start])[1]
+        later = [line.removeprefix("  ") for line in lines[start + 1 : stop]]
+        number: int | None = None
+        asked = None
+        match = QUESTION_RE.match(words)
+        if match:
+            number, words = int(match[1]), match[3]
+            if match[2] and is_valid_date(match[2]):
+                asked = match[2]
+        items.append(
+            {"number": number, "asked": asked, "text": words, "lines": later},
+        )
+    highest = max((item["number"] or 0 for item in items), default=0)
+    highest = max(highest, find_highest_answered_number(lines))
+    for item in items:
+        if item["number"] is None:
+            highest += 1
+            item["number"] = highest
+    return items
+
+
+def is_valid_date(day: str) -> bool:
+    """Return True when ``day`` is a real ISO date, such as 2026-11-25.
+
+    Args:
+        day: Text shaped like a date.
+
+    Returns:
+        Whether date.fromisoformat reads it.
+    """
+    try:
+        date.fromisoformat(day)
+    except ValueError:
+        return False
+    return True
 
 
 def print_json(value: object) -> None:
@@ -1660,7 +1686,7 @@ def read_pr_state(url: str) -> str:
 
 
 def run_note(args: argparse.Namespace, projects: Path) -> int:
-    """Add a dated note, question or answer to a card's Log.
+    """Add a dated note to a card's Log.
 
     Args:
         args: The parsed arguments.
@@ -1671,12 +1697,7 @@ def run_note(args: argparse.Namespace, projects: Path) -> int:
     """
     card = find_card(projects, args.key)
     today = date.today().isoformat()
-    if args.needs_you:
-        entry = f"- {today} needs-you: {args.text}"
-    elif args.answered:
-        entry = f"- {today} answered: {args.text}"
-    else:
-        entry = f"- {today} note ({find_author(args)}): {args.text}"
+    entry = f"- {today} note ({find_author(args)}): {args.text}"
     update_card(card, lambda text: add_to_section(text, "Log", entry))
     print(f"{card.key} Log: {entry}")
     return 0
@@ -1684,6 +1705,9 @@ def run_note(args: argparse.Namespace, projects: Path) -> int:
 
 def run_add(args: argparse.Namespace, projects: Path) -> int:
     """Add a bullet, or a checkbox in Acceptance Criteria, to a section.
+
+    An Open Questions item gets the next Q number and today's date,
+    such as ``- Q4 asked 2026-11-25: Deploy tonight?``.
 
     Args:
         args: The parsed arguments.
@@ -1696,9 +1720,76 @@ def run_add(args: argparse.Namespace, projects: Path) -> int:
     entry = (
         f"- [ ] {args.text}" if args.section == CRITERIA else f"- {args.text}"
     )
-    update_card(card, lambda text: add_to_section(text, args.section, entry))
+
+    def change(text: str) -> str:
+        """Add the entry, numbering Open Questions items first."""
+        nonlocal entry
+        if args.section == OPEN_QUESTIONS:
+            text = stamp_question_numbers(text)
+            number = find_highest_question_number(text) + 1
+            today = date.today().isoformat()
+            entry = f"- Q{number} asked {today}: {args.text}"
+        return add_to_section(text, args.section, entry)
+
+    update_card(card, change)
     print(f"{card.key} {args.section}: {entry}")
     return 0
+
+
+def find_highest_question_number(text: str) -> int:
+    """Return the card's highest Q number, open or answered.
+
+    ``hub answer`` keeps the ``Q3 asked 2026-11-25:`` head on the
+    Decisions item it writes, so a number is never given twice and a
+    late reply key cannot name a newer question.
+
+    Args:
+        text: The card text.
+
+    Returns:
+        The highest number, or 0 when the card has none.
+    """
+    numbers = [item["number"] for item in list_questions(text)]
+    highest_open = max(numbers, default=0)
+    return max(highest_open, find_highest_answered_number(text.split("\n")))
+
+
+def find_highest_answered_number(lines: list[str]) -> int:
+    """Return the highest Q number at the head of a Decisions item, or 0.
+
+    Args:
+        lines: The card text, split into lines.
+
+    Returns:
+        The highest number, such as 3 for ``- Q3 asked 2026-11-25: a``.
+    """
+    numbers = [0]
+    for start, _ in list_items(lines, DECISIONS):
+        match = QUESTION_RE.match(split_item(lines[start])[1])
+        if match:
+            numbers.append(int(match[1]))
+    return max(numbers)
+
+
+def stamp_question_numbers(text: str) -> str:
+    """Write each unnumbered Open Questions item's shown Q number into it.
+
+    A later add or removal then cannot shift that number: ``- b`` after
+    ``- Q3: a`` becomes ``- Q4: b``.
+
+    Args:
+        text: The card text.
+
+    Returns:
+        The new card text.
+    """
+    lines = text.split("\n")
+    items = list_items(lines, OPEN_QUESTIONS)
+    for (start, _), question in zip(items, list_questions(text)):
+        prefix, words = split_item(lines[start])
+        if not QUESTION_RE.match(words):
+            lines[start] = f"{prefix or '- '}Q{question['number']}: {words}"
+    return "\n".join(lines)
 
 
 def run_attach(args: argparse.Namespace, projects: Path) -> int:
@@ -1780,7 +1871,8 @@ def run_edit(args: argparse.Namespace, projects: Path) -> int:
 
     A replaced item keeps its bullet or checkbox, with its tick. Tick
     and untick keep the words, and refuse an item with no checkbox or a
-    box already in that state.
+    box already in that state. In Open Questions, unnumbered items get
+    their Q numbers first, and a replaced item keeps its ``Q<n>`` head.
 
     Args:
         args: The parsed arguments.
@@ -1797,8 +1889,11 @@ def run_edit(args: argparse.Namespace, projects: Path) -> int:
     card = find_card(projects, args.key)
     today = date.today().isoformat()
     author = find_author(args)
-    lines = card.text.split("\n")
-    old = lines[find_item(lines, card.key, args.section, args.number)[0]]
+    questions = args.section == OPEN_QUESTIONS
+    text = stamp_question_numbers(card.text) if questions else card.text
+    lines = text.split("\n")
+    number = find_item_position(text, card.key, args.section, args.number)
+    old = lines[find_item(lines, card.key, args.section, number)[0]]
     prefix, old_words = split_item(old)
     label = f"{args.section} item {args.number}"
     if args.tick or args.untick:
@@ -1817,8 +1912,11 @@ def run_edit(args: argparse.Namespace, projects: Path) -> int:
 
     def change(text: str) -> str:
         """Edit the item, unless someone changed it since card read it."""
+        if questions:
+            text = stamp_question_numbers(text)
         lines = text.split("\n")
-        start, stop = find_item(lines, card.key, args.section, args.number)
+        number = find_item_position(text, card.key, args.section, args.number)
+        start, stop = find_item(lines, card.key, args.section, number)
         if lines[start] != old:
             raise CardError(f"{card.key} {label} changed; run card show again")
         if args.remove:
@@ -1834,12 +1932,58 @@ def run_edit(args: argparse.Namespace, projects: Path) -> int:
             # The item keeps its own bullet or box, so a given one is
             # used only on a plain line.
             given_prefix, words = split_item(args.text.strip())
+            if questions:
+                words = keep_question_head(old_words, words)
             lines[start] = (prefix or given_prefix) + words
         return add_to_section("\n".join(lines), "Log", entry)
 
     update_card(card, change)
     print(f"{card.key} Log: {entry}")
     return 0
+
+
+def find_item_position(text: str, key: str, section: str, given: str) -> int:
+    """Return the position, from 1, of the item that N names.
+
+    Args:
+        text: The card text.
+        key: The card key, for the error.
+        section: The section name.
+        given: N as typed, such as ``2``, or ``Q4`` in Open Questions.
+
+    Returns:
+        The item's position, which find_item checks.
+
+    Raises:
+        CardError: N is neither form, or no item has that Q number.
+    """
+    if given.isdigit():
+        return int(given)
+    match = re.fullmatch(r"[Qq](\d+)", given)
+    if section != OPEN_QUESTIONS or match is None:
+        raise CardError("N is an item number, or Q<n> in Open Questions")
+    numbers = [item["number"] for item in list_questions(text)]
+    if int(match[1]) not in numbers:
+        raise CardError(f"{key} {section} has no Q{match[1]}")
+    return numbers.index(int(match[1])) + 1
+
+
+def keep_question_head(old_words: str, new_words: str) -> str:
+    """Return the new words behind the old item's ``Q<n> asked DATE:`` head.
+
+    New words that bring their own head are kept as given.
+
+    Args:
+        old_words: The item's words before the edit.
+        new_words: The words given to card edit.
+
+    Returns:
+        The item's new words.
+    """
+    head = QUESTION_RE.match(old_words)
+    if head is None or QUESTION_RE.match(new_words):
+        return new_words
+    return old_words[: head.start(3)] + new_words
 
 
 def list_items(lines: list[str], section: str) -> list[tuple[int, int]]:

@@ -122,14 +122,14 @@ the count per state, the unread reports and one row per session:
 hub kanban-hub-18 131k, watch running, hub next running
 board active 5 of 8, in-review 19 of 6
 blocked 1, oldest 8 days
-open 6: 1 working, 1 hub, 1 you,
+open 6: 1 working, 1 hub, 1 flagged,
   1 kept, 1 to-close, 1 to-park; 1 parked
 unread 2: demo-007-impl docs-fix
 
 NAME                  STATE     CTX   WHY
 docs-fix              working   152k  1 held, hand off
 demo-007-impl         hub       98k   unread report
-demo-009-auto         you       12k   blocked
+demo-009-auto         flagged   12k   blocked
 demo-012-auto         kept      77k   unpushed in /home/u/wt/demo-012
 review-kanban-hub-16  to-close  60k   report read
 demo-090-auto         to-park   104k  -
@@ -148,9 +148,11 @@ no session: DEMO-KB-004 active
 - The `blocked` line shows only when a card is in that
   stage, which waits on people outside the team and has no limit.
   `hub next` never counts these cards.
-- STATE is one of `working`, `hub` (waits on the hub), `you` (waits
-  on the user), `kept` (finished, but WHY says what keeps it open),
-  `to-close`, `to-park` and `parked` (no tab, can reopen).
+- STATE is one of `working`, `hub` (waits on the hub), `flagged`
+  (waits on the user), `kept` (finished, but WHY says what keeps it
+  open), `to-close`, `to-park` and `parked` (no tab, can reopen). A
+  session whose todo, active, in-review or blocked card has an open
+  question is `flagged`, with WHY `open question`.
 - `no session:` names active and in-review cards that no session works
   on.
 - `--json` prints the same facts as one JSON object.
@@ -257,13 +259,14 @@ date heading on the day's first line. Prints `noted HHMM`.
 is `board active 5 of 8, in-review 19 of 6; 2 questions`, or
 `board: REASON`. Then come one line per pending pde-gh-write request,
 oldest first, such as `approval A0016cd 1h12m left app #515 merge`,
-then `reviews.md` and one section per card's open question, or
+then `reviews.md` and one section per open question, or
 `Nothing waits on the user.` A pending request past pde-gh-write's
 four-hour expiry does not show. A question's section starts
-`Question KEY: TITLE`, then its lines as `hub ask` saved them. Right
+`Question KEY Q3, asked 2026-11-25: TITLE`, or `undated` in place of
+the date, then its lines as `hub ask` saved them. Right
 under the title, a `Check first: the user wrote in NAME TIME` line
 names each session on the card where someone typed a message on or
-after the day of the needs-you mark, other than `hub send` messages,
+after the day the question was asked, other than `hub send` messages,
 watch prods, their older `From the hub` and `Your context is about`
 forms, and the session's first prompt. NAME is the Herdr name,
 or the session ID when Herdr does not list it. When
@@ -283,19 +286,23 @@ Blocked (no action needed)
 
 ### waiting
 
-`hub waiting [--run DIR]` prints each card's open question for the
-user, who reads it at the end of every hub message. The first line is
-`2 questions wait on you.`, then each question oldest first, by the
-day of its needs-you mark, then card key. Each starts
-`**QN. TITLE (KEY)**`, then its lines as `hub ask` saved them, and a
-`Reply like `QNA`.` line ends the list. With no open question it
-prints only `No question waits on you.`
+`hub waiting [--run DIR]` prints every open question for the user,
+who reads it at the end of every hub message. An open question is an
+item under Open Questions on a todo, active, in-review or blocked
+card; draft, done and dropped cards are never listed. The first line
+is `2 questions wait on you.`, then each question oldest first, by
+the day it was asked, then card key and number, with undated items
+last. Each starts `**Q3. TITLE (KEY, asked 2026-11-25)**`, or
+`undated` in place of `asked DATE`, then its lines as `hub ask` saved
+them, and a `Reply like `KEY Q3A`.` line, with the first question's
+key and number, ends the list. With no open question it prints only
+`No question waits on you.`
 
-- A question keeps its number while any numbered question waits, so
-  a reply key names the same question in each message. A new
-  question takes the number after the highest. Once none waits, the
-  next question is `Q1` again. The numbers live in
-  `question-numbers.txt` in the run folder.
+- The number is the item's Q number on its card. `card` writes it
+  into the item and never gives it to another question on that card,
+  even after the answer, so a reply key from an older message still
+  names one question. Two cards can each have a `Q1`, so a reply key
+  starts with the card key. `--run` is accepted and not used.
 - It labels the front hub's sidebar row `hub busy, N for you` or
   `hub free, N for you`, or plain `hub busy` and `hub free` when
   nothing waits. When that fails, a last line starts
@@ -306,9 +313,10 @@ prints only `No question waits on you.`
 ### ask
 
 `hub ask KEY FILE` puts the question in FILE on card KEY. It adds the
-question as one item at the end of the card's Open Questions, then
-logs a needs-you mark with the title, so `hub brief` and `hub board`
-show it. Prints `KEY asks 'TITLE'`. FILE starts with `## TITLE`,
+question as one item at the end of the card's Open Questions, where
+`card` gives it the next Q number and today's date, so `hub brief`,
+`hub waiting` and `hub board` show it. A card can hold several open
+questions. Prints `KEY asks 'TITLE'`. FILE starts with `## TITLE`,
 then the question, two or more `- ` choices, a `Recommended:` line,
 an `If no reply:` line and an optional `Depends on:` line, as
 herdr-hub's Questions for the user shows.
@@ -316,24 +324,31 @@ herdr-hub's Questions for the user shows.
 - Exits 3 with `the question must start with a ## title line`, with
   `question 'TITLE': PROBLEMS` when FILE lacks the question, two or
   more `- ` choices, `Recommended:` or `If no reply:`, and with
-  `KEY already waits on the user: TEXT` when the card's needs-you
-  mark is open. None writes to the card.
+  `KEY is in STAGE; the hub lists questions only on todo, active,
+  in-review or blocked cards` for a draft, done or dropped card, and
+  with `KEY already asks 'TITLE' as QN` when an open question on the
+  card has the same title. None writes to the card.
 
 ### answer
 
-`hub answer KEY ANSWER` adds the card's open question to its
-Decisions, with `Answer: ANSWER` as its last line, removes it from
-Open Questions, then logs an answered mark. Prints
-`KEY answered 'TITLE': ANSWER`.
+`hub answer KEY N ANSWER` adds open question QN of card KEY to its
+Decisions as `Q3 asked 2026-11-25: TITLE`, or `Q3: TITLE` for an
+undated item, then its lines and `Answer: ANSWER` last. Then it
+removes item QN from Open Questions. N is `3`, `Q3` or `q3`. Prints
+`KEY Q3 answered 'TITLE': ANSWER`.
 
 - Exits 3, changing nothing, with
   `the answer must be one line of text` when ANSWER is empty or has a
-  line break, and with `KEY waits on no question`.
+  line break, and with `KEY has no open question QN`.
 - Needs no Herdr pane: `card` logs the removal from Open Questions
   by `hub`.
-- When a step after the first fails, the error says what was done.
-  The answered mark comes last, so the card still shows that it
-  waits.
+- When the second read or the removal fails, or QN changed since the
+  hub read the card, the error says the answer was added, and the
+  question stays open. A hand edit can give a hand-typed item a new
+  number, so find the question in `hub waiting`, then run
+  `card edit KEY "Open Questions" Q4 --remove` with its number in
+  place of `Q4`. Never run `hub answer` for it again, since that adds
+  a second answer.
 
 ### requests
 
@@ -590,12 +605,14 @@ QUEUE; from 100 columns they sit side by side.
   q or Esc goes back.
 - The queue view lists the cards by group: Needs you, Active,
   In review, Blocked, Todo and Draft. The cards come
-  from `card list`. Needs you holds each card's open question, as
-  `hub brief` shows them, and the sessions that wait on the user,
+  from `card list`. Needs you holds each open question, as
+  `KEY Q3 TITLE`, oldest first as `hub waiting` lists them, and the
+  sessions that wait on the user,
   from every hub on this machine that Herdr lists: each
   `~/.local/state/herdr-hub.*` folder whose hub `hub watch start`
   named, auto runs included. Each question's tag is its card's
-  project, and its details page names the card. With no hub
+  project, and its details page shows `KEY Q3, asked DATE`. A card's
+  details page lists its open questions under the title. With no hub
   running, Needs you shows `no hub running`. It ignores `HUB_RUN`,
   and the hidden `--run DIR` shows one run's sessions only. A Could
   not read group shows on top when a read fails.
@@ -668,8 +685,9 @@ The steps of an auto run, in order. Each takes `--run DIR`.
   `--given`, REPLY must name exactly the cards under `## Run`. Exits 3
   when nothing was approved.
 - `hub auto now` writes and prints `brief-now.md`: `Auto run N`, one
-  line per card and `Questions for you: N`, then `- KEY TITLE` for
-  each open question on a card under `## Run`. A card with an open
+  line per card and `Questions for you: N`, then
+  `- KEY Q3, asked DATE TITLE` for each open question on a card under
+  `## Run`. A card with an open
   question gets `(needs you)`. Exits 3 with
   `the run is not approved; start nothing`.
 

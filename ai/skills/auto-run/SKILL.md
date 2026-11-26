@@ -197,9 +197,10 @@ word for word, then your own news:
 
     hub auto now --run "<auto run folder>"
 
-When the user answers a queued question before the end brief, run
-`hub answer <card key> "<answer>"` and send the answer to the auto hub
-with `hub send`. When a pull request that
+When the user answers a question on one of the run's cards, before
+or after the end brief, record it as `herdr-hub`'s Questions for the
+user says, and send the answer to the auto hub with `hub send` in
+place of the card's worker. When a pull request that
 changes a skill merges during the run, send the auto hub its name
 the same way, since running sessions keep the old text. When the
 user says they are back, send the auto hub that the away window
