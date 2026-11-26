@@ -19,8 +19,9 @@ does not list, or when a session runs on another machine.
   user at once, with the board line, and propose cards to pause as
   SKILL.md's Cards says. Start no todo card until both counts are
   back within their limits or the user says to go on.
-- `old send file: <path>`: handle it as the `hub status` line of the
-  same name in SKILL.md's The sessions.
+- `old send file: <path>`: the Python hub left this send file in the
+  run folder, and `hub status` lists it too. Send again any message
+  in it that still matters, with `hub send`, then delete the file.
 - `no hub handoff for <old> -> hub adopt <old>`: an older hub of this
   run is still open, and no `hub handoff` started you from it. Run
   `hub adopt --run "<run folder>" <old>`. It writes the old hub's
@@ -28,6 +29,12 @@ does not list, or when a session runs on another machine.
   `to-close`, and `hub clean` closes its tab. In an auto run,
   the front hub also adopts the run's auto hub once the run is over,
   as the `auto-run` skill says.
+- `no report from <name> after a prod`: the watch prodded `<name>`
+  once for a report it owes, and it sat idle 10 more minutes without
+  it. The watch prods it no more for that report, and `hub next`
+  skips the line once `<name>` has reported since. Read its last
+  reply in its pane, then send it what it needs with `hub send`, or
+  ask the user when you cannot tell what it waits on.
 - `review started <name>`: with `--start-reviews`, the old hub's
   session review now runs. Bring its pick list to the user when it
   reports.

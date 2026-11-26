@@ -10,6 +10,7 @@ use super::Outcome;
 use super::handoff::{SessionPlace, make_handoff_prompt, start_session};
 use crate::external::cards::{CardKey, Stage};
 use crate::external::herdr::Agent;
+use crate::shared::events::{self, Event, EventKind};
 use crate::shared::parking::find_card_workspace;
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{AgentName, HubError, Tools};
@@ -41,7 +42,9 @@ pub enum LaunchMode {
     Successor { session_id: Option<String> },
 }
 
-/// Starts the worker NAME and gives it its handoff. A worker with a
+/// Starts the worker NAME and gives it its handoff. A `worker_added`
+/// line in the run's log makes the watch watch it, and a successor's
+/// line makes the watch stop watching its caller. A worker with a
 /// card also gets a `Handoff PATH` note and its session on the card.
 /// Every start adds a line to `notes.md`. A card ready to start moves
 /// into progress before the start, so the work limit is checked
@@ -137,6 +140,16 @@ pub fn run_launch(
         done: done.join(", "),
         error: Box::new(error),
     };
+    let added = Event {
+        at: now.timestamp(),
+        kind: EventKind::WorkerAdded {
+            name: name.to_owned(),
+            after: caller.as_ref().map(|caller| caller.name.clone()),
+            owed_from: None,
+        },
+    };
+    events::append_event(run, &added).map_err(|error| make_partly_done_error(&done, error))?;
+    done.push("recorded the worker".to_owned());
     tools
         .herdr
         .prompt(name, &make_handoff_prompt(&handoff))

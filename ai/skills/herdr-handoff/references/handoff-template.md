@@ -95,21 +95,21 @@ instead, as Coordination says.
 - Write progress-only news to <the new session's status file>.
   Report each question, blocker or finished work that "<this
   session's agent name>" waits on, such as a PR opening. Run
-  `hub report --run "<run folder>" <the new session's agent name>
-  <file>`, then end your turn. The command replaces <report file>
-  whole with <file>. Never prompt "<this session's agent name>"; it
-  learns of your report when your turn ends.
+  `hub report --run "<run folder>" <file>`, then end your turn. The
+  command finds your agent name itself and replaces
+  `report-<your agent name>.md` in <run folder> whole with <file>.
+  Never prompt "<this session's agent name>"; it learns of your
+  report when your turn ends.
 - <When this session keeps nothing and no hub runs: leave out the
   `hub report` bullet above, and say the new session asks the user in
   its own pane.>
-- <When a hub runs, change three things in the `hub report` bullet
+- <When a hub runs, change two things in the `hub report` bullet
   above. Put the hub's agent name in place of "<this session's agent
-  name>". Put the hub's run folder in place of <run folder>. Put a
-  file in that folder in place of <report file>. Then add the bullet
-  "You report only to the hub." to the handoff. Below it, turn the
-  rest of this placeholder into bullets. Each bullet speaks to the
-  new session as "you". To wait on a long job, such as a test run,
-  the new session first runs `hub wait` with
+  name>". Put the hub's run folder in place of <run folder>. Then add
+  the bullet "You report only to the hub." to the handoff. Below it,
+  turn the rest of this placeholder into bullets. Each bullet speaks
+  to the new session as "you". To wait on a long job, such as a test
+  run, the new session first runs `hub wait` with
   `--run "<run folder>"`, its agent name, `--file <summary file>` and
   `--deadline <minutes>`. Then it starts the job with
   `setsid nohup bash <script> > <log> 2>&1 &`, so the job outlives

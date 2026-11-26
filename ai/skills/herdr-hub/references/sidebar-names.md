@@ -6,9 +6,9 @@ worker needs a workspace or a rename.
 - A card's worker gets its own workspace, named
   `<card key> <one word>`, such as `demo-007 approvals`. Cards that
   belong together share one workspace, named `<project> <topic>`, such
-  as `demo review-tools`. When you start a card's worker with
-  `herdr-handoff`, make its place by this rule, not as a tab in your
-  workspace. Work with no card gets a tab in your workspace.
+  as `demo review-tools`. `hub launch` places a card's worker by
+  this rule; pass `--workspace <label>` for a shared workspace. Work
+  with no card gets a tab in your workspace.
 - Name each tab after its agent. Name a card's agent
   `<card key>-<role>`, such as `demo-007-impl`, so `hub status`
   maps it to its card. This holds for every worker, adopted sessions

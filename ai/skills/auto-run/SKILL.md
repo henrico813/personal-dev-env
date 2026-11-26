@@ -184,11 +184,12 @@ The user's rules for every run:
 
 Once `approved.md` exists, start the auto hub, agent `auto-hub-<N>`,
 by `herdr-handoff`, in its own workspace labeled `auto run <N>`, on
-the hub model your `rules.md` names. Its handoff says only: load
-`auto-run` and `herdr-hub`; you are the auto hub of run N; the run
-folder; the front hub's name and run folder; when the user's away
-window ends; each rule that ends at a set time, with its end time;
-and any other rule the user gave for this run.
+the hub model your `rules.md` names. Skip `hub launch`, since the
+auto hub owes only its end brief and must get no report prods. Its
+handoff says only: load `auto-run` and `herdr-hub`; you are the auto
+hub of run N; the run folder; the front hub's name and run folder;
+when the user's away window ends; each rule that ends at a set time,
+with its end time; and any other rule the user gave for this run.
 
 ## During the run (front hub)
 
@@ -200,11 +201,10 @@ word for word, then your own news:
 When the user answers a question on one of the run's cards, before
 or after the end brief, record it as `herdr-hub`'s Questions for the
 user says, and send the answer to the auto hub with `hub send` in
-place of the card's worker. When a pull request that
-changes a skill merges during the run, send the auto hub its name
-the same way, since running sessions keep the old text. When the
-user says they are back, send the auto hub that the away window
-ended.
+place of the card's worker. When a pull request that changes a skill
+merges during the run, send the auto hub its name the same way, since
+running sessions keep the old text. When the user says they are back,
+send the auto hub that the away window ended.
 
 The auto hub writes to your run folder only its end brief, as
 `report-auto-hub-<N>.md`, a note that the user should run
@@ -235,9 +235,9 @@ hub has sent its end brief; wait for that brief, then run it again.
 
 1. Run `hub auto now --run "<run folder>"`. When it exits 3, the run
    is not approved: write that to the front hub with
-   `hub report --run "<front hub's run folder>" auto-hub-<N> <file>`,
-   start nothing, and end your turn. Write every report to the front
-   hub this way.
+   `hub report --run "<front hub's run folder>" <file>`, start
+   nothing, and end your turn. Write every report to the front hub
+   this way.
 2. Check with `command -v` that `hub`, `card`, `herdr`, `wt`,
    `planner`, `pde-gh-write`, `pde-check`, `glimmer`, `nobs`, `jq`,
    `rg` and `python3` are on `PATH`; never run `pde-gh-write pr` to
@@ -281,16 +281,16 @@ hub has sent its end brief; wait for that brief, then run it again.
    the later card. It counts as stopped, and the end brief lists it
    as waiting on the earlier one. A roadmap item's worker works out
    the stacks within its roadmap itself.
-6. Start one worker per card by `herdr-handoff`, as agent
+6. Start one worker per card with `hub launch`, as `herdr-hub`'s The
+   sessions says, with its handoff file as the second argument, as agent
    `<key in lower case>-auto`, in its own workspace named as
-   `herdr-hub`'s Sidebar names say. Each worker directs other agents,
-   so it is an orchestrator. Start it on the model and reasoning
-   level that `model-routing` gives an orchestrator.
-   `hub auto now` reads its status file by the agent name. Its
-   handoff says only: load `auto-run`; you are the worker of the
-   card; read common.md first and follow pr-loop.md; the card; the
-   branch it stacks on; and for a roadmap item, its design and
-   roadmap page. After a restart, check
+   `herdr-hub`'s Sidebar names say. Each worker directs other agents, so
+   it is an orchestrator. Start it on the model and reasoning level that
+   `model-routing` gives an orchestrator. `hub auto now` reads its
+   status file by the agent name. Its handoff says only: load
+   `auto-run`; you are the worker of the card; read common.md first and
+   follow pr-loop.md; the card; the branch it stacks on; and for a
+   roadmap item, its design and roadmap page. After a restart, check
    `hub status` first and start no second worker for a card.
 7. Watch the run. Start `hub next` as `herdr-hub`'s Wake on news
    says, with `--timeout` set to the seconds until the nearest of
@@ -338,8 +338,8 @@ hub has sent its end brief; wait for that brief, then run it again.
      stops that pull request and its children until the answer
      comes, and keeps building other stacks. When the front hub
      passes the user's answer, send it to the worker with `hub send`
-     while it runs. Otherwise start a session by `herdr-handoff` that
-     resumes from the PR folder's `status.txt`.
+     while it runs. Otherwise start a session that resumes from the
+     PR folder's `status.txt` with `hub launch`, as in step 6.
    - In a T1 run, a question that Plans that wait would stop in a T2
      or T3 run stops nothing. The worker picks its recommendation and
      records it, as Plans that wait says.
@@ -352,7 +352,7 @@ hub has sent its end brief; wait for that brief, then run it again.
    report.
 10. When every card has stopped, write the end brief by
     `status-updates` and send it to the front hub with
-    `hub report auto-hub-<N>`, as step 1 says. It holds, from the
+    `hub report`, as step 1 says. It holds, from the
     workers' last reports:
     - per card: its project, the problem it solves, the result,
       whether a comment review waits, and the checks run and not run
@@ -380,8 +380,8 @@ hub has sent its end brief; wait for that brief, then run it again.
       left for later
 
     Then end your turn, but stay the run's hub. When the front hub
-    sends news after the end brief, start a session by
-    `herdr-handoff` for each pull request it touches, as pr-loop.md's
+    sends news after the end brief, start a session with `hub launch`,
+    as in step 6, for each pull request it touches, as pr-loop.md's
     After a pull request opens says: a fix for feedback, a held pull
     request whose parent merged, a child's comment review once its
     parent's is answered, parking the children of a declined request,

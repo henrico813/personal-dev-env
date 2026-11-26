@@ -107,11 +107,13 @@ Start no `todo` card until both counts are back within their limits.
 ## 6. Keep, hand off or pause
 
 - Keep: rename the agent and its tab to `<card key>-<role>`, as
-  [sidebar-names.md](sidebar-names.md) says, and send it the rules for
-  a worker the user hands you.
+  [sidebar-names.md](sidebar-names.md) says. Run
+  `hub adopt --run "<run folder>" <name>`, so the watch watches it,
+  and send it the rules for a worker the user hands you.
 - Hand off: have the session write a handoff by `herdr-handoff` for a
   fresh session named `<card key>-<role>`, naming any uncommitted
-  files that pass to it. Start that session, then close the old one.
+  files that pass to it. Start that session with `hub launch`, as
+  SKILL.md says, then close the old one.
 - Pause: when the user wants a session closed before its work is
   done, have it write a handoff by `herdr-handoff` that pauses its
   card, and close it once it reports. Then move its card back to

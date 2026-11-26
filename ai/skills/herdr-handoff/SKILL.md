@@ -19,9 +19,8 @@ metadata:
 Herdr is a terminal workspace manager with workspaces, tabs and panes,
 and a `herdr` CLI that starts and watches coding agents. This skill
 covers handing work to a new agent session in a new Herdr tab or
-workspace. The new
-session remembers nothing of this one, so a handoff file
-gives it everything it needs.
+workspace. The new session remembers nothing of this one, so a
+handoff file gives it everything it needs.
 
 For command syntax, read Herdr's own skill with `herdr --skill`, but
 only after the check in step 1 of Start the session passes. The
@@ -98,7 +97,12 @@ the handoff file through Tell the user:
 2. Start the worker as steps 1 to 4 of Start the session say, with
    kind `opencode`, `--model` set to the local model, as
    `model-routing` picks, and `--auto`. Send it the prompt "Read
-   <path> and follow it." with the command in step 5 there.
+   <path> and follow it." with the command in step 5 there. When a
+   hub runs, make its tab in the hub's workspace, which
+   `herdr agent get <hub>` prints in `.result.agent.workspace_id`.
+   It needs no `HUB_RUN`, since it runs no `hub` command. Never start
+   it with `hub launch`: it writes no report, and `hub watch` prods an
+   idle worker that owes one.
 3. Wait in the background with
    `herdr agent wait <name> --until idle --until done --until blocked`.
    Do this even when a hub runs, since `hub next` does not wake when
@@ -199,10 +203,10 @@ the handoff file through Tell the user:
   as "rehearsal passed", to its own status file. It names a report
   file, `report-<name>.md` in this session's run folder or the
   handoff folder, for a question, a blocker, or finished work this
-  session waits on, such as a PR opening. The new session writes its
-  report with `hub report <name>`, from standard input or a file,
-  which replaces the report whole, and ends its turn. It never prompts
-  this session.
+  session waits on, such as a PR opening. The new session writes it
+  with `hub report --run "<folder>" <file>`, as the template does.
+  `hub` fills in <name> itself and replaces that file whole. Then
+  the new session ends its turn. It never prompts this session.
 - When this session keeps nothing and no hub runs, the handoff names
   no report file. The new session asks the user in its own pane.
 - Learn of a report with one background command:
@@ -223,6 +227,10 @@ the handoff file through Tell the user:
 
 ## Start the session
 
+When a hub runs, a worker that reports to it starts with `hub launch`
+instead, as The sessions of [herdr-hub](../herdr-hub/SKILL.md) and
+Hand off when hub watch asks say.
+
 1. Check that you run inside Herdr with `test "${HERDR_ENV:-}" = 1`.
    If it fails, run no `herdr` command, not even `--help`. Tell the
    user you are not inside Herdr. Give them the handoff path and the
@@ -238,14 +246,6 @@ the handoff file through Tell the user:
    `.result.root_pane.pane_id`. `--no-focus` keeps the user's screen
    where it was, so the new pane is not focused.
 
-   When a hub runs, make the place as Sidebar names of
-   [herdr-hub](../herdr-hub/SKILL.md) says. Work with no card gets a
-   tab in the hub's workspace. The hub reads its workspace from
-   `$HERDR_WORKSPACE_ID`, and another session from
-   `.result.agent.workspace_id` of `herdr agent get <hub>`. The hub
-   keeps tab 1. Add `--env HUB_RUN=<run folder>` to the create
-   command below, so the new session's `hub` commands need no `--run`.
-
    Without a hub, when this session keeps nothing, make a tab on this
    machine in this session's workspace, read from
    `$HERDR_WORKSPACE_ID`, unless the user asks for a new workspace. A
@@ -259,8 +259,8 @@ the handoff file through Tell the user:
        herdr tab create --no-focus --workspace <workspace> \
          --label <name> --cwd <the folder the new session works in>
 
-   Otherwise, make a new workspace, such as for a card's worker or
-   when this session keeps working beside the new one:
+   Otherwise, without a hub, make a new workspace, such as for a
+   card's worker or a session that works beside this one:
 
        herdr workspace create --no-focus --label <label> \
          --cwd <the folder the new session works in>

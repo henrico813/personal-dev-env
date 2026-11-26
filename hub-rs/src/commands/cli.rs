@@ -64,7 +64,7 @@ one used last.
   answer   Save the user's answer
   handoff* Start the next hub
   launch*  Start a worker from a handoff
-  adopt*   Take over an older open hub
+  adopt*   Take on an old hub or worker
   clean*   Close and park finished tabs
   park*    Close one tab, keep its ID
   auto     The steps of an auto run
@@ -237,14 +237,13 @@ pub enum Command {
     ///
     /// A worker runs it to give its report to the hub. It writes
     /// report-NAME.md in the run folder in one step, so the hub never
-    /// reads half of it. FILE or standard input gives the text, and hub
-    /// next tells the hub. Empty text writes nothing.
-    #[command(after_help = "Example: hub report docs-fix \\\n  /tmp/report.md")]
+    /// reads half of it. NAME is your agent name, which hub asks Herdr
+    /// for. FILE or standard input gives the text, and hub next tells
+    /// the hub. Empty text writes nothing.
+    #[command(after_help = "Example: hub report /tmp/report.md")]
     Report {
         #[command(flatten)]
         run: RunArg,
-        /// Your agent name
-        name: AgentName,
         /// The report file, or - for standard input
         // `None` reads standard input too.
         file: Option<PathBuf>,
@@ -389,19 +388,20 @@ pub enum Command {
         #[arg(long, conflicts_with_all = ["model", "workspace"])]
         successor: bool,
     },
-    /// Take over an older open hub
+    /// Take on an old hub or worker
     ///
-    /// Run it when hub next prints no hub handoff for OLD, or when an
-    /// auto run is over. OLD is an older hub of this run that no hub
+    /// Run it when hub next prints no hub handoff for NAME, or when an
+    /// auto run is over. NAME is an older hub of this run that no hub
     /// handoff named, or an auto hub such as auto-hub-2. It writes the
-    /// handoff for OLD's session review, so hub clean closes OLD once
-    /// it is idle.
+    /// handoff for NAME's session review, so hub clean closes NAME once
+    /// it is idle. When NAME is a worker that hub launch did not
+    /// start, hub watch watches it from now on.
     #[command(after_help = "Example: hub adopt kanban-hub-3")]
     Adopt {
         #[command(flatten)]
         run: RunArg,
-        /// The older hub's agent name
-        old: AgentName,
+        /// The older hub's or worker's agent name
+        name: AgentName,
     },
     /// Close and park finished tabs
     ///

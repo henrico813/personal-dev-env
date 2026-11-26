@@ -149,8 +149,9 @@ skills of your current step again.
   since each writes to the vault on the network drive and can be
   slow.
 - Write a question, a blocker or finished work with
-  `hub report --run "<run folder>" <your agent name> <file>`, which
-  replaces your old report whole. After a question, park that pull
+  `hub report --run "<run folder>" <file>`, which replaces
+  `report-<your agent name>.md` in that folder whole; `hub` finds your
+  name itself. After a question, park that pull
   request and its children, as pr-loop.md's Plans that wait says,
   keep building other stacks, and end your turn when no stack can go
   on. After a blocker or finished work, end your turn at once. Update

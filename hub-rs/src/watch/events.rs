@@ -3,8 +3,8 @@
 //! `load_watch_memory` and `append_watch_event` first. The hub's
 //! `load_memory` skips these kinds. This fold skips the lines the hub's
 //! own commands write, except `handoff`, which names the run's next
-//! hub. The one line the watch writes for `run_next`, `report_missed`,
-//! is of the hub's own kinds.
+//! hub. The lines the watch writes for `run_next`, `report_missed` and
+//! `prod_unanswered`, are of the hub's own kinds.
 
 use std::collections::BTreeMap;
 
@@ -14,6 +14,9 @@ use serde::{Deserialize, Serialize};
 use crate::shared::HubError;
 use crate::shared::events;
 use crate::shared::run_folder::RunFolder;
+
+/// The `why` of a stall prod, which `load_watch_memory` looks for.
+pub(crate) const STALL_WHY: &str = "stalled";
 
 /// One line of the log that the watch reads or writes.
 #[derive(Serialize, Deserialize)]
@@ -62,6 +65,8 @@ pub(crate) struct WatchMemory {
     pub hub: Option<String>,
     /// The Herdr state number of each worker's last prod.
     pub prodded: BTreeMap<String, u64>,
+    /// When each worker's last stall prod went out.
+    pub stall_prods: BTreeMap<String, Timestamp>,
     /// The `mtime_ns` of each name's last report that sent a phone
     /// notification.
     pub alerted: BTreeMap<String, u64>,
@@ -97,8 +102,13 @@ pub(crate) fn load_watch_memory(run: &RunFolder) -> Result<WatchMemory, HubError
             WatchEvent::Handoff { new } => memory.hub = Some(new),
             WatchEvent::WatchStarted { hub } => memory.hub = Some(hub),
             WatchEvent::WorkerProdded {
-                name, state_seq, ..
+                name,
+                state_seq,
+                why,
             } => {
+                if why == STALL_WHY {
+                    memory.stall_prods.insert(name.clone(), line.at);
+                }
                 memory.prodded.insert(name, state_seq);
             }
             WatchEvent::PhoneAlerted { name, mtime_ns } => {

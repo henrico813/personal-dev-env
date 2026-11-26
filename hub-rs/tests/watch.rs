@@ -8,6 +8,7 @@ use std::process::Command;
 use std::thread;
 use std::time::{Duration, SystemTime};
 
+use hub::commands::handoff::run_adopt;
 use hub::external::herdr::{Agent, AgentStatus, HerdrError, Workspace};
 use hub::shared::run_folder::RunFolder;
 use hub::watch::background::start_in_background;
@@ -58,6 +59,12 @@ fn append_event_line(run_path: &Path, event: &Value) {
         .open(run_path.join("events.jsonl"))
         .unwrap();
     writeln!(log, "{event}").unwrap();
+}
+
+/// Adds NAME to the run's workers, as `hub launch` does.
+fn add_worker(run_path: &Path, name: &str) {
+    let added = json!({"at": "2026-11-12T08:00:00Z", "event": "worker_added", "name": name});
+    append_event_line(run_path, &added);
 }
 
 /// Watch options that read the test's run folders and send phone
@@ -175,12 +182,14 @@ fn wait_for_script_calls(script: &Path) -> Vec<Vec<String>> {
 
 /// A worker that ends its turn with no report and no wait waits on
 /// nobody, as one did for six hours overnight. It gets one prod after
-/// 10 idle minutes and no more in that Herdr state, even from a
-/// restarted watch, or a quiet worker is typed at again and again.
+/// 10 idle minutes for the report it owes. The prod starts a new Herdr
+/// state, and one prod per state once reached a quiet worker 291 times.
+/// A new message starts a new owed report, which gets one more prod.
 #[test]
-fn check_once_prods_stalled_worker_once() {
+fn check_once_prods_once_per_owed_report() {
     let mut test_tools = TestTools::new();
-    make_watched_run(&mut test_tools);
+    let run = make_watched_run(&mut test_tools);
+    add_worker(run.path(), WORKER);
     test_tools
         .herdr
         .agents
@@ -188,15 +197,95 @@ fn check_once_prods_stalled_worker_once() {
     let start = Zoned::now();
 
     check_at(&test_tools, &start, &[0, 9, 11, 12]);
-    // A restarted watch starts a new clock.
-    check_at(&test_tools, &start, &[20, 31]);
+    // The prod made the worker take a turn and go idle in a new state.
+    // Each `check_at` call starts a new clock, as a restarted watch does.
+    test_tools.herdr.agents.last_mut().unwrap().state_seq = 2;
+    check_at(&test_tools, &start, &[13, 24, 35]);
+    assert_eq!(read_prompts(&test_tools, WORKER).len(), 1);
+    assert_eq!(count_events(run.path(), "prod_unanswered"), 1);
+    // A message reaches the worker, so it owes a new report.
+    let delivered = start.timestamp() + SignedDuration::from_mins(36);
+    let message = json!({"at": delivered.to_string(), "event": "delivered",
+        "name": WORKER, "id": format!("{WORKER}.20261112-080000.1"), "via": "send"});
+    append_event_line(run.path(), &message);
+    // The new owed report gets its own prod after 10 idle minutes.
+    check_at(&test_tools, &start, &[37, 48]);
 
     let prompts = read_prompts(&test_tools, WORKER);
-    assert_eq!(prompts.len(), 1, "{prompts:?}");
+    assert_eq!(prompts.len(), 2, "{prompts:?}");
     assert!(
         prompts[0].starts_with("hub watch: you have been idle"),
         "{prompts:?}"
     );
+}
+
+/// A worker idle 10 minutes after its one prod still owes the report.
+/// The watch logs one `prod_unanswered` line for `hub next` to print,
+/// so the hub hears of it once and decides what to do.
+#[test]
+fn check_once_tells_hub_of_unanswered_prod() {
+    let mut test_tools = TestTools::new();
+    let run = make_watched_run(&mut test_tools);
+    add_worker(run.path(), WORKER);
+    test_tools
+        .herdr
+        .agents
+        .push(make_agent(WORKER, AgentStatus::Idle));
+    let start = Zoned::now();
+    check_at(&test_tools, &start, &[0, 11]);
+    test_tools.herdr.agents.last_mut().unwrap().state_seq = 2;
+
+    check_at(&test_tools, &start, &[12, 21, 23, 40]);
+
+    assert_eq!(count_events(run.path(), "prod_unanswered"), 1);
+    assert_eq!(read_prompts(&test_tools, WORKER).len(), 1);
+}
+
+/// A prod that does not start a new Herdr state leaves the worker in
+/// the idle state that earned the prod. The hub still hears of it only
+/// 10 minutes after the prod, so a worker gets time to answer.
+#[test]
+fn check_once_waits_ten_minutes_after_prod() {
+    let mut test_tools = TestTools::new();
+    let run = make_watched_run(&mut test_tools);
+    add_worker(run.path(), WORKER);
+    test_tools
+        .herdr
+        .agents
+        .push(make_agent(WORKER, AgentStatus::Idle));
+    let start = Zoned::now();
+
+    check_at(&test_tools, &start, &[0, 11, 12, 20]);
+    let early = count_events(run.path(), "prod_unanswered");
+    check_at(&test_tools, &start, &[21, 32]);
+
+    assert_eq!(read_prompts(&test_tools, WORKER).len(), 1);
+    assert_eq!(early, 0);
+    assert_eq!(count_events(run.path(), "prod_unanswered"), 1);
+}
+
+/// A worker that hands off to a successor leaves the run's work to it.
+/// The successor owes the report, and a prod of the old session would
+/// make it spend a turn on work it no longer owns.
+#[test]
+fn check_once_skips_worker_that_has_successor() {
+    let mut test_tools = TestTools::new();
+    let run = make_watched_run(&mut test_tools);
+    add_worker(run.path(), "docs-fix");
+    let successor = json!({"at": "2026-11-12T08:01:00Z", "event": "worker_added",
+        "name": "docs-fix-2", "after": "docs-fix"});
+    append_event_line(run.path(), &successor);
+    for name in ["docs-fix", "docs-fix-2"] {
+        test_tools
+            .herdr
+            .agents
+            .push(make_agent(name, AgentStatus::Idle));
+    }
+
+    check_at(&test_tools, &Zoned::now(), &[0, 11]);
+
+    assert!(read_prompts(&test_tools, "docs-fix").is_empty());
+    assert_eq!(read_prompts(&test_tools, "docs-fix-2").len(), 1);
 }
 
 /// A watch learns which prods it sent from every run's log. When two
@@ -207,8 +296,6 @@ fn check_once_prods_stalled_worker_once() {
 fn check_once_keeps_newest_prod_across_runs() {
     let mut test_tools = TestTools::new();
     let older = make_watched_run(&mut test_tools);
-    // This run comes first in folder order, so it checks the worker by
-    // its card name.
     let newer = test_tools.path().join("herdr-hub.a");
     fs::create_dir(&newer).unwrap();
     test_tools
@@ -218,13 +305,15 @@ fn check_once_keeps_newest_prod_across_runs() {
     let started =
         json!({"at": "2026-11-12T08:00:00Z", "event": "watch_started", "hub": "auto-hub-1"});
     append_event_line(&newer, &started);
+    add_worker(&newer, WORKER);
+    add_worker(older.path(), WORKER);
     test_tools.herdr.agents.push(Agent {
         state_seq: 1,
         ..make_agent(WORKER, AgentStatus::Idle)
     });
     for (run_path, state_seq) in [(newer.as_path(), 1), (older.path(), 0)] {
         let prod = json!({"at": "2026-11-12T08:05:00Z", "event": "worker_prodded",
-            "name": WORKER, "state_seq": state_seq, "why": "stalled"});
+            "name": WORKER, "state_seq": state_seq, "why": "wait ended, job done"});
         append_event_line(run_path, &prod);
     }
 
@@ -233,19 +322,85 @@ fn check_once_keeps_newest_prod_across_runs() {
     assert!(read_prompts(&test_tools, WORKER).is_empty());
 }
 
+/// A worker can be added by two runs, such as when one run launched it
+/// and another adopted it later. Each run keeps its own prods, so when
+/// both runs checked it, it got one prod per run for each owed report.
+/// It belongs to the run that added it last.
+#[test]
+fn check_once_prods_twice_added_worker_once() {
+    let mut test_tools = TestTools::new();
+    let older = make_watched_run(&mut test_tools);
+    let newer = test_tools.path().join("herdr-hub.a");
+    fs::create_dir(&newer).unwrap();
+    test_tools
+        .herdr
+        .agents
+        .push(make_agent("auto-hub-1", AgentStatus::Idle));
+    let started =
+        json!({"at": "2026-11-12T08:00:00Z", "event": "watch_started", "hub": "auto-hub-1"});
+    append_event_line(&newer, &started);
+    add_worker(older.path(), WORKER);
+    let added = json!({"at": "2026-11-12T08:01:00Z", "event": "worker_added", "name": WORKER});
+    append_event_line(&newer, &added);
+    test_tools
+        .herdr
+        .agents
+        .push(make_agent(WORKER, AgentStatus::Idle));
+    let start = Zoned::now();
+    check_at(&test_tools, &start, &[0, 11]);
+    // The prod made the worker take a turn and go idle in a new state.
+    test_tools.herdr.agents.last_mut().unwrap().state_seq = 2;
+
+    check_at(&test_tools, &start, &[12, 23, 34]);
+
+    assert_eq!(read_prompts(&test_tools, WORKER).len(), 1);
+    assert_eq!(count_events(&newer, "worker_prodded"), 1);
+}
+
+/// A hub adopts the workers it had before the watch watched only added
+/// workers, and many of them reported and wait on the hub. A report
+/// written before the adopt still counts, or each such worker gets a
+/// prod for a report it already sent.
+#[test]
+fn check_once_skips_adopted_worker_already_reported() {
+    let mut test_tools = TestTools::new();
+    let run = make_watched_run(&mut test_tools);
+    test_tools
+        .herdr
+        .agents
+        .push(make_agent(WORKER, AgentStatus::Idle));
+    test_tools.own_pane = Some("w1:kanban-hub-1".to_owned());
+    let report = run.path().join(format!("report-{WORKER}.0800.read"));
+    fs::write(&report, "PR opened.\n").unwrap();
+    let name = WORKER.parse().unwrap();
+    run_adopt(&test_tools.tools(), &run, &name, &Zoned::now()).unwrap();
+
+    check_at(&test_tools, &Zoned::now(), &[0, 11]);
+
+    assert!(read_prompts(&test_tools, WORKER).is_empty());
+}
+
 /// A worker that reported and got no message since waits on the hub,
 /// such as a finished worker before `hub clean` closes it. Prodded, it
 /// spends a turn and may wake the hub with a needless report. A message
-/// after its report means it owes a new one again.
+/// or an add after its report means it owes a new one again, since the
+/// later of the two starts the owed report.
 #[test]
 fn check_once_prods_only_worker_owing_report() {
+    // Minutes from the start. The report is a minute old at the start.
     let cases = [
-        ("reported-after-last-message", -2, 0),
-        ("message-after-report", 0, 1),
+        ("reported-after-last-message", -3, -2, 0),
+        ("message-after-report", -3, 0, 1),
+        ("added-after-report", 0, -2, 1),
     ];
-    for (case_name, delivered_minutes, expected_prods) in cases {
+    for (case_name, added_minutes, delivered_minutes, expected_prods) in cases {
         let mut test_tools = TestTools::new();
         let run = make_watched_run(&mut test_tools);
+        let start = Zoned::now();
+        let added = start.timestamp() + SignedDuration::from_mins(added_minutes);
+        let worker = json!({"at": added.to_string(), "event": "worker_added",
+            "name": "docs-fix"});
+        append_event_line(run.path(), &worker);
         test_tools
             .herdr
             .agents
@@ -253,7 +408,6 @@ fn check_once_prods_only_worker_owing_report() {
         let report = run.path().join("report-docs-fix.0800.read");
         fs::write(&report, "PR opened.\n").unwrap();
         age_file_one_minute(&report);
-        let start = Zoned::now();
         let delivered = start.timestamp() + SignedDuration::from_mins(delivered_minutes);
         let message = json!({"at": delivered.to_string(), "event": "delivered",
             "name": "docs-fix", "id": "docs-fix.20261112-080000.1", "via": "send"});
@@ -317,6 +471,7 @@ fn check_once_prods_and_drops_ended_wait() {
 fn check_once_skips_stall_while_wait_runs() {
     let mut test_tools = TestTools::new();
     let run = make_watched_run(&mut test_tools);
+    add_worker(run.path(), WORKER);
     test_tools
         .herdr
         .agents
@@ -335,7 +490,8 @@ fn check_once_skips_stall_while_wait_runs() {
 #[test]
 fn check_once_marks_blocked_worker() {
     let mut test_tools = TestTools::new();
-    make_watched_run(&mut test_tools);
+    let run = make_watched_run(&mut test_tools);
+    add_worker(run.path(), WORKER);
     test_tools
         .herdr
         .agents
@@ -670,40 +826,28 @@ fn check_once_retries_refused_alert_after_backoff() {
     assert_eq!(count_events(run.path(), "phone_alerted"), 1);
 }
 
-/// An auto run has two hubs on one machine, and each card's worker
-/// belongs to one of them. A worker that reported to its own hub must
-/// get no prod from the other run, whose only tie to it is the card in
-/// its name. That holds after its own hub closed too, or the prod would
-/// send its next report to the wrong hub.
+/// Another machine's worker can carry a card key in its name and show
+/// in this machine's Herdr list as local. Prodded by this watch, it
+/// wakes again and again with nothing to report. Only a worker that
+/// `hub launch` or `hub adopt` added to the run gets a prod, whatever
+/// its name.
 #[test]
-fn check_once_skips_worker_another_run_claims() {
-    for (case_name, claiming_hub_runs) in [("own-hub-live", true), ("own-hub-closed", false)] {
+fn check_once_prods_only_added_workers() {
+    for (case_name, added, expected_prods) in [("added", true, 1), ("card-name-only", false, 0)] {
         let mut test_tools = TestTools::new();
-        let claiming = make_watched_run(&mut test_tools);
-        if !claiming_hub_runs {
-            test_tools.herdr.agents.clear();
+        let run = make_watched_run(&mut test_tools);
+        if added {
+            add_worker(run.path(), WORKER);
         }
-        // This run comes first in folder order, so it would check the
-        // worker by its card name if no run claimed it.
-        let other = test_tools.path().join("herdr-hub.auto");
-        fs::create_dir(&other).unwrap();
-        test_tools
-            .herdr
-            .agents
-            .push(make_agent("auto-hub-1", AgentStatus::Idle));
-        let started =
-            json!({"at": "2026-11-12T08:00:00Z", "event": "watch_started", "hub": "auto-hub-1"});
-        append_event_line(&other, &started);
         test_tools
             .herdr
             .agents
             .push(make_agent(WORKER, AgentStatus::Idle));
-        let report = claiming.path().join(format!("report-{WORKER}.0800.read"));
-        fs::write(&report, "PR opened.\n").unwrap();
 
         check_at(&test_tools, &Zoned::now(), &[0, 11]);
 
-        assert!(read_prompts(&test_tools, WORKER).is_empty(), "{case_name}");
+        let prompts = read_prompts(&test_tools, WORKER);
+        assert_eq!(prompts.len(), expected_prods, "{case_name}: {prompts:?}");
     }
 }
 
@@ -713,7 +857,8 @@ fn check_once_skips_worker_another_run_claims() {
 #[test]
 fn check_once_skips_prod_while_pane_focused() {
     let mut test_tools = TestTools::new();
-    make_watched_run(&mut test_tools);
+    let run = make_watched_run(&mut test_tools);
+    add_worker(run.path(), WORKER);
     test_tools.herdr.agents.push(Agent {
         focused: true,
         ..make_agent(WORKER, AgentStatus::Idle)
@@ -730,7 +875,8 @@ fn check_once_skips_prod_while_pane_focused() {
 #[test]
 fn run_watch_logs_herdr_error_then_continues() {
     let mut test_tools = TestTools::new();
-    make_watched_run(&mut test_tools);
+    let run = make_watched_run(&mut test_tools);
+    add_worker(run.path(), WORKER);
     test_tools
         .herdr
         .agents

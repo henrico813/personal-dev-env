@@ -74,12 +74,19 @@ take it. The others exit 2 with `COMMAND works on this machine only`.
 
 ### report
 
-`hub report [--run DIR] NAME [FILE]` writes `report-NAME.md` whole,
-from FILE, or from standard input when FILE is `-` or left out.
+`hub report [--run DIR] [FILE]` writes `report-NAME.md` whole, from
+FILE, or from standard input when FILE is `-` or left out. NAME is
+the agent name Herdr gives the session that runs it, found by
+`OPENCODE_SESSION_ID`, else by `HERDR_PANE_ID`.
 
 - Prints `report NAME written, N lines`.
 - Exits 3 with `empty report; nothing written` for empty text.
-- Exits 2 with `NAME is not an agent name` for a bad name.
+- Exits 3 with `run this command in your own Herdr pane` outside
+  Herdr, or with `HERDR_PANE_ID names NAME, which runs another
+  OpenCode session` when no agent runs `OPENCODE_SESSION_ID`.
+- Exits 2 with `no file FILE; hub report takes no name, so pass FILE
+  or -` when FILE is missing and holds no `/`, as in the old form
+  `hub report NAME`.
 - Adds `hub watch restarted` when the run has a hub and no watch
   runs, or `hub watch did not restart: REASON`.
 
@@ -169,6 +176,9 @@ never closes or parks a session.
 - `missed report NAME (hub 131k)`: the report waited 10 minutes with
   no `next` line.
 - `blocked NAME (hub 131k)`: NAME waits for the user.
+- `no report from NAME after a prod (hub 131k)`: the watch prodded
+  NAME once for a report it owes, and NAME sat idle 10 more minutes
+  without it. `next` skips the line once NAME has reported since.
 - `not sent NAME: REASON (hub 131k)`: a held message did not arrive.
 - `unsure NAME: REASON (hub 131k)`: a held message may have arrived.
 - `timed message to N sessions: PATH (hub 131k)`: a message stored
@@ -407,6 +417,12 @@ once it is idle, then hub next --start-reviews starts review-OLD`.
   for an auto hub with no `report-OLD` file, read or unread, in the
   run folder.
 
+`hub adopt [--run DIR] NAME`, for a NAME that is not a hub, records
+NAME as a worker of the run, so the watch watches it. Run it for a
+worker that `launch` did not start. A report NAME wrote before the
+adopt still counts. Prints `adopted worker NAME; hub watch watches it
+now`.
+
 `handoff` and `adopt` also move the hubs to the top of the sidebar,
 as `gather` does. When that fails, they add
 `could not put the hubs on top: REASON; hub gather tries again`.
@@ -423,8 +439,9 @@ with no card opens in the hub's workspace, so run it in the hub's
 own pane. `--workspace LABEL` opens it in that workspace, and makes
 the workspace if none has that label. A todo card moves to active
 first, so `card` checks the active limit before anything starts. After
-the start, the card gets a `Handoff PATH` note and the worker's
-session, and `notes.md` gets a line. Prints:
+the start, the run's log records the worker, so the watch watches it.
+The card gets a `Handoff PATH` note and the worker's session, and
+`notes.md` gets a line. Prints:
 
 ```text
 started NAME (PANE) on MODEL
@@ -450,7 +467,8 @@ opens in a new tab of the caller's workspace, on the model and effort
 of the caller's newest reply, and the caller's "needs you" mark goes.
 The caller is the agent whose OpenCode session runs the command, from
 `OPENCODE_SESSION_ID`. The card steps and `notes.md` line are the
-same. `--successor` takes no `--model` or `--workspace`.
+same. The watch stops watching the caller, since NAME owes its report
+now. `--successor` takes no `--model` or `--workspace`.
 
 - Exits 3 before it changes anything outside OpenCode, or when no
   live agent runs the caller's session or that session has no reply
@@ -468,10 +486,18 @@ NAME`, or `hub watch runs; it watches the workers of NAME`.
 
 The watch is one program per machine, outside every chat. Every 5
 seconds it reads each `~/.local/state/herdr-hub.*` run that has a
-hub. It prods a worker that sat idle 10 minutes owing a report, once
-in that state, and a worker whose wait ended. It marks a blocked
-worker "needs you". When a report waits 10 minutes with no `next`
-line, the hub's next `next` prints `missed report NAME`. When the
+hub. It prods a worker that `launch` or `adopt` added to the run and
+that sat idle 10 minutes owing a report, once for each report it
+owes. A worker owes a report from when it was added, and again from
+each message that reaches it. A worker two runs added belongs to the
+one that added it last. A worker started by an older `hub`, which
+added no workers, is watched only after `hub adopt NAME`. When the
+worker sits idle 10 more minutes without the report, the hub's next
+`next` prints
+`no report from NAME after a prod`. It also prods a worker whose wait
+ended. It marks an added blocked worker "needs you". When a report
+waits 10 minutes with no `next` line, the hub's next `next` prints
+`missed report NAME`. When the
 run's hub is gone, it notifies the phone instead, for reports from
 the last day. It never types into a hub's pane. Its lock and log are
 in `~/.local/state/pde/hub/`. The `hub-watch` systemd user unit keeps

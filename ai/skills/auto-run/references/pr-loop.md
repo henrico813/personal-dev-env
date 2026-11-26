@@ -314,8 +314,9 @@ plan's notes.
 
 - Work on a pull request after it ships, such as a fix round or a
   carry of a parent's new commit, starts in a new session, not in
-  the session that built it. The auto hub starts that session by
-  `herdr-handoff` when the work comes, such as the user's feedback
+  the session that built it. The auto hub starts that session with
+  `hub launch`, as `herdr-hub`'s The sessions says, when the work
+  comes, such as the user's feedback
   or a held pull request's parent merging. The session reads the PR
   folder's `status.txt`, the plan and common.md. A session for a held
   pull request also follows the steps that Your last report puts on
