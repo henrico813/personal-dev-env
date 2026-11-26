@@ -106,11 +106,15 @@ def set_up_worktree():
         raise SetupError(f"{agents} has uncommitted changes; commit them first")
     ledger = find_ledger()
     text = agents.read_bytes().decode("utf-8")
-    # set skip-worktree before the write, so a failed write leaves no dirty worktree for build scripts to refuse
+    # Set skip-worktree before the write, so the section never shows in git status; the except below clears it again if the write fails, so AGENTS.md is not left hidden
     run_git("-C", str(root), "update-index", "--skip-worktree", "AGENTS.md")
     if SECTION_START not in text:
         section = SECTION.format(ledger=ledger, model=model, reason=reason)
-        agents.write_bytes((text + section).encode("utf-8"))
+        try:
+            agents.write_bytes((text + section).encode("utf-8"))
+        except OSError:
+            clear_skip_worktree(root)
+            raise
     ledger.touch()
     print(f"ledger: {ledger}")
     return 0
@@ -131,16 +135,25 @@ def read_comment_rule():
 
 
 def tear_down_worktree():
-    """Remove exactly the section setup added, keep every other AGENTS.md edit, and clear skip-worktree so those edits show in git status."""
+    """Remove exactly the section setup added, keep every other AGENTS.md edit, and clear skip-worktree so those edits show in git status; exits 2 without writing when AGENTS.md holds no whole section."""
     root, agents = find_agents_file()
     text = agents.read_bytes().decode("utf-8")
     rest = remove_local_rule(text)
+    clear_skip_worktree(root)
     if rest == text:
-        raise SetupError(f"{agents} has no check_comment_authors section")
+        raise SetupError(
+            f"{agents} has no whole check_comment_authors section, so teardown left it as it is; "
+            "skip-worktree is cleared, so AGENTS.md now shows in git status; "
+            "remove what is left of the section by hand, then commit your other edits"
+        )
     agents.write_bytes(rest.encode("utf-8"))
-    run_git("-C", str(root), "update-index", "--no-skip-worktree", "AGENTS.md")
     print(f"removed the local rule from {agents}")
     return 0
+
+
+def clear_skip_worktree(root):
+    """Clear skip-worktree on AGENTS.md, so its edits show in git status again."""
+    run_git("-C", str(root), "update-index", "--no-skip-worktree", "AGENTS.md")
 
 
 def remove_local_rule(text):

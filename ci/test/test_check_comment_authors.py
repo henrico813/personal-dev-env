@@ -65,7 +65,7 @@ class TestCheckCommentAuthors(unittest.TestCase):
 
     def read(self, path):
         """Return the text of a file in the worktree."""
-        with open(os.path.join(self.worktree, path), encoding="utf-8") as file:
+        with open(os.path.join(self.worktree, path), encoding="utf-8", newline="") as file:
             return file.read()
 
     def commit(self, path, text):
@@ -200,6 +200,48 @@ class TestCheckCommentAuthors(unittest.TestCase):
         self.assertEqual(self.read("AGENTS.md"), "# Rules\nuser rule\n")
         status = self.run_git(self.worktree, "status", "--porcelain")
         self.assertEqual(status, " M AGENTS.md\n")
+
+    def test_setup_failed_write_leaves_flag_clear(self):
+        """Setup exits 2 and leaves skip-worktree cleared and AGENTS.md unchanged when its write fails.
+
+        Setup sets the flag before the write.
+        A flag left set hides every later AGENTS.md edit from git status and commit -a."""
+        os.chmod(os.path.join(self.worktree, "AGENTS.md"), 0o444)
+
+        result = self.run_tool("setup")
+
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(self.read("AGENTS.md"), "# Rules\n")
+        flags = self.run_git(self.worktree, "ls-files", "-v", "AGENTS.md")
+        self.assertTrue(flags.startswith("H "), flags)
+
+    def test_teardown_clears_flag_for_broken_section(self):
+        """Teardown exits 2, clears skip-worktree, says AGENTS.md now shows in git status, and leaves the file as it is when the section is damaged, gone, has CRLF endings or lost its final newline.
+
+        Teardown is the only way back.
+        A flag it leaves set hides every later AGENTS.md edit from git status and commit -a."""
+        cases = (
+            ("start-marker-edited", lambda text: text.replace("local rule, never commit", "local rule")),
+            ("end-marker-edited", lambda text: text.replace("end of local rule", "end")),
+            ("section-removed", lambda text: "# Rules\n"),
+            ("crlf-endings", lambda text: text.replace("\n", "\r\n")),
+            ("final-newline-stripped", lambda text: text.rstrip("\n")),
+        )
+        for name, damage in cases:
+            with self.subTest(name):
+                self.write(self.worktree, "AGENTS.md", "# Rules\n")
+                self.run_git(self.worktree, "update-index", "--no-skip-worktree", "AGENTS.md")
+                self.run_tool("setup")
+                damaged = damage(self.read("AGENTS.md"))
+                self.write(self.worktree, "AGENTS.md", damaged)
+
+                result = self.run_tool("teardown")
+
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("git status", result.stderr)
+                self.assertEqual(self.read("AGENTS.md"), damaged)
+                flags = self.run_git(self.worktree, "ls-files", "-v", "AGENTS.md")
+                self.assertTrue(flags.startswith("H "), flags)
 
     def test_check_flags_comments_in_each_language(self):
         """Each language's comment style is found and only the comment line is flagged.
