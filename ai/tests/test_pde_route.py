@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "ai/skills/model-routing/scripts/pde_route.py"
 OPUS_CC = "claude-code/claude-opus-5-5"
 OPUS_GH = "github-copilot/claude-opus-5.5"
-SONNET_CC = "claude-code/claude-sonnet-5"
+SONNET_CC = "claude-code/claude-sonnet-5-5"
 SONNET_GH = "github-copilot/claude-sonnet-5"
 LUNA_OA = "openai/gpt-6-luna"
 LUNA_GO = "opencode-go/gpt-6-luna"
@@ -904,7 +904,7 @@ class TestAudit:
                 PICKED,
                 {
                     "providerID": "claude-code",
-                    "id": "claude-sonnet-5",
+                    "id": "claude-sonnet-5-5",
                     "variant": "high",
                 },
                 None,
