@@ -55,6 +55,20 @@ fn find_test_waiting_list_folder() -> PathBuf {
     Path::new(env!("CARGO_TARGET_TMPDIR")).join(folder)
 }
 
+pub fn read_archive_copies(repo: &Path) -> Vec<Value> {
+    let archive = use_test_waiting_list().join("archive");
+    let branches = fs::read_dir(archive.join(repo.file_name().unwrap())).unwrap();
+    let mut paths: Vec<PathBuf> = branches
+        .flat_map(|branch| fs::read_dir(branch.unwrap().path()).unwrap())
+        .map(|copy| copy.unwrap().path())
+        .collect();
+    paths.sort();
+    paths
+        .iter()
+        .map(|path| serde_json::from_slice(&fs::read(path).unwrap()).unwrap())
+        .collect()
+}
+
 /// Returns a command that runs the program in `dir`, with this test process's waiting list, never the user's own.
 pub fn make_program_command(dir: &Path) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_glimmer"));
@@ -101,6 +115,7 @@ pub fn run_git(dir: &Path, args: &[&str]) {
 
 /// Makes main hold one Go file with one comment, then starts a branch from it.
 pub fn make_repo() -> TempFolder {
+    use_test_waiting_list();
     let folder = TempFolder::new();
     let dir = folder.path();
     run_git(dir, &["init", "-b", "main"]);
