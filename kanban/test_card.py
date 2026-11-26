@@ -619,6 +619,11 @@ class TestNew:
                 id="unknown-kind",
             ),
             pytest.param(
+                CARD_FILE.replace("kind: research", "kind:\n  - research"),
+                ["--from", "FILE"],
+                id="kind-list",
+            ),
+            pytest.param(
                 CARD_FILE,
                 ["Other title", "--from", "FILE"],
                 id="title-and-file",
@@ -3250,6 +3255,117 @@ class TestTitleRules:
         assert result.stderr.startswith("card: title refused:\n")
 
 
+@pytest.mark.cmd_set
+class TestSet:
+    """card set changes a card's kind, or its title and file name."""
+
+    def test_set_title_renames_note_keeping_body(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """card set title renames the note and changes only its heading.
+
+        Links and card itself find a card by its file name, so a heading
+        changed without the rename leaves the two apart, and any other
+        change would lose the user's words.
+        """
+        path = write_card(projects, KEY, "draft")
+        before = path.read_text()
+
+        result = run_card("set", KEY, "title", "Sort the photo albums by date")
+
+        new_path = path.with_name(f"{KEY} Sort the photo albums by date.md")
+        assert result.returncode == 0
+        assert result.stdout == f"{KEY} Sort the photo albums by date\n"
+        assert not path.exists()
+        assert new_path.read_text() == before.replace(
+            f"# {KEY} Fix some bugs\n",
+            f"# {KEY} Sort the photo albums by date\n",
+        )
+
+    def test_set_title_refuses_name_already_taken(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """card set title refuses a file name another note already has.
+
+        The rename would replace that note, and its text would be lost on
+        every PC once sync runs.
+        """
+        path = write_card(projects, KEY, "draft")
+        taken = path.with_name(f"{KEY} Sort the photo albums by date.md")
+        taken.write_text("My own album notes.\n")
+        before = path.read_text()
+
+        result = run_card("set", KEY, "title", "Sort the photo albums by date")
+
+        assert result.returncode == 1
+        assert result.stderr == f"card: {taken.name} already exists\n"
+        assert path.read_text() == before
+        assert taken.read_text() == "My own album notes.\n"
+
+    def test_set_kind_writes_the_kind_field(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """card set kind writes the new kind into the frontmatter.
+
+        card list --kind reads this field, so a kind that is printed but
+        not written leaves the card out of that list.
+        """
+        path = write_card(projects, KEY, "draft")
+
+        result = run_card("set", KEY, "kind", "research")
+
+        assert result.returncode == 0
+        assert result.stdout == f"{KEY} kind research\n"
+        assert "\nkind: research\n" in path.read_text()
+
+
+@pytest.mark.cmd_delete
+class TestDelete:
+    """card delete removes a card note, only when the user asks."""
+
+    def test_delete_refuses_without_user(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """card delete without --user exits 2 and keeps the note.
+
+        A deleted note is gone from every PC once sync runs, so an agent
+        must not delete one unless the user asked.
+        """
+        path = write_card(projects, KEY, "draft")
+
+        result = run_card("delete", KEY)
+
+        assert result.returncode == 2
+        assert "the following arguments are required: --user" in result.stderr
+        assert path.exists()
+
+    def test_delete_removes_note_and_prints_name(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """card delete --user removes the card's note and prints its name.
+
+        The user asked for the card to go, and the printed name tells them
+        which note sync will remove from every PC.
+        """
+        path = write_card(projects, KEY, "draft")
+
+        result = run_card("delete", KEY, "--user")
+
+        assert result.returncode == 0
+        assert result.stdout == f"deleted {path.name}\n"
+        assert not path.exists()
+
+
 @pytest.fixture
 def herdr_agents(tmp_path: Path, bin_dir: Path) -> Path:
     """A herdr on PATH that prints the returned JSON file for any command.
@@ -3444,6 +3560,70 @@ class TestRekey:
         subprocess.run(["sh", undo], check=True)
 
         assert read_tree(projects) == before
+
+    def test_stopped_apply_prints_undo_that_restores(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """A stopped --apply exits 1 with an undo line that restores all.
+
+        A folder rekey cannot write stops it after some notes changed.
+        Without the undo line, or with one that misses a note, the user
+        is left to fix a half-done rekey by hand.
+        """
+        if os.geteuid() == 0:
+            pytest.skip("root can write to a read-only folder")
+        write_rekey_vault(projects)
+        photos = projects / "Photos"
+        photos.mkdir()
+        (photos / "Album.md").write_text("See [[PDEV-KB-001]].\n")
+        before = read_tree(projects)
+
+        # Photos sorts after DevEnv, so the renames and DevEnv relinks go first.
+        photos.chmod(0o555)
+        try:
+            result = run_card("rekey", "--apply", "--user")
+        finally:
+            photos.chmod(0o755)
+
+        assert result.returncode == 1
+        assert "card: stopped at Album.md; " in result.stderr
+        assert (projects / "DevEnv" / "PDEV-411 Fix some bugs.md").exists()
+        undo_line = result.stdout.splitlines()[-1]
+        assert undo_line.startswith("undo (newest first): sh ")
+        subprocess.run(["sh", shlex.split(undo_line)[-1]], check=True)
+        assert read_tree(projects) == before
+
+    def test_apply_keeps_edit_made_during_herdr_call(
+        self,
+        projects: Path,
+        run_card: RunCard,
+        bin_dir: Path,
+        herdr_agents: Path,
+    ) -> None:
+        """--apply keeps a line the user saves while card waits on herdr.
+
+        rekey asks herdr for live workers after it reads the cards. Writing
+        the text it read before that call would drop the user's line
+        without notice.
+        """
+        write_rekey_vault(projects)
+        old = projects / "DevEnv" / f"{KEY} Fix some bugs.md"
+        later = int(old.stat().st_mtime) + 1
+        # A herdr that saves a line in the card, with a later time, first.
+        (bin_dir / "herdr").write_text(
+            "#!/bin/sh\n"
+            f"echo 'Saved by hand.' >> {shlex.quote(str(old))}\n"
+            f"touch -d @{later} {shlex.quote(str(old))}\n"
+            f"cat {shlex.quote(str(herdr_agents))}\n",
+        )
+
+        result = run_card("rekey", "--apply", "--user")
+
+        assert result.returncode == 0
+        renamed = projects / "DevEnv" / "PDEV-411 Fix some bugs.md"
+        assert renamed.read_text().endswith("\nSaved by hand.\n")
 
     @pytest.mark.python_card
     def test_undo_after_stop_keeps_later_edits(
@@ -4043,6 +4223,63 @@ class TestArgumentShapes:
         assert result.returncode == 0
         assert read_section(path.read_text(), "Log").endswith(
             f"- {TODAY} note (tester): -x starts with a dash\n",
+        )
+
+    @pytest.mark.cmd_note
+    @pytest.mark.parametrize(
+        "text",
+        [
+            pytest.param("--user was missing, retried", id="double-dash"),
+            pytest.param("-5", id="negative-number"),
+        ],
+    )
+    def test_note_logs_text_shaped_like_option(
+        self,
+        projects: Path,
+        run_card: RunCard,
+        text: str,
+    ) -> None:
+        """Note text shaped like an option is logged as typed, without --.
+
+        The Python card reads text that holds a space, or looks like a
+        negative number, as text. An agent's note such as "--user was
+        missing, retried" must not be refused as an unknown option.
+        """
+        path = write_card(projects, KEY, "active")
+
+        result = run_card("note", KEY, text, "--by", "tester")
+
+        assert result.returncode == 0
+        assert read_section(path.read_text(), "Log").endswith(
+            f"- {TODAY} note (tester): {text}\n",
+        )
+
+    @pytest.mark.cmd_move
+    def test_dashed_why_value_is_logged(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """A --why value that starts with "- " is logged as the reason.
+
+        The Python card reads it as the flag's value. Read as loose text,
+        it would leave --why without its reason and refuse the move.
+        """
+        path = write_card(projects, KEY, "active")
+
+        result = run_card(
+            "move",
+            KEY,
+            "blocked",
+            "--why",
+            "- waits on review",
+            "--by",
+            "hub",
+        )
+
+        assert result.returncode == 0
+        assert read_section(path.read_text(), "Log").endswith(
+            f"- {TODAY} blocked: by hub. - waits on review\n",
         )
 
     @pytest.mark.cmd_move
