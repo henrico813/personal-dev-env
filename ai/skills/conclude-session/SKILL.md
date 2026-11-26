@@ -137,12 +137,14 @@ Step 2's message, for a session with one proposal and one fix:
     Session review of Tally P5 build, saved to
     ~/.local/state/pde/session-reviews/20261105-tally-p5.md.
 
-    11.2M tokens read, peak context about 171,400, 120 steps.
+    $4.06 list price, 11.2M tokens read, peak context about
+    171,400, 120 steps.
 
     Proposals
     1. Print only failing tests in auto-run's test step, in a
-       skill PR. Saves about 1.4M tokens (estimate: 4,000 tokens
-       read again by 90 steps, 4 times).
+       skill PR. Saves about $0.29 list price, 1.4M cache-read
+       tokens (estimate: 4,000 tokens read again by 90 steps, 4
+       times, at $0.20 per million).
 
     Fixes to write, pick by number
     2. Print test failures, never whole test logs -> auto-run

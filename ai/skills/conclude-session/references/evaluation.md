@@ -40,6 +40,8 @@ the review file, and a fresh agent checked it. Write only the message.
 The script printed, in part:
 session ses_77aa Tally P5 build
 tokens read 11,204,300 (cache read 10,990,120, cache write 210,760, uncached 3,420)
+list-price cost $4.06 (cache write $1.05, cache read $2.20, uncached $0.01, output $0.80)
+rates per M tokens for claude-code/claude-opus-5-5: input $4, output $20, cache read $0.2, cache write $5
 user messages 6, model steps 120, steps logged with zero tokens 6
 peak context about 171,400 tokens at seq 990
 
@@ -47,8 +49,9 @@ The review file is ~/.local/state/pde/session-reviews/20261105-tally-p5.md.
 
 The review found:
 - Proposal: print only failing tests in auto-run's test step, a
-  skill PR. Saves about 1.4M tokens (estimate: 4,000 tokens read
-  again by 90 steps, 4 times).
+  skill PR. Saves about $0.29 list price, 1.4M cache-read tokens
+  (estimate: 4,000 tokens read again by 90 steps, 4 times, at
+  $0.20 per million).
 - Proposal: tell agents to print test failures only, in AGENTS.md.
   AGENTS.md here belongs to the hub session tally-hub.
 - Fix: "Print test failures, never whole test logs" ->
@@ -67,6 +70,8 @@ Checks:
 4. The AGENTS.md change goes to tally-hub, not edited here.
 5. Says nothing has changed and asks for numbers once.
 6. Every number, title and path comes from the facts above.
+7. Opens the numbers line with the $4.06 list price, and gives the
+   proposal's saving in dollars.
 
 ## Case 2: acting on the picks
 

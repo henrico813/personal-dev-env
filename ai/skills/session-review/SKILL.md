@@ -2,12 +2,15 @@
 name: session-review
 description: Reviews an OpenCode session for token use, corrections
   worth writing into skill text, and work a local model could take.
-  A script reads the session's numbers from the OpenCode database, so
-  the review spends tokens only on judgment. Proposes at most three
-  changes and changes nothing until the user picks. Use when the user
-  asks to review this session for token usage, efficiency, skill
+  Scripts read a session's numbers and list-price cost, or a whole
+  day's usage, from the OpenCode database, so the review spends
+  tokens only on judgment. Proposes at most three changes and
+  changes nothing until the user picks. Use when the user asks what
+  a day of sessions cost, or asks to review this session for cost,
+  token usage, efficiency, skill
   lessons or local model handoff. Do not use it to close out a
-  session; conclude-session owns that.
+  session; conclude-session owns that. Do not use it for the
+  shutdown's Usage block; daily-shutdown owns that.
 metadata:
   pde-workflow: "true"
   scope: personal
@@ -17,7 +20,7 @@ metadata:
 
 The user often ends a long session by asking what made it costly,
 which corrections should become skill fixes, and what a local model
-could have done. A script prints the session's numbers in about 20
+could have done. A script prints the session's numbers in about 30
 lines. You judge from those lines and the conversation, and propose a
 few changes the user can keep for good.
 
@@ -51,23 +54,50 @@ approximate, because the claude-code provider logs some steps with
 zero tokens and adds them to the next step; the script leaves that
 next step out.
 
-Query the database yourself only for a fact the script does not
+It also prints a list-price cost line for the session's own steps,
+priced step by step from OpenCode's
+`~/.cache/opencode/models.json`, the session model's rates per
+million tokens, and a `subagents list-price cost` line for its direct
+subagents. The cost is an estimate at API list price, not a bill.
+Cache writes cost more than ten times cache reads, so cost often
+follows tokens written to the cache, such as after a compaction or a
+cache that expired, more than tokens read. Steps whose model has no
+price, often a model run on this PC that costs nothing, are counted as
+unpriced, not as free. Give their count next to the total, since the
+total leaves them out.
+
+For a whole day across all sessions, such as when the user asks what
+a day cost, run the day script. It prints the day's cost line, cost
+by model and the ten costliest sessions. `--date` defaults to today.
+It counts each step on the day it ran, so a session that crosses
+midnight is split between two days. Answer a day question with its
+lines alone; the review steps below are for one session. The day
+script is not mining: it reads token counts, not conversations.
+
+    python3 ~/.agents/skills/session-review/scripts/day_usage.py --date <YYYY-MM-DD>
+
+Query the database yourself only for a fact the scripts do not
 print. Open it read-only with `python3` (there is no `sqlite3`
-binary), and name the query in the review. Never report dollars:
-`cost` is 0 for claude-code sessions.
+binary), and name the query in the review. Never use the database's
+`cost` column: it is 0 for claude-code sessions.
 
 If the script exits non-zero, review from the conversation alone and
 say so at the top of the review and the message.
 
 ### 2. Judge
 
-Write at most three proposals, ranked by saving. Each one says:
+Write at most three proposals, ranked by list-price dollars saved.
+Each one says:
 
 - What changes, and where it would live: a skill pull request, a
   skill fix, or a rules file such as `AGENTS.md`.
-- The saving, measured from the script's lines or marked
-  "estimate" with its arithmetic. For example, 30,000 tokens of
-  output read again by 80 later steps is about 2.4M tokens.
+- The saving in list-price dollars with its tokens beside it,
+  measured from the script's lines or marked "estimate" with its
+  arithmetic. Price the session's tokens with the script's rates
+  line, and a subagent's with the dollars per token of the subagents
+  cost line. For
+  example, 30,000 tokens of output read again by 80 later steps is
+  about 2.4M cache-read tokens, about $0.48 at $0.20 per million.
 - Why it is worth keeping long term: it would help a different
   session next month. A one-time slip fails this test.
 
@@ -87,7 +117,7 @@ to. In the review file, give each a `Passes:` line on why it passes,
 as [references/example.md](references/example.md) shows. Write each
 fix the user picks by `skill-fix`. Mine other
 sessions only when the user asks, and only the sessions they name;
-mining a day of sessions has cost over 13M tokens.
+mining a day of sessions has used over 13M tokens.
 
 ### 4. Local models
 
@@ -109,7 +139,8 @@ strongest.
 - Efficiency map: each large reading, sorting, summarizing or
   checking step a local model could do now, so the cloud model reads
   a short result. Give its tokens from the script or a named query,
-  the check script for the local result, and the saving, marked
+  the check script for the local result, and the saving in
+  list-price dollars, marked
   measured or estimate. A step that no script can check goes on the
   role `model-routing` gives it, often the cheap model.
 
@@ -171,10 +202,11 @@ points to the `model-routing` skill.
 
     Session review of <title>, saved to <review file path>.
 
-    <one line: tokens read, peak context, steps>
+    <one line: list-price cost, tokens read, peak context, steps>
 
     Proposals
-    1. <change> in <where it lives>. Saves <n> tokens (measured).
+    1. <change> in <where it lives>. Saves $<n> list price, <n>
+       tokens (measured).
     2. ...
 
     Fixes to write, pick by number
@@ -197,8 +229,8 @@ points to the `model-routing` skill.
 - Edit a shared rules file only when this session owns it or the
   user says so. Otherwise send the change to its owner, such as the
   session that coordinates the run.
-- Never report dollars or a number the script or a named query did
-  not give.
+- Never report a number the scripts or a named query did not give.
+  Call each dollar amount list price, since it is not a bill.
 - Never copy a secret from tool output into the review.
 
 ## Do not propose
@@ -222,15 +254,15 @@ as a fix. It holds in every review once the fix merges.
 ## Final checks
 
 - The review's Numbers section matches the script's output.
-- At most three proposals, each with a saving marked measured or
-  estimate, and where it would live.
+- At most three proposals, ranked by list-price dollars saved, each
+  with a saving marked measured or estimate, and where it would live.
 - No proposal is on the Do not propose list or in a lesson that
   starts "Do not propose".
 - The review has a Fallback map, an Efficiency map and a Trials
   section, covering every role the session used.
 - A proposal or a fix helps a local model take over a workflow,
   as step 4 asks.
-- No dollars.
+- Each dollar amount is list price, from the scripts.
 - The fresh check ran, or the message says it did not.
 - Nothing was changed except the review file and new trial cases.
 
