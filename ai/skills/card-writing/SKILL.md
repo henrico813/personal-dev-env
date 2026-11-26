@@ -15,13 +15,12 @@ metadata:
 # Card Writing
 
 A card is one piece of work on the user's kanban board. This skill
-owns its title and sections, and how a proposed card, the card text
-shown before `card new` makes the card, reaches the user. `card new`
-makes the card in the `draft` stage; the Cards section of the
-`herdr-hub` skill owns that stage, releases and the board's limits.
-The hub also makes cards itself, and those follow `herdr-hub`: its
-question cards hold a question for the user, and its adopted cards
-cover work already running.
+owns its title and sections, and how a proposed card reaches the
+user. `card new` makes the card in the `draft` stage; the Cards
+section of the `herdr-hub` skill owns that stage, releases and the
+board's limits. The hub also makes cards itself, and those follow
+`herdr-hub`: its question cards hold a question for the user, and
+its adopted cards cover work already running.
 
 ## Inputs
 
@@ -54,6 +53,7 @@ card list --project PROJECT --tabs
   matched key's stage in the unfiltered `card list --tabs` lines.
 - When an open card may already cover the work, report it under
   "Not part of the card" and ask whether to use it instead.
+  Dictated words never go there; "Keep the user's words" says why.
 
 ## Write the proposed card
 
@@ -86,32 +86,39 @@ card list --project PROJECT --tabs
 
 ## Keep the user's words
 
-- Keep words the user dictated exactly as given. Fix only
-  speech-to-text errors, case, punctuation and spoken fillers.
-- A plain fix the rule above allows, such as a capital first letter
-  or no final period, needs no new approval; any other change to a
-  title does. Never shorten a dictated title on your own.
-- Never cut a dictated sentence yourself, even when it reads off
-  topic: keep it in the card and ask about it below the card.
-- When part of the user's own text is wrong, change only those
-  words, and show the old text and the new one.
+- Keep words the user dictated as given. While drafting you may fix
+  speech-to-text errors, case, punctuation and fillers. These fixes
+  stay the user's words, so they get no "(my wording)" mark. Before
+  any yes, fixes are just draft text.
+- Never shorten a dictated title. A dictated sentence stays in the
+  field the user dictated it for, even when it reads off topic.
+  Never move it to "Not part of the card"; ask about it in a
+  question below the card instead.
+- After the user's yes, a plain fix such as a capital first letter
+  or no final period needs no new approval; any other change does.
+- Wrong user text means a fact or name you can show is wrong, such
+  as a file name that does not exist. Propose changing only the
+  wrong words. Show the old text and the new text below the card.
+  Change the card only after the user says yes to that change.
 - A title, Context line or criterion you wrote is your wording.
   Write "(my wording)" after it in the review message, never in the
   file for `card new`, since `card` copies section text as written.
 
 ## Show the proposed card and get approval
 
-- The proposed card shows the project, the kind, the title and the
-  card's sections, as the Output format shows.
+- The proposed card shows the project, the kind, the title and every
+  section the card file will have, Open Questions included, as the
+  Output format shows.
 - Each later message about the card shows the whole card again, so
-  the user reads one current text.
-- An answer to a question is not approval. Put it in the card, show
-  the whole updated card, and wait for a new yes to that text before
-  you run `card new`. Only a yes to the text shown makes the card.
+  the user reads one current text. An answer to a question is not
+  approval: put it in the card, show the whole updated card, and
+  wait for a new yes. Only a yes to the text shown makes the card.
+- Any change to approved text cancels that approval, except the
+  plain fixes "Keep the user's words" allows.
 - Ask the user each question you have about the proposed card, below
   the card, in the short form the `status-updates` skill owns. Put a
-  question only the card's worker can answer in its Open Questions
-  section: the worker is the session that later does its work.
+  question only the worker, the session that later does the work,
+  can answer while doing it, in its Open Questions section.
 - Keep the message short and readable on a phone: cut each line a
   card does not need, and keep lines short.
 
@@ -123,14 +130,15 @@ card list --project PROJECT --tabs
    `- [ ]` lines under Acceptance Criteria. That folder survives a
    reboot and is not shared like `/tmp`.
 3. Run `card new PROJECT --from FILE --by <your agent name>`. `--by`
-   names who acts, for the Log: your agent name, such as this
-   session's Herdr agent name, else a short name for yourself.
-   `--user` records in the Log that the user asked for the card;
-   pass it only when the user told you to.
+   names who acts, for the Log: your agent name, such as this session's
+   Herdr agent name, else a short name for yourself. `--user` records in
+   the Log that the user asked for the card. Pass it only when the user
+   tells you to; a yes to the card text alone is not that.
 4. `card new` prints the new card's file name, whose first word is
    its key. Read the card back with `card show KEY`, and check it
    against the approved text. When it differs, show the user the
-   difference, and fix it with `card edit` only after they say yes.
+   difference, and after they say yes fix it with the commands in
+   "Review an existing card" (title with `card set`).
 
 When `card new` refuses the project because its folder has no
 `Project code:` line, follow the Cards section of the `herdr-hub`
@@ -142,10 +150,13 @@ skill: that skill owns proposing and writing the line.
   "Write the proposed card" and "Keep the user's words" to it.
 - Report each finding with the full text you propose, so the user
   reads the result, not a description of it.
-- Change the card only after the user says yes to that text:
-  `card edit KEY SECTION N "<new text>" --by <your agent name>` for
-  one item of a section, and `card set KEY title "<new title>"` for
-  the title.
+- Change the card only after the user says yes to that text. `card
+  edit KEY SECTION N "<text>" --by <your agent name>` replaces item N,
+  and with `--remove` it removes item N; `card add KEY SECTION "<text>"`
+  adds one; `card set KEY title "<text>"` changes the title and takes
+  no `--by`. SECTION is one of Context, `Acceptance Criteria`, `Open
+  Questions` and Decisions, quoted when it has a space, and N is the
+  item's number in `card show KEY --section SECTION`, counting from 1.
 
 ## Output format
 
@@ -166,7 +177,7 @@ kind: build
 - [ ] The user sees each retry in the log.
 
 ## Open Questions
-- Does a retry stop after a set number of tries?
+- Does the upload code already queue a failed item?
 ```
 
 The review message shows that card, marks each line you wrote, and
@@ -174,7 +185,6 @@ asks its question below it:
 
 ```text
 Proposed card, project DevEnv, kind build:
-
 title: Retry failed uploads (my wording)
 
 ## Context
@@ -183,6 +193,9 @@ title: Retry failed uploads (my wording)
 ## Acceptance Criteria
 - [ ] A failed upload retries on its own. (my wording)
 - [ ] The user sees each retry in the log. (my wording)
+
+## Open Questions
+- Does the upload code already queue a failed item? (my wording)
 
 Nothing is made yet; say yes and I run `card new` for this card.
 
@@ -198,17 +211,19 @@ Reply like `Q1A`.
 
 ## Guardrails
 
-- Never copy a plan or research note into a card section: the
-  reader at the board needs only the card's own words. Ask about
-  such text below the card.
+- Never copy a plan or research note into a card section: the reader
+  at the board needs only the card's own words; ask about such text
+  below the card.
 - Text the user dictates wins over that rule: keep dictated words
   that came from a plan, and ask about them below the proposed card.
 
 ## When a tool is missing
 
-- When `card` is not installed, only draft: keep the file and give
-  the user its path, since nothing else checks the `--from` layout
-  or makes the card. Skip the search and its Final checks line.
+- When `card` is not installed, skip the search, and draft and show
+  the card as usual. After the user's yes, write the approved text
+  file from "Make the card" step 2 and give the user its path, so
+  the user or a later session can run `card new --from` on it once
+  `card` is installed.
 
 ## Final checks
 
@@ -219,8 +234,8 @@ Reply like `Q1A`.
 - Each Context line starts with `- `.
 - The criteria are the user's, or yours and marked as yours. None is
   a README, and each names the card's own result.
-- The message shows card fields only, with notes under "Not part of
-  the card", and its questions take the `status-updates` form.
+- The message shows the whole card, notes go under "Not part of the
+  card", and its questions take the `status-updates` form.
 - The user approved the exact text shown before `card new` ran.
 
 ## References

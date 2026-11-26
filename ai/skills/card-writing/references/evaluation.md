@@ -7,9 +7,13 @@ a `trials.py` case cannot check: a long reply, a question in the form
 another skill owns, and a card that must not copy a plan.
 
 An answer passes a case when it meets every check under it, one
-point each. The skill counts as working when each case passes with
-the skill and loses at least one check with no skill, on the same
-model.
+point each. `trials.py` runs each `evals/` case several times. An
+`evals/` case passes when at least half of its runs pass, such as
+2 of 3. `trials.py --gate` blocks a case when more than half of its
+runs fail. A hand case runs once, and it passes only when its
+answer meets every check. The skill counts as working when each
+case passes with the skill and loses at least one check with no
+skill, on the same model.
 
 The `evals/` cases carry their checks as fields instead of prose:
 `pass` and `fail` hold patterns, and `judge` holds questions a
@@ -39,34 +43,54 @@ It prints how many runs of each case passed with the skill and with
 none. `--check-cases` grades only each case's own good and bad
 answers, so it checks the case file and not the skill.
 
-Run the three cases below by hand. From the top of the skills
-checkout, set `S` to this skill's absolute path before you move to a
-temp folder, since the temp folder holds no copy of the skill.
-`--safe-mode` leaves out the user's notes and installed skills, so
-the run with no skill sees no rules.
+Run the three cases below by hand, with the steps in the order
+given. From the top of the skills checkout, set `S` to this skill's
+absolute path before you make the temp folder, since that folder
+holds no copy of the skill. `--safe-mode` leaves out the user's
+notes and installed skills, so the run with no skill sees no rules.
 
-Save each case's facts block below in that temp folder as
-`caseN.txt`, before you run the command that reads it. The person
-who runs the case grades it by hand: one point for each check the
-answer meets.
+First make the temp folder and move into it:
 
 ```bash
 S="$(pwd)/ai/skills/card-writing"
-cd "$(mktemp -d)"
+T="$(mktemp -d)"
+cd "$T"
+```
+
+Then save each case's facts block below into that folder as
+`caseN.txt`, so the first case becomes `$T/case1.txt`, the second
+`$T/case2.txt` and the third `$T/case3.txt`.
+
+Then set `sys` once, with no skill text, for the run with no skill:
+
+```bash
 sys='You are a coding agent working for a user. Reply with the
 message you would send the user, and name any command you would
 run. Run nothing.'
-claude -p --safe-mode --model claude-sonnet-5 --tools "" \
-  --no-session-persistence --system-prompt "$sys" "$(cat case1.txt)"
 ```
 
-For the run with the skill, add the skill text to the end of `$sys`,
-then run the same command:
+Then run this `claude` command once per case, with N as 1, then 2,
+then 3:
+
+```bash
+claude -p --safe-mode --model claude-sonnet-5 --tools "" \
+  --no-session-persistence --system-prompt "$sys" "$(cat caseN.txt)"
+```
+
+Then add the skill text to the end of `$sys`:
 
 ```bash
 sys="$sys
 $(cat "$S/SKILL.md")"
 ```
+
+Then run the `claude` command above again, once per case, with N as
+1, then 2, then 3, for the run with the skill. Run only that
+command, not the blocks above it: a fresh `sys='...'` block resets
+`$sys` and drops the skill text.
+
+The person who runs a case grades it by hand: one point for each
+check the answer meets.
 
 ## Case 1: dictation with an odd sentence
 
@@ -108,8 +132,7 @@ Checks:
 2. It says the earlier approval no longer covers the card, and asks
    again.
 3. The open-card finding sits under "Not part of the card".
-4. Each line you wrote is marked "(my wording)" in the message, and
-   the file for `card new` holds no such mark.
+4. Each line the agent wrote in the message is marked "(my wording)".
 5. It makes no card before a new yes.
 
 ## Case 3: a card for work a plan already numbers

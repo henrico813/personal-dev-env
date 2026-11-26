@@ -9,6 +9,6 @@
   "judge": [
     "Do the acceptance criteria the answer wrote name no README, in any wording, while still naming the nightly copies and a checked copy?"
   ],
-  "good": "## Acceptance Criteria\n- [ ] Each night the script copies the photo and document folders to the external drive.\n- [ ] A copied folder on the drive matches the one on the server.\n- [ ] The copies still run after the server reboots.\n\nThe README line was my own wording, so I left it out: a README is detail about the work, not a result you can see in use.",
+  "good": "## Acceptance Criteria\n- [ ] Each night the script copies the photo and document folders to the external drive. (my wording)\n- [ ] A copied folder on the drive matches the one on the server. (my wording)\n- [ ] The copies still run after the server reboots. (my wording)\n\nThe README line was my own wording, so I left it out: a README is detail about the work, not a result you can see in use.",
   "bad": "## Acceptance Criteria\n- [ ] Each night the script copies the photo and document folders to the external drive.\n- [ ] The repository README explains how to set up the script."
 }
