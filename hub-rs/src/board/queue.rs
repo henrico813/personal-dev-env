@@ -2,22 +2,32 @@
 //! into plain values the screen draws. Read `read_queue` first.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use jiff::Timestamp;
+use jiff::civil::Date;
 use jiff::tz::TimeZone;
+use jiff::{SignedDuration, Timestamp, Zoned};
+use serde::{Deserialize, Serialize};
 
 use super::away::{self, AwayEvent};
 use super::machine::{self, FeedLine, Gauges};
+use super::pull_requests::{PrCount, read_pr_count};
 use super::seen;
+use crate::commands::auto;
 use crate::commands::status::describe_why;
-use crate::external::cards::{CardKey, CardNote, Stage};
+use crate::external::cards::{CardKey, CardNote, ListedCard, Stage};
+use crate::external::herdr::Agent;
 use crate::shared::lifecycle::{self, Lifecycle};
 use crate::shared::questions::{OpenQuestion, read_open_questions};
 use crate::shared::run_folder::RunFolder;
-use crate::shared::{HubError, Tools, events, facts};
-use crate::watch;
+use crate::shared::{HubError, Tools, events, facts, format_span};
+use crate::watch::{self, stall};
+
+/// How long a worker counts as working after its status file last
+/// changed, even while Herdr shows it idle.
+const FRESH_STATUS: SignedDuration = SignedDuration::from_mins(30);
 
 /// The hubs whose waiting sessions Needs you shows.
 pub enum Hubs {
@@ -31,11 +41,15 @@ pub enum Hubs {
 /// What the Needs you group shows when no hub runs.
 pub(crate) const NO_HUB: &str = "no hub running";
 
+const WATCH_STOPPED: &str = "hub watcher stopped";
+
 /// Everything the board shows, read at one moment.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct Queue {
     /// The time of the read, such as `10:42`.
     pub read_at: String,
+    /// The day of the read, which question ages count up to.
+    pub read_on: Date,
     /// How long the read took.
     pub took: Duration,
     /// The cards `is_on_board` keeps, in the order `Cards::list_cards`
@@ -60,14 +74,19 @@ pub(crate) struct Queue {
     pub run: Option<PathBuf>,
     /// What `Cards::read_cards` gave for each open card a session, a
     /// parked record or a report names.
-    /// The details page reads any other card when it opens.
+    /// The details page reads any other card when it opens, as it does
+    /// for every card of a saved read, which leaves these out.
+    #[serde(skip)]
     pub notes: BTreeMap<CardKey, CardNote>,
     /// One line per source that could not be read.
     pub problems: Vec<String>,
+    /// The open pull requests the `prs` tool last listed, or `None`
+    /// without its list.
+    pub prs: Option<PrCount>,
 }
 
 /// One card and the sessions that work on it.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct CardLine {
     pub key: CardKey,
     pub stage: Stage,
@@ -79,7 +98,7 @@ pub(crate) struct CardLine {
 }
 
 /// One session that waits on the user, and why.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct SessionLine {
     pub name: String,
     /// The words `describe_why` gives, such as `needs you`.
@@ -89,10 +108,14 @@ pub(crate) struct SessionLine {
 }
 
 /// One session and the lifecycle verdict the tidy pass acts on.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct SessionRow {
     pub name: String,
     pub state: Lifecycle,
+    /// True when Herdr shows the session working, or its status file
+    /// changed within `FRESH_STATUS`.
+    pub working: bool,
+    pub status: Option<WorkerStatus>,
     /// For a kept session, the reason's label, such as `unpushed`.
     /// Otherwise what `describe_why` gives, empty for its `-`.
     pub why: String,
@@ -116,12 +139,22 @@ impl SessionRow {
         let why = if why == "-" { String::new() } else { why };
         SessionRow {
             name,
+            working: state == Lifecycle::Working,
+            status: None,
             state,
             why,
             stage,
             context_tokens,
         }
     }
+}
+
+/// The first line of a worker's `status-<name>.md`, which says where its
+/// card stands, and how long ago the file changed, such as `12m`.
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct WorkerStatus {
+    pub line: String,
+    pub age: String,
 }
 
 /// Reads the cards, sessions and questions once. Times print in
@@ -141,14 +174,17 @@ pub(crate) fn read_queue(
     time_zone: &TimeZone,
 ) -> Result<Queue, HubError> {
     let started = Instant::now();
+    let now = Timestamp::now().to_zoned(time_zone.clone());
     let mut problems = Vec::new();
     // The state folder sits in the home folder, so its disk is the one
     // that fills.
     let gauges = machine::read_gauges(tools.state_folder);
+    let prs = read_pr_count(tools.pr_list);
+    let agents = tools.herdr.list_agents()?;
     let (runs, gone) = match hubs {
         Hubs::Given(path) => (vec![RunFolder::open(path)?], Vec::new()),
         Hubs::Live(runs_folder) => {
-            let found = watch::find_hub_runs(runs_folder, &tools.herdr.list_agents()?)?;
+            let found = watch::find_hub_runs(runs_folder, &agents)?;
             problems.extend(
                 found
                     .failures
@@ -158,6 +194,16 @@ pub(crate) fn read_queue(
             (found.live, found.gone)
         }
     };
+    let mut faults = Vec::new();
+    // The hidden run option reads one run with no watch to report on.
+    if matches!(hubs, Hubs::Live(_)) && !runs.is_empty() {
+        match watch::is_watch_running(tools.state_folder) {
+            Ok(true) => {}
+            Ok(false) => faults.push(WATCH_STOPPED.to_owned()),
+            Err(error) => problems.push(format!("watch: {error}")),
+        }
+    }
+    let all_runs: Vec<&RunFolder> = runs.iter().chain(&gone).collect();
     // AWAY also reads the runs of gone hubs, so what a hub did before it
     // ended while the user was away still shows. With no saved time AWAY
     // shows the newest events, which would list hubs that ended long ago,
@@ -177,6 +223,9 @@ pub(crate) fn read_queue(
             problems.push(format!("cards: {error}"));
             Vec::new()
         });
+        faults.extend(find_stalled_runs(
+            &all_runs, &agents, &cards, &questions, &now,
+        ));
         let cards = cards
             .into_iter()
             .filter(|card| is_on_board(card.stage))
@@ -189,6 +238,7 @@ pub(crate) fn read_queue(
             });
         return Ok(Queue {
             read_at: format_read_time(time_zone),
+            read_on: now.date(),
             took: started.elapsed(),
             cards: cards.collect(),
             questions,
@@ -200,7 +250,8 @@ pub(crate) fn read_queue(
             no_hub: true,
             run: None,
             notes: BTreeMap::new(),
-            problems,
+            problems: [faults, problems].concat(),
+            prs,
         });
     };
     // Sessions come from Herdr for the whole machine, so one run's facts
@@ -221,7 +272,7 @@ pub(crate) fn read_queue(
     let mut sessions = Vec::new();
     for facts in &collected.sessions {
         let verdict = lifecycle::decide_lifecycle(facts);
-        sessions.push(SessionRow::new(
+        let mut row = SessionRow::new(
             facts.name.clone(),
             verdict.state,
             match verdict.state {
@@ -230,7 +281,15 @@ pub(crate) fn read_queue(
             },
             facts.card.as_ref().map(|card| card.stage),
             facts.context_tokens,
-        ));
+        );
+        if let Some((line, age)) = read_status_file(&runs, &facts.name, now.timestamp()) {
+            row.working |= age < FRESH_STATUS;
+            row.status = Some(WorkerStatus {
+                line,
+                age: format_span(age),
+            });
+        }
+        sessions.push(row);
         if let Some(card) = &facts.card
             && is_worker(verdict.state)
         {
@@ -254,6 +313,13 @@ pub(crate) fn read_queue(
     sessions.sort_by(|left, right| left.name.cmp(&right.name));
     let run_folders: Vec<&RunFolder> = runs.iter().collect();
     let feed = machine::read_feed(&run_folders, time_zone);
+    faults.extend(find_stalled_runs(
+        &all_runs,
+        &agents,
+        &collected.cards,
+        &questions,
+        &now,
+    ));
     let cards = collected
         .cards
         .into_iter()
@@ -268,6 +334,7 @@ pub(crate) fn read_queue(
         .collect();
     Ok(Queue {
         read_at: format_read_time(time_zone),
+        read_on: now.date(),
         took: started.elapsed(),
         cards,
         questions,
@@ -279,8 +346,75 @@ pub(crate) fn read_queue(
         no_hub: false,
         run: Some(first_run.path().to_owned()),
         notes: collected.notes,
-        problems,
+        problems: [faults, problems].concat(),
+        prs,
     })
+}
+
+/// Returns a fault row for each run in `runs` that `stall` judges
+/// stalled, as the watch's phone alert does, such as
+/// `auto run 3 stalled since 12:52: DEMO-KB-001, not started (0 of 1
+/// cards done)`. A run that cannot be read gives a `stall:` row.
+fn find_stalled_runs(
+    runs: &[&RunFolder],
+    agents: &[Agent],
+    cards: &[ListedCard],
+    questions: &[OpenQuestion],
+    now: &Zoned,
+) -> Vec<String> {
+    runs.iter()
+        .filter_map(|run| {
+            describe_run_stall(run, agents, cards, questions, now)
+                .unwrap_or_else(|error| Some(format!("stall: {error}")))
+        })
+        .collect()
+}
+
+/// Returns the fault row of one run approved in the last
+/// `STALL_ALERT_MAX_AGE`, or `None` while it makes progress or once it
+/// has ended.
+///
+/// # Errors
+///
+/// `HubError::File` when a file of the run cannot be read.
+fn describe_run_stall(
+    run: &RunFolder,
+    agents: &[Agent],
+    cards: &[ListedCard],
+    questions: &[OpenQuestion],
+    now: &Zoned,
+) -> Result<Option<String>, HubError> {
+    let Some(approved_text) = run.read_file_if_exists("approved.md")? else {
+        return Ok(None);
+    };
+    let Some(approved) = stall::read_approval_time(&approved_text, now) else {
+        return Ok(None);
+    };
+    if now.timestamp().duration_since(approved.timestamp()) > watch::STALL_ALERT_MAX_AGE {
+        return Ok(None);
+    }
+    let list = auto::read_run_list(&approved_text);
+    let memory = events::load_memory(run)?;
+    let quiet = stall::find_quiet_run(
+        run,
+        list.number,
+        list.run_keys(),
+        approved.timestamp(),
+        agents,
+        &memory,
+        now,
+    )?;
+    let Some(quiet) = quiet else {
+        return Ok(None);
+    };
+    let stall::Verdict::Stalled(stall) = stall::judge_quiet_run(&quiet, cards, questions) else {
+        return Ok(None);
+    };
+    let name = list.number.map_or_else(
+        || "an auto run".to_owned(),
+        |number| format!("auto run {number}"),
+    );
+    Ok(Some(format!("{name} stalled {}", stall.describe(now))))
 }
 
 /// Tells whether the board shows cards in this stage.
@@ -289,6 +423,29 @@ fn is_on_board(stage: Stage) -> bool {
         stage,
         Stage::Draft | Stage::Todo | Stage::Active | Stage::InReview | Stage::Blocked
     )
+}
+
+/// Returns the first line of the newest `status-<name>.md` in `runs`,
+/// and how long before `now` it changed. A file that cannot be read
+/// counts as missing.
+fn read_status_file(
+    runs: &[RunFolder],
+    name: &str,
+    now: Timestamp,
+) -> Option<(String, SignedDuration)> {
+    let file_name = format!("status-{name}.md");
+    let (modified, path) = runs
+        .iter()
+        .filter_map(|run| {
+            let path = run.path().join(&file_name);
+            let modified = path.metadata().and_then(|metadata| metadata.modified());
+            Some((modified.ok()?, path))
+        })
+        .max()?;
+    let text = fs::read_to_string(path).ok()?;
+    let line = text.lines().next().unwrap_or_default().trim().to_owned();
+    let modified = Timestamp::try_from(modified).ok()?;
+    Some((line, now.duration_since(modified)))
 }
 
 /// Returns the time now in `time_zone`, such as `10:42`.
