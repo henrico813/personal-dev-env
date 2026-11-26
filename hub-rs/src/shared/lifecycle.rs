@@ -1,9 +1,9 @@
 //! Works out one session's lifecycle state from its facts, with no
 //! external calls. Read `decide_lifecycle` first. Its rules apply in
-//! order and the first match wins, so a blocked session is `you` even
-//! when its card's work is over. The later tidy pass closes or parks a
-//! session only in the `to-close` or `to-park` state, so each rule
-//! that gives one of those decides what the hub may close.
+//! order and the first match wins, so a blocked session is `flagged`
+//! even when its card's work is over. The later tidy pass closes or
+//! parks a session only in the `to-close` or `to-park` state, so each
+//! rule that gives one of those decides what the hub may close.
 
 use std::collections::BTreeSet;
 
@@ -42,7 +42,7 @@ impl Lifecycle {
         match self {
             Lifecycle::Working => "working",
             Lifecycle::WaitsOnHub => "hub",
-            Lifecycle::WaitsOnUser => "you",
+            Lifecycle::WaitsOnUser => "flagged",
             Lifecycle::Kept(_) => "kept",
             Lifecycle::ToClose => "to-close",
             Lifecycle::ToPark => "to-park",
@@ -160,7 +160,8 @@ pub(crate) struct SessionFacts {
 pub(crate) struct CardFacts {
     pub key: CardKey,
     pub stage: Stage,
-    pub needs_you_open: bool,
+    /// The card holds an Open Questions item that `hub waiting` lists.
+    pub has_open_question: bool,
     /// A later session on the same card is live, as after a handoff.
     pub newer_session_live: bool,
     /// The card comes from the session's newest report, not its name
@@ -206,8 +207,12 @@ pub(crate) fn decide_lifecycle(facts: &SessionFacts) -> Verdict {
     if agent.marked {
         return make_verdict(Lifecycle::WaitsOnUser, "needs you");
     }
-    if facts.card.as_ref().is_some_and(|card| card.needs_you_open) {
-        return make_verdict(Lifecycle::WaitsOnUser, "needs-you note");
+    if facts
+        .card
+        .as_ref()
+        .is_some_and(|card| card.has_open_question)
+    {
+        return make_verdict(Lifecycle::WaitsOnUser, "open question");
     }
     // Rule 4. A session in an unknown state is never closed.
     match agent.status {
@@ -499,10 +504,10 @@ mod tests {
                 expected: Lifecycle::WaitsOnUser,
             },
             Row {
-                id: "needs-you-note",
+                id: "open-question",
                 facts: {
                     let mut facts = make_facts(worker);
-                    facts.card.as_mut().unwrap().needs_you_open = true;
+                    facts.card.as_mut().unwrap().has_open_question = true;
                     facts
                 },
                 expected: Lifecycle::WaitsOnUser,

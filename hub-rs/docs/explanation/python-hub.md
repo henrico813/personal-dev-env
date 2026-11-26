@@ -164,7 +164,7 @@ for people and skills that used the Python one.
 ## hub status
 
 - `status` shows each session's lifecycle state in its STATE column,
-  not Herdr's status: `working`, `hub` (waits on the hub), `you`
+  not Herdr's status: `working`, `hub` (waits on the hub), `flagged`
   (waits on the user), `kept`, `to-close`, `to-park` or `parked`. The
   WHY column says why, such as `unread report`, `1 held` or the kept
   reason. It replaces the CARD, REPORT, SEND and LABEL columns.

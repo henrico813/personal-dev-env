@@ -6,7 +6,7 @@
 use ratatui::style::Color;
 
 use super::queue::{CardLine, Queue, SessionRow};
-use crate::external::cards::{CardKey, CardNote, Stage};
+use crate::external::cards::{CardKey, CardNote, OpenItem, Stage};
 use crate::shared::lifecycle::Lifecycle;
 
 /// The board's groups, in screen order.
@@ -173,8 +173,8 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
         .iter()
         .enumerate()
         .map(|(index, question)| Item {
-            id: question.title.clone(),
-            text: put_card_key_first(Some(&question.key), &question.title),
+            id: question.format_id(),
+            text: format!("{} {}", question.format_id(), question.title),
             tag: question.project.clone(),
             status: Status::You,
             target: Target::Question(index),
@@ -334,7 +334,7 @@ pub(super) fn describe_item(queue: &Queue, target: Target, note: Option<&CardNot
             let question = &queue.questions[index];
             let mut lines = vec![
                 question.title.clone(),
-                format!("card {}", question.key.as_str()),
+                question.format_label(),
                 String::new(),
             ];
             lines.extend(question.lines.iter().cloned());
@@ -350,12 +350,15 @@ pub(super) fn describe_item(queue: &Queue, target: Target, note: Option<&CardNot
     }
 }
 
-/// Returns a card's details page lines, such as its title, then
-/// `DEMO-KB-001  in-review  Demo`, its workers, next step, PR links and
-/// criteria.
+/// Returns a card's details page lines, such as its title and open
+/// questions, then `DEMO-KB-001  in-review  Demo`, its workers, next
+/// step, PR links and criteria.
 pub(super) fn describe_card(card: &CardLine, note: Option<&CardNote>) -> Vec<String> {
-    let mut lines = vec![
-        card.title.clone(),
+    let mut lines = vec![card.title.clone()];
+    if let Some(note) = note {
+        lines.extend(note.open_questions.iter().map(format_open_item));
+    }
+    lines.extend([
         String::new(),
         format!(
             "{}  {}  {}",
@@ -363,7 +366,7 @@ pub(super) fn describe_card(card: &CardLine, note: Option<&CardNote>) -> Vec<Str
             card.stage.as_str(),
             card.project
         ),
-    ];
+    ]);
     lines.push(if card.workers.is_empty() {
         "no worker".to_owned()
     } else {
@@ -379,6 +382,15 @@ pub(super) fn describe_card(card: &CardLine, note: Option<&CardNote>) -> Vec<Str
         lines.extend(note.criteria.iter().cloned());
     }
     lines
+}
+
+/// Returns an open question's line on its card's details page, such as
+/// `Q3, asked 2026-11-25: Deploy tonight?` or `Q2, undated: Which bucket?`.
+fn format_open_item(item: &OpenItem) -> String {
+    match item.asked {
+        Some(date) => format!("Q{}, asked {date}: {}", item.number, item.text),
+        None => format!("Q{}, undated: {}", item.number, item.text),
+    }
 }
 
 /// Returns a board line's words with the card key in front, such as
@@ -453,6 +465,62 @@ mod tests {
     use super::*;
 
     use crate::board::view::tests::make_sample_queue;
+
+    /// A card's open questions show under its title, with their Q
+    /// numbers, so the user sees what waits and how to answer it
+    /// without opening the card note.
+    #[test]
+    fn describe_card_lists_open_questions_under_title() {
+        let queue = make_sample_queue();
+        let card = &queue.cards[0];
+        let note = CardNote {
+            open_questions: vec![
+                OpenItem {
+                    number: 3,
+                    asked: Some("2026-11-25".parse().unwrap()),
+                    text: "Deploy tonight?".to_owned(),
+                    lines: vec!["- A. Yes.".to_owned()],
+                },
+                OpenItem {
+                    number: 4,
+                    asked: None,
+                    text: "Which bucket?".to_owned(),
+                    lines: Vec::new(),
+                },
+            ],
+            ..CardNote::default()
+        };
+
+        let lines = describe_card(card, Some(&note));
+
+        assert_eq!(
+            lines[..4],
+            [
+                card.title.clone(),
+                "Q3, asked 2026-11-25: Deploy tonight?".to_owned(),
+                "Q4, undated: Which bucket?".to_owned(),
+                String::new(),
+            ]
+        );
+    }
+
+    /// A question's details page names its card, Q number and date
+    /// under the title, so the user knows which reply key answers it.
+    #[test]
+    fn describe_item_shows_question_label_under_title() {
+        let queue = make_sample_queue();
+
+        let lines = describe_item(&queue, Target::Question(0), None);
+
+        assert_eq!(
+            lines[..3],
+            [
+                "Deploy tonight?".to_owned(),
+                "DEMO-KB-001 Q1, undated".to_owned(),
+                String::new(),
+            ]
+        );
+    }
 
     /// A worker that runs on a card needing the user's review, such as
     /// one fixing review comments, means the card is in work now. Shown

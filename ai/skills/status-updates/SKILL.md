@@ -35,8 +35,10 @@ is about.
 ## Question numbers
 
 Number questions `Q1` to `Q9`, so each reply key, such as `Q3A`, has
-one digit and is quick to type on a phone. A hub numbers no question
-itself, since `hub waiting` numbers the questions on its cards.
+one digit and is quick to type on a phone. A hub's questions on its
+cards skip this section: the kanban `card` command numbers them per
+card, with reply keys such as `DEMO-516 Q3A`, and `herdr-hub` says
+how to match a reply to one and ask which question it answers.
 
 - A batch of questions starts with the first question you ask when
   no earlier question waits on the user. It ends when no question in

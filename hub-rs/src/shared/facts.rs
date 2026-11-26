@@ -9,6 +9,7 @@ use super::events::Memory;
 use super::lifecycle::{CardFacts, ReportFacts, SessionFacts};
 use super::messages;
 use super::parking::ParkedRecord;
+use super::questions::LISTED_STAGES;
 use super::run_folder::{ReportedNames, RunFolder};
 use super::{HubError, Tools};
 use crate::external::cards::{CardError, CardKey, CardNote, ListedCard, Stage};
@@ -182,10 +183,11 @@ pub(crate) fn collect_session_facts(
         let session_id = agent.session_id.as_deref();
         let read_card_facts = |key: &CardKey| {
             let note = notes.get(key);
+            let stage = *stages.get(key)?;
             Some(CardFacts {
                 key: key.clone(),
-                stage: *stages.get(key)?,
-                needs_you_open: note.is_some_and(|note| note.needs_you.is_some()),
+                stage,
+                has_open_question: has_listed_question(note, stage),
                 newer_session_live: note
                     .is_some_and(|note| has_newer_live_session(note, session_id, &live_ids)),
                 from_report: false,
@@ -264,9 +266,7 @@ pub(crate) fn collect_session_facts(
         let card = stages.get(&record.card).map(|stage| CardFacts {
             key: record.card.clone(),
             stage: *stage,
-            needs_you_open: notes
-                .get(&record.card)
-                .is_some_and(|note| note.needs_you.is_some()),
+            has_open_question: has_listed_question(notes.get(&record.card), *stage),
             newer_session_live: false,
             from_report: false,
         });
@@ -421,6 +421,12 @@ fn check_card_worktrees(agent: &Agent, key: Option<&CardKey>) -> Unsaved {
         }
     }
     worst
+}
+
+/// Tells whether the card holds an open question that hub waiting
+/// lists, which needs a listed stage such as active, not draft.
+fn has_listed_question(note: Option<&CardNote>, stage: Stage) -> bool {
+    LISTED_STAGES.contains(&stage) && note.is_some_and(|note| !note.open_questions.is_empty())
 }
 
 /// Tells whether this session has a later session on the card's list

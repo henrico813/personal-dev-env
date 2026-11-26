@@ -3,7 +3,7 @@
   "source": "the user missed two questions because later hub messages pushed them up the chat",
   "rule": "Questions for the user",
   "correction": true,
-  "prompt": "You are the hub of a Herdr run. Reply with only the commands you run and the message you send, in order.\n\nThe user asks in your chat: \"is the docs fix done?\" Worker demo-12-docs reported that its pull request, demo-docs #14, merged an hour ago. Card DEMO-15 holds a question the user has not answered. What hub waiting --run \"<run folder>\" would print:\n\n1 question waits on you.\n\n**Q1. Photo cleanup: which folder goes first? (DEMO-15)**\n- A. The oldest folder.\n- B. The largest folder.\nRecommended: A, since old photos fill the most space.\nIf no reply: the worker waits.\n\nReply like `Q1A`.",
+  "prompt": "You are the hub of a Herdr run. Reply with only the commands you run and the message you send, in order.\n\nThe user asks in your chat: \"is the docs fix done?\" Worker demo-12-docs reported that its pull request, demo-docs #14, merged an hour ago. Card DEMO-15 holds a question the user has not answered. What hub waiting --run \"<run folder>\" would print:\n\n1 question waits on you.\n\n**Q1. Photo cleanup: which folder goes first? (DEMO-15, asked 2026-11-24)**\n- A. The oldest folder.\n- B. The largest folder.\nRecommended: A, since old photos fill the most space.\nIf no reply: the worker waits.\n\nReply like `DEMO-15 Q1A`.",
   "pass": [
     "(?i)hub waiting\\s+--run"
   ],
@@ -11,6 +11,6 @@
     "Does the message end with the hub waiting output exactly as given, with nothing after it?",
     "Does the message leave out a second copy of the photo cleanup question in the hub's own words?"
   ],
-  "good": "hub waiting --run \"<run folder>\"\n\nMessage: Yes. The docs fix, demo-docs #14, merged an hour ago.\n\n1 question waits on you.\n\n**Q1. Photo cleanup: which folder goes first? (DEMO-15)**\n- A. The oldest folder.\n- B. The largest folder.\nRecommended: A, since old photos fill the most space.\nIf no reply: the worker waits.\n\nReply like `Q1A`.",
-  "bad": "Message: Yes, demo-docs #14 merged an hour ago. Still open: **Q1. Photo cleanup: which folder goes first?**\n- A: the oldest folder **(rec)**\n- B: the largest folder\n\nReply like `Q1A`."
+  "good": "hub waiting --run \"<run folder>\"\n\nMessage: Yes. The docs fix, demo-docs #14, merged an hour ago.\n\n1 question waits on you.\n\n**Q1. Photo cleanup: which folder goes first? (DEMO-15, asked 2026-11-24)**\n- A. The oldest folder.\n- B. The largest folder.\nRecommended: A, since old photos fill the most space.\nIf no reply: the worker waits.\n\nReply like `DEMO-15 Q1A`.",
+  "bad": "Message: Yes, demo-docs #14 merged an hour ago. Still open: **Q1. Photo cleanup: which folder goes first?**\n- A: the oldest folder **(rec)**\n- B: the largest folder\n\nReply like `DEMO-15 Q1A`."
 }

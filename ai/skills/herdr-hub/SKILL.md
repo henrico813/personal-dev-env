@@ -56,7 +56,7 @@ session:
     hub kanban-hub-18 131k, watch running, hub next running
     board active 5 of 8, in-review 19 of 6
     blocked 2, oldest 8 days
-    open 24: 4 working, 2 hub, 3 you,
+    open 24: 4 working, 2 hub, 3 flagged,
       5 kept, 1 to-close, 2 to-park; 12 parked
     unread 2: demo-007-impl docs-fix
 
@@ -64,7 +64,7 @@ session:
     demo-007-impl     hub      98k   unread report
 
 STATE says who must act: `working` needs nothing, `hub` waits on you,
-`you` waits on the user, `kept` is finished but holds something (WHY
+`flagged` waits on the user, `kept` is finished but holds something (WHY
 says what), `to-close` and `to-park` are finished and `hub clean` will
 close or park them, and `parked` has no tab but can reopen. CTX is the
 session's context size, `-` when it cannot be read. A last `no session:`
@@ -78,14 +78,14 @@ and its `unread` line each time; never list the run folder. When you
 need a count or summary of a folder's contents that `hub status`
 does not cover, hand it to a worker as a `model-routing`
 `local-script` job, per Rules, instead of running `ls` directly.
-Before you tell the user a `you` session waits, read its newest
-lines with `herdr agent read`. A session that handed off a card
-shows `you` while the card's question waits. It waits on that same
-question, so do not unflag it or list it as a second wait; close its
-tab once the session that took over runs. Any other `you` session
-that asks nothing is stale: run `hub unflag <name>`; leave it out.
-Tell the user what each `you` session waits on, and keep that in
-every later message until the session no longer waits on the user,
+Before you tell the user a `flagged` session waits, read its newest
+lines with `herdr agent read`. A session with WHY `open question`
+waits on its card's question, so do not unflag it or list it as a
+second wait. When it handed off its card, close its tab once the
+session that took over runs. Any other `flagged` session that asks
+nothing is stale: run `hub unflag <name>`; leave it out. Tell the
+user what each `flagged` session waits on, and keep that in every later
+message until the session no longer waits on the user,
 as `status-updates` says. When such a session has never reported to
 you, bring it under the hub at once: send it the new rules that
 Rules gives for a worker the user hands you.
@@ -245,17 +245,17 @@ and sends it as it sends other held messages.
 
 ## Waiting on the user
 
-When a session waits on the user, flag it, so the sidebar shows
-"needs you" in place of its state:
+When a session waits on the user for anything not on its card, flag
+it, so the sidebar shows "needs you" in place of its state:
 
     hub flag <name>
 
-A session waits on the user when it is `blocked` at an approval or a
-question in its pane, or when you bring the user a question from its
-report. A question from a report is also asked on its card with
-`hub ask`, as Questions for the user says. A blocked session's mark
-goes away by itself once it works again. Unflag any other session when
-you send it the user's answer:
+Such a wait is an approval or a question in a `blocked` session's
+pane, or a question no card can hold. Ask a report's question on its
+card with `hub ask` instead: `hub status` shows its sessions `flagged`
+until `hub answer` takes it off, with no `hub flag`. A blocked
+session's mark goes away by itself once it works again. Unflag any
+other flagged session when you send it the user's answer:
 
     hub unflag <name>
 
@@ -307,9 +307,9 @@ vault. A hub never reports to a hub on another machine.
   `hub board` shows it on the card's details page.
 - When the user decides something about one card's work, such as what
   it leaves out, add it to the Decisions section every card has, since
-  its worker reads the card, not `notes.md`. Run
-  `card add KEY Decisions "<decision>"` at once, even with no question
-  asked. For an answer, also do the steps in Questions for the user.
+  its worker reads the card, not `notes.md`: run
+  `card add KEY Decisions "<decision>"` at once. Record an answer to a
+  card's question only with `hub answer`, which adds the item itself.
 - Move a card to or from `blocked`, the stage for work
   that waits only on people outside the user's team, as
   [references/blocked.md](references/blocked.md)
@@ -369,15 +369,15 @@ that report. Never ask the user to close a worker.
 ## Questions for the user
 
 Put each question that waits on the user on the card it blocks with
-`hub ask`, so the question and the needs-you mark in the card's Log
-agree. Write the whole question to a file, so no message names it by
-number alone, and run `hub ask <key> <question file>`.
+`hub ask <key> <question file>`, which adds the file's whole question
+to the card's Open Questions with a Q number and the date.
 
 The work the question asks about never goes ahead without the user's
 answer, and no agent answers a question for the user. A question that
-blocks no card, such as which changes a session review makes, goes on a
-new draft card made with `card new <project> "<title>"`, so every reader
-finds it.
+blocks no card, such as a worker's session review, goes on its card
+with `hub ask`; when no card in todo, active, in-review or blocked
+fits, ask it in your own message, as `status-updates` says. A note on
+a draft card's work is backlog: `card add` it to the draft's Context.
 
 Before you list a question or task as waiting, even one a handoff
 carries, check where the user answers: your chat, the card's session
@@ -389,19 +389,19 @@ any of those places settles a question as fully as a reply key:
 - A reply that leaves the choice to you, such as "any order", picks
   the `Recommended:` choice. The user made that call, not you.
 - A premise correction, such as "that changed", can leave no
-  choice to make. Run `hub answer <key> "moot: <why>"`.
+  choice to make. Run `hub answer <key> <Q number> "moot: <why>"`.
 - For a reply that settles part, `hub answer` that part, then
   `hub ask` the rest, quoting the reply the user thinks answered it.
 
-When the user answers, run `hub answer <key> "<answer>"`. It moves
-the question to the card's Decisions with the answer and marks the
-card answered. Record an answer that sets a rule for later work in
-`rules.md`. Bring the user approvals, pull requests and other news
-with `hub brief --run "<run folder>"`. End every message to the user
-with the output of `hub waiting --run "<run folder>"`, word for word,
-since a question higher up the chat goes unseen. Run it right before
-you send, after any `hub ask` or `hub answer`, and never ask a card's
-question in your own words as well. Read
+When the user answers, run `hub answer <key> <Q number> "<answer>"`,
+which moves the question to the card's Decisions, and `hub send` the
+answer to the card's worker. Record an answer that sets a rule for
+later work in `rules.md`. Bring the user approvals, pull requests and
+other news with `hub brief --run "<run folder>"`. End every message
+to the user with the output of `hub waiting --run "<run folder>"`,
+word for word, since a question higher up the chat goes unseen. Run
+it right before you send, after any `hub ask` or `hub answer`, and
+never ask a card's question in your own words as well. Read
 [references/hub-brief.md](references/hub-brief.md) for what both
 print, the question file, and what `hub ask` refuses.
 

@@ -6,7 +6,7 @@ use std::time::SystemTime;
 use hub::commands::auto::{
     AutoApproval, run_auto_approve, run_auto_check, run_auto_now, run_auto_todo,
 };
-use hub::external::cards::{CardNote, Stage};
+use hub::external::cards::{CardNote, OpenItem, Stage};
 use hub::external::herdr::{AgentStatus, HerdrError};
 use hub::shared::HubError;
 use hub::watch::wait::{WaitRequest, run_wait};
@@ -352,10 +352,14 @@ fn run_auto_now_writes_brief_from_files() {
         ("DEMO-KB-002", "Which command name?"),
         ("DEMO-KB-004", "Which disk?"),
     ] {
+        test_tools
+            .cards
+            .stages
+            .insert(key.to_owned(), Stage::Active);
         test_tools.cards.card_notes.insert(
             key.to_owned(),
             CardNote {
-                needs_you: Some(title.to_owned()),
+                open_questions: vec![make_item(title)],
                 ..CardNote::default()
             },
         );
@@ -384,7 +388,7 @@ fn run_auto_now_writes_brief_from_files() {
                     DEMO-KB-002 (needs you): not started\n\
                     DEMO-KB-003: not started\n\
                     Questions for you: 1\n\
-                    - DEMO-KB-002 Which command name?\n";
+                    - DEMO-KB-002 Q1, asked 2026-11-24 Which command name?\n";
     assert_eq!(outcome.lines.join("\n") + "\n", expected);
     assert_eq!(
         fs::read_to_string(run_path.join("brief-now.md")).unwrap(),
@@ -509,13 +513,27 @@ fn write_run_parked_on_question(test_tools: &mut TestTools) {
         .herdr
         .agents
         .push(make_agent("demo-kb-002-auto", AgentStatus::Idle));
+    test_tools
+        .cards
+        .stages
+        .insert("DEMO-KB-002".to_owned(), Stage::Active);
     test_tools.cards.card_notes.insert(
         "DEMO-KB-002".to_owned(),
         CardNote {
-            needs_you: Some("Which name?".to_owned()),
+            open_questions: vec![make_item("Which name?")],
             ..CardNote::default()
         },
     );
+}
+
+/// An Open Questions item Q1 asked on 2026-11-24, with no later lines.
+fn make_item(title: &str) -> OpenItem {
+    OpenItem {
+        number: 1,
+        asked: Some("2026-11-24".parse().unwrap()),
+        text: title.to_owned(),
+        lines: Vec::new(),
+    }
 }
 
 /// Returns the `STALLED` or `Run ended` lines `run_auto_now` ends
@@ -551,9 +569,9 @@ fn run_auto_now_reports_stall_without_progress() {
             waits: false,
             expected: Some(
                 "STALLED since 14:00: DEMO-KB-002, waits\n\
-                 on your question: Which name?;\n\
-                 DEMO-KB-003, not started (1 of 3 cards\n\
-                 done)",
+                 on your question DEMO-KB-002 Q1: Which\n\
+                 name?; DEMO-KB-003, not started (1 of 3\n\
+                 cards done)",
             ),
         },
         Case {
@@ -595,6 +613,34 @@ fn run_auto_now_reports_stall_without_progress() {
 
         assert_eq!(line.as_deref(), case.expected, "{}", case.name);
     }
+}
+
+/// A stalled card can wait on several questions, and the user must see
+/// each one in the alert, or one stays unanswered while the run sits.
+#[test]
+fn run_auto_now_stall_names_every_question() {
+    let mut test_tools = TestTools::new();
+    write_run_parked_on_question(&mut test_tools);
+    let second = OpenItem {
+        number: 3,
+        asked: Some("2026-11-25".parse().unwrap()),
+        text: "Deploy?".to_owned(),
+        lines: Vec::new(),
+    };
+    let note = test_tools.cards.card_notes.get_mut("DEMO-KB-002").unwrap();
+    note.open_questions.push(second);
+
+    let line = run_and_read_stall_line(&test_tools);
+
+    assert_eq!(
+        line.as_deref(),
+        Some(
+            "STALLED since 14:00: DEMO-KB-002, waits\n\
+             on your questions DEMO-KB-002 Q1: Which\n\
+             name? and Q3: Deploy?; DEMO-KB-003, not\n\
+             started (1 of 3 cards done)",
+        ),
+    );
 }
 
 /// The auto-run skill ends a run when every card stopped, at a pull

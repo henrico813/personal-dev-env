@@ -147,7 +147,9 @@ the handoff file through Tell the user:
      number, such as "(Q3)". A Q number stays
      with its question until its whole batch ends, as "Question
      numbers" in the `status-updates` skill says, and the template
-     tells the new session not to reuse it before then.
+     tells the new session not to reuse it before then. For a
+     question on a card, give its card key with the number, such as
+     "(DEMO-516 Q3)", since each card numbers its own questions.
    - Under each open question, add one line that names your session
      and says where you looked and when, such as `Open: no answer in
      hub-3's chat, worker api-7's pane or the card's Decisions at

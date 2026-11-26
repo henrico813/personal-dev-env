@@ -1,8 +1,8 @@
 //! Calls the `card` command, which keeps kanban cards in the vault,
-//! and parses its text. Read the `Cards` trait first. `card` has no
-//! JSON output, so this is the only file that reads card text.
+//! and reads what it prints. Read the `Cards` trait first. This is the
+//! only file that reads card output.
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::fmt;
 use std::io;
 use std::path::PathBuf;
@@ -13,6 +13,7 @@ use std::thread;
 
 use jiff::civil::Date;
 use regex::Regex;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 /// A card key in either shape, such as `DEMO-KB-007` or `DEMO-516`.
@@ -45,12 +46,13 @@ const MAX_PARALLEL_SHOWS: usize = 8;
 /// Calls the `card` command. `CardCli` runs the real one; tests use
 /// `InMemoryCards` from `tests/common`.
 pub trait Cards {
-    /// Returns every card from one `card list` call, in its order.
+    /// Returns every card from one `card list --json` call, in its
+    /// order.
     fn list_cards(&self) -> Result<Vec<ListedCard>, CardError>;
     /// Returns the keys of cards ready to start, in `card list` order.
     fn list_todo(&self) -> Result<Vec<CardKey>, CardError>;
-    /// Returns a card's title, project, session IDs, open needs-you note,
-    /// open questions and criteria.
+    /// Returns a card's title, project, stage, session IDs, open
+    /// questions and criteria.
     fn read_card(&self, key: &CardKey) -> Result<CardNote, CardError>;
     /// Reads each card in `keys` and returns the results in the same
     /// order. This default reads one card at a time.
@@ -68,26 +70,13 @@ pub trait Cards {
     /// Moves a card ready to start into progress. `card` refuses a
     /// start past the work limit, with its reason.
     fn move_to_active(&self, key: &CardKey) -> Result<(), CardError>;
-    /// Returns the keys of the cards whose newest needs-you Log line
-    /// has no answered line after it, in key order.
-    fn list_needs_you(&self) -> Result<Vec<CardKey>, CardError>;
-    /// Adds `text` as a new item at the end of a section, such as
-    /// `Open Questions`. Each later line of `text` must start with two
-    /// spaces, or `card` reads it as an item of its own.
+    /// Adds `text` as a new item at the end of a section; in Open Questions
+    /// `card` puts a Q number and today's date in front. Each later line of
+    /// `text` must start with two spaces, or `card` reads it as an item of its own.
     fn add_item(&self, key: &CardKey, section: &str, text: &str) -> Result<(), CardError>;
-    /// Removes item `number`, counted from 1 as `card show --section`
-    /// numbers them. `card` logs the removal by `hub`, so no Herdr pane
-    /// is needed.
-    fn remove_item(&self, key: &CardKey, section: &str, number: usize) -> Result<(), CardError>;
-    /// Adds a needs-you or answered line to the card's Log.
-    fn add_mark(&self, key: &CardKey, mark: Mark, text: &str) -> Result<(), CardError>;
-}
-
-/// A Log line that opens or closes the card's wait on the user.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Mark {
-    NeedsYou,
-    Answered,
+    /// Removes the Open Questions item numbered `Q<number>`. `card`
+    /// logs the removal by `hub`, so no Herdr pane is needed.
+    fn remove_question(&self, key: &CardKey, number: u32) -> Result<(), CardError>;
 }
 
 /// Runs the `card` command.
@@ -136,21 +125,21 @@ fn read_card_output(output: Output) -> Result<String, CardError> {
 
 impl Cards for CardCli {
     fn list_cards(&self) -> Result<Vec<ListedCard>, CardError> {
-        let printed = self.run_card(&["list", "--tabs"])?;
-        Ok(parse_card_list(&printed))
+        let printed = self.run_card(&["list", "--json"])?;
+        parse_card_list(&printed)
     }
 
     fn list_todo(&self) -> Result<Vec<CardKey>, CardError> {
-        let printed = self.run_card(&["list", "--tabs", "--stage", Stage::Todo.as_str()])?;
-        Ok(parse_card_list(&printed)
+        let printed = self.run_card(&["list", "--json", "--stage", Stage::Todo.as_str()])?;
+        Ok(parse_card_list(&printed)?
             .into_iter()
             .map(|card| card.key)
             .collect())
     }
 
     fn read_card(&self, key: &CardKey) -> Result<CardNote, CardError> {
-        let printed = self.run_card(&["show", key.as_str()])?;
-        Ok(parse_card_note(key, &printed))
+        let printed = self.run_card(&["show", key.as_str(), "--json"])?;
+        parse_card_note(&printed)
     }
 
     /// Runs up to `MAX_PARALLEL_SHOWS` `card show` calls side by side,
@@ -202,26 +191,13 @@ impl Cards for CardCli {
             .map(drop)
     }
 
-    /// Reads every card's marks with one `card grep`, where a `card show`
-    /// per card would start Python once per card.
-    fn list_needs_you(&self) -> Result<Vec<CardKey>, CardError> {
-        let pattern = r"^- \d{4}-\d\d-\d\d (needs-you|answered): ";
-        let output = self.run_card_unchecked(&["grep", "--section", "Log", pattern])?;
-        // `card grep` exits 1 with nothing on standard error when no line
-        // matches, and with its reason there on any other failure.
-        if output.status.code() == Some(1) && output.stderr.trim_ascii().is_empty() {
-            return Ok(Vec::new());
-        }
-        Ok(parse_needs_you(&read_card_output(output)?))
-    }
-
     fn add_item(&self, key: &CardKey, section: &str, text: &str) -> Result<(), CardError> {
         self.run_card(&["add", "--", key.as_str(), section, text])
             .map(drop)
     }
 
-    fn remove_item(&self, key: &CardKey, section: &str, number: usize) -> Result<(), CardError> {
-        let number = number.to_string();
+    fn remove_question(&self, key: &CardKey, number: u32) -> Result<(), CardError> {
+        let item = format!("Q{number}");
         self.run_card(&[
             "edit",
             "--remove",
@@ -229,19 +205,10 @@ impl Cards for CardCli {
             "hub",
             "--",
             key.as_str(),
-            section,
-            &number,
+            OPEN_QUESTIONS,
+            &item,
         ])
         .map(drop)
-    }
-
-    fn add_mark(&self, key: &CardKey, mark: Mark, text: &str) -> Result<(), CardError> {
-        let flag = match mark {
-            Mark::NeedsYou => "--needs-you",
-            Mark::Answered => "--answered",
-        };
-        self.run_card(&["note", flag, "--", key.as_str(), text])
-            .map(drop)
     }
 }
 
@@ -353,7 +320,7 @@ impl Stage {
     }
 }
 
-/// One line of `card list --tabs`.
+/// One card of `card list --json`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ListedCard {
     pub key: CardKey,
@@ -361,31 +328,42 @@ pub struct ListedCard {
     /// The folder the card is in, such as `DevEnv`.
     pub project: String,
     pub title: String,
+    /// Session IDs, oldest first.
+    pub sessions: Vec<String>,
+    /// The Open Questions items, in note order.
+    pub open_questions: Vec<OpenItem>,
 }
 
-/// What `card show` gives.
+/// One Open Questions item, as `card` numbers and dates it.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+pub struct OpenItem {
+    /// The item's Q number, which stays until the item is answered.
+    pub number: u32,
+    /// The day it was asked, or `None` for an item typed by hand.
+    pub asked: Option<Date>,
+    /// The item's first line, after its `Q4 asked 2026-11-25: ` head.
+    pub text: String,
+    /// The later lines, with their two-space indent taken off.
+    pub lines: Vec<String>,
+}
+
+/// What `card show --json` gives.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CardNote {
-    /// The heading's words after the key, such as `Retry failed
-    /// uploads`, or empty.
+    /// The card's title, such as `Retry failed uploads`.
     pub title: String,
-    /// The front matter's `project:`, or empty.
+    /// The folder the card is in, such as `DevEnv`.
     pub project: String,
+    /// The card's stage, or `None` for a stage word this hub does not
+    /// know.
+    pub stage: Option<Stage>,
     /// Session IDs, oldest first.
     pub sessions: Vec<String>,
     /// The Log's `session: NAME (kind ID)` lines, oldest first, which
     /// `card link --session` writes for each new session.
     pub logged_sessions: Vec<LoggedSession>,
-    /// The text of the newest `needs-you` Log line, while no `answered`
-    /// line follows it, so the card waits on the user.
-    pub needs_you: Option<String>,
-    /// The date of that needs-you Log line, the day the question was
-    /// asked.
-    pub needs_you_date: Option<Date>,
-    /// Each item of the Open Questions section, as its lines with the
-    /// `- ` bullet and the two-space indent taken off. Item `N` in
-    /// `card show --section` is at index `N - 1`.
-    pub open_questions: Vec<Vec<String>>,
+    /// The Open Questions items, in note order.
+    pub open_questions: Vec<OpenItem>,
     /// The bullets of Context and Acceptance Criteria, in note order.
     pub criteria: Vec<String>,
     /// The front matter's plan notes, such as `DEMO-12 Retry uploads`.
@@ -505,106 +483,112 @@ impl fmt::Display for CardError {
 /// Lets `HubError::source` return it.
 impl std::error::Error for CardError {}
 
-/// Reads `card list --tabs` lines, which hold the key, stage, kind,
-/// project and title split by tabs, skipping the kind. The last line,
-/// `N cards`, holds no key.
-fn parse_card_list(text: &str) -> Vec<ListedCard> {
-    text.lines()
-        .filter_map(|line| {
-            let [key, stage, _kind, project, title] = line.splitn(5, '\t').collect::<Vec<_>>()[..]
-            else {
-                return None;
-            };
-            Some(ListedCard {
-                key: key.parse().ok()?,
-                stage: Stage::from_word(stage)?,
-                project: project.to_owned(),
-                title: title.to_owned(),
-            })
-        })
-        .collect()
+/// One card as `card list --json` or `card show --json` prints it, with
+/// `sections` from `card show` only. A field `card` leaves out reads as empty.
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct CardJson {
+    key: String,
+    title: String,
+    stage: String,
+    project: String,
+    /// Plan links, such as `[[DEMO-12 Retry uploads]]`.
+    plans: Vec<String>,
+    prs: Vec<String>,
+    /// Entries such as `opencode ses_0a1b2c3d4e5f`, with the ID last.
+    sessions: Vec<String>,
+    open_questions: Vec<OpenItem>,
+    sections: BTreeMap<String, String>,
 }
 
-/// Reads `card show` text, whose title is the first `# KEY ...` heading
-/// after the front matter. Its `sessions:` items look like
-/// `- "opencode ses_0a1b2c3d4e5f"` with the ID last, its `plans:`
-/// items like `- "[[DEMO-12 Retry uploads]]"`, and its log lines like
-/// `- 2026-11-10 needs-you: which bucket?`.
-fn parse_card_note(key: &CardKey, text: &str) -> CardNote {
-    let mut note = CardNote::default();
-    let mut lines = text.lines().skip(1);
-    // The list a `- ` line belongs to, such as `sessions`.
-    let mut list = "";
-    // The front matter ends at the second `---` line.
-    for line in lines.by_ref().take_while(|line| line.trim() != "---") {
-        if let Some(item) = line.trim().strip_prefix("- ") {
-            let item = item.trim_matches('"');
-            match list {
-                "sessions" => note
-                    .sessions
-                    .extend(item.split_whitespace().last().map(str::to_owned)),
-                "plans" => note.plans.push(
-                    item.trim_start_matches("[[")
-                        .trim_end_matches("]]")
-                        .to_owned(),
-                ),
-                "prs" => note.prs.push(item.to_owned()),
-                _ => {}
-            }
-        } else {
-            list = line.trim().strip_suffix(':').unwrap_or("");
-            if let Some(project) = line.strip_prefix("project:") {
-                note.project = project.trim().to_owned();
-            }
-        }
+/// Reads `card list --json`. A card whose key or stage this hub does
+/// not know is left out.
+fn parse_card_list(text: &str) -> Result<Vec<ListedCard>, CardError> {
+    let cards: Vec<CardJson> = parse_json(text)?;
+    Ok(cards
+        .into_iter()
+        .filter_map(|card| {
+            Some(ListedCard {
+                key: card.key.parse().ok()?,
+                stage: Stage::from_word(&card.stage)?,
+                project: card.project,
+                title: card.title,
+                sessions: read_session_ids(&card.sessions),
+                open_questions: card.open_questions,
+            })
+        })
+        .collect())
+}
+
+/// Reads `card show --json`, taking criteria from the `- ` lines of Context
+/// and Acceptance Criteria. The Log gives the logged sessions and the
+/// newest `next: ` line, such as `- 2026-11-11 note (hub): next: review PR #498`.
+fn parse_card_note(text: &str) -> Result<CardNote, CardError> {
+    let card: CardJson = parse_json(text)?;
+    let mut criteria = Vec::new();
+    for name in CRITERIA_SECTIONS {
+        let section = card.sections.get(name).map_or("", String::as_str);
+        criteria.extend(
+            section
+                .lines()
+                .filter(|line| line.starts_with("- "))
+                .map(str::to_owned),
+        );
     }
-    let heading = format!("# {}", key.as_str());
-    let mut found_heading = false;
-    let mut section = "";
-    // The line before, so an Open Questions item can tell a `---` line
-    // under the heading and a line that carries on the item.
-    let mut previous = "";
-    for line in lines {
-        if section == OPEN_QUESTIONS && !line.starts_with("## ") {
-            read_question_line(&mut note.open_questions, previous, line);
-        }
-        previous = line;
-        if let Some(name) = line.strip_prefix("## ") {
-            section = name.trim();
-        } else if let Some(words) = line.strip_prefix(&heading)
-            && !found_heading
-        {
-            note.title = words.trim().to_owned();
-            found_heading = true;
-        } else if CRITERIA_SECTIONS.contains(&section) && line.starts_with("- ") {
-            note.criteria.push(line.to_owned());
-        }
-        let log_entry = line
+    let mut logged_sessions = Vec::new();
+    let mut next_step = None;
+    let log = card.sections.get("Log").map_or("", String::as_str);
+    for line in log.lines() {
+        let Some((_, words)) = line
             .strip_prefix("- ")
-            .and_then(|entry| entry.split_once(' '));
-        if let Some((date, words)) = log_entry {
-            if let Some(question) = words.strip_prefix("needs-you: ") {
-                note.needs_you = Some(question.trim().to_owned());
-                note.needs_you_date = date.parse().ok();
-            } else if words.starts_with("answered: ") {
-                note.needs_you = None;
-                note.needs_you_date = None;
-            }
-            // A `card note` line reads `note (who): next: ...`.
-            let text = words.split_once("): ").map_or(words, |(_, text)| text);
-            if section == "Log"
-                && let Some(step) = text.strip_prefix("next: ")
-            {
-                note.next_step = Some(step.trim().to_owned());
-            }
-            if section == "Log"
-                && let Some(session) = parse_logged_session(words)
-            {
-                note.logged_sessions.push(session);
-            }
+            .and_then(|entry| entry.split_once(' '))
+        else {
+            continue;
+        };
+        // A `card note` line reads `note (who): next: ...`.
+        let text = words.split_once("): ").map_or(words, |(_, text)| text);
+        if let Some(step) = text.strip_prefix("next: ") {
+            next_step = Some(step.trim().to_owned());
         }
+        logged_sessions.extend(parse_logged_session(words));
     }
-    note
+    Ok(CardNote {
+        stage: Stage::from_word(&card.stage),
+        sessions: read_session_ids(&card.sessions),
+        plans: card
+            .plans
+            .iter()
+            .map(|plan| {
+                plan.trim_start_matches("[[")
+                    .trim_end_matches("]]")
+                    .to_owned()
+            })
+            .collect(),
+        title: card.title,
+        project: card.project,
+        prs: card.prs,
+        open_questions: card.open_questions,
+        logged_sessions,
+        criteria,
+        next_step,
+    })
+}
+
+/// Reads JSON that `card` printed, or fails with the reason.
+fn parse_json<T: DeserializeOwned>(text: &str) -> Result<T, CardError> {
+    serde_json::from_str(text).map_err(|error| {
+        CardError::Failed(format!("card printed JSON the hub cannot read: {error}"))
+    })
+}
+
+/// Returns the ID in each `sessions` entry, such as `ses_1` from
+/// `opencode ses_1`.
+fn read_session_ids(entries: &[String]) -> Vec<String> {
+    entries
+        .iter()
+        .filter_map(|entry| entry.split_whitespace().last())
+        .map(str::to_owned)
+        .collect()
 }
 
 /// Reads a Log line's words after the date, such as
@@ -621,58 +605,6 @@ fn parse_logged_session(words: &str) -> Option<LoggedSession> {
         name: name.to_owned(),
         session_id: session_id.to_owned(),
     })
-}
-
-/// Adds one Open Questions line to `items`, as `card` counts items. A
-/// line at the margin starts an item, and an indented line right after
-/// one carries it on. `card` skips the `---` line under the heading.
-fn read_question_line(items: &mut Vec<Vec<String>>, previous: &str, line: &str) {
-    if line.trim().is_empty() || (previous.starts_with("## ") && line.trim() == "---") {
-        return;
-    }
-    if line.starts_with(char::is_whitespace) {
-        if let Some(item) = items.last_mut()
-            && !previous.trim().is_empty()
-        {
-            let carried = line.strip_prefix("  ").unwrap_or(line.trim_start());
-            item.push(carried.trim_end().to_owned());
-        }
-    } else {
-        let first = line.strip_prefix("- ").unwrap_or(line);
-        items.push(vec![first.trim_end().to_owned()]);
-    }
-}
-
-/// Returns the keys whose last mark in `card grep` output is needs-you,
-/// in key order. Lines read like
-/// `DEMO-KB-007 Log: - 2026-11-10 needs-you: which bucket?`, in file
-/// order within each card. `card` cuts long lines, but the key and the
-/// mark always fit. The last line, `N matches in M cards`, holds no
-/// key.
-fn parse_needs_you(text: &str) -> Vec<CardKey> {
-    let mut open = BTreeSet::new();
-    for line in text.lines() {
-        let Some((key, rest)) = line.split_once(' ') else {
-            continue;
-        };
-        let Ok(key) = key.parse::<CardKey>() else {
-            continue;
-        };
-        let mark = rest
-            .strip_prefix("Log: - ")
-            .and_then(|entry| entry.split_once(' '))
-            .map(|(_, words)| words);
-        match mark {
-            Some(words) if words.starts_with("needs-you:") => {
-                open.insert(key);
-            }
-            Some(words) if words.starts_with("answered:") => {
-                open.remove(&key);
-            }
-            _ => {}
-        }
-    }
-    open.into_iter().collect()
 }
 
 /// Reads `card board` text. Returns `None` when the text lacks its
@@ -873,38 +805,26 @@ mod tests {
     /// line read as a criterion, sorts the card on wrong facts.
     #[test]
     fn parse_card_note_reads_title_project_criteria() {
-        let card_show = "---\n\
-                         stage: todo\n\
-                         project: Demo\n\
-                         topics: []\n\
-                         ---\n\
-                         \n\
-                         # DEMO-KB-001 Retry failed uploads\n\
-                         ---\n\
-                         \n\
-                         ## Context\n\
-                         ---\n\
-                         \n\
-                         - Uploads fail on a slow link.\n\
-                         \n\
-                         ## Acceptance Criteria\n\
-                         ---\n\
-                         \n\
-                         - [ ] A failed upload retries.\n\
-                         \n\
-                         ## Log\n\
-                         ---\n\
-                         \n\
-                         - 2026-11-10 todo: by the user\n";
+        let card_show = r#"{
+            "key": "DEMO-KB-001",
+            "title": "Retry failed uploads",
+            "stage": "todo",
+            "project": "Demo",
+            "sections": {
+                "Context": "---\n\n- Uploads fail on a slow link.",
+                "Acceptance Criteria": "---\n\n- [ ] A failed upload retries.",
+                "Log": "---\n\n- 2026-11-10 todo: by the user"
+            }
+        }"#;
 
-        let note = parse_card_note(&"DEMO-KB-001".parse().unwrap(), card_show);
+        let note = parse_card_note(card_show).unwrap();
 
         assert_eq!(
             note,
             CardNote {
                 title: "Retry failed uploads".to_owned(),
                 project: "Demo".to_owned(),
-                sessions: Vec::new(),
+                stage: Some(Stage::Todo),
                 criteria: vec![
                     "- Uploads fail on a slow link.".to_owned(),
                     "- [ ] A failed upload retries.".to_owned(),
@@ -920,25 +840,15 @@ mod tests {
     /// user to the wrong plan or PR.
     #[test]
     fn parse_card_note_reads_plans_prs_next() {
-        let card_show = "---\n\
-                         plans:\n  \
-                           - \"[[DEMO-12 Retry failed uploads]]\"\n\
-                         prs:\n  \
-                           - \"https://github.com/demo/app/pull/498\"\n\
-                         sessions:\n  \
-                           - \"opencode ses_1\"\n\
-                         ---\n\
-                         \n\
-                         # DEMO-KB-001 Retry failed uploads\n\
-                         ---\n\
-                         \n\
-                         ## Log\n\
-                         ---\n\
-                         \n\
-                         - 2026-11-10 note (hub): next: read plan DEMO-12\n\
-                         - 2026-11-11 note (hub): next: review PR #498\n";
+        let card_show = r#"{
+            "plans": ["[[DEMO-12 Retry failed uploads]]"],
+            "prs": ["https://github.com/demo/app/pull/498"],
+            "sections": {
+                "Log": "- 2026-11-10 note (hub): next: read plan DEMO-12\n- 2026-11-11 note (hub): next: review PR #498"
+            }
+        }"#;
 
-        let note = parse_card_note(&"DEMO-KB-001".parse().unwrap(), card_show);
+        let note = parse_card_note(card_show).unwrap();
 
         assert_eq!(note.plans, ["DEMO-12 Retry failed uploads"]);
         assert_eq!(note.prs, ["https://github.com/demo/app/pull/498"]);
@@ -950,22 +860,13 @@ mod tests {
     /// name or ID parks the wrong session, and a reopen resumes it.
     #[test]
     fn parse_card_note_reads_logged_sessions() {
-        let card_show = "---\n\
-                         sessions:\n  \
-                           - \"opencode ses_1\"\n\
-                         ---\n\
-                         \n\
-                         # DEMO-KB-001 Retry failed uploads\n\
-                         ---\n\
-                         \n\
-                         ## Log\n\
-                         ---\n\
-                         \n\
-                         - 2026-11-10 session: demo-kb-001-impl (opencode ses_1)\n\
-                         - 2026-11-11 note (hub): parked demo-kb-001-impl\n\
-                         - 2026-11-12 session: demo-kb-001-fix (opencode ses_2)\n";
+        let card_show = r#"{
+            "sections": {
+                "Log": "- 2026-11-10 session: demo-kb-001-impl (opencode ses_1)\n- 2026-11-11 note (hub): parked demo-kb-001-impl\n- 2026-11-12 session: demo-kb-001-fix (opencode ses_2)"
+            }
+        }"#;
 
-        let note = parse_card_note(&"DEMO-KB-001".parse().unwrap(), card_show);
+        let note = parse_card_note(card_show).unwrap();
 
         let logged: Vec<(&str, &str)> = note
             .logged_sessions
@@ -978,141 +879,53 @@ mod tests {
         );
     }
 
-    /// Every session's lifecycle starts from its card's stage, read
-    /// from one `card list` line, and the board shows the title and
-    /// project on the card's row. A stage read from the wrong field, or
-    /// the count line read as a card, gives sessions the wrong state,
-    /// such as `to-close` for a worker whose card is still in
-    /// progress. A card with no kind must not shift its project into
-    /// the title.
+    /// Every session's lifecycle starts from its card's stage, and the
+    /// hub lists each Open Questions item from this one call. A stage
+    /// read wrong gives sessions the wrong state, and an item's number
+    /// or date read wrong sends the user's answer to another question.
+    /// A card in a stage this hub does not know must not fail the list.
     #[test]
-    fn parse_card_list_reads_tab_separated_fields() {
-        let listing = "DEMO-KB-004\tactive\t\tDemo\tFix the docs\n\
-                       DEMO-KB-007\tdone\ttask\tOps\tRetry failed uploads, then warn\n\
-                       2 cards\n";
+    fn parse_card_list_reads_stages_and_questions() {
+        let card_list = r#"[
+            {
+                "key": "DEMO-KB-004",
+                "stage": "active",
+                "project": "Demo",
+                "title": "Fix the docs",
+                "sessions": ["opencode ses_1"],
+                "open_questions": [
+                    {"number": 3, "asked": "2026-11-25", "text": "Deploy tonight?", "lines": ["- A. Yes"]},
+                    {"number": 4, "asked": null, "text": "Which bucket?", "lines": []}
+                ]
+            },
+            {"key": "DEMO-KB-007", "stage": "parked", "project": "Ops", "title": "Retry"}
+        ]"#;
 
-        let cards = parse_card_list(listing);
+        let cards = parse_card_list(card_list).unwrap();
 
-        let make_card = |key: &str, stage, project: &str, title: &str| ListedCard {
-            key: key.parse().unwrap(),
-            stage,
-            project: project.to_owned(),
-            title: title.to_owned(),
-        };
         assert_eq!(
             cards,
-            [
-                make_card("DEMO-KB-004", Stage::Active, "Demo", "Fix the docs"),
-                make_card(
-                    "DEMO-KB-007",
-                    Stage::Done,
-                    "Ops",
-                    "Retry failed uploads, then warn"
-                ),
-            ]
-        );
-    }
-
-    /// A card whose last needs-you line has no answer after it waits
-    /// on the user, so `run_status` shows its session as `you`, and
-    /// `hub answer` finds the question by the line's text. Reading an
-    /// answered question as open hides a finished worker behind `you`,
-    /// and missing a new question after an answer leaves the user's
-    /// question unseen. `hub brief` reads the mark's date to find
-    /// what the user typed since, so a lost date hides those answers.
-    #[test]
-    fn parse_card_note_finds_open_question() {
-        struct Case {
-            name: &'static str,
-            log: &'static str,
-            open: Option<&'static str>,
-            asked_on: Option<&'static str>,
-        }
-        let cases = [
-            Case {
-                name: "asked",
-                log: "- 2026-11-10 needs-you: which bucket?\n",
-                open: Some("which bucket?"),
-                asked_on: Some("2026-11-10"),
-            },
-            Case {
-                name: "answered",
-                log: "- 2026-11-10 needs-you: which bucket?\n\
-                      - 2026-11-10 answered: the cold one\n",
-                open: None,
-                asked_on: None,
-            },
-            Case {
-                name: "asked-again",
-                log: "- 2026-11-10 needs-you: which bucket?\n\
-                      - 2026-11-10 answered: the cold one\n\
-                      - 2026-11-11 needs-you: which region?\n",
-                open: Some("which region?"),
-                asked_on: Some("2026-11-11"),
-            },
-            Case {
-                name: "no-question",
-                log: "- 2026-11-10 active: by the hub\n",
-                open: None,
-                asked_on: None,
-            },
-        ];
-
-        for case in cases {
-            let card_show = format!("---\nstage: active\n---\n\n## Log\n---\n\n{}", case.log);
-
-            let note = parse_card_note(&"DEMO-KB-007".parse().unwrap(), &card_show);
-
-            assert_eq!(note.needs_you.as_deref(), case.open, "{}", case.name);
-            assert_eq!(
-                note.needs_you_date,
-                case.asked_on.map(|date| date.parse().unwrap()),
-                "{}",
-                case.name
-            );
-        }
-    }
-
-    /// `hub answer` removes a question by its place in Open Questions,
-    /// as `card show --section` numbers it, and `hub brief` shows its
-    /// lines. Counting the `---` line under the heading, or a line that
-    /// carries on an item, as an item of its own removes the wrong
-    /// question, and a choice cut off its question hides it from the
-    /// user.
-    #[test]
-    fn parse_card_note_numbers_questions_like_card() {
-        let card_show = "---\n\
-                         stage: active\n\
-                         ---\n\
-                         \n\
-                         ## Open Questions\n\
-                         ---\n\
-                         \n\
-                         - Which bucket?\n\
-                         \n\
-                         - Deploy tonight?\n  \
-                           Deploy the new model tonight?\n  \
-                           - A. Deploy from the branch.\n  \
-                           - B. Wait.\n\
-                         \n\
-                         ## Decisions\n\
-                         ---\n\
-                         \n\
-                         - Keep the cold bucket.\n";
-
-        let note = parse_card_note(&"DEMO-KB-007".parse().unwrap(), card_show);
-
-        assert_eq!(
-            note.open_questions,
-            [
-                vec!["Which bucket?"],
-                vec![
-                    "Deploy tonight?",
-                    "Deploy the new model tonight?",
-                    "- A. Deploy from the branch.",
-                    "- B. Wait.",
+            [ListedCard {
+                key: "DEMO-KB-004".parse().unwrap(),
+                stage: Stage::Active,
+                project: "Demo".to_owned(),
+                title: "Fix the docs".to_owned(),
+                sessions: vec!["ses_1".to_owned()],
+                open_questions: vec![
+                    OpenItem {
+                        number: 3,
+                        asked: Some("2026-11-25".parse().unwrap()),
+                        text: "Deploy tonight?".to_owned(),
+                        lines: vec!["- A. Yes".to_owned()],
+                    },
+                    OpenItem {
+                        number: 4,
+                        asked: None,
+                        text: "Which bucket?".to_owned(),
+                        lines: Vec::new(),
+                    },
                 ],
-            ]
+            }]
         );
     }
 }

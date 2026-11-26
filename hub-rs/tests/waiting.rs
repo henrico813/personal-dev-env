@@ -1,122 +1,134 @@
 mod common;
 
 use hub::commands::waiting::run_waiting;
-use hub::external::cards::CardNote;
+use hub::external::cards::{CardNote, OpenItem, Stage};
 use hub::external::herdr::AgentStatus;
 use jiff::civil::date;
 
-use common::{TestTools, make_agent};
+use common::{InMemoryCards, TestTools, make_agent};
 
-/// A card whose open question, titled `title` with two choices, was
-/// asked on `day` of November 2026.
-fn make_question_card(title: &str, day: i8) -> CardNote {
-    CardNote {
+/// Puts card `key` in `stage` with one Open Questions item, Q1, titled
+/// `title` with two choices, asked on `day` of November 2026 or
+/// undated.
+fn add_question_card(
+    cards: &mut InMemoryCards,
+    key: &str,
+    stage: Stage,
+    title: &str,
+    day: Option<i8>,
+) {
+    cards.stages.insert(key.to_owned(), stage);
+    let item = OpenItem {
+        number: 1,
+        asked: day.map(|day| date(2026, 11, day)),
+        text: title.to_owned(),
+        lines: vec!["- A. Yes.".to_owned(), "- B. No.".to_owned()],
+    };
+    let note = CardNote {
         project: "Demo".to_owned(),
-        needs_you: Some(title.to_owned()),
-        needs_you_date: Some(date(2026, 11, day)),
-        open_questions: vec![vec![
-            title.to_owned(),
-            "- A. Yes.".to_owned(),
-            "- B. No.".to_owned(),
-        ]],
+        open_questions: vec![item],
         ..CardNote::default()
-    }
+    };
+    cards.card_notes.insert(key.to_owned(), note);
 }
 
 /// The user answers from the end of the hub's newest message, so
-/// every open question must show there whole, with the key that
-/// answers it. The oldest comes first even when its card key sorts
-/// later, since it has waited longest.
+/// every open question must show there whole, with its label and the
+/// key that answers it. The oldest comes first even when its card key
+/// sorts later, since it has waited longest, and an undated item typed
+/// by hand comes last. A card's second question takes its own place
+/// and number, so it never hides behind the first.
 #[test]
-fn run_waiting_prints_oldest_question_first_whole() {
+fn run_waiting_prints_every_question_oldest_first() {
     let mut test_tools = TestTools::new();
-    let cards = &mut test_tools.cards.card_notes;
-    cards.insert(
-        "DEMO-KB-002".to_owned(),
-        make_question_card("Pick a name", 24),
+    let cards = &mut test_tools.cards;
+    add_question_card(
+        cards,
+        "DEMO-KB-001",
+        Stage::Active,
+        "Drop the old page",
+        None,
     );
-    cards.insert(
-        "DEMO-KB-009".to_owned(),
-        make_question_card("Deploy tonight", 21),
+    add_question_card(cards, "DEMO-KB-002", Stage::Active, "Pick a name", Some(24));
+    add_question_card(
+        cards,
+        "DEMO-KB-009",
+        Stage::Todo,
+        "Deploy tonight",
+        Some(21),
     );
+    let second = OpenItem {
+        number: 5,
+        asked: Some(date(2026, 11, 25)),
+        text: "Keep the old logs".to_owned(),
+        lines: Vec::new(),
+    };
+    let note = cards.card_notes.get_mut("DEMO-KB-009").unwrap();
+    note.open_questions.push(second);
 
-    let outcome = run_waiting(&test_tools.tools(), &test_tools.run()).unwrap();
+    let outcome = run_waiting(&test_tools.tools()).unwrap();
 
     assert_eq!(
         outcome.lines,
         [
-            "2 questions wait on you.",
+            "4 questions wait on you.",
             "",
-            "**Q1. Deploy tonight (DEMO-KB-009)**",
+            "**Q1. Deploy tonight (DEMO-KB-009, asked 2026-11-21)**",
             "- A. Yes.",
             "- B. No.",
             "",
-            "**Q2. Pick a name (DEMO-KB-002)**",
+            "**Q1. Pick a name (DEMO-KB-002, asked 2026-11-24)**",
             "- A. Yes.",
             "- B. No.",
             "",
-            "Reply like `Q1A`.",
+            "**Q5. Keep the old logs (DEMO-KB-009, asked 2026-11-25)**",
+            "",
+            "**Q1. Drop the old page (DEMO-KB-001, undated)**",
+            "- A. Yes.",
+            "- B. No.",
+            "",
+            "Reply like `DEMO-KB-009 Q1A`.",
         ]
     );
 }
 
-/// A reply key such as `Q2A` must name the same question in every
-/// message, or a reply to an older message answers the wrong card.
-/// Numbers start again at Q1 only once no numbered question waits.
+/// The user decided that only cards in todo, active, in-review or
+/// blocked wait on them. A question on a draft card is still being
+/// written, and one on a done or dropped card needs no answer, so
+/// listing either asks the user for nothing.
 #[test]
-fn run_waiting_keeps_numbers_until_none_wait() {
+fn run_waiting_skips_draft_and_closed_cards() {
     let mut test_tools = TestTools::new();
-    let cards = &mut test_tools.cards.card_notes;
-    cards.insert(
-        "DEMO-KB-001".to_owned(),
-        make_question_card("Deploy tonight", 21),
-    );
-    cards.insert(
-        "DEMO-KB-002".to_owned(),
-        make_question_card("Pick a name", 22),
-    );
-    let read_titles = |lines: Vec<String>| -> Vec<String> {
-        lines
-            .into_iter()
-            .filter(|line| line.starts_with("**Q"))
-            .collect()
-    };
+    let cards = &mut test_tools.cards;
+    let stages = [
+        ("DEMO-KB-001", Stage::Draft),
+        ("DEMO-KB-002", Stage::Todo),
+        ("DEMO-KB-003", Stage::Active),
+        ("DEMO-KB-004", Stage::InReview),
+        ("DEMO-KB-005", Stage::Blocked),
+        ("DEMO-KB-006", Stage::Done),
+        ("DEMO-KB-007", Stage::Dropped),
+    ];
+    for (key, stage) in stages {
+        add_question_card(cards, key, stage, "Deploy tonight", Some(21));
+    }
 
-    // The first run numbers DEMO-KB-001 as Q1 and DEMO-KB-002 as Q2.
-    run_waiting(&test_tools.tools(), &test_tools.run()).unwrap();
+    let outcome = run_waiting(&test_tools.tools()).unwrap();
 
-    // DEMO-KB-001 is answered and DEMO-KB-003 asks a new question.
-    let cards = &mut test_tools.cards.card_notes;
-    cards.remove("DEMO-KB-001");
-    cards.insert(
-        "DEMO-KB-003".to_owned(),
-        make_question_card("Drop the old page", 23),
-    );
-    let kept = run_waiting(&test_tools.tools(), &test_tools.run()).unwrap();
-
-    // Every question is answered, which ends the numbers.
-    test_tools.cards.card_notes.clear();
-    let cleared = run_waiting(&test_tools.tools(), &test_tools.run()).unwrap();
-
-    // The next question starts again at Q1.
-    let cards = &mut test_tools.cards.card_notes;
-    cards.insert(
-        "DEMO-KB-004".to_owned(),
-        make_question_card("Rename the tool", 24),
-    );
-    let restarted = run_waiting(&test_tools.tools(), &test_tools.run()).unwrap();
-
+    let titles: Vec<&str> = outcome
+        .lines
+        .iter()
+        .filter(|line| line.starts_with("**Q"))
+        .map(String::as_str)
+        .collect();
     assert_eq!(
-        read_titles(kept.lines),
+        titles,
         [
-            "**Q2. Pick a name (DEMO-KB-002)**",
-            "**Q3. Drop the old page (DEMO-KB-003)**",
+            "**Q1. Deploy tonight (DEMO-KB-002, asked 2026-11-21)**",
+            "**Q1. Deploy tonight (DEMO-KB-003, asked 2026-11-21)**",
+            "**Q1. Deploy tonight (DEMO-KB-004, asked 2026-11-21)**",
+            "**Q1. Deploy tonight (DEMO-KB-005, asked 2026-11-21)**",
         ]
-    );
-    assert_eq!(cleared.lines, ["No question waits on you."]);
-    assert_eq!(
-        read_titles(restarted.lines),
-        ["**Q1. Rename the tool (DEMO-KB-004)**"]
     );
 }
 
@@ -130,19 +142,19 @@ fn run_waiting_shows_count_on_hub_row() {
         make_agent("kanban-hub-7", AgentStatus::Idle),
         make_agent("demo-impl", AgentStatus::Working),
     ];
-    let cards = &mut test_tools.cards.card_notes;
-    cards.insert(
-        "DEMO-KB-001".to_owned(),
-        make_question_card("Deploy tonight", 21),
+    let cards = &mut test_tools.cards;
+    add_question_card(
+        cards,
+        "DEMO-KB-001",
+        Stage::Active,
+        "Deploy tonight",
+        Some(21),
     );
-    cards.insert(
-        "DEMO-KB-002".to_owned(),
-        make_question_card("Pick a name", 22),
-    );
+    add_question_card(cards, "DEMO-KB-002", Stage::Active, "Pick a name", Some(22));
 
-    run_waiting(&test_tools.tools(), &test_tools.run()).unwrap();
+    run_waiting(&test_tools.tools()).unwrap();
     test_tools.cards.card_notes.clear();
-    run_waiting(&test_tools.tools(), &test_tools.run()).unwrap();
+    run_waiting(&test_tools.tools()).unwrap();
 
     assert_eq!(
         *test_tools.herdr.waiting_counts.borrow(),

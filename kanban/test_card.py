@@ -1146,6 +1146,178 @@ class TestEdit:
         )
 
 
+def write_questions(projects: Path, items: str) -> Path:
+    """Write an active card whose Open Questions section holds ``items``."""
+    path = write_card(projects, KEY, "active")
+    path.write_text(
+        path.read_text().replace(
+            "## Open Questions\n---\n",
+            f"## Open Questions\n---\n\n{items}",
+        ),
+    )
+    return path
+
+
+class TestOpenQuestions:
+    """Open Questions items keep their Q numbers until they are answered."""
+
+    def test_add_numbers_and_dates_new_question(self, projects: Path) -> None:
+        """card add gives a question the next number and today's date.
+
+        The user answers by Q number, so two items with one number, or
+        a hand-typed item whose number shifts when a question is added,
+        would answer the wrong question.
+        """
+        path = write_questions(
+            projects,
+            "- Q2 asked 2026-11-01: Old?\n- Typed by hand?\n",
+        )
+
+        code = run_card(
+            projects,
+            "add",
+            KEY,
+            "Open Questions",
+            "New?\n  - A. Yes\n  Recommended: A",
+        )
+
+        assert code == 0
+        assert card.read_section(path.read_text(), "Open Questions") == (
+            "\n- Q2 asked 2026-11-01: Old?\n"
+            "- Q3: Typed by hand?\n"
+            f"- Q4 asked {TODAY}: New?\n"
+            "  - A. Yes\n"
+            "  Recommended: A\n"
+        )
+
+    @pytest.mark.parametrize(
+        ("item", "change", "left"),
+        [
+            pytest.param(
+                "Q2",
+                ["--remove"],
+                "- Q3: Typed by hand?\n- Q1 asked 2026-11-01: First?\n",
+                id="remove",
+            ),
+            pytest.param(
+                "Q3",
+                ["--remove"],
+                (
+                    "- Q1 asked 2026-11-01: First?\n"
+                    "- Q2 asked 2026-11-02: Second?\n"
+                ),
+                id="remove-hand-typed",
+            ),
+            pytest.param(
+                "Q2",
+                ["Sharper?"],
+                (
+                    "- Q3: Typed by hand?\n"
+                    "- Q1 asked 2026-11-01: First?\n"
+                    "- Q2 asked 2026-11-02: Sharper?\n"
+                ),
+                id="replace",
+            ),
+        ],
+    )
+    def test_edit_by_q_number_keeps_numbers(
+        self,
+        projects: Path,
+        item: str,
+        change: list[str],
+        left: str,
+    ) -> None:
+        """card edit by Q number changes that item, and no other's number.
+
+        hub answer removes a question by its Q number, not its place. Each
+        case would hit the wrong question if card read Q2 as the second
+        item, renumbered the hand-typed Q3, could not find Q3, or dropped
+        the item's ``Q<n>`` head.
+        """
+        path = write_questions(
+            projects,
+            "- Typed by hand?\n"
+            "- Q1 asked 2026-11-01: First?\n"
+            "- Q2 asked 2026-11-02: Second?\n",
+        )
+
+        code = run_card(
+            projects,
+            "edit",
+            KEY,
+            "Open Questions",
+            item,
+            *change,
+            "--by",
+            "hub",
+        )
+
+        assert code == 0
+        section = card.read_section(path.read_text(), "Open Questions")
+        assert section == f"\n{left}"
+
+    def test_add_skips_numbers_of_answered_questions(
+        self,
+        projects: Path,
+    ) -> None:
+        """card add never gives a new question an answered question's number.
+
+        hub answer moves the answered Q2 to Decisions with its head. A
+        new or hand-typed question that took Q2 again would let a late
+        reply such as ``KEY Q2A``, meant for the old one, answer it.
+        """
+        path = write_questions(
+            projects,
+            "- Q1 asked 2026-11-01: First?\n- Typed by hand?\n",
+        )
+        run_card(
+            projects,
+            "add",
+            KEY,
+            "Decisions",
+            "Q2 asked 2026-11-02: Second?\n  Answer: A",
+        )
+
+        code = run_card(projects, "add", KEY, "Open Questions", "Third?")
+
+        assert code == 0
+        assert card.read_section(path.read_text(), "Open Questions") == (
+            "\n"
+            "- Q1 asked 2026-11-01: First?\n"
+            "- Q3: Typed by hand?\n"
+            f"- Q4 asked {TODAY}: Third?\n"
+        )
+
+    def test_edit_refuses_unknown_q_number(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """card edit Q5 fails, and changes nothing, when no item is Q5.
+
+        A second hub answer for one question must not remove the item
+        that now sits at position 5 or any other question.
+        """
+        items = "- Q1: a\n- Q2: b\n- Q3: c\n- Q4: d\n- Q6: e\n"
+        path = write_questions(projects, items)
+        before = path.read_text()
+
+        code = run_card(
+            projects,
+            "edit",
+            KEY,
+            "Open Questions",
+            "Q5",
+            "--remove",
+            "--by",
+            "hub",
+        )
+
+        assert code == 1
+        assert "has no Q5" in capsys.readouterr().err
+        assert path.read_text() == before
+
+
 class TestShow:
     """card show finds one card by its key."""
 
@@ -1215,6 +1387,73 @@ class TestShow:
         assert shown["sections"] == {
             "Acceptance Criteria": "- [ ] Uploads retry.",
         }
+
+    def test_show_json_numbers_every_question(
+        self,
+        projects: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Each Open Questions item gets a Q number, a date and its lines.
+
+        The hub lists items by these numbers, and hub answer removes an
+        item by its number. An item typed by hand, or with a Q number too
+        long for the hub, takes one after the highest written number;
+        reusing a written number would answer the wrong question. Later
+        lines lose their two-space indent, and a bad date such as
+        2026-13-45 reads as undated, since one the hub cannot read fails
+        its whole card list.
+        """
+        path = write_card(projects, KEY, "active")
+        path.write_text(
+            path.read_text().replace(
+                "## Open Questions\n---\n",
+                "## Open Questions\n---\n\n"
+                "- Typed in Obsidian?\n"
+                "- Q3 asked 2026-11-20: Which bucket?\n"
+                "  - A. The cold one\n"
+                "  Recommended: A\n"
+                "- Q5 asked 2026-13-45: Deploy tonight?\n"
+                "- Q2: Stamped by hand?\n"
+                "- Q12345678: Too big?\n",
+            ),
+        )
+        capsys.readouterr()
+
+        code = run_card(projects, "show", KEY, "--json")
+
+        assert code == 0
+        assert json.loads(capsys.readouterr().out)["open_questions"] == [
+            {
+                "number": 6,
+                "asked": None,
+                "text": "Typed in Obsidian?",
+                "lines": [],
+            },
+            {
+                "number": 3,
+                "asked": "2026-11-20",
+                "text": "Which bucket?",
+                "lines": ["- A. The cold one", "Recommended: A"],
+            },
+            {
+                "number": 5,
+                "asked": None,
+                "text": "Deploy tonight?",
+                "lines": [],
+            },
+            {
+                "number": 2,
+                "asked": None,
+                "text": "Stamped by hand?",
+                "lines": [],
+            },
+            {
+                "number": 7,
+                "asked": None,
+                "text": "Q12345678: Too big?",
+                "lines": [],
+            },
+        ]
 
 
 class TestReadParts:
@@ -1539,56 +1778,41 @@ class TestList:
             "2 cards\n"
         )
 
-    def test_list_json_gives_sessions_and_question(
+    def test_list_json_gives_whole_card_fields(
         self,
         projects: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """card list --json gives whole titles, sessions and open questions.
+        """card list --json gives whole titles, sessions and question lists.
 
-        The hub can read every card's state from this one call. A cut
-        title, a lost session, or an answered question still shown as
-        open would put the wrong state on the hub's board.
+        The hub reads every card's state, and every open question, from
+        this one call. A cut title, a lost session or a missing item
+        would put the wrong state on the hub's board.
         """
         title = "Show subagent tokens and cost in the sidebar"
         path = write_card(projects, KEY, "active", title=title)
         path.write_text(
             card.set_field(path.read_text(), "sessions", ["opencode ses_abc"]),
         )
-        write_card(projects, "PDEV-KB-002", "active")
-        for key, mark in [
-            (KEY, "--needs-you"),
-            ("PDEV-KB-002", "--needs-you"),
-            ("PDEV-KB-002", "--answered"),
-        ]:
-            run_card(
-                projects,
-                "note",
-                key,
-                "which bucket?",
-                mark,
-                "--by",
-                "hub",
-            )
         capsys.readouterr()
 
         code = run_card(projects, "list", "--json")
 
         assert code == 0
-        asked, answered = json.loads(capsys.readouterr().out)
-        assert asked == {
-            "key": KEY,
-            "title": title,
-            "stage": "active",
-            "kind": "build",
-            "project": "DevEnv",
-            "stage_date": "2026-11-06",
-            "plans": [],
-            "prs": [],
-            "sessions": ["opencode ses_abc"],
-            "needs_you": "which bucket?",
-        }
-        assert answered["needs_you"] is None
+        assert json.loads(capsys.readouterr().out) == [
+            {
+                "key": KEY,
+                "title": title,
+                "stage": "active",
+                "kind": "build",
+                "project": "DevEnv",
+                "stage_date": "2026-11-06",
+                "plans": [],
+                "prs": [],
+                "sessions": ["opencode ses_abc"],
+                "open_questions": [],
+            },
+        ]
 
 
 class TestBoard:
@@ -1919,23 +2143,17 @@ class TestVersionOneCard:
         }
 
     def test_note_appends_exact_log_lines(self, projects: Path) -> None:
-        """card note adds each Log line in the exact form the hub matches.
+        """card note adds a dated Log line and keeps an old card whole.
 
-        The hub finds waiting cards by the ``- YYYY-MM-DD needs-you:`` and
-        ``answered:`` Log lines, so another date or wording hides the
-        user's questions. The write must also keep the sections a user
-        added by hand to an old card.
+        Agents and the hub record each step in these lines. The write
+        must also keep the sections a user added by hand to an old card.
         """
         path = projects / "DevEnv" / f"{KEY} Fix some work.md"
         path.write_text(V1_CARD)
 
-        run_card(projects, "note", KEY, "which bucket?", "--needs-you")
-        run_card(projects, "note", KEY, "the cold one", "--answered")
         run_card(projects, "note", KEY, "bucket picked", "--by", "hub")
 
         assert path.read_text() == V1_CARD + (
-            f"- {TODAY} needs-you: which bucket?\n"
-            f"- {TODAY} answered: the cold one\n"
             f"- {TODAY} note (hub): bucket picked\n"
         )
 

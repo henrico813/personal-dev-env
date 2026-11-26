@@ -175,7 +175,7 @@ pub(super) fn format_away_lines(events: &[AwayEvent], width: usize) -> Vec<Panel
 
 /// Returns the lines of the NEXT block, which says what the user and
 /// the hub do next, cut to `width`. An example is
-/// ` you: answer DEMO-KB-001 Deploy tonight?`. The `you` and `hub`
+/// ` you: answer DEMO-KB-001 Q1 Deploy tonight?`. The `you` and `hub`
 /// parts give at most `each` lines, so the glance page, the board's
 /// first screen, shows one line of each with `each` 1.
 pub(super) fn format_next_lines(

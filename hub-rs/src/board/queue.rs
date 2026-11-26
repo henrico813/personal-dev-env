@@ -41,7 +41,7 @@ pub(crate) struct Queue {
     /// The cards `is_on_board` keeps, in the order `Cards::list_cards`
     /// gives.
     pub cards: Vec<CardLine>,
-    /// The open question of each card, in key order.
+    /// Every open question, oldest first, as `read_open_questions` gives them.
     pub questions: Vec<OpenQuestion>,
     /// Sessions that wait on the user, by name.
     pub waiting: Vec<SessionLine>,

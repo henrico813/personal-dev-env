@@ -253,7 +253,8 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         }
         Command::Note { run, text } => reports::run_note(&find_run(run)?, text, &now),
         Command::Brief { run } => brief::run_brief(&tools, &find_run(run)?, now.timestamp()),
-        Command::Waiting { run } => waiting::run_waiting(&tools, &find_run(run)?),
+        // `card` keeps each question's Q number, so `--run` goes unread.
+        Command::Waiting { run: _ } => waiting::run_waiting(&tools),
         Command::Ask { key, file } => {
             let text = fs::read_to_string(file).map_err(|source| HubError::File {
                 path: file.clone(),
@@ -261,7 +262,11 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
             })?;
             ask::run_ask(&tools, key, &text)
         }
-        Command::Answer { key, answer } => ask::run_answer(&tools, key, answer),
+        Command::Answer {
+            key,
+            number,
+            answer,
+        } => ask::run_answer(&tools, key, *number, answer),
         Command::Handoff { run, name, handoff } => {
             let run = find_run(run)?;
             let poll = read_poll_interval()?;

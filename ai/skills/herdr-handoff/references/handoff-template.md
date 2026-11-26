@@ -43,7 +43,8 @@ that the new session does not repeat a mistake.>
 
 1. <Each decision, in the user's words where the wording matters.
    For an answer to a question, add where the user gave it and the
-   question's Q number, such as "(Q3)".>
+   question's Q number, such as "(Q3)", with its card key for a
+   question on a card, such as "(DEMO-516 Q3)".>
 
 ## Your work
 

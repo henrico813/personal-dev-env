@@ -297,7 +297,7 @@ pub enum Command {
     },
     /// What waits on the user
     ///
-    /// Prints the board line, reviews.md and each card's open question
+    /// Prints the board line, reviews.md and each open question
     /// in full, so the user can answer without asking what a question
     /// was. Run it when the user asks what waits on them.
     #[command(after_help = "Example: hub brief")]
@@ -307,10 +307,11 @@ pub enum Command {
     },
     /// Open questions, oldest first
     ///
-    /// Prints each card's open question in full, oldest first, with a
-    /// number such as Q2 that stays until no numbered question waits.
-    /// It also shows the count on the hub's sidebar row. The hub ends
-    /// every message to the user with this output.
+    /// Prints every open question on todo, active, in-review and blocked
+    /// cards in full, oldest first, each named like KEY Q3. card keeps
+    /// that number until the question is answered. It also shows the
+    /// count on the hub's sidebar row. The hub ends every message to the
+    /// user with this output.
     #[command(after_help = "Example: hub waiting")]
     Waiting {
         #[command(flatten)]
@@ -318,11 +319,12 @@ pub enum Command {
     },
     /// Put a question on a card
     ///
-    /// Adds the question in FILE to the card's Open Questions and marks
-    /// the card needs-you, so hub brief and hub board show it. FILE
-    /// starts with a ## title, then the question, two or more choices
-    /// that each start with -, a Recommended line and an If no reply
-    /// line. It refuses a card that already waits on the user.
+    /// Adds the question in FILE to the card's Open Questions, where
+    /// card gives it a Q number and date, so hub waiting, hub brief and
+    /// hub board show it. FILE starts with a ## title, then the
+    /// question, two or more choices that each start with -, a
+    /// Recommended line and an If no reply line. It refuses a card that
+    /// is not todo, active, in-review or blocked.
     #[command(after_help = "Example: hub ask DEMO-KB-007 question.md")]
     Ask {
         /// The card's key, such as DEMO-KB-007
@@ -332,13 +334,16 @@ pub enum Command {
     },
     /// Save the user's answer
     ///
-    /// Moves the card's open question to its Decisions, with ANSWER as
-    /// the last line, and marks the card answered. Run it when the user
-    /// answers.
-    #[command(after_help = "Example: hub answer DEMO-KB-007 \\\n  \"A, deploy tonight\"")]
+    /// Moves the card's open question NUMBER to its Decisions, with
+    /// ANSWER as the last line. NUMBER is the question's Q number, such
+    /// as Q3 or 3. Run it when the user answers.
+    #[command(after_help = "Example: hub answer DEMO-KB-007 Q3 \\\n  \"A, deploy tonight\"")]
     Answer {
         /// The card's key
         key: CardKey,
+        /// The question's Q number, such as Q3
+        #[arg(value_parser = parse_question_number)]
+        number: u32,
         /// What the user chose, such as "A, deploy tonight"
         answer: String,
     },
@@ -743,6 +748,15 @@ pub fn parse_command() -> Result<Cli, HubError> {
     })
 }
 
+/// Reads a question's Q number, given as `3`, `Q3` or `q3`.
+fn parse_question_number(text: &str) -> Result<u32, String> {
+    let digits = text.strip_prefix(['Q', 'q']).unwrap_or(text);
+    match digits.parse::<u32>() {
+        Ok(number) if number > 0 => Ok(number),
+        _ => Err(format!("'{text}' is not a Q number, such as Q3 or 3")),
+    }
+}
+
 /// Returns the run folder from `--run`, else from `HUB_RUN`, else the
 /// hub's folder in `local_state`, which is `~/.local/state`. `AutoStep`
 /// steps pass `None` as `local_state`, since the user's usual hub runs
@@ -1044,6 +1058,21 @@ mod tests {
             .collect();
 
         assert_eq!(listed, expected);
+    }
+
+    /// The user replies with the Q number as the hub lists it, such as
+    /// `Q3`, and an agent may pass the bare digit. Refusing either form
+    /// stops the answer from being saved.
+    #[test]
+    fn answer_reads_q_number_in_each_form() {
+        for given in ["3", "Q3", "q3"] {
+            let cli = Cli::try_parse_from(["hub", "answer", "DEMO-KB-007", given, "A"]).unwrap();
+
+            let Command::Answer { number, .. } = cli.command else {
+                panic!("{given}: expected hub answer");
+            };
+            assert_eq!(number, 3, "{given}");
+        }
     }
 
     /// A remote hub lists, flags and messages sessions on another

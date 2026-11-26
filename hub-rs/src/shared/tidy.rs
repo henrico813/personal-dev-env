@@ -882,7 +882,7 @@ mod tests {
         facts.card = Some(CardFacts {
             key: "DEMO-KB-001".parse().unwrap(),
             stage: Stage::Done,
-            needs_you_open: false,
+            has_open_question: false,
             newer_session_live: false,
             from_report: false,
         });

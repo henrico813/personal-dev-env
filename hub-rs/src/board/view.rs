@@ -1080,6 +1080,7 @@ pub(super) mod tests {
             questions: vec![OpenQuestion {
                 key: "DEMO-KB-001".parse().unwrap(),
                 project: "Demo".to_owned(),
+                number: 1,
                 title: "Deploy tonight?".to_owned(),
                 lines: vec![
                     "Deploy the new model tonight?".to_owned(),
@@ -1228,13 +1229,13 @@ pub(super) mod tests {
             " 10:31 DEMO-KB-002 launched card-sync o~",
             " 10:12 docs-fix reported",
             "QUEUE  1 run · 2 you · 1 idle        [2]",
-            " you  DEMO-KB-001 Deploy tonight? Demo",
+            " you  DEMO-KB-001 Q1 Deploy toni~ Demo",
             " you  blocked-fix  needs you      worker",
             " run  DEMO-KB-001 Faster search   Demo",
             " idle DEMO-KB-002 Board for the ~ Demo",
             " rev  DEMO-KB-010 Retry a failed~ Demo",
             "NEXT                                 [3]",
-            " you: answer DEMO-KB-001 Deploy tonight?",
+            " you: answer DEMO-KB-001 Q1 Deploy toni~",
             " then: review 1 card",
             " hub: start DEMO-KB-020 Sort ready cards",
             "? help  4 sessions  5 machine  q quit",
@@ -1275,7 +1276,7 @@ pub(super) mod tests {
             "AWAY  newest                         [1]",
             "   + 3 more",
             "QUEUE  1 run · 2 you · 1 idle        [2]",
-            " you  DEMO-KB-001 Deploy tonight? Demo",
+            " you  DEMO-KB-001 Q1 Deploy toni~ Demo",
             " you  blocked-fix  needs you      worker",
             "   + 3 more",
             "NEXT                                 [3]",
@@ -1325,7 +1326,7 @@ pub(super) mod tests {
             })
             .collect();
         let expected = [
-            (" you  DEMO-KB-001 Question 4?     Demo", "tap block:queue"),
+            (" you  DEMO-KB-001 Q5 Question 4?  Demo", "tap block:queue"),
             (
                 " you  blocked-fix  needs you      worker",
                 "tap block:queue",
@@ -1352,7 +1353,7 @@ pub(super) mod tests {
         let expected = [
             "< queue  1 run · 2 you · 1 idle",
             "v Needs you 2",
-            " you  DEMO-KB-001 Deploy tonight? Demo",
+            " you  DEMO-KB-001 Q1 Deploy toni~ Demo",
             " you  blocked-fix  needs you      worker",
             "v Active 5",
             " run  DEMO-KB-001 Faster search   Demo",
@@ -1399,6 +1400,8 @@ pub(super) mod tests {
         queue.questions.extend((1..=4).map(|number| OpenQuestion {
             key: "DEMO-KB-001".parse().unwrap(),
             project: "Demo".to_owned(),
+            // The sample queue's question is already Q1.
+            number: number + 1,
             title: format!("Question {number}?"),
             lines: Vec::new(),
             sessions: Vec::new(),
@@ -1532,7 +1535,7 @@ pub(super) mod tests {
             "count:you",
             "count:idle",
             "group:needs-you",
-            "question:Deploy tonight?",
+            "question:DEMO-KB-001 Q1",
             "session:blocked-fix",
             "group:active",
             "card:DEMO-KB-001",
@@ -1616,7 +1619,7 @@ pub(super) mod tests {
             (hiding.hidden_by.word(), hiding.show.as_str())
         };
         assert_eq!(
-            read_hiding("question:Deploy tonight?"),
+            read_hiding("question:DEMO-KB-001 Q1"),
             ("scroll", "press pageup")
         );
         assert_eq!(read_hiding("card:DEMO-KB-005"), ("more", "press pagedown"));
@@ -1804,7 +1807,7 @@ pub(super) mod tests {
             ]
         );
         assert!(lines[2].starts_with(" 10:40 api-build reported "));
-        assert!(lines[2].ends_with(" │  you: answer DEMO-KB-001 Deploy tonig~"));
+        assert!(lines[2].ends_with(" │  you: answer DEMO-KB-001 Q1 Deploy to~"));
     }
 
     /// A read can move rows under a finger, so a tap on a session row

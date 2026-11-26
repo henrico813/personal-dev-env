@@ -934,8 +934,8 @@ mod tests {
 
     /// Herdr keeps a label for each state, and a pane shows only the
     /// label for its present state. Reading a label set for another
-    /// state would show a working agent as `you`, so the hub would send
-    /// the user to a session that needs nothing.
+    /// state would show a working agent as `flagged`, so the hub would
+    /// send the user to a session that needs nothing.
     #[test]
     fn parse_agent_marks_only_its_present_state() {
         let answer: Value = serde_json::from_str(AGENT_LIST).unwrap();

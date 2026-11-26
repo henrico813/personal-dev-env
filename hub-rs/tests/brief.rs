@@ -3,7 +3,7 @@ mod common;
 use std::fs;
 
 use hub::commands::brief::run_brief;
-use hub::external::cards::{BlockedCard, BoardCounts, CardNote};
+use hub::external::cards::{BlockedCard, BoardCounts, CardNote, OpenItem, Stage};
 use hub::external::herdr::AgentStatus;
 use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp};
@@ -15,8 +15,8 @@ use common::{OpenCodeRow, TestTools, make_agent, write_opencode_db};
 /// desk. Hubs once named questions by number alone and the user
 /// had to ask what they were, so every line of each card's open
 /// question prints, after the board line and the pull requests.
-/// `hub ask` adds its item last, so an older item with the same title
-/// must not hide the question's lines.
+/// A hand-typed item with no date
+/// says `undated`, so the user still knows which one it is.
 #[test]
 fn run_brief_prints_board_reviews_then_questions() {
     let mut test_tools = TestTools::new();
@@ -26,21 +26,33 @@ fn run_brief_prints_board_reviews_then_questions() {
         active_limit: 8,
         in_review_limit: 6,
     });
+    test_tools
+        .cards
+        .stages
+        .insert("DEMO-KB-007".to_owned(), Stage::Active);
     test_tools.cards.card_notes.insert(
         "DEMO-KB-007".to_owned(),
         CardNote {
             project: "Demo".to_owned(),
-            needs_you: Some("New model overnight".to_owned()),
             open_questions: vec![
-                vec!["New model overnight".to_owned()],
-                vec![
-                    "New model overnight".to_owned(),
-                    "Deploy the new model tonight?".to_owned(),
-                    "- A. Deploy from the branch.".to_owned(),
-                    "- B. Wait until you return.".to_owned(),
-                    "Recommended: A, since you test in the morning.".to_owned(),
-                    "If no reply: B.".to_owned(),
-                ],
+                OpenItem {
+                    number: 2,
+                    asked: Some("2026-11-21".parse().unwrap()),
+                    text: "New model overnight".to_owned(),
+                    lines: vec![
+                        "Deploy the new model tonight?".to_owned(),
+                        "- A. Deploy from the branch.".to_owned(),
+                        "- B. Wait until you return.".to_owned(),
+                        "Recommended: A, since you test in the morning.".to_owned(),
+                        "If no reply: B.".to_owned(),
+                    ],
+                },
+                OpenItem {
+                    number: 3,
+                    asked: None,
+                    text: "Keep the old logs?".to_owned(),
+                    lines: vec![],
+                },
             ],
             ..CardNote::default()
         },
@@ -56,18 +68,20 @@ fn run_brief_prints_board_reviews_then_questions() {
     assert_eq!(
         outcome.lines,
         [
-            "board active 5 of 8, in-review 19 of 6; 1 question",
+            "board active 5 of 8, in-review 19 of 6; 2 questions",
             "",
             "# PRs",
             "",
             "| #1 | Fix |",
             "",
-            "Question DEMO-KB-007: New model overnight",
+            "Question DEMO-KB-007 Q2, asked 2026-11-21: New model overnight",
             "Deploy the new model tonight?",
             "- A. Deploy from the branch.",
             "- B. Wait until you return.",
             "Recommended: A, since you test in the morning.",
             "If no reply: B.",
+            "",
+            "Question DEMO-KB-007 Q3, undated: Keep the old logs?",
         ]
     );
 }
@@ -157,7 +171,7 @@ fn run_brief_reports_failed_question_read() {
         active_limit: 8,
         in_review_limit: 6,
     });
-    test_tools.cards.read_error = Some("card: grep failed".to_owned());
+    test_tools.cards.read_error = Some("card: list failed".to_owned());
 
     let outcome = run_brief(&test_tools.tools(), &test_tools.run(), Timestamp::now()).unwrap();
 
@@ -166,33 +180,7 @@ fn run_brief_reports_failed_question_read() {
         [
             "board active 3 of 8, in-review 0 of 6; questions unread",
             "",
-            "questions: card: grep failed",
-        ]
-    );
-}
-
-/// The search finds a marked card that `card show` then cannot read.
-/// Its question still waits, so skipping the card would give the user
-/// a false all-clear; the brief names the failure instead.
-#[test]
-fn run_brief_reports_unreadable_marked_card() {
-    let mut test_tools = TestTools::new();
-    test_tools.cards.board = Some(BoardCounts {
-        active: 3,
-        in_review: 0,
-        active_limit: 8,
-        in_review_limit: 6,
-    });
-    test_tools.cards.unreadable_needs_you = vec!["DEMO-KB-008".to_owned()];
-
-    let outcome = run_brief(&test_tools.tools(), &test_tools.run(), Timestamp::now()).unwrap();
-
-    assert_eq!(
-        outcome.lines,
-        [
-            "board active 3 of 8, in-review 0 of 6; questions unread",
-            "",
-            "questions: card: no card DEMO-KB-008",
+            "questions: card: list failed",
         ]
     );
 }
@@ -264,21 +252,30 @@ fn run_brief_lists_only_live_pending_approvals() {
 #[test]
 fn run_brief_flags_sessions_user_typed_in() {
     let mut test_tools = TestTools::new();
-    let asked_on = "2026-11-21".parse().unwrap();
+    let make_item = |text: &str| OpenItem {
+        number: 1,
+        asked: Some("2026-11-21".parse().unwrap()),
+        text: text.to_owned(),
+        lines: Vec::new(),
+    };
     let vault = CardNote {
         project: "Demo".to_owned(),
-        needs_you: Some("Keep the main vault in nobs?".to_owned()),
-        needs_you_date: Some(asked_on),
+        open_questions: vec![make_item("Keep the demo folder in nobs?")],
         sessions: vec!["ses_old".to_owned(), "ses_new".to_owned()],
         ..CardNote::default()
     };
     let patch = CardNote {
         project: "Demo".to_owned(),
-        needs_you: Some("Commit the fix after the merge?".to_owned()),
-        needs_you_date: Some(asked_on),
+        open_questions: vec![make_item("Commit the fix after the merge?")],
         sessions: vec!["ses_fix".to_owned()],
         ..CardNote::default()
     };
+    for key in ["DEMO-320", "DEMO-323"] {
+        test_tools
+            .cards
+            .stages
+            .insert(key.to_owned(), Stage::Active);
+    }
     test_tools
         .cards
         .card_notes
@@ -349,9 +346,9 @@ fn run_brief_flags_sessions_user_typed_in() {
     assert_eq!(
         questions,
         [
-            "Question DEMO-320: Keep the main vault in nobs?",
+            "Question DEMO-320 Q1, asked 2026-11-21: Keep the demo folder in nobs?",
             &format!("Check first: the user wrote in demo-320-design-10 {typed}"),
-            "Question DEMO-323: Commit the fix after the merge?",
+            "Question DEMO-323 Q1, asked 2026-11-21: Commit the fix after the merge?",
         ]
     );
 }

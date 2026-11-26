@@ -35,7 +35,7 @@ named vault. The shape of the key and the file name comes from the
 | `card new PROJECT TITLE [--kind K] [--user] [--why TEXT]` | Makes a card in `draft` and prints its name. Refuses a title that breaks a [title rule](#title-rules). |
 | `card new PROJECT --from FILE [--user] [--why TEXT]` | Makes a card in `draft` with the title, kind and section text from FILE, laid out as `card new --help` shows. Refuses any other heading, a repeated heading, and text before the first heading, so no line is lost. |
 | `card new PROJECT TITLE --adopt STAGE --user [--why TEXT] [--session [AGENT]]` | Makes a card straight in `active`, `in-review` or `blocked`, for work already under way. `blocked` needs `--why`. `--session` also records the agent's session, as `card link --session` does, but skips its check for a session on another card. |
-| `card list [--stage S] [--project P] [--kind K] [--tabs \| --json]` | Prints one line per card: card key, stage, kind and title, in stage order. A long line is cut to 60 characters. With `--tabs`, each line holds the card key, stage, kind, project folder and whole title, split by tabs, for scripts such as `hub board`. With `--json`, see [JSON output](#json-output). |
+| `card list [--stage S] [--project P] [--kind K] [--tabs \| --json]` | Prints one line per card: card key, stage, kind and title, in stage order. A long line is cut to 60 characters. With `--tabs`, each line holds the card key, stage, kind, project folder and whole title, split by tabs, for scripts such as `dream`. With `--json`, see [JSON output](#json-output). |
 | `card board [--json]` | Prints the count per stage, active and in-review each against its limit, and the in-review cards by `stage_date`, oldest first. When a card is blocked, it also prints their count and the oldest wait, and lists them, longest wait first, with days waited and the reason. See [Board](#board). |
 | `card show KEY [--section S] [--json]` | Prints the whole card, or one section with its items numbered from 1. S is any `##` heading of the card in any case, such as `"open questions"`. A section from [Sections](#sections) that the card lacks prints its heading alone. |
 | `card outline KEY` | Prints each `##` and `###` heading with the lines its part covers. See [Sections](#sections). |
@@ -43,11 +43,9 @@ named vault. The shape of the key and the file name comes from the
 | `card move KEY STAGE [--user] [--why TEXT]` | Moves a card, sets `stage_date` to today and adds a Log line. |
 | `card move KEY active --session [AGENT]` | Starts a card and records the worker's session in the same write. |
 | `card note KEY TEXT` | Adds a dated note to the Log. |
-| `card note KEY TEXT --needs-you` | Logs a question, approval or failure that waits on the user. |
-| `card note KEY TEXT --answered` | Logs the user's answer. |
-| `card add KEY SECTION TEXT` | Adds a bullet to Context, Open Questions or Decisions, or a `- [ ]` item to Acceptance Criteria. |
+| `card add KEY SECTION TEXT` | Adds a bullet to Context, Open Questions or Decisions, or a `- [ ]` item to Acceptance Criteria. In Open Questions the bullet gets the next Q number and today's date, as [Open questions](#open-questions) shows. |
 | `card attach KEY FILE` | Copies FILE to `attachments/<KEY> <file name>` in the card's project folder and adds a `![[...]]` line to Context. Refuses a missing file and never overwrites an attachment. |
-| `card edit KEY SECTION N TEXT` | Replaces the words of item N, as `card show KEY --section SECTION` numbers it. A checkbox or bullet stays, with its tick. Logs the old words. |
+| `card edit KEY SECTION N TEXT` | Replaces the words of item N, as `card show KEY --section SECTION` numbers it. In Open Questions, N can also be the item's Q number, such as `Q3`, and the item keeps its `Q3 asked DATE: ` head. A checkbox or bullet stays, with its tick. Logs the old words. |
 | `card edit KEY SECTION N --remove` | Removes item N and logs its words. |
 | `card edit KEY SECTION N --tick` or `--untick` | Ticks or unticks item N's checkbox and keeps its words. Refuses an item with no checkbox or a box already in that state. Logs the item's words. |
 | `card set KEY title VALUE` | Changes the title heading and renames the file. Refuses a title that breaks a [title rule](#title-rules). |
@@ -233,12 +231,21 @@ Each card is an object like this:
   "plans": [],
   "prs": [],
   "sessions": ["opencode ses_abc"],
-  "needs_you": "which bucket?"
+  "open_questions": [
+    {
+      "number": 3,
+      "asked": "2026-11-25",
+      "text": "Which bucket?",
+      "lines": ["- A. The old one.", "Recommended: A"]
+    }
+  ]
 }
 ```
 
-`needs_you` is the text of the newest `needs-you` Log line,
-or `null` when an `answered` line follows it or none exists.
+`open_questions` lists the items under Open Questions in card order,
+each with its Q number, the day it was asked or `null`, the words of
+its first line after the `Q3 asked DATE: ` head, and its later lines
+without their indent.
 
 | Command | JSON |
 | --- | --- |
@@ -246,6 +253,21 @@ or `null` when an `answered` line follows it or none exists.
 | `card show KEY --json` | One card object plus `sections`, which maps each section name to its text: the seven layout sections, then each other `##` heading of the card in file order. A section the card lacks maps to `""`. With `--section S`, `sections` holds only S. |
 | `card board --json` | `counts` per stage, `limits` for `active` and `in-review`, an `in-review` list of card objects oldest first, and a `blocked` list of card objects, longest wait first, each with `days` and `reason`. |
 | `card check --json` | `cards`, the number of cards read, and `problems`, one line per problem as the text prints it. |
+
+## Open questions
+---
+
+`card add KEY "Open Questions" TEXT` writes
+`- Q4 asked 2026-11-25: TEXT`. Q4 is one more than the highest Q
+number in Open Questions and Decisions, where `hub answer` keeps an
+answered item's `Q3 asked DATE: ` head. So a number names one
+question on the card for good: it stays with its item even when an
+item above it is removed, and no later question gets it once the
+item is answered. Each `card add` or `card edit` in Open Questions
+first stamps each item typed by hand without a number, as
+`- Q2: words`. Until then such an item shows the next number after
+the highest written one in Open Questions, in card order. Use the Q
+number with `card edit KEY "Open Questions" Q4 --remove`.
 
 ## Frontmatter
 ---
@@ -357,8 +379,6 @@ Appendix.
 | `card new` | `draft: by NAME [for the user][. WHY]` |
 | `card new --adopt` | `STAGE: adopted by NAME for the user[. WHY]` |
 | `card move` | `STAGE: by NAME [for the user][. WHY]` |
-| `card note --needs-you` | `needs-you: TEXT` |
-| `card note --answered` | `answered: TEXT` |
 | `card note` | `note (NAME): TEXT` |
 | `card merged` | `STAGE: by card merged for the user[. URL merged]` |
 | `card merged`, card stays | `note (card merged): URL merged, but the card stays STAGE: REASONS` |

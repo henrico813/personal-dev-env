@@ -107,7 +107,7 @@ struct StatusView {
 struct StateCounts {
     working: usize,
     hub: usize,
-    you: usize,
+    flagged: usize,
     kept: usize,
     to_close: usize,
     to_park: usize,
@@ -120,7 +120,7 @@ impl StateCounts {
         let field = match state {
             Lifecycle::Working => &mut self.working,
             Lifecycle::WaitsOnHub => &mut self.hub,
-            Lifecycle::WaitsOnUser => &mut self.you,
+            Lifecycle::WaitsOnUser => &mut self.flagged,
             Lifecycle::Kept(_) => &mut self.kept,
             Lifecycle::ToClose => &mut self.to_close,
             Lifecycle::ToPark => &mut self.to_park,
@@ -204,8 +204,8 @@ fn format_status_text(view: &StatusView) -> Vec<String> {
     lines.extend(blocked);
     lines.extend([
         format!(
-            "open {open}: {} working, {} hub, {} you,",
-            counts.working, counts.hub, counts.you
+            "open {open}: {} working, {} hub, {} flagged,",
+            counts.working, counts.hub, counts.flagged
         ),
         format!(
             "  {} kept, {} to-close, {} to-park; {} parked",
@@ -303,7 +303,7 @@ fn format_status_json(view: &StatusView) -> String {
         "counts": {
             "working": counts.working,
             "hub": counts.hub,
-            "you": counts.you,
+            "flagged": counts.flagged,
             "kept": counts.kept,
             "to-close": counts.to_close,
             "to-park": counts.to_park,
@@ -490,14 +490,14 @@ mod tests {
                 "hub kanban-hub-18 131k, watch running, hub next stopped",
                 "board active 5 of 8, in-review 19 of 6",
                 "blocked 1, oldest 8 days",
-                "open 6: 1 working, 1 hub, 1 you,",
+                "open 6: 1 working, 1 hub, 1 flagged,",
                 "  1 kept, 1 to-close, 1 to-park; 1 parked",
                 "unread 2: demo-kb-007-impl docs-fix",
                 "",
                 "NAME                  STATE     CTX   WHY",
                 "docs-fix              working   152k  1 held, hand off",
                 "demo-kb-007-impl      hub       98k   unread report",
-                "demo-kb-009-auto      you       12k   blocked",
+                "demo-kb-009-auto      flagged   12k   blocked",
                 "demo-kb-012-auto      kept      77k   unsaved files in /home/u/wt/demo-kb-012",
                 "review-kanban-hub-16  to-close  60k   report read",
                 "demo-kb-090-auto      to-park   104k  -",
@@ -574,7 +574,7 @@ mod tests {
                 "counts": {
                     "working": 1,
                     "hub": 1,
-                    "you": 1,
+                    "flagged": 1,
                     "kept": 1,
                     "to-close": 1,
                     "to-park": 1,
@@ -592,7 +592,7 @@ mod tests {
                     ),
                     make_session(
                         "demo-kb-009-auto",
-                        "you",
+                        "flagged",
                         "blocked",
                         Some(12_000),
                         Some(("DEMO-KB-009", "active")),

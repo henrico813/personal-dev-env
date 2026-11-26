@@ -4,7 +4,7 @@ use std::fs::{self, File};
 use std::time::{Duration, SystemTime};
 
 use hub::commands::status::run_status;
-use hub::external::cards::{CardNote, Stage};
+use hub::external::cards::{CardNote, OpenItem, Stage};
 use hub::external::herdr::{Agent, AgentStatus};
 use jiff::{SignedDuration, Timestamp};
 use serde_json::{Value, json};
@@ -56,9 +56,9 @@ fn write_parked_record(test_tools: &TestTools, name: &str, card: &str) {
 /// unsure. A hub a handoff named closes. A parked record
 /// shows with its time. A worker whose card is not on the board stays
 /// kept, since no rule can tell whether its work is finished. A card
-/// needing the user's review, with an open needs-you note, shows its
-/// worker as `you`, or the tidy pass parks a worker whose question
-/// the user has not answered.
+/// needing the user's review, with an open question, shows its worker
+/// as `flagged`, or the tidy pass parks a worker whose question the
+/// user has not answered.
 #[test]
 fn run_status_rows_cover_sessions_not_hub() {
     // The hub's own pane, the old hub it took over from, a working
@@ -104,7 +104,12 @@ fn run_status_rows_cover_sessions_not_hub() {
     test_tools.cards.card_notes.insert(
         "DEMO-KB-005".to_owned(),
         CardNote {
-            needs_you: Some("Which bucket?".to_owned()),
+            open_questions: vec![OpenItem {
+                number: 1,
+                asked: Some("2026-11-11".parse().unwrap()),
+                text: "Which bucket?".to_owned(),
+                lines: Vec::new(),
+            }],
             ..CardNote::default()
         },
     );
@@ -154,8 +159,8 @@ fn run_status_rows_cover_sessions_not_hub() {
             ("docs-fix".to_owned(), "hub".to_owned(), "unsure".to_owned()),
             (
                 "demo-kb-005-impl".to_owned(),
-                "you".to_owned(),
-                "needs-you note".to_owned(),
+                "flagged".to_owned(),
+                "open question".to_owned(),
             ),
             (
                 "demo-kb-007-impl".to_owned(),
