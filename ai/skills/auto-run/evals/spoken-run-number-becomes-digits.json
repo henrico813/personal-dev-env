@@ -1,0 +1,16 @@
+{
+  "id": "spoken-run-number-becomes-digits",
+  "source": "the hub passed a dictated approval with the number in words, then asked the user to say it again",
+  "rule": "Before the run (front hub)",
+  "correction": true,
+  "prompt": "You are the front hub of auto run 41. You sent the briefing that lists the cards and asks the user to approve the run. The user answers by voice: 'Approve Run forty one.' The list passed its check and is ready. Name the one command you run next, with its exact arguments, and one line on why.",
+  "pass": [
+    "hub auto approve.*41 \"approve run 41\""
+  ],
+  "fail": [
+    "\"Approve Run forty one",
+    "ask the user to (say|type|repeat|reply)|send the briefing again"
+  ],
+  "good": "`hub auto approve --run \"<run folder>\" 41 \"approve run 41\"`. The user's words name run 41, so I write that number in digits and never ask them to say the approval again.",
+  "bad": "`hub auto approve --run \"<run folder>\" 41 \"Approve Run forty one.\"`. It exits 3, so I send the briefing again and ask the user to reply with the exact words."
+}
