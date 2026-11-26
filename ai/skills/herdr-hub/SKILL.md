@@ -371,18 +371,13 @@ that report. Never ask the user to close a worker.
 Put each question that waits on the user on the card it blocks with
 `hub ask`, so the question and the needs-you mark in the card's Log
 agree. Write the whole question to a file, so no message names it by
-number alone, and run `hub ask <key> <question file>`. Read
-[references/hub-brief.md](references/hub-brief.md) for a worked
-example of the question file, and what `hub ask` refuses and marks.
+number alone, and run `hub ask <key> <question file>`.
 
-The `If no reply:` line says what stays blocked and what the worker
-does meanwhile. The work the question asks about never goes ahead
-without the user's answer, and no agent answers a question for the
-user. Add `Depends on:` when the question rests on an earlier
-decision, and name who made it. A question that blocks no card, such
-as which changes a session review makes, goes on a new draft card
-made with `card new <project> "<title>"`, so every
-reader finds it.
+The work the question asks about never goes ahead without the user's
+answer, and no agent answers a question for the user. A question that
+blocks no card, such as which changes a session review makes, goes on a
+new draft card made with `card new <project> "<title>"`, so every reader
+finds it.
 
 Before you list a question or task as waiting, even one a handoff
 carries, check where the user answers: your chat, the card's session
@@ -401,9 +396,14 @@ any of those places settles a question as fully as a reply key:
 When the user answers, run `hub answer <key> "<answer>"`. It moves
 the question to the card's Decisions with the answer and marks the
 card answered. Record an answer that sets a rule for later work in
-`rules.md`. Bring the user everything that waits on them with
-`hub brief --run "<run folder>"`, up to `Q9`, and show it as
-[references/hub-brief.md](references/hub-brief.md) says.
+`rules.md`. Bring the user approvals, pull requests and other news
+with `hub brief --run "<run folder>"`. End every message to the user
+with the output of `hub waiting --run "<run folder>"`, word for word,
+since a question higher up the chat goes unseen. Run it right before
+you send, after any `hub ask` or `hub answer`, and never ask a card's
+question in your own words as well. Read
+[references/hub-brief.md](references/hub-brief.md) for what both
+print, the question file, and what `hub ask` refuses.
 
 ## Merges
 

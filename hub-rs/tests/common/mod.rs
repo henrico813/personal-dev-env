@@ -79,6 +79,8 @@ pub struct InMemoryHerdr {
     pub cleared: RefCell<Vec<String>>,
     /// Each `tag_hub_pane` call, as its pane ID and `go_to` value.
     pub tagged_hubs: RefCell<Vec<(String, String)>>,
+    /// Each `show_waiting_count` call, as its pane ID and count.
+    pub waiting_counts: RefCell<Vec<(String, usize)>>,
     /// Each `set_go_to` call, as its pane ID and value, `None` for a
     /// clear.
     pub go_to_writes: RefCell<Vec<(String, Option<String>)>>,
@@ -238,6 +240,14 @@ impl Herdr for InMemoryHerdr {
         self.tagged_hubs
             .borrow_mut()
             .push((pane_id.to_owned(), go_to.to_owned()));
+        Ok(())
+    }
+
+    fn show_waiting_count(&self, pane_id: &str, count: usize) -> Result<(), HerdrError> {
+        self.take_failure("show_waiting_count")?;
+        self.waiting_counts
+            .borrow_mut()
+            .push((pane_id.to_owned(), count));
         Ok(())
     }
 
@@ -472,6 +482,10 @@ impl Herdr for &InMemoryHerdr {
 
     fn tag_hub_pane(&self, pane_id: &str, go_to: &str) -> Result<(), HerdrError> {
         (**self).tag_hub_pane(pane_id, go_to)
+    }
+
+    fn show_waiting_count(&self, pane_id: &str, count: usize) -> Result<(), HerdrError> {
+        (**self).show_waiting_count(pane_id, count)
     }
 
     fn set_go_to(&self, pane_id: &str, go_to: Option<&str>) -> Result<(), HerdrError> {

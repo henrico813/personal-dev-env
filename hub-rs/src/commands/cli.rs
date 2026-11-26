@@ -59,6 +59,7 @@ one used last.
   wait*    Wake me after a job (workers)
   note*    Add a timed line to notes.md
   brief*   What waits on the user
+  waiting* Open questions, oldest first
   ask      Put a question on a card
   answer   Save the user's answer
   handoff* Start the next hub
@@ -301,6 +302,17 @@ pub enum Command {
     /// was. Run it when the user asks what waits on them.
     #[command(after_help = "Example: hub brief")]
     Brief {
+        #[command(flatten)]
+        run: RunArg,
+    },
+    /// Open questions, oldest first
+    ///
+    /// Prints each card's open question in full, oldest first, with a
+    /// number such as Q2 that stays until no numbered question waits.
+    /// It also shows the count on the hub's sidebar row. The hub ends
+    /// every message to the user with this output.
+    #[command(after_help = "Example: hub waiting")]
+    Waiting {
         #[command(flatten)]
         run: RunArg,
     },
@@ -690,6 +702,7 @@ impl Command {
             Command::Wait { .. } => "wait",
             Command::Note { .. } => "note",
             Command::Brief { .. } => "brief",
+            Command::Waiting { .. } => "waiting",
             Command::Ask { .. } => "ask",
             Command::Answer { .. } => "answer",
             Command::Handoff { .. } => "handoff",
@@ -908,6 +921,7 @@ pub fn can_take_machine(command: &Command) -> bool {
         | Command::Inbox { .. }
         | Command::Note { .. }
         | Command::Brief { .. }
+        | Command::Waiting { .. }
         | Command::Ask { .. }
         | Command::Answer { .. }
         | Command::Handoff { .. }

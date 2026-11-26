@@ -54,6 +54,10 @@ pub trait Herdr {
     /// Sets a hub's `go_to` token, which keeps it in the filtered agent
     /// list in that place, and labels its row "hub busy" or "hub free".
     fn tag_hub_pane(&self, pane_id: &str, go_to: &str) -> Result<(), HerdrError>;
+    /// Labels a hub's row "hub busy" or "hub free" as `tag_hub_pane`
+    /// does, with the count of questions that wait on the user after
+    /// it, such as "hub free, 2 for you". A count of 0 adds nothing.
+    fn show_waiting_count(&self, pane_id: &str, count: usize) -> Result<(), HerdrError>;
     /// Sets a pane's `go_to` token, or clears it with `None`.
     fn set_go_to(&self, pane_id: &str, go_to: Option<&str>) -> Result<(), HerdrError>;
     /// Returns the desk's first pane, where the board runs.
@@ -273,16 +277,20 @@ impl Herdr for HerdrCli {
 
     fn tag_hub_pane(&self, pane_id: &str, go_to: &str) -> Result<(), HerdrError> {
         let token = format!("{GO_TO_TOKEN}={go_to}");
-        let options = [
-            "--token",
-            token.as_str(),
-            "--state-label",
-            "working=hub busy",
-            "--state-label",
-            "idle=hub free",
-            "--state-label",
-            "done=hub free",
-        ];
+        let labels = format_hub_labels(0);
+        let mut options = vec!["--token", token.as_str()];
+        for label in &labels {
+            options.extend(["--state-label", label.as_str()]);
+        }
+        self.report_pane_labels(pane_id, &options)
+    }
+
+    fn show_waiting_count(&self, pane_id: &str, count: usize) -> Result<(), HerdrError> {
+        let labels = format_hub_labels(count);
+        let mut options = Vec::new();
+        for label in &labels {
+            options.extend(["--state-label", label.as_str()]);
+        }
         self.report_pane_labels(pane_id, &options)
     }
 
@@ -697,6 +705,21 @@ impl fmt::Display for HerdrError {
 
 /// Lets `HubError::source` return it.
 impl std::error::Error for HerdrError {}
+
+/// Returns a hub row's `--state-label` values, such as
+/// `idle=hub free, 2 for you`, with no count when `waiting` is 0.
+fn format_hub_labels(waiting: usize) -> [String; 3] {
+    let count = if waiting == 0 {
+        String::new()
+    } else {
+        format!(", {waiting} for you")
+    };
+    [
+        format!("working=hub busy{count}"),
+        format!("idle=hub free{count}"),
+        format!("done=hub free{count}"),
+    ]
+}
 
 /// Returns the refusal in an answer's `error` object, or `None` when
 /// the answer holds no error message.

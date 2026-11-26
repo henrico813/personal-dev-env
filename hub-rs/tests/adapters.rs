@@ -36,9 +36,10 @@ mod herdr_cli {
     /// The `go_to` token's value sets the row's place in the list, and
     /// a cleared one lets a stale row drop out.
     /// A blocked session gets no token, since its mark goes away once it
-    /// works again.
+    /// works again. A hub's labels carry the count of questions that
+    /// wait, which is how the user sees them without scrolling the chat.
     #[test]
-    fn herdr_cli_sends_pane_marks_and_tokens() {
+    fn herdr_cli_sends_pane_labels_and_tokens() {
         let folder = TempFolder::new();
         let script = folder.write_script("herdr", OK_ANSWER, "", 0);
         let herdr = HerdrCli::new(script.clone(), None, folder.path().join("herdr.sock"));
@@ -51,6 +52,7 @@ mod herdr_cli {
             .unwrap();
         herdr.clear_marks("w1:p7").unwrap();
         herdr.tag_hub_pane("w1:p7", "1-hub-0").unwrap();
+        herdr.show_waiting_count("w1:p7", 2).unwrap();
         herdr.set_go_to("w1:p7", Some("2-desk-0-00")).unwrap();
         herdr.set_go_to("w1:p7", None).unwrap();
 
@@ -87,6 +89,18 @@ mod herdr_cli {
                         "idle=hub free",
                         "--state-label",
                         "done=hub free",
+                    ],
+                ]
+                .concat(),
+                [
+                    &pane[..],
+                    &[
+                        "--state-label",
+                        "working=hub busy, 2 for you",
+                        "--state-label",
+                        "idle=hub free, 2 for you",
+                        "--state-label",
+                        "done=hub free, 2 for you",
                     ],
                 ]
                 .concat(),
