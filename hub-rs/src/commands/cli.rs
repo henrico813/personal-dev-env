@@ -864,7 +864,7 @@ fn find_hub_folder(local_state: &Path) -> Result<RunFolder, HubError> {
             let mut own_hubs = Vec::new();
             let mut auto_runs = Vec::new();
             for run in running {
-                if is_auto_run(&run)? {
+                if run.is_approved_auto_run()? {
                     auto_runs.push(run);
                 } else {
                     own_hubs.push(run);
@@ -877,7 +877,7 @@ fn find_hub_folder(local_state: &Path) -> Result<RunFolder, HubError> {
             }
             if own_hubs.is_empty() {
                 for (_, run) in resting {
-                    if !is_auto_run(&run)? {
+                    if !run.is_approved_auto_run()? {
                         eprintln!(
                             "hub: only auto runs have hub next running, so using {}",
                             run.path().display()
@@ -898,12 +898,6 @@ fn find_hub_folder(local_state: &Path) -> Result<RunFolder, HubError> {
             )))
         }
     }
-}
-
-/// Tells whether `run` is an auto run's folder, which alone holds an
-/// `approved.md`.
-pub(crate) fn is_auto_run(run: &RunFolder) -> Result<bool, HubError> {
-    Ok(run.read_file_if_exists("approved.md")?.is_some())
 }
 
 /// Returns when the run's `events.jsonl` last changed, or `None` when

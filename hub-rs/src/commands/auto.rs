@@ -26,7 +26,7 @@ use regex::Regex;
 use super::{Outcome, sidebar};
 use crate::external::cards::{CardKey, CardNote, KEY_PATTERN, ListedCard, Stage};
 use crate::shared::questions::read_open_questions;
-use crate::shared::run_folder::{self, RunFolder};
+use crate::shared::run_folder::{self, APPROVED_FILE, RunFolder};
 use crate::shared::{HubError, Tools};
 use crate::watch::stall;
 
@@ -120,7 +120,7 @@ pub fn run_auto_approve(
     now: &Zoned,
 ) -> Result<Outcome, HubError> {
     let phrase = format!("approve run {}", approval.number);
-    if run.read_file_if_exists("approved.md")?.is_some() {
+    if run.is_approved_auto_run()? {
         return Err(HubError::NotDone(format!(
             "run {} is already approved",
             approval.number
@@ -162,7 +162,7 @@ pub fn run_auto_approve(
         now.strftime("%Y-%m-%d %H:%M"),
         approval.reply
     );
-    run_folder::write_file_whole(&run.path().join("approved.md"), &approved)?;
+    run_folder::write_file_whole(&run.path().join(APPROVED_FILE), &approved)?;
     Ok(Outcome::from_line(format!(
         "approved run {number}: {} cards",
         list.run_keys().len()
@@ -187,7 +187,7 @@ pub fn run_auto_approve(
 /// user never approved starts nothing. `HubError::Card` when the open
 /// questions cannot be read.
 pub fn run_auto_now(tools: &Tools<'_>, run: &RunFolder, now: &Zoned) -> Result<Outcome, HubError> {
-    let Some(approved) = run.read_file_if_exists("approved.md")? else {
+    let Some(approved) = run.read_file_if_exists(APPROVED_FILE)? else {
         return Err(HubError::NotDone(
             "the run is not approved; start nothing".to_owned(),
         ));

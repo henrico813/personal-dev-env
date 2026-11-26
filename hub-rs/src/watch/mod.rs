@@ -48,7 +48,7 @@ use crate::external::opencode::OpenCodeDb;
 use crate::shared::events::{self as hub_events, Event, EventKind, Memory};
 use crate::shared::messages::{self, Delivery, MessageCounts, Target};
 use crate::shared::questions::read_open_questions;
-use crate::shared::run_folder::{self, RecordedHub, ReportedNames, RunFolder};
+use crate::shared::run_folder::{self, APPROVED_FILE, RecordedHub, ReportedNames, RunFolder};
 use crate::shared::{HubError, Tools};
 use crate::shared::{facts, lifecycle};
 use events::{WatchEvent, WatchMemory, append_watch_event, load_watch_memory};
@@ -722,7 +722,7 @@ fn alert_if_run_stalled(
     agents: &[Agent],
     now: &Zoned,
 ) -> Result<(), HubError> {
-    let Some(approved_text) = watched.run.read_file_if_exists("approved.md")? else {
+    let Some(approved_text) = watched.run.read_file_if_exists(APPROVED_FILE)? else {
         return Ok(());
     };
     let Some(approved) = stall::read_approval_time(&approved_text, now) else {
