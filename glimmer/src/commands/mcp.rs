@@ -6,11 +6,12 @@
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 
+use clap::CommandFactory;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
-use super::{Reply, list_commands, resolve_base};
+use super::{Reply, cli, help_text, resolve_base};
 use crate::shared::review_session::FeedbackRequestList;
 use crate::shared::{Error, ErrorCode};
 use crate::steps::check_comments::check_comments;
@@ -26,6 +27,14 @@ const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
+/// Names the commands agents can also call as MCP tools, in the order
+/// `tools/list` gives them.
+const TOOL_NAMES: [&str; 4] = [
+    "check_comments",
+    "make_feedback_request_list",
+    "send_agent_suggestions",
+    "show_status",
+];
 
 /// Serves the four MCP tools over stdin and stdout, one call at a time, until
 /// stdin closes. Answers a message it cannot read with a JSON-RPC error and
@@ -155,27 +164,40 @@ fn describe_server(params: &Value) -> Value {
     })
 }
 
-/// Returns each tool with its description from `list_commands` and its inputs.
+/// Returns each tool with its command's about as its description, and its
+/// inputs.
 fn list_tools() -> Value {
-    let tools: Vec<Value> = list_commands()
-        .iter()
-        .filter_map(|command| {
-            let name = command.mcp_name?;
-            Some(json!({
+    let commands = cli::Command::command();
+    let tools: Vec<Value> = TOOL_NAMES
+        .into_iter()
+        .map(|name| {
+            json!({
                 "name": name,
-                "description": command.description,
+                "description": describe_tool(&commands, name),
                 "inputSchema": describe_tool_inputs(name),
-            }))
+            })
         })
         .collect();
     json!({"tools": tools})
+}
+
+/// Returns the about of the command named like the tool with hyphens, such as
+/// `check-comments` for `check_comments`.
+fn describe_tool(commands: &clap::Command, name: &str) -> String {
+    let command = commands
+        .find_subcommand(name.replace('_', "-"))
+        .expect("each tool has a command of the same name");
+    command
+        .get_about()
+        .map(ToString::to_string)
+        .unwrap_or_default()
 }
 
 fn describe_tool_inputs(name: &str) -> Value {
     let mut properties = json!({
         "dir": {"type": "string", "description": "The worktree folder, as a full path."},
     });
-    let base = json!({"type": "string", "description": "The task start, a commit or branch. Defaults to the branch start."});
+    let base = json!({"type": "string", "description": help_text::BASE});
     match name {
         "check_comments" => properties["base"] = base,
         "make_feedback_request_list" => {

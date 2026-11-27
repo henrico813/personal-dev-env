@@ -343,11 +343,6 @@ When source code or tests change:
    makes it misleading for safe use, or an applicable convention violation;
    otherwise leave it byte-for-byte unchanged. Do not broaden, reformat, or
    polish it merely because more implementation details could be stated.
-   The owner is the person who approved text in the review tool's
-   approvals file, `.git/pde/code-comments.json` in the main checkout,
-   which every worktree of the clone shares. Never change that text or
-   that file, even when the text seems false; report it instead, or
-   ask to change it as the `comment-review` skill says.
 6. Keep edits within the task's scope.
 7. Verify documentation claims against the implementation and tests when
    practical.
@@ -403,10 +398,11 @@ report it instead of hiding it with prose.
 
 ## The owner's comment review
 
-To put code comments in front of the owner for review, load and
-follow the `comment-review` skill. Use it also to change a comment
-the owner approved, even when a plan says to; never edit that
-comment in the code.
+The `comment-review` skill puts code comments in front of the user
+who approves them, called the owner here, and holds every rule on
+comments the owner approved. Load and follow it to start a review,
+and before you change or remove a comment the owner approved, even
+when a plan says to.
 
 ## Comment checker
 
@@ -416,16 +412,9 @@ the review tool's comment check in the repository, as
 Read it before the first run, for how to act on each finding. Fix
 each failure and run the check again until none is left.
 
-`verb-first` fails a new name whose first word is no verb, such as
-`path`, is mostly a noun, such as `title`, or is a past or `-ing` form
-of an uncommon verb, one not on its list of common verbs, such as
-`capped`. It only reports any other uncommon verb, such as `tool`, which
-may be a noun in the name. `restated-name` is only reported. Rename the
-function when its word is a noun, or when the call fails the caller test
-in "Function names". Otherwise list it in your final message.
-
 If `glimmer` is not on `PATH`, say in your final message
-that the comment check did not run, and check these rules yourself.
+that the comment check did not run, and check this skill's rules on
+comments and function names yourself.
 
 ## Go and Python rules
 
@@ -454,12 +443,11 @@ win:
 - Never invent a docstring section, such as `Why it matters:`; write a
   plain paragraph instead.
 
-For Python files you add or change, `check-comments` also checks
-these rules, only in code your task added or changed. Changing any
-line of an old function makes it ask for that function's docstring,
-so add one. Leave docstrings on old functions you did not touch for
-a separate change. A function moved from a deleted file into a new
-one counts as old, with or without `git mv`.
+`check-comments` checks these rules too, in code your task added or
+changed. Changing any line of an old function makes it ask for that
+function's docstring, so add one. Leave other old functions'
+docstrings for a separate change. A function moved from a deleted
+file into a new one counts as old, with or without `git mv`.
 
 ## Completion check
 
@@ -490,9 +478,9 @@ loop.
 
 Follow every lesson in the Lessons section below. Each is a correction
 the user made, so a lesson wins when it disagrees with the text above,
-except that you still never edit a comment the owner approved or
-the approvals file. When the user corrects how you write or review
-code comments, docstrings or function names, follow
+but not over the `comment-review` rules on approved comments. When the
+user corrects how you write or review code comments, docstrings or
+function names, follow
 [skill-fix](../skill-fix/SKILL.md) with the skill name
 `code-documentation`, and offer once to fix the skill's text.
 

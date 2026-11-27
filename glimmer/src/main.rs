@@ -22,10 +22,9 @@ fn main() -> ExitCode {
     let args: Vec<OsString> = std::env::args_os().collect();
     let command = match cli::parse_command(&args) {
         Ok(command) => command,
-        Err(usage) => {
-            eprint!("{usage}");
-            return ExitCode::from(2);
-        }
+        // clap prints help to stdout and exits with 0, or bad arguments to
+        // stderr and exits with 2.
+        Err(stop) => stop.exit(),
     };
     #[cfg(not(feature = "test-util"))]
     if let Some(home) = std::env::var_os("HOME") {
@@ -61,7 +60,6 @@ fn main() -> ExitCode {
                 }
             };
         }
-        Command::Help => return cli::print_help(),
     };
     cli::print_reply(&reply)
 }

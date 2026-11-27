@@ -14,64 +14,90 @@ use clap::{Arg, ArgAction, ArgGroup, ArgMatches, Args, FromArgMatches, Parser};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
-use super::{Reply, list_commands};
+use super::{Reply, help_text};
 use crate::shared::review_session::FeedbackRequestList;
 use crate::shared::{Error, ErrorCode};
 use crate::steps::make_feedback_request_list::ChangeRequest;
 
 /// Names what the command line asks for, with its arguments. The step commands
-/// work on the current folder.
+/// work on the current folder. Each command's `about` and `after_help` are its
+/// help, which clap prints for `--help`, `-h` and `help COMMAND`.
 #[derive(Debug, Parser)]
-#[command(
-    name = "glimmer",
-    disable_help_flag = true,
-    disable_help_subcommand = true
-)]
+#[command(name = "glimmer", about = help_text::ABOUT, after_help = help_text::GLIMMER)]
 pub enum Command {
+    #[command(
+        about = "Checks the agent's comments (step 2)",
+        after_help = help_text::CHECK_COMMENTS
+    )]
     CheckComments {
-        /// Names the task start, a commit or branch.
-        #[arg(long)]
+        #[arg(long, value_name = "COMMIT", help = help_text::BASE)]
         base: Option<String>,
     },
+    #[command(
+        about = "Shows the list, saves nothing (step 3)",
+        after_help = help_text::MAKE_FEEDBACK_REQUEST_LIST
+    )]
     MakeFeedbackRequestList {
-        #[arg(long)]
+        #[arg(long, value_name = "COMMIT", help = help_text::BASE)]
         base: Option<String>,
         /// Holds the JSON file of change requests, because a name can hold
         /// `::` or spaces.
-        #[arg(long = "input")]
+        #[arg(
+            long = "input",
+            value_name = "FILE",
+            help = "A JSON file of change requests, shown below"
+        )]
         input_file: Option<PathBuf>,
     },
+    #[command(
+        about = "Saves suggestions, sends the list (step 5)",
+        after_help = help_text::SEND_AGENT_SUGGESTIONS
+    )]
     SendAgentSuggestions {
         /// Holds the Feedback Request List with its Agent Suggestions.
+        #[arg(help = "A JSON file holding the list with its suggestions")]
         file: PathBuf,
     },
+    #[command(
+        about = "Shows the status and next step (any time)",
+        after_help = help_text::SHOW_STATUS
+    )]
     ShowStatus,
+    #[command(about = "Serves the four MCP tools", after_help = help_text::MCP)]
     Mcp,
     /// Shows the Review Screen in Herdr's popup or tab. The screen finds the
     /// review itself, from the waiting list.
+    #[command(about = "Shows the Review Screen in Herdr", after_help = help_text::SCREEN)]
     Screen {
         #[command(flatten)]
         kind: ScreenKind,
     },
     /// Shows the review of branch `name` in a plain terminal. With no `name`,
     /// shows the Review Session Picker first.
-    Open {
-        name: Option<String>,
-    },
+    #[command(
+        about = "Shows branch NAME's review in a terminal",
+        after_help = help_text::OPEN
+    )]
+    Open { name: Option<String> },
     /// Dismisses the review of branch `name`, or of this worktree with no
     /// `name`.
-    Dismiss {
-        name: Option<String>,
-    },
+    #[command(
+        about = "Hides branch NAME's review from Ctrl+b e",
+        after_help = help_text::DISMISS
+    )]
+    Dismiss { name: Option<String> },
     /// Restores the dismissed review of branch `name`, or of this worktree
     /// with no `name`.
-    Restore {
-        name: Option<String>,
-    },
+    #[command(
+        about = "Puts a dismissed review back on the list",
+        after_help = help_text::RESTORE
+    )]
+    Restore { name: Option<String> },
+    #[command(
+        about = "Drops approvals whose code no worktree has",
+        after_help = help_text::DROP_GONE_APPROVALS
+    )]
     DropGoneApprovals,
-    /// Needs no Git checkout, Herdr or saved review, because the installer
-    /// runs it to check each install.
-    Help,
 }
 
 /// Says which Herdr window the screen runs in. Only the Review Popup writes
@@ -115,19 +141,11 @@ impl Args for ScreenKind {
     }
 }
 
-/// Holds clap's message for bad arguments, with the usage text.
-#[derive(Debug)]
-pub struct UsageError(String);
-
-impl fmt::Display for UsageError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.0)
-    }
-}
-
-/// Reads the command line, whose first item is the program's name.
-pub fn parse_command(args: &[OsString]) -> Result<Command, UsageError> {
-    Command::try_parse_from(args).map_err(|error| UsageError(error.render().to_string()))
+/// Reads the command line, whose first item is the program's name. Help comes
+/// back as clap's error too, before any command reads Git, so `help` runs
+/// outside a checkout, as the installer's check after each install needs.
+pub fn parse_command(args: &[OsString]) -> Result<Command, clap::Error> {
+    Command::try_parse_from(args)
 }
 
 /// Prints the reply as JSON. Returns exit code 1 when the reply holds an error
@@ -144,24 +162,6 @@ pub fn print_reply(reply: &Reply) -> ExitCode {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
-    }
-}
-
-/// Prints each command with its description, from `list_commands`.
-pub fn print_help() -> ExitCode {
-    let mut help = String::from("Usage: glimmer COMMAND\n");
-    for command in list_commands() {
-        help.push_str(&format!(
-            "\n{}\n    {}\n",
-            command.cli_usage, command.description
-        ));
-    }
-    match io::stdout().lock().write_all(help.as_bytes()) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("Cannot print help. {error}");
-            ExitCode::FAILURE
-        }
     }
 }
 

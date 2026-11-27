@@ -62,7 +62,7 @@ fn list_prints_feedback_requests_as_json() {
     assert_eq!(reply, expected);
 }
 
-/// `main` must exit with 0 without an error, 1 with an error code and 2 for bad arguments, and run `help` outside a Git checkout.
+/// `main` must exit with 0 without an error, 1 with an error code and 2 for bad arguments, and print help outside a Git checkout.
 /// Otherwise scripts would read a refusal as success, and the installer would roll back every install, since it runs `help` after each one.
 #[test]
 fn exit_code_follows_error_and_arguments() {
@@ -86,6 +86,36 @@ fn exit_code_follows_error_and_arguments() {
 
         assert_eq!(output.status.code(), Some(exit_code), "{case}: {output:?}");
     }
+}
+
+/// `help COMMAND`, `COMMAND --help` and `COMMAND -h` must print the same help on stdout, and it must name the result's three fields.
+/// Otherwise an agent that asks for help one of these ways would get an error, or no word on what the JSON means.
+#[test]
+fn help_forms_print_same_check_comments_fields() {
+    let outside = TempFolder::new();
+    let forms = [
+        vec!["help", "check-comments"],
+        vec!["check-comments", "--help"],
+        vec!["check-comments", "-h"],
+    ];
+
+    let helps: Vec<String> = forms
+        .iter()
+        .map(|args| {
+            let output = make_program_command(outside.path())
+                .args(args)
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(0), "{args:?}: {output:?}");
+            String::from_utf8(output.stdout).unwrap()
+        })
+        .collect();
+
+    for field in ["failures", "reported", "unsupported"] {
+        assert!(helps[0].contains(field), "{field}: {}", helps[0]);
+    }
+    assert_eq!(helps[1], helps[0]);
+    assert_eq!(helps[2], helps[0]);
 }
 
 /// `dismiss NAME` and `restore NAME` must find the branch's review from a folder outside any checkout, and `restore` must undo `dismiss`.

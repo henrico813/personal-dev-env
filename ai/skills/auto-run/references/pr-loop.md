@@ -431,8 +431,8 @@ its entries parked.
   review of the change and its text reports zero hits, as
   pull-request Guardrail 5 says. After the first push, BASE is
   `"$REMOTE/$BR"`.
-- Edit a comment the user approved. Send the new wording as a reword
-  in that pull request's comment review.
+- Edit a comment the user approved. Ask for the change as the
+  `comment-review` skill says.
 - Amend or squash a branch that is pushed or that another branch
   stacks on; add a commit instead. The `pull-request` skill forbids
   it.
