@@ -38,7 +38,7 @@ pub fn dump_board(
     time_zone: &TimeZone,
     size: ScreenSize,
 ) -> Result<Outcome, HubError> {
-    let mut board = make_read_only_board(tools);
+    let mut board = make_read_only_board(tools, time_zone);
     board.show_reading(Ok(read_queue(tools, hubs, time_zone)?));
     let dump = board.dump(size.columns, size.rows, None);
     Ok(Outcome {
@@ -67,7 +67,7 @@ pub fn control_board(
     output: &mut dyn Write,
 ) -> Result<Outcome, HubError> {
     let done = Outcome { lines: Vec::new() };
-    let mut board = make_read_only_board(tools);
+    let mut board = make_read_only_board(tools, time_zone);
     board.show_reading(Ok(read_queue(tools, hubs, time_zone)?));
     if !write_dump(output, &board.dump(size.columns, size.rows, None))? {
         return Ok(done);
@@ -116,12 +116,12 @@ pub fn control_board(
     Ok(done)
 }
 
-/// Returns a board with no colors whose AWAY starts at the time the
-/// live board saved, for screens that never save it.
-pub(super) fn make_read_only_board(tools: &Tools<'_>) -> Board {
+/// Returns a board with no colors whose SINCE YOU LEFT starts at the
+/// time the live board saved, for screens that never save it.
+pub(super) fn make_read_only_board(tools: &Tools<'_>, time_zone: &TimeZone) -> Board {
     let mut board = Board::new(false);
     let visits = Visits::start(tools.state_folder, Timestamp::now());
-    board.show_visit(visits.since(), visits.measure_time_away());
+    board.show_visit(visits.since(), visits.measure_time_away(), time_zone);
     board
 }
 
