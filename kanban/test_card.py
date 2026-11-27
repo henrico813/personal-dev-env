@@ -21,11 +21,14 @@ NEW_KEY = "PDEV-001"
 TODAY = "2026-11-07"
 REPO = Path(__file__).resolve().parents[1]
 RULES_FILE = REPO / "chezmoi/dot_config/pde/names.toml"
+# The program under test, such as the path to a Go build of card. By
+# default it is card.py beside this file, run on the Python that runs pytest.
 CARD_UNDER_TEST = os.environ.get("CARD_UNDER_TEST", "")
 CARD_PROGRAM = shlex.split(CARD_UNDER_TEST) or [
     sys.executable,
     str(Path(__file__).resolve().parent / "card.py"),
 ]
+# The function the run_card fixture returns, called as run_card("list").
 RunCard = Callable[..., subprocess.CompletedProcess[str]]
 # Names every reader of the rules file must make and read alike.
 CASES = tomllib.loads((REPO / "testdata/names/cases.toml").read_text())
@@ -217,6 +220,7 @@ Ask about the cold bucket.
 """
 
 
+# A card as card new writes it, with the fields write_card fills in.
 CARD_TEMPLATE = """---
 tags:
   - "#Kanban"
@@ -277,6 +281,11 @@ def projects(
     bin_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> Path:
+    """A vault's Projects folder holding a DevEnv project with the code PDEV.
+
+    A fake nobs names the vault. HOME and CARD_TODAY give card a scratch
+    state folder and the date TODAY.
+    """
     vault = tmp_path / "vault"
     folder = vault / "500 Zettelkasten/Projects/DevEnv"
     folder.mkdir(parents=True)
@@ -303,6 +312,7 @@ def rules_file(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def skip_other_version(request: pytest.FixtureRequest) -> None:
+    """Skip a test marked for the card version that is not under test."""
     if CARD_UNDER_TEST and request.node.get_closest_marker("python_card"):
         pytest.skip("Python card only")
     if not CARD_UNDER_TEST and request.node.get_closest_marker("go_card"):
@@ -363,12 +373,22 @@ def write_card(
 
 
 def format_list_field(items: tuple[str, ...]) -> str:
+    """Return a list field's value as card writes it after the colon.
+
+    For example, ``" []"`` for no items, or
+    ``'\\n  - "opencode ses_abc"'`` per item.
+    """
     if not items:
         return " []"
     return "".join(f'\n  - "{item}"' for item in items)
 
 
 def read_section(text: str, name: str) -> str:
+    """Return a card's text under the ``## name`` heading and its ``---``.
+
+    It stops at the next ``#`` or ``##`` heading, as card does, so a new
+    card's Log reads ``"\\n- 2026-11-01 todo: by user\\n"``.
+    """
     lines = text.split("\n")
     rest = lines[lines.index(f"## {name}") + 2 :]
     end = next(
@@ -376,6 +396,17 @@ def read_section(text: str, name: str) -> str:
         len(rest),
     )
     return "\n".join(rest[:end])
+
+
+def add_log_lines(path: Path, *entries: str) -> None:
+    """Add Log lines dated TODAY after a card's first one, as card move does.
+
+    For example, ``add_log_lines(path, "blocked: by hub. docs review")``
+    adds ``- 2026-11-07 blocked: by hub. docs review``.
+    """
+    lines = "".join(f"\n- {TODAY} {entry}" for entry in entries)
+    text = path.read_text()
+    path.write_text(text.replace("\n\n## Appendix", f"{lines}\n\n## Appendix"))
 
 
 @pytest.mark.cmd_new
@@ -1481,6 +1512,21 @@ class TestOpenQuestions:
         assert path.read_text() == before
 
 
+# The fields of each card in show, list and board --json, in order.
+CARD_REPLY_FIELDS = [
+    "key",
+    "title",
+    "stage",
+    "kind",
+    "project",
+    "stage_date",
+    "plans",
+    "prs",
+    "sessions",
+    "open_questions",
+]
+
+
 @pytest.mark.cmd_show
 class TestShow:
     """card show finds one card by its key."""
@@ -1649,6 +1695,65 @@ class TestShow:
             '"Context": "One\u2028two\u2029three & <caf\u00e9>"'
             in result.stdout
         )
+
+    @pytest.mark.cmd_list
+    def test_show_json_keeps_field_order(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """show and list --json print a card's fields in one fixed order.
+
+        Agents compare the bytes of both versions' replies. A swapped
+        field reads differently on the Go card.
+        """
+        write_card(projects, KEY, "todo")
+
+        shown = json.loads(run_card("show", KEY, "--json").stdout)
+        [listed] = json.loads(run_card("list", "--json").stdout)
+
+        assert list(shown) == [*CARD_REPLY_FIELDS, "sections"]
+        assert list(listed) == CARD_REPLY_FIELDS
+
+    def test_show_json_empty_lists_never_null(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """show --json prints [] for list fields a card lacks, never null.
+
+        Scripts loop over plans, prs and sessions. A null list, or a
+        missing field, breaks the loop on a card edited by hand.
+        """
+        path = write_card(projects, KEY, "todo")
+        text = path.read_text()
+        for line in ("plans: []\n", "prs: []\n", "sessions: []\n"):
+            text = text.replace(line, "")
+        path.write_text(text)
+
+        shown = json.loads(run_card("show", KEY, "--json").stdout)
+
+        assert shown["plans"] == shown["prs"] == shown["sessions"] == []
+
+    def test_stage_date_defaults_to_date_created(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """show --json gives date_created as stage_date when it has none.
+
+        The board counts days in a stage from stage_date. An empty
+        stage_date on a card with no stage_date line would read
+        differently on the Go card and count no days.
+        """
+        path = write_card(projects, KEY, "todo")
+        path.write_text(
+            path.read_text().replace("stage_date: 2026-11-06\n", ""),
+        )
+
+        shown = json.loads(run_card("show", KEY, "--json").stdout)
+
+        assert shown["stage_date"] == "2026-11-01"
 
 
 class TestReadParts:
@@ -1944,10 +2049,10 @@ class TestAttach:
 class TestList:
     """The list prints one line per card, for people and for scripts."""
 
-    @pytest.mark.cmd_new
     @pytest.mark.cmd_list
     def test_list_tabs_keeps_whole_title(
         self,
+        projects: Path,
         run_card: RunCard,
     ) -> None:
         """With --tabs, a long title stays whole and the project shows.
@@ -1957,7 +2062,7 @@ class TestList:
         screen, and a missing project leaves the row without its tag.
         """
         title = "Show subagent tokens and cost in the sidebar"
-        run_card("new", "DevEnv", title, "--by", "user")
+        write_card(projects, NEW_KEY, "draft", title=title)
 
         result = run_card("list", "--tabs")
 
@@ -2029,6 +2134,77 @@ class TestList:
             },
         ]
 
+    @pytest.mark.cmd_list
+    @pytest.mark.parametrize(
+        ("option", "value", "expected"),
+        [
+            pytest.param("--stage", "todo", ["PDEV-005"], id="stage"),
+            pytest.param(
+                "--project",
+                "devenv",
+                [KEY, "PDEV-005"],
+                id="project-any-case",
+            ),
+            pytest.param("--kind", "research", ["PDEV-006"], id="kind"),
+        ],
+    )
+    def test_list_keeps_only_cards_matching_filter(
+        self,
+        projects: Path,
+        run_card: RunCard,
+        option: str,
+        value: str,
+        expected: list[str],
+    ) -> None:
+        """card list with one filter lists only the cards that match it.
+
+        Sweep and dream read one stage with list --stage, and the user
+        names a project in any case. A filter that keeps every card, or
+        drops one, hands them the wrong cards.
+        """
+        write_card(projects, KEY, "draft")
+        write_card(projects, "PDEV-005", "todo", title="Build the retries")
+        research = write_card(
+            projects,
+            "PDEV-006",
+            "draft",
+            title="Compare retry tools",
+        )
+        (projects / "Garden").mkdir()
+        moved = research.rename(projects / "Garden" / research.name)
+        moved.write_text(
+            moved.read_text().replace("kind: build", "kind: research"),
+        )
+
+        result = run_card("list", "--tabs", option, value)
+
+        assert result.returncode == 0
+        lines = result.stdout.splitlines()
+        assert [line.split("\t")[0] for line in lines[:-1]] == expected
+
+    @pytest.mark.cmd_list
+    def test_list_puts_unknown_stage_last(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """A card whose stage is not a known stage sorts after all others.
+
+        A hand-edited typo such as "someday" must not lift the card above
+        the cards the user acts on, at the top of the list.
+        """
+        write_card(projects, KEY, "someday")
+        write_card(projects, "PDEV-005", "dropped")
+
+        result = run_card("list", "--tabs")
+
+        assert result.returncode == 0
+        lines = result.stdout.splitlines()
+        assert [line.split("\t")[0] for line in lines[:-1]] == [
+            "PDEV-005",
+            KEY,
+        ]
+
 
 class TestBoard:
     """The board shows what waits on the user, oldest first."""
@@ -2085,7 +2261,6 @@ class TestBoard:
         assert result.returncode == 0
         assert "active 1 of 8, in-review 2 of 6\n" in result.stdout
 
-    @pytest.mark.cmd_move
     @pytest.mark.cmd_board
     def test_board_prints_blocked_lines_hub_reads(
         self,
@@ -2095,9 +2270,9 @@ class TestBoard:
         """The board prints the blocked lines the hub parses.
 
         hub brief reads the count line and the list, longest wait first
-        with days and the newest reason, and the user may read it out in
-        a standup. Changed words drop the cards from the brief, and an
-        old reason sends the user to chase the wrong team.
+        with days and the newest reason, and the user may read it aloud.
+        Changed words drop the cards from the brief, and an old reason
+        sends the user to chase the wrong blocker.
         """
         write_card(
             projects,
@@ -2105,25 +2280,17 @@ class TestBoard:
             "in-review",
             stage_date="2026-11-02",
         )
-        path = write_card(projects, "PDEV-KB-003", "in-review")
-        for target, why in [
-            ("blocked", ["--why", "docs team's review"]),
-            ("in-review", []),
-            ("blocked", ["--why", "platform team's review"]),
-        ]:
-            run_card(
-                "move",
-                "PDEV-KB-003",
-                target,
-                *why,
-                "--by",
-                "hub",
-            )
-        path.write_text(
-            path.read_text().replace(
-                f"stage_date: {TODAY}\n",
-                "stage_date: 2026-10-30\n",
-            ),
+        path = write_card(
+            projects,
+            "PDEV-KB-003",
+            "blocked",
+            stage_date="2026-10-30",
+        )
+        add_log_lines(
+            path,
+            "blocked: by hub. docs review",
+            "in-review: by hub",
+            "blocked: by hub. release review",
         )
         write_card(projects, "PDEV-KB-009", "blocked")
 
@@ -2144,12 +2311,11 @@ class TestBoard:
             "BLOCKED, oldest first (2)\n"
             "- PDEV-KB-003 8 days\n"
             "  Fix some bugs\n"
-            "  platform team's review\n"
+            "  release review\n"
             "- PDEV-KB-009 1 day\n"
             "  Fix some bugs\n"
         )
 
-    @pytest.mark.cmd_move
     @pytest.mark.cmd_board
     def test_board_json_gives_limits_and_waits(
         self,
@@ -2160,18 +2326,10 @@ class TestBoard:
 
         A script can then read the board without the text lines'
         wording. A missing limit, wait or reason would hide an over-full
-        stage or send the user to chase the wrong team.
+        stage or send the user to chase the wrong blocker.
         """
-        write_card(projects, "PDEV-KB-003", "in-review")
-        run_card(
-            "move",
-            "PDEV-KB-003",
-            "blocked",
-            "--why",
-            "platform team's review",
-            "--by",
-            "hub",
-        )
+        path = write_card(projects, "PDEV-KB-003", "blocked", stage_date=TODAY)
+        add_log_lines(path, "blocked: by hub. release review")
 
         result = run_card("board", "--json")
 
@@ -2183,7 +2341,301 @@ class TestBoard:
         assert (blocked["key"], blocked["days"], blocked["reason"]) == (
             "PDEV-KB-003",
             0,
-            "platform team's review",
+            "release review",
+        )
+
+    @pytest.mark.cmd_board
+    def test_board_json_counts_unknown_stage_last(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """card board --json counts an unknown stage after the known ones.
+
+        A hand-edited typo such as "someday" must still count, or the
+        board shows fewer cards than the project holds and the typo
+        stays hidden.
+        """
+        write_card(projects, KEY, "someday")
+
+        result = run_card("board", "--json")
+
+        assert result.returncode == 0
+        counts = json.loads(result.stdout)["counts"]
+        assert list(counts.items())[-2:] == [("dropped", 0), ("someday", 1)]
+
+
+# Two criteria lines for card grep, the first too long for one 60-character
+# line.
+GREP_CRITERIA = (
+    "- [ ] Uploads retry after a timeout on a slow link.\n- [ ] Retry 3 times."
+)
+
+
+# The pattern the hub greps the Log for, to find cards that wait on the user.
+HUB_MARK_PATTERN = r"^- \d{4}-\d\d-\d\d (needs-you|answered): "
+
+
+@pytest.mark.cmd_grep
+class TestGrep:
+    """card grep finds lines across cards, for the hub and agents."""
+
+    def test_grep_prints_key_section_and_line(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """Each match prints its card key, section and line, then the count.
+
+        The hub splits these lines into card key, section and text, and
+        reads the count line last. A missing section, a line too wide
+        for 60 columns or a count of lines as cards would break that.
+        """
+        write_card(projects, "DEMO-002", "active", criteria=GREP_CRITERIA)
+        write_card(projects, KEY, "todo", title="Retry uploads")
+
+        result = run_card("grep", "retry")
+
+        assert result.returncode == 0
+        assert result.stdout == (
+            "DEMO-002 Acceptance Criteria: - [ ] Uploads retry after a t…\n"
+            "DEMO-002 Acceptance Criteria: - [ ] Retry 3 times.\n"
+            "PDEV-KB-001 Title: PDEV-KB-001 Retry uploads\n"
+            "3 matches in 2 cards\n"
+        )
+
+    def test_grep_section_limits_matches_to_it(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """grep --section Log finds the hub's marks in the Log only.
+
+        The hub runs this search to find cards that wait on the user. A
+        match in another section, such as a note that quotes a mark,
+        would flag a card that waits on no one.
+        """
+        path = write_card(projects, "DEMO-002", "active")
+        path.write_text(
+            path.read_text()
+            .replace(
+                "## Notes\n---\n",
+                "## Notes\n---\n\n- 2026-11-05 answered: quoted here\n",
+            )
+            .replace(
+                "by user\n\n## Appendix",
+                "by user\n- 2026-11-07 needs-you: by hub. Pick a model\n\n"
+                "## Appendix",
+            ),
+        )
+
+        result = run_card("grep", "--section", "Log", HUB_MARK_PATTERN)
+
+        assert result.returncode == 0
+        assert result.stdout == (
+            "DEMO-002 Log: - 2026-11-07 needs-you: by hub. Pick a model\n"
+            "1 matches in 1 cards\n"
+        )
+
+    def test_grep_text_exits_one_when_none(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """grep with no match prints the zero count and exits 1.
+
+        The hub reads exit 1 with empty stderr as no matches. Exit 0
+        would read as a match, and a message on stderr as a broken card.
+        """
+        write_card(projects, KEY, "todo")
+
+        result = run_card("grep", "--section", "Log", HUB_MARK_PATTERN)
+
+        assert (result.returncode, result.stderr) == (1, "")
+        assert result.stdout == "0 matches in 0 cards\n"
+
+
+@pytest.mark.go_card
+class TestGoOnlyReplies:
+    """The JSON forms and the rules file default only the Go card has."""
+
+    @pytest.mark.cmd_grep
+    def test_grep_json_lists_matches(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """grep --json gives each match's card key, section and whole line.
+
+        Agents read matches from this JSON instead of the text lines. A
+        line cut to 60 characters, or a count of lines as cards, would
+        hand them part of a criterion or a wrong number of cards.
+        """
+        write_card(projects, "DEMO-002", "active", criteria=GREP_CRITERIA)
+        write_card(projects, KEY, "todo", title="Retry uploads")
+
+        result = run_card("grep", "retry", "--json")
+
+        assert result.returncode == 0
+        long_line, short_line = GREP_CRITERIA.split("\n")
+        assert json.loads(result.stdout) == {
+            "matches": [
+                {
+                    "key": "DEMO-002",
+                    "section": "Acceptance Criteria",
+                    "line": long_line,
+                },
+                {
+                    "key": "DEMO-002",
+                    "section": "Acceptance Criteria",
+                    "line": short_line,
+                },
+                {
+                    "key": KEY,
+                    "section": "Title",
+                    "line": f"{KEY} Retry uploads",
+                },
+            ],
+            "match_count": 3,
+            "card_count": 2,
+        }
+
+    @pytest.mark.cmd_grep
+    def test_grep_json_exits_one_when_none(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """grep --json with no match prints empty results and exits 1.
+
+        The hub reads exit 1 with empty stderr as no matches, in either
+        form. Exit 0 would read as a match, and a message on stderr as a
+        broken card.
+        """
+        write_card(projects, KEY, "todo")
+
+        result = run_card("grep", "nowhere", "--json")
+
+        assert result.returncode == 1
+        assert result.stderr == ""
+        assert json.loads(result.stdout) == {
+            "matches": [],
+            "match_count": 0,
+            "card_count": 0,
+        }
+
+    @pytest.mark.cmd_outline
+    def test_outline_json_matches_text_ranges(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """outline --json gives the same headings and ranges as the text.
+
+        Agents read a part with sed -n from these line numbers. JSON
+        ranges that differ from the text form would hand them the wrong
+        lines, and a card with no headings must give a list, not null.
+        """
+        path = projects / "DevEnv" / f"{KEY} Fix some bugs.md"
+        path.write_text(FULL_CARD)
+        bare = projects / "DevEnv" / "DEMO-002 Bare card.md"
+        bare.write_text("---\ntype: card\nstage: todo\n---\n\n# Bare card\n")
+
+        text = run_card("outline", KEY).stdout
+        result = run_card("outline", KEY, "--json")
+        bare_result = run_card("outline", "DEMO-002", "--json")
+
+        assert result.returncode == 0
+        from_text = [
+            {
+                "heading": words,
+                "level": len(hashes),
+                "start": int(start),
+                "end": int(end),
+            }
+            for start, end, hashes, words in re.findall(
+                r"^(\d+)-(\d+) +(#+) (.*)$",
+                text,
+                re.MULTILINE,
+            )
+        ]
+        assert json.loads(result.stdout) == {"key": KEY, "headings": from_text}
+        assert from_text[0] == {
+            "heading": "Context",
+            "level": 2,
+            "start": 21,
+            "end": 25,
+        }
+        assert json.loads(bare_result.stdout)["headings"] == []
+
+    @pytest.mark.cmd_outline
+    def test_outline_json_trims_nbsp_from_heading(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """outline --json gives a heading's words without a trailing U+00A0.
+
+        Agents pass these words to show --section, which finds the section
+        past the no-break space a paste can leave. Kept, the words name no
+        section.
+        """
+        path = write_card(projects, KEY, "active")
+        path.write_text(
+            path.read_text().replace("## Context\n", "## Context\u00a0\n"),
+        )
+
+        result = run_card("outline", KEY, "--json")
+
+        assert result.returncode == 0
+        headings = json.loads(result.stdout)["headings"]
+        assert "Context" in [heading["heading"] for heading in headings]
+
+    @pytest.mark.cmd_name
+    def test_name_reads_rules_from_home_config(
+        self,
+        run_card: RunCard,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Without PDE_NAMES_FILE, card reads ~/.config/pde/names.toml.
+
+        The installer puts the rules there, and the Go card has no
+        checkout copy to fall back on. A wrong default would stop every
+        command on an installed computer.
+        """
+        monkeypatch.delenv("PDE_NAMES_FILE")
+        monkeypatch.setenv("HOME", str(tmp_path))
+        rules = tmp_path / ".config/pde/names.toml"
+        rules.parent.mkdir(parents=True)
+        rules.write_text(RULES_FILE.read_text())
+
+        result = run_card("name", "agent", "DEMO-KB-012", "build")
+
+        assert (result.returncode, result.stdout) == (0, "demo-kb-012-build\n")
+
+    @pytest.mark.cmd_name
+    def test_name_reports_missing_home_rules(
+        self,
+        run_card: RunCard,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """With no rules file at home, card names the path to fix.
+
+        The message keeps the ~ as the user would type it. A message
+        with no path, or an expanded one from another HOME, leaves the
+        user without the file to install.
+        """
+        monkeypatch.delenv("PDE_NAMES_FILE")
+        monkeypatch.setenv("HOME", str(tmp_path))
+
+        result = run_card("name", "agent", "DEMO-KB-012", "build")
+
+        assert result.returncode == 1
+        assert result.stderr == (
+            "card: no naming rules at ~/.config/pde/names.toml:"
+            " run pde-installer install\n"
         )
 
 
@@ -2326,6 +2778,57 @@ class TestHandEditedCard:
             "1 problems in 0 cards\n"
         )
 
+    @pytest.mark.cmd_check
+    def test_check_quotes_unknown_stage_and_kind(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """card check quotes an unknown stage or kind with escapes.
+
+        A hand edit can leave a tab, a no-break space or a quote in a
+        field. The hub and sweep parse these lines, so a raw tab would
+        split the line, and both versions must print the same bytes.
+        """
+        path = write_card(projects, KEY, "to\tdo\u00a0soon")
+        path.write_text(
+            path.read_text().replace("kind: build", "kind: user's"),
+        )
+
+        result = run_card("check")
+
+        assert result.returncode == 1
+        assert result.stdout == (
+            f"{KEY} unknown stage 'to\\tdo\\xa0soon'\n"
+            f'{KEY} unknown kind "user\'s"\n'
+            "2 problems in 1 cards\n"
+        )
+
+    @pytest.mark.cmd_show
+    def test_show_finds_heading_with_trailing_nbsp(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """A heading with a no-break space after it still names its section.
+
+        A paste into Obsidian can leave U+00A0 after a heading. Missed,
+        the section reads as empty, card check reports it missing and
+        the hub's grep labels its lines wrong.
+        """
+        path = write_card(projects, KEY, "active")
+        path.write_text(
+            path.read_text().replace(
+                "## Context\n---\n",
+                "## Context\u00a0\n---\n\nUploads fail on slow links.\n",
+            ),
+        )
+
+        result = run_card("show", KEY, "--section", "Context")
+
+        assert result.returncode == 0
+        assert "Uploads fail on slow links." in result.stdout
+
 
 # Version 1 cards are migrated before the Go card installs, so only the
 # Python card reads them.
@@ -2458,6 +2961,7 @@ class TestNamingRules:
 
         assert card.parse_name(rule, case["name"]) == case.get("fields")
 
+    # The Go card has no checkout copy of the rules file.
     @pytest.mark.python_card
     @pytest.mark.cmd_name
     def test_rules_file_defaults_to_checkout_copy(
@@ -2985,6 +3489,8 @@ class TestRekey:
         """
         write_rekey_vault(projects)
         devenv = projects / "DevEnv"
+        # A first --apply stopped here, since the user edited the second
+        # card while rekey wrote it.
         write_rekeyed(projects, KEY, "PDEV-411", "Fix some bugs")
         retry = devenv / "PDEV-KB-002 Retry failed uploads.md"
         retry.write_text(retry.read_text() + "edited\n")
@@ -3022,6 +3528,8 @@ class TestRekey:
         reports success.
         """
         write_rekey_vault(projects)
+        # A first --apply renamed both cards, then stopped, since the user
+        # edited Links.md while rekey wrote it.
         write_rekeyed(projects, KEY, "PDEV-411", "Fix some bugs")
         write_rekeyed(
             projects,
