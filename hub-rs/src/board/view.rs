@@ -837,6 +837,8 @@ impl Board {
             KeyCode::Char('k') | KeyCode::Up => self.move_choice(-1),
             KeyCode::PageDown => self.move_choice(page_size),
             KeyCode::PageUp => self.move_choice(-page_size),
+            KeyCode::Char('h') | KeyCode::Left if self.view.is_none() => self.move_across(-1),
+            KeyCode::Char('l') | KeyCode::Right if self.view.is_none() => self.move_across(1),
             KeyCode::Enter | KeyCode::Char(' ') => {
                 if let Some(index) = self.list.selected() {
                     return self.activate(index);
@@ -991,6 +993,14 @@ impl Board {
         let current = self.list.selected().unwrap_or(0);
         self.list
             .select(Some(current.saturating_add_signed(steps).min(last)));
+    }
+
+    /// Moves the glance page's choice to the nearest line in the column
+    /// `step` columns over. It does nothing with one column.
+    fn move_across(&mut self, step: isize) {
+        if let Some(place) = glance::find_line_across(self.area, &self.build_glance(), step) {
+            self.list.select(Some(place));
+        }
     }
 
     /// Moves the choice on the glance page, a list page or page 4's
@@ -1772,7 +1782,12 @@ pub(super) mod tests {
     /// Returns the id of the element the 40x16 dump marks `chosen`, or
     /// an empty string when none is.
     fn read_chosen_id(board: &mut Board) -> String {
-        let dump = board.dump(40, 16, None);
+        read_chosen_id_at(board, 40, 16)
+    }
+
+    /// The id of the chosen element at `columns` by `rows`.
+    fn read_chosen_id_at(board: &mut Board, columns: u16, rows: u16) -> String {
+        let dump = board.dump(columns, rows, None);
         dump.elements
             .into_iter()
             .find(|element| element.chosen)
@@ -1838,6 +1853,34 @@ pub(super) mod tests {
         board.handle_input(&press(KeyCode::Esc));
 
         assert_eq!(read_chosen_id(&mut board), "waiting:1");
+    }
+
+    /// From 100 columns h, l and the left and right arrows move the
+    /// choice to the nearest row in the other column, and below 100
+    /// they do nothing. Without them a keyboard user crosses from
+    /// WAITING ON YOU to ACTIVE only by paging through every row.
+    #[test]
+    fn handle_input_h_l_cross_wide_columns() {
+        let mut board = make_sample_board();
+        board.handle_input(&press(KeyCode::Char('j')));
+        let before = read_chosen_id_at(&mut board, 40, 16);
+        board.handle_input(&press(KeyCode::Char('l')));
+        let phone = read_chosen_id_at(&mut board, 40, 16);
+        board.render_lines(100, 24);
+
+        let mut chosen = Vec::new();
+        for code in [
+            KeyCode::Char('l'),
+            KeyCode::Right,
+            KeyCode::Char('h'),
+            KeyCode::Left,
+        ] {
+            board.handle_input(&press(code));
+            chosen.push(read_chosen_id_at(&mut board, 100, 24));
+        }
+
+        assert_eq!(phone, before);
+        assert_eq!(chosen, ["active:0", "active:0", "waiting:0", "waiting:0"]);
     }
 
     /// From 100 columns a tap on a row in either column opens that

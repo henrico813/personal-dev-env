@@ -217,6 +217,35 @@ pub(super) fn list_glance_lines(area: Rect, glance: &Glance<'_>) -> Vec<Line> {
         .collect()
 }
 
+/// Returns the place of the line nearest the chosen line's screen row
+/// in the column `step` over, -1 for left and 1 for right. A tie goes to the upper line.
+/// Returns `None` below 100 columns, or with no column there.
+pub(super) fn find_line_across(area: Rect, glance: &Glance<'_>, step: isize) -> Option<usize> {
+    let parts = split_glance(area);
+    // Each choosable drawn line as its column, its screen row and its
+    // place. Rows count from the column's scrolled top, so the move
+    // lands beside what the user sees.
+    let mut drawn = Vec::new();
+    let columns = list_column_lines(glance, &parts.columns);
+    for (column, lines) in columns.into_iter().enumerate() {
+        let first = glance.scroll[column] as isize;
+        let rows = lines.into_iter().filter(|line| !line.is_folded);
+        for (row, line) in rows.enumerate() {
+            if let Some(place) = line.place {
+                drawn.push((column, row as isize - first, place));
+            }
+        }
+    }
+    let chosen = glance.chosen?;
+    let &(column, row, _) = drawn.iter().find(|&&(_, _, place)| place == chosen)?;
+    let target = column.checked_add_signed(step)?;
+    drawn
+        .into_iter()
+        .filter(|&(each_column, _, _)| each_column == target)
+        .min_by_key(|&(_, each_row, _)| (each_row - row).abs())
+        .map(|(_, _, place)| place)
+}
+
 /// Returns true when `line` is the board's chosen line.
 fn is_chosen(line: &GlanceLine, glance: &Glance<'_>) -> bool {
     line.place.is_some() && line.place == glance.chosen

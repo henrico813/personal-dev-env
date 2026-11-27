@@ -635,9 +635,11 @@ board's status, such as `away 1h29m · read 10:42 0.6s`.
   page. r reads again, and q quits from the first screen. Ctrl-C
   quits from anywhere. The board also reads again every 10 seconds.
 - The first screen picks rows as pages 1, 3 and 5 do: j, k, the
-  arrow and page keys or the wheel move the choice, drawn reversed
-  across the row, and Enter, space or a tap acts on it. It starts on
-  the first row, and a column scrolls to keep the choice in view when
+  up and down arrows, the page keys or the wheel move the choice,
+  drawn reversed across the row, and Enter, space or a tap acts on
+  it. From 100 columns, h, l or the left and right arrows move the
+  choice to the nearest row in the other column. It starts on the
+  first row, and a column scrolls to keep the choice in view when
   its rows do not fit, such as below fault rows. A WAITING ON YOU,
   ACTIVE or IN REVIEW row, or its dim line, opens its details. A
   block's heading opens its page, a fault row page 4 and a SINCE YOU

@@ -29,6 +29,7 @@ pub(super) const GLANCE_HELP: &[&str] = &[
     "IN REVIEW: the cards to review, and how many pull requests fail a check.",
     "A red ! row on top is a fault, such as a stopped hub watcher. Tap it to open page 4.",
     "j, k or the arrow keys choose a row, as on the pages.",
+    "From 100 columns wide, h, l or the left and right arrows move to the nearest row in the other column.",
     "Enter, space or a tap acts on a row.",
     "A WAITING ON YOU, ACTIVE or IN REVIEW row opens its details.",
     "A heading, a ! row or a SINCE YOU LEFT row opens its page.",
