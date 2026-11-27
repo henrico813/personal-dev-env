@@ -21,14 +21,11 @@ NEW_KEY = "PDEV-001"
 TODAY = "2026-11-07"
 REPO = Path(__file__).resolve().parents[1]
 RULES_FILE = REPO / "chezmoi/dot_config/pde/names.toml"
-# The program under test, such as the path to a Go build of card. By
-# default it is card.py beside this file, run on the Python that runs pytest.
 CARD_UNDER_TEST = os.environ.get("CARD_UNDER_TEST", "")
 CARD_PROGRAM = shlex.split(CARD_UNDER_TEST) or [
     sys.executable,
     str(Path(__file__).resolve().parent / "card.py"),
 ]
-# The function the run_card fixture returns, called as run_card("list").
 RunCard = Callable[..., subprocess.CompletedProcess[str]]
 # Names every reader of the rules file must make and read alike.
 CASES = tomllib.loads((REPO / "testdata/names/cases.toml").read_text())
@@ -220,7 +217,6 @@ Ask about the cold bucket.
 """
 
 
-# A card as card new writes it, with the fields write_card fills in.
 CARD_TEMPLATE = """---
 tags:
   - "#Kanban"
@@ -281,11 +277,6 @@ def projects(
     bin_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> Path:
-    """A vault's Projects folder holding a DevEnv project with the code PDEV.
-
-    A fake nobs names the vault. HOME and CARD_TODAY give card a scratch
-    state folder and the date TODAY.
-    """
     vault = tmp_path / "vault"
     folder = vault / "500 Zettelkasten/Projects/DevEnv"
     folder.mkdir(parents=True)
@@ -312,7 +303,6 @@ def rules_file(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def skip_other_version(request: pytest.FixtureRequest) -> None:
-    """Skip a test marked for the card version that is not under test."""
     if CARD_UNDER_TEST and request.node.get_closest_marker("python_card"):
         pytest.skip("Python card only")
     if not CARD_UNDER_TEST and request.node.get_closest_marker("go_card"):
@@ -373,22 +363,12 @@ def write_card(
 
 
 def format_list_field(items: tuple[str, ...]) -> str:
-    """Return a list field's value as card writes it after the colon.
-
-    For example, ``" []"`` for no items, or
-    ``'\\n  - "opencode ses_abc"'`` per item.
-    """
     if not items:
         return " []"
     return "".join(f'\n  - "{item}"' for item in items)
 
 
 def read_section(text: str, name: str) -> str:
-    """Return a card's text under the ``## name`` heading and its ``---``.
-
-    It stops at the next ``#`` or ``##`` heading, as card does, so a new
-    card's Log reads ``"\\n- 2026-11-01 todo: by user\\n"``.
-    """
     lines = text.split("\n")
     rest = lines[lines.index(f"## {name}") + 2 :]
     end = next(
@@ -2478,7 +2458,6 @@ class TestNamingRules:
 
         assert card.parse_name(rule, case["name"]) == case.get("fields")
 
-    # The Go card has no checkout copy of the rules file.
     @pytest.mark.python_card
     @pytest.mark.cmd_name
     def test_rules_file_defaults_to_checkout_copy(
@@ -3006,8 +2985,6 @@ class TestRekey:
         """
         write_rekey_vault(projects)
         devenv = projects / "DevEnv"
-        # A first --apply stopped here, since the user edited the second
-        # card while rekey wrote it.
         write_rekeyed(projects, KEY, "PDEV-411", "Fix some bugs")
         retry = devenv / "PDEV-KB-002 Retry failed uploads.md"
         retry.write_text(retry.read_text() + "edited\n")
@@ -3045,8 +3022,6 @@ class TestRekey:
         reports success.
         """
         write_rekey_vault(projects)
-        # A first --apply renamed both cards, then stopped, since the user
-        # edited Links.md while rekey wrote it.
         write_rekeyed(projects, KEY, "PDEV-411", "Fix some bugs")
         write_rekeyed(
             projects,
