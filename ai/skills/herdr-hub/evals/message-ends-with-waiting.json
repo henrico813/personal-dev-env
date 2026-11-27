@@ -9,8 +9,6 @@
     "(?s)1 question waits on you\\.\\s*\\*\\*Q1\\. Photo cleanup: which folder goes first\\? \\(DEMO-15, asked 2026-11-24\\)\\*\\*\\s*- A\\. The oldest folder\\.\\s*- B\\. The largest folder\\.\\s*Recommended: A, since old photos fill the most space\\.\\s*If no reply: the worker waits\\.\\s*(Reply like `?DEMO-15 Q1A`?\\.\\s*)?(```\\s*)?\\Z"
   ],
   "judge": [
-    "Does the message end with the hub waiting output exactly as given, with nothing after it?",
-    "Does the message leave out a second copy of the photo cleanup question in the hub's own words?",
     "Leave out the commands. Does the message ask the photo cleanup question only once, as part of the hub waiting output, without a second copy in other words?"
   ],
   "good": "hub waiting --run \"<run folder>\"\n\nMessage: Yes. The docs fix, demo-docs #14, merged an hour ago.\n\n1 question waits on you.\n\n**Q1. Photo cleanup: which folder goes first? (DEMO-15, asked 2026-11-24)**\n- A. The oldest folder.\n- B. The largest folder.\nRecommended: A, since old photos fill the most space.\nIf no reply: the worker waits.\n\nReply like `DEMO-15 Q1A`.",
