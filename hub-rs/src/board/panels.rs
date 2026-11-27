@@ -28,7 +28,12 @@ pub(super) const GLANCE_HELP: &[&str] = &[
     "ACTIVE: the active cards, and how many have a worker at work now.",
     "IN REVIEW: the cards to review, and how many pull requests fail a check.",
     "A red ! row on top is a fault, such as a stopped hub watcher. Tap it to open page 4.",
-    "Tap a block, or press 1 to 5, to open its page. 4 opens the sessions and machine. Esc or q goes back.",
+    "j, k or the arrow keys choose a row, as on the pages.",
+    "Enter, space or a tap acts on a row.",
+    "A WAITING ON YOU, ACTIVE or IN REVIEW row opens its details.",
+    "A heading, a ! row or a SINCE YOU LEFT row opens its page.",
+    "A + N more row opens its page with all its rows.",
+    "Press 1 to 5 to open a page. 4 opens the sessions and machine. Esc or q goes back.",
     "Magenta waits on you, cyan works now, green is done or passing, yellow is held up, red is a problem, and dim is quiet.",
 ];
 

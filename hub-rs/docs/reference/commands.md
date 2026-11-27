@@ -629,15 +629,28 @@ board's status, such as `away 1h29m · read 10:42 0.6s`.
 - Keys 1 to 5 open the pages, each under a breadcrumb such as
   `< 3 ACTIVE`: 1 WAITING ON YOU, 2 SINCE YOU LEFT, 3 ACTIVE,
   4 SESSIONS AND MACHINE and 5 IN REVIEW AND PULL REQUESTS. Tab steps
-  through the pages and back to the first screen. A tap on a block,
-  any of its rows or its fold row opens its page, and a tap on a
-  fault row opens page 4. A tap on the breadcrumb, Esc or q goes
-  back. ? opens the help of the first screen or of the open page.
-  r reads again, and q quits from the first screen. Ctrl-C quits
-  from anywhere. The board also reads again every 10 seconds.
+  through the pages and back to the first screen. A tap on the
+  breadcrumb, Esc or q goes back, and the first screen chooses again
+  the row it had. ? opens the help of the first screen or of the open
+  page. r reads again, and q quits from the first screen. Ctrl-C
+  quits from anywhere. The board also reads again every 10 seconds.
+- The first screen picks rows as pages 1, 3 and 5 do: j, k, the
+  arrow and page keys or the wheel move the choice, drawn reversed
+  across the row, and Enter, space or a tap acts on it. It starts on
+  the first row, and a column scrolls to keep the choice in view when
+  its rows do not fit, such as below fault rows. A WAITING ON YOU,
+  ACTIVE or IN REVIEW row, or its dim line, opens its details. A
+  block's heading opens its page, a fault row page 4 and a SINCE YOU
+  LEFT row page 2. A fold row opens its block's page with every row
+  the fold row sums up shown, so on page 3 IDLE opens. Those rows stay
+  shown when the page opens again, as after `+ N more` on a page.
+  Blank lines and a dim row such as `nothing new` cannot be chosen.
+  From 100 columns the choice runs down the left column, then the
+  right. A new read or visit time keeps the chosen row when it is
+  still there.
 - Below 100 columns the first screen's bottom line reads
   `4 sessions and machine` with `? help` at its right end. From 100
-  columns it lists every key:
+  columns it lists each page's key, help and quit:
   `1 waiting  2 since  3 active  4 sessions and machine  5 review  ? help  q quit`.
   On pages 1 to 5 the bottom line reads `esc back  ? help` and the
   status. On a details page and a help page it reads
@@ -747,10 +760,12 @@ board's status, such as `away 1h29m · read 10:42 0.6s`.
 - The first screen's element ids are `status`, `fault:N`, and for
   each block `block:SLUG` on its heading, `SLUG:N` on its rows and
   `more:SLUG` on its fold row, where SLUG is `waiting`, `since`,
-  `active` or `review`. The bottom line holds `open:SLUG`, with
-  `machine` for page 4, and `help`. A row the fold row sums up, or
-  one below the screen, comes hidden, with its page's key as the
-  step that shows it, such as `press 3`.
+  `active` or `review`. The chosen row is `chosen`, and a tap on a
+  row does what Enter on it does. The bottom line holds `open:SLUG`,
+  with `machine` for page 4, and `help`. A row the fold row sums up
+  comes hidden, with its page's key as the step that shows it, such
+  as `press 3`. A row scrolled off comes hidden with `press pageup` or
+  `press pagedown`, as on the list pages.
 - `--listen` shows the live board and also takes steps from
   `board.sock` in `~/.local/state/pde/hub`. From another
   terminal, `hub board --send 'STEP'` does one step on it and

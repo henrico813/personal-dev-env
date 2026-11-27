@@ -1,27 +1,29 @@
 //! Draws the first screen, which the board opens on. Its four blocks
 //! say what waits on the user, what happened since the last visit,
-//! what is at work and what is in review. Fault rows come first, and a
-//! tap on a block opens its page. Each block shows a fixed number of
-//! rows, then a fold row that sums up the rest. Below 100 columns the
-//! blocks are stacked; from 100 on, WAITING ON YOU and SINCE YOU LEFT
-//! sit left of ACTIVE and IN REVIEW. Read `draw_glance` and
-//! `build_glance_elements` first.
+//! what is at work and what is in review. Fault rows come first. Each
+//! block shows a fixed number of rows, then a fold row that sums up
+//! the rest. Below 100 columns the blocks are stacked; from 100 on,
+//! WAITING ON YOU and SINCE YOU LEFT sit left of ACTIVE and IN REVIEW.
+//! The drawn rows are the board's list lines, so keys, taps and the
+//! chosen row work as on pages 1, 3 and 5. Read `draw_glance`,
+//! `list_glance_lines` and `build_glance_elements` first.
 
 use jiff::{SignedDuration, Timestamp};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line as TextLine, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use super::away;
 use super::draw;
-use super::elements::{Action, Element, HiddenBy, Kind};
+use super::elements::{Action, Element, HiddenBy, Kind, Place};
 use super::groups::{Group, Item, Status, Target};
 use super::panels::{Panel, WIDE_COLUMNS};
 use super::queue::{CardLine, NO_HUB, Queue};
 use super::sessions::fit;
 use super::since::{self, CardEvents};
+use super::view::Line;
 use crate::shared::format_span;
 use crate::shared::lifecycle;
 
@@ -60,6 +62,10 @@ pub(super) struct Glance<'a> {
     pub since_time: Option<&'a str>,
     /// How long the user was away before this visit.
     pub away_for: Option<SignedDuration>,
+    /// The place of the board's chosen line, drawn reversed.
+    pub chosen: Option<usize>,
+    /// How many rows each column was scrolled down at the last draw.
+    pub scroll: [usize; 2],
     pub color: bool,
 }
 
@@ -79,25 +85,39 @@ struct GlanceLine {
     text: TextLine<'static>,
     /// `None` on the blank line between two blocks.
     opens: Option<Panel>,
+    /// The list line Enter and a tap act on, or `None` on a line that
+    /// cannot be chosen, such as a blank line or `nothing new`.
+    line: Option<Line>,
+    /// The place of `line` in the board's lines, which a tap passes to
+    /// `Board::activate`, or `None` on a line that cannot be chosen or
+    /// is folded.
+    place: Option<usize>,
     /// True on a row that its block's fold row sums up, which is not
     /// drawn.
     is_folded: bool,
 }
 
-/// Draws the first screen over `area`.
-pub(super) fn draw_glance(frame: &mut Frame, area: Rect, glance: &Glance<'_>) {
+/// Draws the first screen over `area` and returns how far each column
+/// is scrolled. Each column is drawn as the list pages draw theirs, so
+/// it scrolls to keep the chosen line in view and draws it reversed.
+pub(super) fn draw_glance(frame: &mut Frame, area: Rect, glance: &Glance<'_>) -> [usize; 2] {
     let parts = split_glance(area);
     frame.render_widget(Paragraph::new(format_top_line(glance)), parts.top);
-    for (lines, column) in list_column_lines(glance, &parts.columns)
-        .into_iter()
-        .zip(&parts.columns)
-    {
-        let drawn: Vec<TextLine> = lines
+    let mut scroll = glance.scroll;
+    let columns = list_column_lines(glance, &parts.columns);
+    for ((lines, column), first) in columns.into_iter().zip(&parts.columns).zip(&mut scroll) {
+        let drawn: Vec<GlanceLine> = lines.into_iter().filter(|line| !line.is_folded).collect();
+        let chosen_row = drawn.iter().position(|line| is_chosen(line, glance));
+        let items: Vec<ListItem> = drawn
             .into_iter()
-            .filter(|line| !line.is_folded)
-            .map(|line| line.text)
+            .map(|line| ListItem::new(line.text))
             .collect();
-        frame.render_widget(Paragraph::new(drawn), *column);
+        let mut state = ListState::default()
+            .with_offset(*first)
+            .with_selected(chosen_row);
+        let list = List::new(items).highlight_style(draw::pick_chosen_style());
+        frame.render_stateful_widget(list, *column, &mut state);
+        *first = state.offset();
     }
     let bars = vec![TextLine::from(GAP); usize::from(parts.gap.height)];
     frame.render_widget(
@@ -108,13 +128,15 @@ pub(super) fn draw_glance(frame: &mut Frame, area: Rect, glance: &Glance<'_>) {
         Paragraph::new(format_hint_text(parts.hint.width)).style(draw::pick_dim_style()),
         parts.hint,
     );
+    scroll
 }
 
 /// Returns the first screen's elements as `draw_glance` drew them in
-/// `area`. Every line of a block opens its page on a tap, and a fault
-/// row opens page 4. A row that the fold row sums up, or that falls
-/// below the screen, comes hidden, with its page's key as the step
-/// that shows it, such as `press 3`.
+/// `area`. A tap on a line that can be chosen acts on it as Enter does,
+/// and a tap on another line of a block opens its page. A row the fold
+/// row sums up comes hidden, with its page's key as the step that shows
+/// it, such as `press 3`. A row scrolled off comes hidden with the page
+/// key that scrolls toward it, as on the list pages.
 pub(super) fn build_glance_elements(area: Rect, glance: &Glance<'_>) -> Vec<Element> {
     let parts = split_glance(area);
     let mut elements = vec![draw::build_text_element(
@@ -122,11 +144,9 @@ pub(super) fn build_glance_elements(area: Rect, glance: &Glance<'_>) -> Vec<Elem
         &format_top_line(glance),
         parts.top,
     )];
-    for (lines, column) in list_column_lines(glance, &parts.columns)
-        .into_iter()
-        .zip(&parts.columns)
-    {
-        let mut row: u16 = 0;
+    let columns = list_column_lines(glance, &parts.columns);
+    for ((lines, column), first) in columns.into_iter().zip(&parts.columns).zip(glance.scroll) {
+        let mut row = 0;
         for line in lines {
             let drawn_row = (!line.is_folded).then_some(row);
             if !line.is_folded {
@@ -135,23 +155,32 @@ pub(super) fn build_glance_elements(area: Rect, glance: &Glance<'_>) -> Vec<Elem
             let Some(panel) = line.opens else {
                 continue;
             };
-            let place = Rect {
-                y: column.y.saturating_add(drawn_row.unwrap_or(0)),
-                ..*column
-            };
+            let tap = line.line.map_or(Some("open"), |each| {
+                draw::describe_line(glance.groups, each).2
+            });
             let element = Element {
                 kind: line.kind,
-                tap: Some("open"),
-                action: Action::Open(panel),
-                ..draw::build_text_element(&line.id, &draw::join_line_text(&line.text), place)
+                tap,
+                chosen: is_chosen(&line, glance),
+                action: line.place.map_or(Action::Open(panel), Action::Line),
+                ..draw::build_text_element(&line.id, &draw::join_line_text(&line.text), *column)
             };
-            match drawn_row {
-                Some(drawn_row) if drawn_row < column.height => elements.push(element),
-                _ => {
-                    let show = format!("press {}", panel.number());
-                    elements.push(element.hide(HiddenBy::More, show));
-                }
-            }
+            let Some(drawn_row) = drawn_row else {
+                let show = format!("press {}", panel.number());
+                elements.push(element.hide(HiddenBy::More, show));
+                continue;
+            };
+            elements.push(match draw::find_row_or_scroll(drawn_row, first, *column) {
+                Ok(y) => Element {
+                    place: Some(Place {
+                        column: column.x,
+                        row: y,
+                        width: column.width,
+                    }),
+                    ..element
+                },
+                Err(step) => element.hide(HiddenBy::Scroll, step.to_owned()),
+            });
         }
     }
     for (column, words, action) in list_hint_parts(parts.hint.width) {
@@ -172,6 +201,25 @@ pub(super) fn build_glance_elements(area: Rect, glance: &Glance<'_>) -> Vec<Elem
         });
     }
     elements
+}
+
+/// Returns the lines that can be chosen, in their `GlanceLine::place`
+/// order: the fault rows, then each block's heading, its drawn rows
+/// and their detail lines, and its fold row. From 100 columns the left
+/// column comes first, then the right. j and k move in this order.
+pub(super) fn list_glance_lines(area: Rect, glance: &Glance<'_>) -> Vec<Line> {
+    let parts = split_glance(area);
+    list_column_lines(glance, &parts.columns)
+        .into_iter()
+        .flatten()
+        .filter(|line| line.place.is_some())
+        .filter_map(|line| line.line)
+        .collect()
+}
+
+/// Returns true when `line` is the board's chosen line.
+fn is_chosen(line: &GlanceLine, glance: &Glance<'_>) -> bool {
+    line.place.is_some() && line.place == glance.chosen
 }
 
 /// Returns `name` with `end` at the right end of `width` columns, such
@@ -250,8 +298,23 @@ fn split_glance(area: Rect) -> Parts {
 /// Returns the lines of each of `columns`, top to bottom, the rows that
 /// fold rows sum up included. One column holds the fault rows and the
 /// four blocks; two hold the fault rows, WAITING ON YOU and SINCE YOU
-/// LEFT on the left, ACTIVE and IN REVIEW on the right.
+/// LEFT on the left, ACTIVE and IN REVIEW on the right. Each drawn
+/// line that can be chosen gets its `place`, left column first.
 fn list_column_lines(glance: &Glance<'_>, columns: &[Rect]) -> Vec<Vec<GlanceLine>> {
+    let mut lines = build_column_lines(glance, columns);
+    let choosable = lines
+        .iter_mut()
+        .flatten()
+        .filter(|line| line.line.is_some() && !line.is_folded);
+    for (place, line) in choosable.enumerate() {
+        line.place = Some(place);
+    }
+    lines
+}
+
+/// Returns the lines of each of `columns` for `list_column_lines`, not
+/// yet numbered.
+fn build_column_lines(glance: &Glance<'_>, columns: &[Rect]) -> Vec<Vec<GlanceLine>> {
     let is_wide = columns.len() > 1;
     let width = |column: usize| usize::from(columns[column].width);
     let blank = || GlanceLine {
@@ -259,6 +322,8 @@ fn list_column_lines(glance: &Glance<'_>, columns: &[Rect]) -> Vec<Vec<GlanceLin
         kind: Kind::Text,
         text: TextLine::default(),
         opens: None,
+        line: None,
+        place: None,
         is_folded: false,
     };
     let mut left = list_fault_lines(glance, width(0));
@@ -291,6 +356,8 @@ fn list_fault_lines(glance: &Glance<'_>, width: usize) -> Vec<GlanceLine> {
             kind: Kind::Text,
             text: TextLine::styled(fit(&format!("! {problem}"), width), style),
             opens: Some(Panel::Machine),
+            line: Some(Line::Fault(number)),
+            place: None,
             is_folded: false,
         })
         .collect()
@@ -316,20 +383,26 @@ fn count_shown_rows(panel: Panel, is_wide: bool) -> usize {
 /// A block that shows no rows has no fold row either.
 fn build_block(panel: Panel, glance: &Glance<'_>, is_wide: bool, width: usize) -> Vec<GlanceLine> {
     let slug = panel.slug();
-    let make_line = |id: String, kind, text| GlanceLine {
+    let make_line = |id: String, kind, text, line| GlanceLine {
         id,
         kind,
         text,
         opens: Some(panel),
+        line,
+        place: None,
         is_folded: false,
     };
     let shown = count_shown_rows(panel, is_wide);
     let (rows, fold_parts) = list_block_rows(panel, glance, shown, width);
     let has_fold = shown > 0 && rows.len() > shown;
+    // A block with nothing to list has one dim row, such as
+    // `nothing new`, which has no list line.
+    let row_lines = list_row_lines(panel, glance);
     let mut lines = vec![make_line(
         format!("block:{slug}"),
         Kind::Heading,
         format_heading_line(panel, glance, width),
+        Some(Line::Block(panel)),
     )];
     let mut details = if is_wide {
         list_detail_lines(panel, glance, width)
@@ -339,14 +412,24 @@ fn build_block(panel: Panel, glance: &Glance<'_>, is_wide: bool, width: usize) -
     .into_iter();
     for (number, row) in rows.into_iter().enumerate() {
         let is_folded = number >= shown;
+        let row_line = row_lines.get(number).copied();
         lines.push(GlanceLine {
             is_folded,
-            ..make_line(format!("{slug}:{number}"), Kind::Text, row)
+            ..make_line(format!("{slug}:{number}"), Kind::Text, row, row_line)
         });
         if let Some(Some(detail)) = details.next() {
+            let detail_line = match row_line {
+                Some(Line::Item { group, index }) => Some(Line::Detail { group, index }),
+                _ => None,
+            };
             lines.push(GlanceLine {
                 is_folded,
-                ..make_line(format!("{slug}:{number}:detail"), Kind::Text, detail)
+                ..make_line(
+                    format!("{slug}:{number}:detail"),
+                    Kind::Text,
+                    detail,
+                    detail_line,
+                )
             });
         }
     }
@@ -354,7 +437,8 @@ fn build_block(panel: Panel, glance: &Glance<'_>, is_wide: bool, width: usize) -
         let mut spans = vec![Span::styled("   + ", draw::pick_dim_style())];
         spans.extend(fold_parts);
         let text = fit_spans(spans, width);
-        lines.push(make_line(format!("more:{slug}"), Kind::More, text));
+        let fold = Some(Line::Fold(panel));
+        lines.push(make_line(format!("more:{slug}"), Kind::More, text, fold));
     }
     lines
 }
@@ -434,7 +518,7 @@ fn list_block_rows(
     };
     let (rows, fold_parts, empty) = match panel {
         Panel::Waiting => {
-            let items = find_items(glance.groups, &[Group::NeedsYou]);
+            let items = find_items(glance.groups, list_block_groups(panel));
             let hidden = items.get(shown..).unwrap_or_default();
             let fold_parts = describe_waiting_fold(hidden, queue, glance.color);
             // With no hub, no session can wait on the user yet, so the
@@ -457,16 +541,13 @@ fn list_block_rows(
             (rows, count_event_words(hidden, glance.color), "nothing new")
         }
         Panel::Active => {
-            let items = find_items(
-                glance.groups,
-                &[Group::Working, Group::NoWorker, Group::Idle],
-            );
+            let items = find_items(glance.groups, list_block_groups(panel));
             let fold_words = describe_active_fold(items.get(shown..).unwrap_or_default());
             let fold_parts = vec![Span::styled(fold_words, dim)];
             (format_rows(&items, false), fold_parts, "no active card")
         }
         Panel::Review => {
-            let items = find_items(glance.groups, &[Group::InReview]);
+            let items = find_items(glance.groups, list_block_groups(panel));
             let hidden = items.len().saturating_sub(shown);
             let rows = items
                 .iter()
@@ -499,35 +580,65 @@ fn list_detail_lines(
     let dim_line =
         |text: &str| TextLine::styled(fit(&format!("   {text}"), width), draw::pick_dim_style());
     match panel {
-        Panel::Waiting => find_items(glance.groups, &[Group::NeedsYou])
+        Panel::Waiting => find_items(glance.groups, list_block_groups(panel))
             .iter()
             .map(|item| item.detail.as_deref().map(&dim_line))
             .collect(),
         Panel::Active => {
             let events = away::find_events_since(&queue.events, glance.since);
             let cards = since::group_events_by_card(events);
-            find_items(
-                glance.groups,
-                &[Group::Working, Group::NoWorker, Group::Idle],
-            )
-            .iter()
-            .map(|item| {
-                let row = cards.iter().find(|row| {
-                    row.card
-                        .as_ref()
-                        .is_some_and(|card| card.as_str() == item.id)
-                })?;
-                let newest = row.events[0];
-                Some(dim_line(&format!(
-                    "{}: {}",
-                    newest.time,
-                    since::describe_event(newest)
-                )))
-            })
-            .collect()
+            find_items(glance.groups, list_block_groups(panel))
+                .iter()
+                .map(|item| {
+                    let row = cards.iter().find(|row| {
+                        row.card
+                            .as_ref()
+                            .is_some_and(|card| card.as_str() == item.id)
+                    })?;
+                    let newest = row.events[0];
+                    Some(dim_line(&format!(
+                        "{}: {}",
+                        newest.time,
+                        since::describe_event(newest)
+                    )))
+                })
+                .collect()
         }
         Panel::Since | Panel::Review | Panel::Machine => Vec::new(),
     }
+}
+
+/// Returns the groups whose items `panel`'s block lists, in row order.
+/// SINCE YOU LEFT lists events, not items, so it has none.
+pub(super) fn list_block_groups(panel: Panel) -> &'static [Group] {
+    match panel {
+        Panel::Waiting => &[Group::NeedsYou],
+        Panel::Active => &[Group::Working, Group::NoWorker, Group::Idle],
+        Panel::Review => &[Group::InReview],
+        Panel::Since | Panel::Machine => &[],
+    }
+}
+
+/// Returns the list line of each row `panel`'s block can show, in row
+/// order: a SINCE YOU LEFT row by its place, any other row as its item.
+fn list_row_lines(panel: Panel, glance: &Glance<'_>) -> Vec<Line> {
+    if panel == Panel::Since {
+        let count = glance.queue.map_or(0, |queue| {
+            let events = away::find_events_since(&queue.events, glance.since);
+            since::group_events_by_card(events).len()
+        });
+        return (0..count).map(Line::Event).collect();
+    }
+    list_block_groups(panel)
+        .iter()
+        .filter_map(|group| glance.groups.iter().find(|(each, _)| each == group))
+        .flat_map(|(group, items)| {
+            (0..items.len()).map(|index| Line::Item {
+                group: *group,
+                index,
+            })
+        })
+        .collect()
 }
 
 /// Returns the items of `wanted` groups, in that order.

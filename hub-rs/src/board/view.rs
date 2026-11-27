@@ -97,6 +97,17 @@ pub(super) enum Line {
     NoHub,
     /// Page 1's last line, `then: review N cards`, which opens page 5.
     ThenReview,
+    /// A block's heading on the first screen, which opens its page.
+    Block(Panel),
+    /// A block's fold row on the first screen, such as `+ 2 more`,
+    /// which opens its page with every row the block holds.
+    Fold(Panel),
+    /// The first screen's fault row at this place in `Queue::problems`,
+    /// which opens page 4.
+    Fault(usize),
+    /// The first screen's SINCE YOU LEFT row at this place in
+    /// `since::group_events_by_card`, which opens page 2.
+    Event(usize),
 }
 
 /// What names a line across reads, since a read can move an item to
@@ -110,6 +121,11 @@ enum LineId {
     Detail(Group, String),
     NoHub,
     ThenReview,
+    Block(Panel),
+    Fold(Panel),
+    Fault(usize),
+    /// The row's `CardEvents::format_row_id`.
+    Event(String),
 }
 
 /// The page the screen shows.
@@ -160,6 +176,12 @@ pub(crate) struct Board {
     /// The view open over the glance page, or `None` on the glance
     /// page.
     view: Option<Panel>,
+    /// The glance page's chosen line while a view is open, so going
+    /// back chooses it again.
+    glance_choice: Option<LineId>,
+    /// How many rows each glance page column is scrolled down, as the
+    /// last draw left them, so the chosen row shows.
+    glance_scroll: [usize; 2],
     /// How many lines of page 2 are scrolled off the top.
     scroll: usize,
     /// The start of the user's visit, which SINCE YOU LEFT shows events
@@ -212,6 +234,8 @@ impl Board {
             list: ListState::default(),
             page: Page::List,
             view: None,
+            glance_choice: None,
+            glance_scroll: [0; 2],
             scroll: 0,
             since: None,
             since_time: None,
@@ -238,23 +262,16 @@ impl Board {
                 return;
             }
         };
-        let chosen = self.list.selected();
-        let chosen_id = chosen.and_then(|index| self.find_line_id(index));
         self.status = format!("read {} {:.1}s", queue.read_at, queue.took.as_secs_f32());
-        self.groups = groups::build_groups(&queue);
-        // A session gone since the last read can no longer be jumped to.
-        self.chosen_session = self
-            .chosen_session
-            .take()
-            .filter(|name| queue.sessions.iter().any(|row| row.name == *name));
-        self.queue = Some(queue);
-        self.rebuild_lines();
-        let same_line = chosen_id.and_then(|id| {
-            (0..self.lines.len()).find(|&index| self.find_line_id(index).as_ref() == Some(&id))
+        self.rebuild_keeping_choice(|board| {
+            board.groups = groups::build_groups(&queue);
+            // A session gone since the last read can no longer be jumped to.
+            board.chosen_session = board
+                .chosen_session
+                .take()
+                .filter(|name| queue.sessions.iter().any(|row| row.name == *name));
+            board.queue = Some(queue);
         });
-        let last = self.lines.len().saturating_sub(1);
-        let place = same_line.unwrap_or_else(|| chosen.unwrap_or(0).min(last));
-        self.list.select((!self.lines.is_empty()).then_some(place));
     }
 
     /// Shows a read a board saved before, with its time on top, until
@@ -275,10 +292,26 @@ impl Board {
         away_for: Option<SignedDuration>,
         time_zone: &TimeZone,
     ) {
-        self.since = since;
         self.since_time =
             since.map(|at| at.to_zoned(time_zone.clone()).strftime("%H:%M").to_string());
         self.away_for = away_for;
+        // SINCE YOU LEFT's rows on the glance page are lines.
+        self.rebuild_keeping_choice(|board| board.since = since);
+    }
+
+    /// Makes `change` to what the lines come from and builds them again,
+    /// keeping the chosen line when it is still there, else its place.
+    /// Every change to the lines' sources goes through here, so a tap or
+    /// Enter never acts on a line the screen no longer draws.
+    fn rebuild_keeping_choice(&mut self, change: impl FnOnce(&mut Board)) {
+        let chosen = self.list.selected();
+        let chosen_id = chosen.and_then(|index| self.find_line_id(index));
+        change(self);
+        self.rebuild_lines();
+        let same_line = chosen_id.and_then(|id| self.find_line_by_id(&id));
+        let last = self.lines.len().saturating_sub(1);
+        let place = same_line.unwrap_or_else(|| chosen.unwrap_or(0).min(last));
+        self.list.select((!self.lines.is_empty()).then_some(place));
     }
 
     /// Marks the board as reading, until the next `show_reading`.
@@ -367,7 +400,10 @@ impl Board {
             return;
         }
         match self.view {
-            None => glance::draw_glance(frame, self.area, &self.build_glance()),
+            None => {
+                let scroll = glance::draw_glance(frame, self.area, &self.build_glance());
+                self.glance_scroll = scroll;
+            }
             Some(panel) => self.draw_view(frame, panel),
         }
     }
@@ -381,12 +417,15 @@ impl Board {
         if is_wide == was_wide {
             return;
         }
-        if is_wide {
-            self.open.insert(Group::Idle);
-        } else {
-            self.open.remove(&Group::Idle);
-        }
-        self.rebuild_lines();
+        // The glance page's lines also change with the width, since it
+        // shows more rows from `WIDE_COLUMNS` on.
+        self.rebuild_keeping_choice(|board| {
+            if is_wide {
+                board.open.insert(Group::Idle);
+            } else {
+                board.open.remove(&Group::Idle);
+            }
+        });
     }
 
     /// Returns every element the open page holds, top first, as the
@@ -454,6 +493,8 @@ impl Board {
             since: self.since,
             since_time: self.since_time.as_deref(),
             away_for: self.away_for,
+            chosen: self.list.selected(),
+            scroll: self.glance_scroll,
             color: self.color,
         }
     }
@@ -658,11 +699,42 @@ impl Board {
     /// Opens `panel`'s page over the glance page, at its top, with its
     /// first line chosen.
     fn open_view(&mut self, panel: Panel) {
+        if self.view.is_none() {
+            self.glance_choice = self
+                .list
+                .selected()
+                .and_then(|index| self.find_line_id(index));
+        }
         self.view = Some(panel);
         self.scroll = 0;
         self.rebuild_lines();
         self.list = ListState::default();
         self.list.select((!self.lines.is_empty()).then_some(0));
+    }
+
+    /// Goes back to the glance page, with the line chosen there before
+    /// the view opened chosen again, else its first line.
+    fn close_view(&mut self) {
+        self.view = None;
+        self.rebuild_lines();
+        let place = self
+            .glance_choice
+            .take()
+            .and_then(|id| self.find_line_by_id(&id));
+        self.list = ListState::default();
+        self.list
+            .select((!self.lines.is_empty()).then_some(place.unwrap_or(0)));
+    }
+
+    /// Opens `panel`'s page with every row its glance block holds shown,
+    /// its groups open and past `GROUP_LIMIT`, so the rows the block's
+    /// fold row sums up show on it. On page 3 that opens IDLE. They stay
+    /// shown when the page opens again, as after `+ N more` on a page.
+    fn open_view_with_block_rows(&mut self, panel: Panel) {
+        let groups = glance::list_block_groups(panel);
+        self.open.extend(groups);
+        self.shown_in_full.extend(groups);
+        self.open_view(panel);
     }
 
     /// Opens the help page of the open view, or of the glance page.
@@ -711,7 +783,7 @@ impl Board {
                     .map_or(Some(Panel::Waiting), Panel::find_next_panel)
                 {
                     Some(panel) => self.open_view(panel),
-                    None => self.view = None,
+                    None => self.close_view(),
                 }
                 return Step::Stay;
             }
@@ -728,17 +800,17 @@ impl Board {
                 return Step::Stay;
             }
             KeyCode::Char('q') | KeyCode::Esc if self.view.is_some() => {
-                self.view = None;
+                self.close_view();
                 return Step::Stay;
             }
             KeyCode::Char('q') => return Step::Quit,
             _ => {}
         }
         match self.view {
-            // The glance page does not scroll, and Esc on it does
-            // nothing, since a phone's Esc is easy to hit by mistake.
-            None => return Step::Stay,
-            Some(Panel::Waiting | Panel::Active | Panel::Review) => {}
+            // The glance page picks its lines as the list pages do. Esc
+            // on it does nothing, since a phone's Esc is easy to hit by
+            // mistake.
+            None | Some(Panel::Waiting | Panel::Active | Panel::Review) => {}
             Some(Panel::Since) => {
                 match key.code {
                     KeyCode::Char('j') | KeyCode::Down => self.scroll(1),
@@ -775,11 +847,10 @@ impl Board {
         Step::Stay
     }
 
-    /// Acts on the element under a tap. A block opens its page, a
-    /// breadcrumb goes back, a list line acts as Enter does, a page 2
-    /// card row or page 4's fold row folds or unfolds, a session row
-    /// only chooses, and the bar jumps. Any tap on another page goes
-    /// back to the list.
+    /// Acts on the element under a tap. A breadcrumb goes back, a list
+    /// or glance line acts as Enter does, a page 2 card row or page 4's
+    /// fold row folds or unfolds, a session row only chooses, and the
+    /// bar jumps. Any tap on another page goes back to the list.
     fn tap(&mut self, column: u16, row: u16) -> Step {
         if let Page::Details(_) | Page::Cleaned(_) | Page::Confirm(_) = self.page {
             self.page = Page::List;
@@ -808,7 +879,7 @@ impl Board {
                 Step::Stay
             }
             Some(Action::Back) => {
-                self.view = None;
+                self.close_view();
                 Step::Stay
             }
             Some(Action::None) | None => Step::Stay,
@@ -817,10 +888,16 @@ impl Board {
 
     /// Chooses the line at `index` and acts on it. A heading folds or
     /// opens, `+ N more` shows the rest, an item or its detail line
-    /// opens its details, and `then: review` opens page 5.
+    /// opens its details, and `then: review` opens page 5. On the
+    /// glance page a block's heading, a fault row or a SINCE YOU LEFT
+    /// row opens its page, and a fold row opens its page with the rows
+    /// it sums up shown.
     fn activate(&mut self, index: usize) -> Step {
+        let Some(&line) = self.lines.get(index) else {
+            return Step::Stay;
+        };
         self.list.select(Some(index));
-        match self.lines[index] {
+        match line {
             Line::Heading { group, .. } => {
                 if !self.open.remove(&group) {
                     self.open.insert(group);
@@ -839,6 +916,22 @@ impl Board {
             Line::NoHub => Step::Stay,
             Line::ThenReview => {
                 self.open_view(Panel::Review);
+                Step::Stay
+            }
+            Line::Block(panel) => {
+                self.open_view(panel);
+                Step::Stay
+            }
+            Line::Fault(_) => {
+                self.open_view(Panel::Machine);
+                Step::Stay
+            }
+            Line::Event(_) => {
+                self.open_view(Panel::Since);
+                Step::Stay
+            }
+            Line::Fold(panel) => {
+                self.open_view_with_block_rows(panel);
                 Step::Stay
             }
         }
@@ -900,14 +993,15 @@ impl Board {
             .select(Some(current.saturating_add_signed(steps).min(last)));
     }
 
-    /// Moves the choice on a list page or page 4's sessions, scrolls
-    /// page 2, or scrolls a details or clean output page. The glance
-    /// page does not scroll.
+    /// Moves the choice on the glance page, a list page or page 4's
+    /// sessions, scrolls page 2, or scrolls a details or clean output
+    /// page.
     fn scroll(&mut self, steps: isize) -> Step {
         match &mut self.page {
             Page::List => match self.view {
-                None => {}
-                Some(Panel::Waiting | Panel::Active | Panel::Review) => self.move_choice(steps),
+                None | Some(Panel::Waiting | Panel::Active | Panel::Review) => {
+                    self.move_choice(steps);
+                }
                 Some(Panel::Machine) => {
                     self.move_session(steps);
                 }
@@ -1079,8 +1173,14 @@ impl Board {
     /// no heading, since its breadcrumb names its one group, and it is
     /// always open. WAITING ON YOU says that no hub runs when none did
     /// at the read. Page 1 ends in `then: review N cards` when IN
-    /// REVIEW holds a card.
+    /// REVIEW holds a card. The glance page's lines are the rows it
+    /// draws at the last drawn width, as `glance::list_glance_lines`
+    /// lists them.
     fn rebuild_lines(&mut self) {
+        if self.view.is_none() {
+            self.lines = glance::list_glance_lines(self.area, &self.build_glance());
+            return;
+        }
         let no_hub = self.queue.as_ref().is_some_and(|queue| queue.no_hub);
         let page_groups = self.view.map_or(&[][..], Panel::list_groups);
         let mut lines = Vec::new();
@@ -1176,7 +1276,21 @@ impl Board {
             )),
             Line::NoHub => Some(LineId::NoHub),
             Line::ThenReview => Some(LineId::ThenReview),
+            Line::Block(panel) => Some(LineId::Block(panel)),
+            Line::Fold(panel) => Some(LineId::Fold(panel)),
+            Line::Fault(number) => Some(LineId::Fault(number)),
+            Line::Event(number) => {
+                let queue = self.queue.as_ref()?;
+                let rows = since::group_events_by_card(self.select_away_events(queue));
+                Some(LineId::Event(rows.get(number)?.format_row_id()))
+            }
         }
+    }
+
+    /// Returns the place of the line that `id` names, or `None` when no
+    /// line does.
+    fn find_line_by_id(&self, id: &LineId) -> Option<usize> {
+        (0..self.lines.len()).find(|&index| self.find_line_id(index).as_ref() == Some(id))
     }
 }
 
@@ -1566,14 +1680,20 @@ pub(super) mod tests {
     /// Returns the color and dimness of the first cell of `words`, on
     /// the first row of `cells` that holds them.
     fn find_words_style(cells: &Buffer, words: &str) -> (Option<Color>, bool) {
+        let style = find_words_cell_style(cells, words);
+        (style.fg, style.add_modifier.contains(Modifier::DIM))
+    }
+
+    /// Returns the style of the first cell of `words`, on the first row
+    /// of `cells` that holds them.
+    fn find_words_cell_style(cells: &Buffer, words: &str) -> Style {
         for row in 0..cells.area.height {
             let line: String = (0..cells.area.width)
                 .map(|column| cells[(column, row)].symbol())
                 .collect();
             if let Some(start) = line.find(words) {
                 let column = u16::try_from(line[..start].chars().count()).unwrap();
-                let style = cells[(column, row)].style();
-                return (style.fg, style.add_modifier.contains(Modifier::DIM));
+                return cells[(column, row)].style();
             }
         }
         panic!("no row holds {words:?}");
@@ -1647,6 +1767,144 @@ pub(super) mod tests {
 
         assert_eq!(opened[0], "< 3 ACTIVE  5 · 1 working");
         assert_eq!(back, glance);
+    }
+
+    /// Returns the id of the element the 40x16 dump marks `chosen`, or
+    /// an empty string when none is.
+    fn read_chosen_id(board: &mut Board) -> String {
+        let dump = board.dump(40, 16, None);
+        dump.elements
+            .into_iter()
+            .find(|element| element.chosen)
+            .map_or_else(String::new, |element| element.id)
+    }
+
+    /// j, k and the arrow keys move the first screen's choice one row
+    /// at a time, as on the pages, past the blank line between blocks.
+    /// A key that stuck, or stopped on the blank line, would leave a
+    /// user with no mouse unable to reach the next block's rows.
+    #[test]
+    fn handle_input_j_k_move_glance_choice() {
+        let mut board = make_sample_board();
+        let (j, k) = (KeyCode::Char('j'), KeyCode::Char('k'));
+
+        let mut chosen = Vec::new();
+        for code in [j, KeyCode::Down, j, k, KeyCode::Up] {
+            board.handle_input(&press(code));
+            chosen.push(read_chosen_id(&mut board));
+        }
+
+        let expected = [
+            "waiting:0",
+            "waiting:1",
+            "block:since",
+            "waiting:1",
+            "waiting:0",
+        ];
+        assert_eq!(chosen, expected);
+    }
+
+    /// When fault rows push the last block below a 40x16 screen, the
+    /// first screen scrolls so the chosen row shows, drawn reversed as
+    /// on the pages. Without it the user moves the choice onto a row
+    /// they cannot see, and Enter acts on it blind.
+    #[test]
+    fn render_glance_scrolls_to_chosen_row_reversed() {
+        let mut queue = make_sample_queue();
+        queue.problems = ["one", "two", "three"]
+            .map(|words| format!("fault {words}"))
+            .to_vec();
+        let mut board = Board::new(false);
+        board.show_reading(Ok(queue));
+        board.render_lines(40, 16);
+
+        board.handle_input(&press(KeyCode::PageDown));
+        let cells = render_cells(&mut board);
+
+        let style = find_words_cell_style(&cells, "IN REVIEW");
+        assert!(style.add_modifier.contains(Modifier::REVERSED));
+    }
+
+    /// Esc from a page comes back to the first screen with the row the
+    /// user picked there still chosen. Without it every visit to a page
+    /// sends the choice back to the top.
+    #[test]
+    fn handle_input_esc_restores_glance_choice() {
+        let mut board = make_sample_board();
+        board.handle_input(&press(KeyCode::Char('j')));
+        board.handle_input(&press(KeyCode::Char('j')));
+
+        board.handle_input(&press(KeyCode::Char('3')));
+        board.handle_input(&press(KeyCode::Esc));
+
+        assert_eq!(read_chosen_id(&mut board), "waiting:1");
+    }
+
+    /// From 100 columns a tap on a row in either column opens that
+    /// row's details. A tap finds its line by its place in the left
+    /// column then the right, so a wrong order would open another card.
+    #[test]
+    fn handle_input_wide_tap_opens_tapped_row() {
+        let mut board = make_sample_board();
+        let glance = board.render_lines(100, 24);
+
+        board.handle_input(&tap_on(&glance, "blocked-fix"));
+        let left = board.render_lines(100, 24);
+        board.handle_input(&press(KeyCode::Esc));
+        board.handle_input(&tap_on(&glance, "DEMO-KB-004"));
+        let right = board.render_lines(100, 24);
+
+        assert_eq!(left[1], "blocked-fix waits on you: needs you");
+        assert_eq!(right[1], "Lint every Dockerfile in the repository");
+    }
+
+    /// A new visit time can drop SINCE YOU LEFT's rows from above the
+    /// chosen row. The choice must stay on the row the user picked, or
+    /// Enter would act on whichever row slid into its place.
+    #[test]
+    fn show_visit_keeps_choice_when_rows_drop() {
+        let mut board = make_sample_board();
+        let visit = |time: &str| format!("2026-11-15T{time}:00Z").parse().ok();
+        board.show_visit(visit("10:31"), None, &TimeZone::UTC);
+        for _ in 0..20 {
+            if read_chosen_id(&mut board) == "block:active" {
+                break;
+            }
+            board.handle_input(&press(KeyCode::Char('j')));
+        }
+        assert_eq!(read_chosen_id(&mut board), "block:active");
+
+        board.show_visit(visit("11:00"), None, &TimeZone::UTC);
+
+        assert_eq!(read_chosen_id(&mut board), "block:active");
+    }
+
+    /// Enter on ACTIVE's `+ N more` row opens page 3 with the rows it
+    /// sums up shown, so IDLE opens. Without it the idle cards the
+    /// first screen folds stay out of a keyboard user's reach.
+    #[test]
+    fn handle_input_enter_on_fold_opens_idle() {
+        let mut board = make_sample_board();
+        for _ in 0..20 {
+            if read_chosen_id(&mut board) == "more:active" {
+                break;
+            }
+            board.handle_input(&press(KeyCode::Char('j')));
+        }
+        assert_eq!(read_chosen_id(&mut board), "more:active");
+
+        board.handle_input(&press(KeyCode::Enter));
+        let lines = board.render_lines(40, 16);
+
+        assert_eq!(lines[0], "< 3 ACTIVE  5 · 1 working");
+        assert_eq!(
+            lines[6..9],
+            [
+                "v IDLE 2",
+                " idle DEMO-KB-002 Board for the~ Demo",
+                " you  DEMO-KB-003 Trim the buil~ Demo",
+            ]
+        );
     }
 
     /// An agent learns what to open from the elements, not the screen.

@@ -61,8 +61,7 @@ pub(super) fn draw_list(
         .iter()
         .map(|line| ListItem::new(format_list_line(screen, *line, width)))
         .collect();
-    let list_widget =
-        List::new(items).highlight_style(Style::new().add_modifier(Modifier::REVERSED));
+    let list_widget = List::new(items).highlight_style(pick_chosen_style());
     frame.render_stateful_widget(list_widget, middle, list);
     frame.render_widget(
         Paragraph::new(format_view_hint(screen.status)).style(pick_dim_style()),
@@ -159,6 +158,12 @@ pub(super) fn build_list_elements(
         bottom,
     ));
     elements
+}
+
+/// Returns the style of the chosen line, which the list pages and the
+/// glance page draw across its whole row.
+pub(super) fn pick_chosen_style() -> Style {
+    Style::new().add_modifier(Modifier::REVERSED)
 }
 
 /// Returns a view's bottom line, such as
@@ -309,8 +314,8 @@ fn select_shown_detail_lines(details: &Details, middle: Rect) -> Vec<String> {
 }
 
 /// Returns a list line's element id, kind and what a tap on it does,
-/// if anything.
-fn describe_line(
+/// if anything. The glance page takes its tap words from here too.
+pub(super) fn describe_line(
     groups: &[(Group, Vec<Item>)],
     line: Line,
 ) -> (String, Kind, Option<&'static str>) {
@@ -340,6 +345,12 @@ fn describe_line(
         }
         Line::NoHub => ("no-hub".to_owned(), Kind::Text, None),
         Line::ThenReview => ("then:review".to_owned(), Kind::Text, Some("open")),
+        // The glance page names these lines and picks their kinds
+        // itself, and takes only the tap word from here.
+        Line::Fold(_) => (String::new(), Kind::More, Some("show all")),
+        Line::Block(_) | Line::Fault(_) | Line::Event(_) => {
+            (String::new(), Kind::Text, Some("open"))
+        }
     }
 }
 
@@ -562,6 +573,9 @@ fn format_list_line(screen: &ListScreen<'_>, line: Line, width: usize) -> TextLi
                 Span::styled(key, pick_dim_style()),
             ])
         }
+        // These lines are the glance page's own, and it draws them with
+        // `glance::draw_glance`, so they never reach a list page.
+        Line::Block(_) | Line::Fold(_) | Line::Fault(_) | Line::Event(_) => TextLine::default(),
     }
 }
 
