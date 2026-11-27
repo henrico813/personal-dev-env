@@ -633,7 +633,7 @@ fn save_status(
         review_session.status = status;
         review_session.write_error = write_error;
     }
-    lock.save()
+    lock.save_review_session()
 }
 
 /// Replaces the file through a synced temporary file beside it, so a crash

@@ -201,6 +201,9 @@ pub struct Tools<'a> {
     /// `~/.local/state`, which holds each hub's `herdr-hub.*` run
     /// folder.
     pub runs_folder: &'a Path,
+    /// The `prs` tool's list of open pull requests,
+    /// `~/.cache/prs/list.json`.
+    pub pr_list: &'a Path,
     /// The wait between reads of a reopened agent's session ID, one
     /// second outside tests. Herdr learns the ID only after OpenCode
     /// starts.
@@ -220,6 +223,7 @@ pub struct OwnedTools {
     pub own_session: Option<String>,
     pub state_folder: PathBuf,
     pub runs_folder: PathBuf,
+    pub pr_list: PathBuf,
     pub reopen_poll: Duration,
 }
 
@@ -236,6 +240,7 @@ impl OwnedTools {
             own_session: self.own_session.as_deref(),
             state_folder: &self.state_folder,
             runs_folder: &self.runs_folder,
+            pr_list: &self.pr_list,
             reopen_poll: self.reopen_poll,
         }
     }

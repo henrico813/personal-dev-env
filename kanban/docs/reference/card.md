@@ -366,6 +366,9 @@ Cards made before that layout have Why, Outcome and "Open questions"
 sections, hints between `%%` marks, and no `sessions` field.
 `kanban/migrate_sections.py` moves them to the version 1 layout; see
 its `--help`. A second run changes nothing.
+`kanban/migrate_version_2.py` then moves every card to version 2.
+It lists the cards it would change, and writes them only with
+`--apply --user`.
 
 ## Log lines
 ---

@@ -570,16 +570,23 @@ QUEUE; from 100 columns they sit side by side.
   board has saved a time yet. Once a time is saved, AWAY also
   reads runs whose hub has ended, so what a hub did before it
   ended still shows.
-- QUEUE shows what waits on the user first, then cards that run,
-  idle cards and cards in review. Each row starts with its status
-  word: `you` waits on the user, `run` a worker is at work on it,
-  `idle` it has a worker and none is at work, `rev` a pull
-  request to read. The queue view adds two more words: `none`,
-  a card with no worker, and `!`, a source the read could not
-  get. A card whose worker waits on the user is left out of the
-  block; that worker already shows there as a `you` row. The
-  heading counts what runs, waits and sits idle, such as
+- QUEUE shows problems first, then what waits on the user, cards
+  that run, idle cards and cards in review. Each row starts with
+  its status word: `!` a problem, `you` waits on the user, `run` a
+  worker is at work on it, `idle` it has a worker and none is at
+  work, `rev` a pull request to read. A worker is at work while
+  Herdr shows it working, or for 30 minutes after its
+  `status-NAME.md` in a live hub's run folder last changed. The
+  queue view adds one more word: `none`, a card with no worker. A
+  card whose worker waits on the user is left out of the block;
+  that worker already shows there as a `you` row. The heading
+  counts what runs, waits and sits idle, such as
   `1 run · 2 you · 1 idle`.
+- A problem is a fault or a source the read could not get. The
+  faults come first: `hub watcher stopped` while a hub runs and
+  no `hub watch` does, and `auto run N stalled since ...` for a run
+  approved in the last 24 hours that has stalled, as `hub watch`
+  tells the phone.
 - NEXT gives one `you:` line per question or session that waits on
   the user, one `then:` line counting the cards in review, and one
   `hub:` line per Todo card in `card list` order. The block shows
@@ -599,10 +606,15 @@ QUEUE; from 100 columns they sit side by side.
   `+ N more` opens its view; a tap on the breadcrumb, Esc or q
   goes back. r reads again, and q quits from the glance page.
   Ctrl-C quits from anywhere. The board also reads again every 10
-  seconds. `NO_COLOR` turns colors off. The away, next and
-  machine views and any details page scroll with j, k, the page
-  keys or the wheel, and on a details page any tap, Enter, space,
-  q or Esc goes back.
+  seconds. `NO_COLOR` turns colors off. Each color means one
+  thing: cyan at work, magenta waits on you, green ready for
+  review, yellow held up, such as Blocked or `none`, and red a
+  problem. `idle`, fold marks and the Draft count are dim. Group
+  names are bold in the default color, and their counts take the
+  color.
+  The away, next and machine views and any details page scroll
+  with j, k, the page keys or the wheel, and on a details page any
+  tap, Enter, space, q or Esc goes back.
 - The queue view lists the cards by group: Needs you, Active,
   In review, Blocked, Todo and Draft. The cards come
   from `card list`. Needs you holds each open question, as
@@ -614,13 +626,20 @@ QUEUE; from 100 columns they sit side by side.
   project, and its details page shows `KEY Q3, asked DATE`. A card's
   details page lists its open questions under the title. With no hub
   running, Needs you shows `no hub running`. It ignores `HUB_RUN`,
-  and the hidden `--run DIR` shows one run's sessions only. A Could
-  not read group shows on top when a read fails.
+  and the hidden `--run DIR` shows one run's sessions only, with no
+  watcher fault. A Problems group shows on top when the read finds
+  a problem. The In review heading counts the open pull requests
+  in the `prs` tool's cache, `~/.cache/prs/list.json`, and those
+  with a failed check, such as `In review 2 · 3 PRs, 1 failing`.
   Todo, Draft and Blocked start folded, and Blocked shows only
   when it holds a card. An open group shows four
   rows, then `+ N more`. A tap on a heading folds or opens it, a
   tap on a count opens its group and scrolls to it, and a tap on
-  a row opens its details. j, k, the arrow and page keys or the
+  a row opens its details. A card's details page adds each
+  worker's status line with its age, such as
+  `api-build 12m ago: tests pass`, a waiting session's page adds
+  its own, and a question's page says how many days ago it was
+  asked. j, k, the arrow and page keys or the
   wheel move the choice, and Enter or space acts on it.
 - The sessions view groups every session as `hub clean` decides:
   NEEDS YOU, WORKING, KEPT, SAFE TO CLOSE and PARKED. Each row
@@ -652,6 +671,11 @@ QUEUE; from 100 columns they sit side by side.
   once a minute, and once more as it quits. `--print`, `--dump`
   and `--control` read that time but never write it, so an
   agent's look at the board does not hide news from the user.
+- The live board saves each read in
+  `~/.local/state/pde/hub/board-snapshot.json`. A new board draws
+  the saved read at once, with `saved HH:MM · reading` on top,
+  until its own first read lands. `--print`, `--dump` and
+  `--control` neither save nor load it.
 - `--print` prints one screen as text, and `--dump` prints its
   elements as one JSON line. Both draw a new board, starting on
   the glance page, at `--size`, default 40x16.

@@ -4,6 +4,7 @@ pub mod approvals;
 pub mod comments;
 mod error;
 pub mod git;
+pub mod older_reviews;
 pub mod review_session;
 pub mod style_rules;
 pub mod user_feedback;

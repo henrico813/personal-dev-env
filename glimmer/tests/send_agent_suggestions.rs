@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 
 use common::{
     APPROVED, REWORDED, STORE, add_decision, commit_all, find_waiting_worktrees, make_repo,
-    request_json, save_review, store_source, use_test_waiting_list, write_store,
+    read_archive_copies, request_json, save_review, store_source, use_test_waiting_list,
+    write_store,
 };
 use glimmer::shared::ErrorCode;
 use glimmer::shared::review_session::{
@@ -515,5 +516,37 @@ mod send_agent_suggestions {
         assert_eq!(review_session.status, ReviewStatus::WaitingForUserFeedback);
         let feedback = serde_json::to_value(&review_session.feedback).unwrap();
         assert_eq!(feedback, json!({"2": {"answer": "keep"}}));
+    }
+
+    /// A new list must first copy the done Review Session it replaces, even one an older version saved without a copy.
+    /// Otherwise the answers on the old list would be lost when a branch moves to a new base.
+    #[test]
+    fn archives_done_review_session_it_replaces() {
+        let repo = make_repo();
+        let dir = repo.path();
+        write_store(dir, REWORDED, "");
+        let request = request_json(1, Some("Save"), REWORDED, 3);
+        save_review(
+            dir,
+            "done",
+            &[json!([request])],
+            json!({"1": {"answer": "keep"}}),
+        );
+        // Name this test's repository, so no other test's copies mix in.
+        let review_file = dir.join(".git/pde/review.json");
+        let mut review: Value = serde_json::from_slice(&fs::read(&review_file).unwrap()).unwrap();
+        review["origin"]["repo"] = json!(dir.file_name().unwrap().to_str());
+        fs::write(&review_file, review.to_string()).unwrap();
+
+        send_agent_suggestions(dir, build_list(dir, &[], json!("keep"))).unwrap();
+
+        let copies = read_archive_copies(dir);
+        let keep = json!({"1": {"answer": "keep"}});
+        assert!(
+            copies
+                .iter()
+                .any(|copy| copy["status"] == "done" && copy["feedback"] == keep),
+            "{copies:?}"
+        );
     }
 }

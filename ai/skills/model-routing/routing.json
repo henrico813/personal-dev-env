@@ -11,7 +11,7 @@
     "effort": "medium",
     "skills": ["review-plan"],
     "opencode": [
-      ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
+      ["claude-code/claude-sonnet-5-5", "github-copilot/claude-sonnet-5"],
       ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
@@ -28,7 +28,7 @@
     "effort": "medium",
     "skills": ["behavior-focused-testing"],
     "opencode": [
-      ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
+      ["claude-code/claude-sonnet-5-5", "github-copilot/claude-sonnet-5"],
       ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
@@ -37,7 +37,7 @@
     "effort": "medium",
     "skills": [],
     "opencode": [
-      ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
+      ["claude-code/claude-sonnet-5-5", "github-copilot/claude-sonnet-5"],
       ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
@@ -46,7 +46,7 @@
     "effort": "medium",
     "skills": [],
     "opencode": [
-      ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
+      ["claude-code/claude-sonnet-5-5", "github-copilot/claude-sonnet-5"],
       ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
@@ -55,7 +55,7 @@
     "effort": "medium",
     "skills": [],
     "opencode": [
-      ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
+      ["claude-code/claude-sonnet-5-5", "github-copilot/claude-sonnet-5"],
       ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
@@ -64,7 +64,7 @@
     "effort": "medium",
     "skills": [],
     "opencode": [
-      ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
+      ["claude-code/claude-sonnet-5-5", "github-copilot/claude-sonnet-5"],
       ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
@@ -73,7 +73,7 @@
     "effort": "medium",
     "skills": [],
     "opencode": [
-      ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
+      ["claude-code/claude-sonnet-5-5", "github-copilot/claude-sonnet-5"],
       ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
@@ -82,7 +82,7 @@
     "effort": "medium",
     "skills": [],
     "opencode": [
-      ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
+      ["claude-code/claude-sonnet-5-5", "github-copilot/claude-sonnet-5"],
       ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
@@ -91,7 +91,7 @@
     "effort": "medium",
     "skills": [],
     "opencode": [
-      ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
+      ["claude-code/claude-sonnet-5-5", "github-copilot/claude-sonnet-5"],
       ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
@@ -108,8 +108,8 @@
     "effort": "none",
     "skills": [],
     "opencode": [
-      ["openai/gpt-6-luna", "opencode-go/gpt-6-luna", "claude-code/claude-haiku-4-5-20251001"],
-      ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
+      ["openai/gpt-6-luna", "opencode-go/gpt-6-luna", "claude-code/claude-haiku-5-5"],
+      ["claude-code/claude-sonnet-5-5", "github-copilot/claude-sonnet-5"],
       ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["haiku", "sonnet", "opus"]
@@ -118,8 +118,8 @@
     "effort": "none",
     "skills": ["model-routing"],
     "opencode": [
-      ["openai/gpt-6-luna", "opencode-go/gpt-6-luna", "claude-code/claude-haiku-4-5-20251001"],
-      ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
+      ["openai/gpt-6-luna", "opencode-go/gpt-6-luna", "claude-code/claude-haiku-5-5"],
+      ["claude-code/claude-sonnet-5-5", "github-copilot/claude-sonnet-5"],
       ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["haiku", "sonnet", "opus"]
@@ -145,8 +145,8 @@
     "skills": [],
     "opencode": [
       ["goog/qwen3.8-flash", "goog/qwen3.8"],
-      ["openai/gpt-6-luna", "opencode-go/gpt-6-luna", "claude-code/claude-haiku-4-5-20251001"],
-      ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
+      ["openai/gpt-6-luna", "opencode-go/gpt-6-luna", "claude-code/claude-haiku-5-5"],
+      ["claude-code/claude-sonnet-5-5", "github-copilot/claude-sonnet-5"],
       ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ]
   },
@@ -155,8 +155,8 @@
     "skills": ["model-routing"],
     "opencode": [
       ["goog/qwen3.8-flash", "goog/qwen3.8"],
-      ["openai/gpt-6-luna", "opencode-go/gpt-6-luna", "claude-code/claude-haiku-4-5-20251001"],
-      ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
+      ["openai/gpt-6-luna", "opencode-go/gpt-6-luna", "claude-code/claude-haiku-5-5"],
+      ["claude-code/claude-sonnet-5-5", "github-copilot/claude-sonnet-5"],
       ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ]
   },
@@ -165,8 +165,8 @@
     "skills": [],
     "opencode": [
       ["goog/qwen3.8-flash", "goog/qwen3.8"],
-      ["openai/gpt-6-luna", "opencode-go/gpt-6-luna", "claude-code/claude-haiku-4-5-20251001"],
-      ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
+      ["openai/gpt-6-luna", "opencode-go/gpt-6-luna", "claude-code/claude-haiku-5-5"],
+      ["claude-code/claude-sonnet-5-5", "github-copilot/claude-sonnet-5"],
       ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ]
   },
@@ -174,7 +174,7 @@
     "effort": "medium",
     "skills": [],
     "opencode": [
-      ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
+      ["claude-code/claude-sonnet-5-5", "github-copilot/claude-sonnet-5"],
       ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
@@ -199,7 +199,7 @@
     "effort": "medium",
     "skills": [],
     "opencode": [
-      ["claude-code/claude-sonnet-5", "github-copilot/claude-sonnet-5"],
+      ["claude-code/claude-sonnet-5-5", "github-copilot/claude-sonnet-5"],
       ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
     ],
     "claude": ["sonnet", "opus"]
