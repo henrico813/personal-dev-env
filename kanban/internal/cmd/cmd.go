@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -24,9 +25,10 @@ const defaultNamesFile = "~/.config/pde/names.toml"
 // input as a value.
 type env struct {
 	today     time.Time // CARD_TODAY, else the local date, at midnight UTC
-	home      string    // HOME, for ~/.config/pde
+	home      string    // HOME, for ~/.config/pde and ~/.local/state/card
 	namesFile string    // PDE_NAMES_FILE, else defaultNamesFile
 	vault     string    // the global --vault, empty for the default vault
+	paneID    string    // HERDR_PANE_ID, empty outside a Herdr pane
 }
 
 // A mistyped command, such as a stage outside the allowed list. Main exits
@@ -43,7 +45,7 @@ var errExitOne = errors.New("exit 1")
 // error or a printed failure such as no grep match, or 2 for a usage error.
 func Main(args []string) int {
 	root := newRootCommand(&env{})
-	root.SetArgs(args[1:])
+	root.SetArgs(moveDashedTextToEnd(root, rewriteSessionValue(args[1:])))
 	ran, err := root.ExecuteC()
 	var usage usageError
 	switch {
@@ -59,10 +61,91 @@ func Main(args []string) int {
 	return 1
 }
 
-// Reads CARD_TODAY, HOME and PDE_NAMES_FILE. A bad CARD_TODAY is a card
+// Joins "--session X" into "--session=X" when X does not start with "-", as
+// argparse reads it, since pflag reads an optional value only after "=".
+func rewriteSessionValue(args []string) []string {
+	rewritten := make([]string, 0, len(args))
+	for index := 0; index < len(args); index++ {
+		switch {
+		case args[index] == "--":
+			return append(rewritten, args[index:]...)
+		case args[index] == "--session" && index+1 < len(args) && !strings.HasPrefix(args[index+1], "-"):
+			rewritten = append(rewritten, "--session="+args[index+1])
+			index++
+		default:
+			rewritten = append(rewritten, args[index])
+		}
+	}
+	return rewritten
+}
+
+// Moves each argument that argparse reads as text though it starts with "-",
+// such as "- [ ] Retry.", behind a "--", so pflag reads it as text too. A
+// flag's value, such as --why "- a reason", stays put.
+func moveDashedTextToEnd(root *cobra.Command, args []string) []string {
+	command, _, err := root.Find(args)
+	if err != nil {
+		return args
+	}
+	var kept, moved []string
+	for index, arg := range args {
+		switch {
+		case arg == "--":
+			if moved == nil {
+				return args
+			}
+			return slices.Concat(kept, []string{"--"}, moved, args[index+1:])
+		case isDashedText(command, arg) && (index == 0 || !isFlagNeedingValue(command, args[index-1])):
+			moved = append(moved, arg)
+		default:
+			kept = append(kept, arg)
+		}
+	}
+	if moved == nil {
+		return args
+	}
+	return slices.Concat(kept, []string{"--"}, moved)
+}
+
+// Matches argparse's negative number shape, such as "-5" or "-.5", which it
+// reads as text, since card has no option of that shape.
+var negativeNumberPattern = regexp.MustCompile(`^-\d+$|^-\d*\.\d+$`)
+
+// Reports whether argparse reads arg as text, as it does "- [ ] Retry.", "-5"
+// and "--not a flag". It reads "--why=a b" as the flag --why.
+func isDashedText(command *cobra.Command, arg string) bool {
+	if negativeNumberPattern.MatchString(arg) {
+		return true
+	}
+	if !strings.HasPrefix(arg, "-") || !strings.Contains(arg, " ") {
+		return false
+	}
+	name, isLong := strings.CutPrefix(arg, "--")
+	if !isLong {
+		return true
+	}
+	name, _, _ = strings.Cut(name, "=")
+	return command.Flags().Lookup(name) == nil && command.InheritedFlags().Lookup(name) == nil
+}
+
+// Reports whether arg is a long flag, such as --why, that takes the next
+// argument as its value.
+func isFlagNeedingValue(command *cobra.Command, arg string) bool {
+	name, ok := strings.CutPrefix(arg, "--")
+	if !ok || strings.Contains(name, "=") {
+		return false
+	}
+	flag := command.Flags().Lookup(name)
+	if flag == nil {
+		flag = command.InheritedFlags().Lookup(name)
+	}
+	return flag != nil && flag.NoOptDefVal == ""
+}
+
+// Reads CARD_TODAY, HOME, PDE_NAMES_FILE and HERDR_PANE_ID. A bad CARD_TODAY is a card
 // error, so a test never runs on the real date by mistake.
 func readEnv() (env, error) {
-	e := env{home: os.Getenv("HOME"), namesFile: os.Getenv("PDE_NAMES_FILE")}
+	e := env{home: os.Getenv("HOME"), namesFile: os.Getenv("PDE_NAMES_FILE"), paneID: os.Getenv("HERDR_PANE_ID")}
 	if e.namesFile == "" {
 		e.namesFile = defaultNamesFile
 	}
@@ -116,11 +199,22 @@ func newRootCommand(e *env) *cobra.Command {
 	})
 	root.PersistentFlags().StringVar(&e.vault, "vault", "", "vault name for nobs vault path")
 	root.AddCommand(
+		newNewCommand(e),
 		newListCommand(e),
 		newBoardCommand(e),
 		newShowCommand(e),
-		newOutlineCommand(e),
 		newGrepCommand(e),
+		newOutlineCommand(e),
+		newMoveCommand(e),
+		newNoteCommand(e),
+		newAddCommand(e),
+		newAttachCommand(e),
+		newEditCommand(e),
+		newSetCommand(e),
+		newLinkCommand(e),
+		newMergedCommand(e),
+		newDeleteCommand(e),
+		newRekeyCommand(e),
 		newCheckCommand(e),
 		newNameCommand(e),
 		newTemplateCommand(e),
@@ -139,6 +233,17 @@ func requireArgs(names ...string) cobra.PositionalArgs {
 			return usageError{msg: "unrecognized arguments: " + strings.Join(args[len(names):], " ")}
 		}
 		return nil
+	}
+}
+
+// Checks the arguments as requireArgs does, with one optional argument
+// after names, such as card new's TITLE.
+func requireArgsAndOptional(optional string, names ...string) cobra.PositionalArgs {
+	return func(command *cobra.Command, args []string) error {
+		if len(args) > len(names) {
+			return requireArgs(slices.Concat(names, []string{optional})...)(command, args)
+		}
+		return requireArgs(names...)(command, args)
 	}
 }
 
@@ -197,4 +302,40 @@ func openProjects(e *env) (card.Projects, error) {
 		return card.Projects{}, err
 	}
 	return card.Projects{Dir: dir, Rules: rules}, nil
+}
+
+// Returns a path in card's state folder, ~/.local/state/card, such as the
+// new.lock that card new and card rekey hold.
+func joinStatePath(e *env, name string) string {
+	return filepath.Join(e.home, ".local", "state", "card", name)
+}
+
+// Adds --by, which names who acts in the Log line.
+func addAuthorFlag(command *cobra.Command, by *string) {
+	command.Flags().StringVar(by, "by", "", "who acts, for the Log; needed outside a named Herdr agent")
+}
+
+// The --session option, given alone for this pane's agent or with an
+// agent name, such as --session worker-1.
+type sessionFlag struct {
+	given bool
+	agent string
+}
+
+// The value pflag passes for --session alone. Set trims it to "".
+const thisPaneAgent = " "
+
+func (f *sessionFlag) String() string { return f.agent }
+
+func (f *sessionFlag) Set(agent string) error {
+	f.given, f.agent = true, strings.TrimSpace(agent)
+	return nil
+}
+
+func (f *sessionFlag) Type() string { return "AGENT" }
+
+// Adds --session [AGENT], with when put before its help, such as `with --adopt, `.
+func addSessionFlag(command *cobra.Command, session *sessionFlag, when string) {
+	flag := command.Flags().VarPF(session, "session", "", when+"add the agent's session to sessions; no AGENT means this pane's agent")
+	flag.NoOptDefVal = thisPaneAgent
 }

@@ -1,5 +1,5 @@
 // Command card keeps kanban cards as notes in the Obsidian vault. This Go
-// version runs the read commands; card.py still runs every command.
+// version runs every command, and card.py stays the installed card for now.
 package main
 
 import (

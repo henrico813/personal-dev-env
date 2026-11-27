@@ -320,9 +320,7 @@ jobs:
         run: make init
       - name: check Go
         run: make check
-      # The Go card has only the read commands so far, so the tests of
-      # the other commands are left out.
       - name: test the Go card
         run: |
           go build -o "$RUNNER_TEMP/card" .
-          CARD_UNDER_TEST="$RUNNER_TEMP/card" uvx pytest -m "not (cmd_add or cmd_attach or cmd_delete or cmd_edit or cmd_link or cmd_merged or cmd_move or cmd_new or cmd_note or cmd_rekey or cmd_set)"
+          CARD_UNDER_TEST="$RUNNER_TEMP/card" uvx pytest

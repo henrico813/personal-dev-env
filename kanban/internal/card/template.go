@@ -1,10 +1,6 @@
 package card
 
-import (
-	"fmt"
-	"strings"
-	"unicode/utf16"
-)
+import "strings"
 
 // Runs inside Obsidian's Templater plugin. Keep its name rule the same as
 // badNameChars, fill() the same as slotPattern and filters.
@@ -81,40 +77,9 @@ func RenderTemplate(rules NameRules) (string, error) {
 		"CARD_FILE_RE_JSON", QuoteASCII(formatJSPattern(fileRule)),
 		"PLAN_FILE_RE_JSON", QuoteASCII(formatJSPattern(planRule)),
 	).Replace(templaterScript)
-	text := renderCard("<% key %>", "<% title %>", "<% project.name %>", "<% kind %>", "<% today %>")
+	text := renderCard("<% key %>", "<% title %>", "<% project.name %>", "<% kind %>", "<% today %>",
+		Draft, Draft+": by the user in Obsidian", nil)
 	return strings.Replace(text, "---\n", "---\n"+script, 1), nil
-}
-
-// Quotes text as Python's json.dumps does by default, with every non-ASCII
-// character escaped, such as "Größe".
-func QuoteASCII(text string) string {
-	var quoted strings.Builder
-	quoted.WriteByte('"')
-	for _, r := range text {
-		switch {
-		case r == '"' || r == '\\':
-			quoted.WriteString(`\` + string(r))
-		case r == '\n':
-			quoted.WriteString(`\n`)
-		case r == '\r':
-			quoted.WriteString(`\r`)
-		case r == '\t':
-			quoted.WriteString(`\t`)
-		case r == '\b':
-			quoted.WriteString(`\b`)
-		case r == '\f':
-			quoted.WriteString(`\f`)
-		case r < 0x20 || (r > 0x7f && r <= 0xffff):
-			fmt.Fprintf(&quoted, `\u%04x`, r)
-		case r > 0xffff:
-			high, low := utf16.EncodeRune(r)
-			fmt.Fprintf(&quoted, `\u%04x\u%04x`, high, low)
-		default:
-			quoted.WriteRune(r)
-		}
-	}
-	quoted.WriteByte('"')
-	return quoted.String()
 }
 
 // Turns each (?P<name>...) group into JavaScript's (?<name>...).
@@ -122,8 +87,9 @@ func formatJSPattern(rule NameRule) string {
 	return strings.ReplaceAll(rule.Parse.String(), "(?P<", "(?<")
 }
 
-// Renders a new draft card's text, with empty sections and one Log line.
-func renderCard(cardKey, title, project, kind, today string) string {
+// Renders a new card's text in stage, with one Log line and the text of
+// each section in sections, such as `{"Context": "Why."}`.
+func renderCard(cardKey, title, project, kind, today, stage, logText string, sections map[string]string) string {
 	values := map[string][]string{
 		"tags":     {QuoteASCII("#Kanban")},
 		"plans":    nil,
@@ -133,7 +99,7 @@ func renderCard(cardKey, title, project, kind, today string) string {
 	}
 	plain := map[string]string{
 		"type":             "card",
-		"stage":            Draft,
+		"stage":            stage,
 		"stage_date":       today,
 		"template_version": "2",
 		"project":          project,
@@ -159,7 +125,9 @@ func renderCard(cardKey, title, project, kind, today string) string {
 	for _, name := range Sections {
 		lines = append(lines, "## "+name, "---", "")
 		if name == "Log" {
-			lines = append(lines, "- "+today+" "+Draft+": by the user in Obsidian", "")
+			lines = append(lines, "- "+today+" "+logText, "")
+		} else if body, ok := sections[name]; ok {
+			lines = append(lines, body, "")
 		}
 	}
 	return strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"

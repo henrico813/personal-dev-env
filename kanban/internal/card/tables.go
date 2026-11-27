@@ -32,6 +32,42 @@ const (
 	ReviewLimit = 6
 )
 
+// One allowed move and who may make it, "staff" or "user".
+type Move struct{ From, To, Who string }
+
+// Every allowed move, in the Python card's order. card move takes the
+// shortest chain of these to a target stage.
+var Moves = []Move{
+	{From: Draft, To: Todo, Who: "staff"},
+	{From: Todo, To: Draft, Who: "staff"},
+	{From: Todo, To: Active, Who: "staff"},
+	{From: Active, To: Todo, Who: "staff"},
+	{From: Active, To: Draft, Who: "user"},
+	{From: Active, To: InReview, Who: "staff"},
+	{From: InReview, To: Active, Who: "user"},
+	{From: InReview, To: Done, Who: "user"},
+	// A blocked card waits on something outside card's control, so it never
+	// counts against a card limit.
+	{From: Active, To: Blocked, Who: "staff"},
+	{From: InReview, To: Blocked, Who: "staff"},
+	{From: Blocked, To: InReview, Who: "staff"},
+	{From: Blocked, To: Active, Who: "staff"},
+	{From: Blocked, To: Done, Who: "user"},
+	{From: Dropped, To: Draft, Who: "user"},
+	{From: Draft, To: Dropped, Who: "user"},
+	{From: Todo, To: Dropped, Who: "user"},
+	{From: Active, To: Dropped, Who: "user"},
+	{From: InReview, To: Dropped, Who: "user"},
+	{From: Blocked, To: Dropped, Who: "user"},
+}
+
+// The stages a chain of moves may pass through. Blocked needs a reason
+// and dropped is a decision, so a chain only ends in those.
+var ChainStages = []string{Draft, Todo, Active, InReview}
+
+// The stages only the user may start a card in, with card new --adopt.
+var AdoptStages = []string{Active, InReview, Blocked}
+
 // The frontmatter fields in the order card writes them.
 var Fields = []string{
 	"tags",
@@ -65,6 +101,11 @@ var Sections = []string{
 	"Log",
 	"Appendix",
 }
+
+// The sections card add and card edit may change, and card new --from may
+// fill. Notes is the user's text, Appendix holds agent notes, and only
+// card writes Log.
+var WritableSections = []string{"Context", Criteria, OpenQuestions, Decisions}
 
 // The longest title, in characters.
 const TitleLimit = 50
