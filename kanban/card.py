@@ -324,6 +324,7 @@ def main(argv: list[str], projects: Path | None = None) -> int:
     """
     args = build_parser().parse_args(argv)
     try:
+        # Refuse a bad CARD_TODAY before any command runs.
         read_today()
         if args.command == "template":
             print(render_template(), end="")
@@ -339,9 +340,15 @@ def main(argv: list[str], projects: Path | None = None) -> int:
 
 
 def read_today() -> date:
+    """Return today's date, or the date CARD_TODAY names, such as 2026-11-07.
+
+    Tests set CARD_TODAY to fix every date card writes. An empty value
+    counts as unset. A value that is not YYYY-MM-DD raises CardError.
+    """
     shown = os.environ.get("CARD_TODAY")
     if not shown:
         return date.today()
+    # fromisoformat alone also reads 20261107 and week dates.
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", shown):
         try:
             return date.fromisoformat(shown)

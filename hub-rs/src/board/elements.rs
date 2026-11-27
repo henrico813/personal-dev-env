@@ -7,7 +7,6 @@
 
 use serde::Serialize;
 
-use super::groups::Group;
 use super::panels::Panel;
 
 /// One thing the page holds, on one row.
@@ -73,8 +72,6 @@ pub(crate) enum HiddenBy {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Kind {
-    /// A count on the top line, such as `2 you`.
-    Count,
     Heading,
     Item,
     /// The `+ N more` line.
@@ -89,14 +86,15 @@ pub(crate) enum Kind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Action {
     None,
-    /// Open the group and scroll to it.
-    Jump(Group),
     /// Act on the list line at this index, as Enter does.
     Line(usize),
     /// Pick the session at this index in the queue's sessions.
     Choose(usize),
     /// Jump to the chosen session.
     Go,
+    /// Fold or unfold the row at this line of the open page, such as a
+    /// SINCE YOU LEFT card or page 4's done sessions.
+    Toggle(usize),
     /// Go back, to the glance page from a view, or to the view from a
     /// details page.
     Back,

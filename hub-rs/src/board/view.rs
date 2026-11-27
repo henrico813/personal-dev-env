@@ -10,26 +10,31 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseEventKind};
+use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp};
 use ratatui::Frame;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
-use ratatui::layout::Rect;
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{ListState, Paragraph};
 
 use super::away;
 use super::draw::{self, ListScreen};
-use super::elements::{self, Action, Element, ScreenDump};
+use super::elements::{self, Action, Element, Kind, ScreenDump};
 use super::glance::{self, Glance};
 use super::groups::{self, Group, Item, Target};
-use super::panels::{self, GLANCE_HELP, Panel, PanelText};
+use super::panels::{self, GLANCE_HELP, Panel, PanelText, WIDE_COLUMNS};
 use super::queue::{NO_HUB, Queue};
 use super::sessions::{self, SessionGroup};
+use super::since;
 use crate::external::cards::{CardKey, CardNote};
 
 /// How many items an open group shows before its `+ N more` line.
+/// WAITING ON YOU and IN REVIEW show `LONG_GROUP_LIMIT`, so a phone
+/// shows six questions or reviews on one screen.
 const GROUP_LIMIT: usize = 4;
+const LONG_GROUP_LIMIT: usize = 6;
 
 /// How many lines one wheel turn moves.
 const WHEEL_STEP: isize = 3;
@@ -77,13 +82,32 @@ pub(super) enum Line {
         group: Group,
         index: usize,
     },
+    /// The dim line under an item that has a `detail`, which acts as
+    /// the item does.
+    Detail {
+        group: Group,
+        index: usize,
+    },
     /// The `+ N more` line under an open group's first items.
     More {
         group: Group,
         hidden: usize,
     },
-    /// The line under an open Needs you when no hub runs.
+    /// The line under WAITING ON YOU when no hub runs.
     NoHub,
+    /// Page 1's last line, `then: review N cards`, which opens page 5.
+    ThenReview,
+    /// A block's heading on the first screen, which opens its page.
+    Block(Panel),
+    /// A block's fold row on the first screen, such as `+ 2 more`,
+    /// which opens its page with every row the block holds.
+    Fold(Panel),
+    /// The first screen's fault row at this place in `Queue::problems`,
+    /// which opens page 4.
+    Fault(usize),
+    /// The first screen's SINCE YOU LEFT row at this place in
+    /// `since::group_events_by_card`, which opens page 2.
+    Event(usize),
 }
 
 /// What names a line across reads, since a read can move an item to
@@ -94,7 +118,14 @@ enum LineId {
     More(Group),
     /// The item's `Item::id`, such as a card key.
     Item(Group, String),
+    Detail(Group, String),
     NoHub,
+    ThenReview,
+    Block(Panel),
+    Fold(Panel),
+    Fault(usize),
+    /// The row's `CardEvents::format_row_id`.
+    Event(String),
 }
 
 /// The page the screen shows.
@@ -145,12 +176,25 @@ pub(crate) struct Board {
     /// The view open over the glance page, or `None` on the glance
     /// page.
     view: Option<Panel>,
-    /// How many lines of the away, next or machine view are scrolled
-    /// off the top.
+    /// The glance page's chosen line while a view is open, so going
+    /// back chooses it again.
+    glance_choice: Option<LineId>,
+    /// How many rows each glance page column is scrolled down, as the
+    /// last draw left them, so the chosen row shows.
+    glance_scroll: [usize; 2],
+    /// How many lines of page 2 are scrolled off the top.
     scroll: usize,
-    /// The start of the user's visit, which AWAY shows events after, or
-    /// `None` with no saved time.
+    /// The start of the user's visit, which SINCE YOU LEFT shows events
+    /// after, or `None` with no saved time.
     since: Option<Timestamp>,
+    /// `since` in the board's time zone, such as `19:07`, for page 2's
+    /// breadcrumb.
+    since_time: Option<String>,
+    /// The page 2 rows shown open, by `CardEvents::format_row_id`.
+    open_cards: BTreeSet<String>,
+    /// True when page 4 shows the kept, safe to close and parked
+    /// sessions under its fold row.
+    show_done: bool,
     /// How long the user was away before this visit.
     away_for: Option<SignedDuration>,
     /// The session the jump bar names, by name, so a read that moves
@@ -174,16 +218,29 @@ impl Board {
         Board {
             queue: None,
             groups: Vec::new(),
-            // Todo and Draft hold most cards, and Blocked holds nothing
-            // for the user to do, so they start folded.
-            open: BTreeSet::from([Group::Active, Group::InReview, Group::NeedsYou]),
+            // Idle and Draft hold most cards, and Blocked holds nothing
+            // for the user to do, so they start folded. The first draw
+            // at full width opens Idle, as `fold_idle_to_width` says.
+            open: BTreeSet::from([
+                Group::NeedsYou,
+                Group::Working,
+                Group::NoWorker,
+                Group::Todo,
+                Group::InReview,
+                Group::OtherPrs,
+            ]),
             shown_in_full: BTreeSet::new(),
             lines: Vec::new(),
             list: ListState::default(),
             page: Page::List,
             view: None,
+            glance_choice: None,
+            glance_scroll: [0; 2],
             scroll: 0,
             since: None,
+            since_time: None,
+            open_cards: BTreeSet::new(),
+            show_done: false,
             away_for: None,
             chosen_session: None,
             session_list: ListState::default(),
@@ -205,23 +262,16 @@ impl Board {
                 return;
             }
         };
-        let chosen = self.list.selected();
-        let chosen_id = chosen.and_then(|index| self.find_line_id(index));
         self.status = format!("read {} {:.1}s", queue.read_at, queue.took.as_secs_f32());
-        self.groups = groups::build_groups(&queue);
-        // A session gone since the last read can no longer be jumped to.
-        self.chosen_session = self
-            .chosen_session
-            .take()
-            .filter(|name| queue.sessions.iter().any(|row| row.name == *name));
-        self.queue = Some(queue);
-        self.rebuild_lines();
-        let same_line = chosen_id.and_then(|id| {
-            (0..self.lines.len()).find(|&index| self.find_line_id(index).as_ref() == Some(&id))
+        self.rebuild_keeping_choice(|board| {
+            board.groups = groups::build_groups(&queue);
+            // A session gone since the last read can no longer be jumped to.
+            board.chosen_session = board
+                .chosen_session
+                .take()
+                .filter(|name| queue.sessions.iter().any(|row| row.name == *name));
+            board.queue = Some(queue);
         });
-        let last = self.lines.len().saturating_sub(1);
-        let place = same_line.unwrap_or_else(|| chosen.unwrap_or(0).min(last));
-        self.list.select((!self.lines.is_empty()).then_some(place));
     }
 
     /// Shows a read a board saved before, with its time on top, until
@@ -232,16 +282,36 @@ impl Board {
         self.status = format!("saved {saved_at} · reading");
     }
 
-    /// Shows the events after `since` in AWAY, and `away_for`, how long
-    /// the user was away, on the glance page's top line. With `since`
-    /// `None`, AWAY shows the newest events.
+    /// Shows the events after `since` in SINCE YOU LEFT, with `since` in
+    /// `time_zone` on page 2's breadcrumb, and `away_for`, how long the
+    /// user was away, on the glance page's top line. With `since` `None`,
+    /// SINCE YOU LEFT shows the newest events.
     pub(crate) fn show_visit(
         &mut self,
         since: Option<Timestamp>,
         away_for: Option<SignedDuration>,
+        time_zone: &TimeZone,
     ) {
-        self.since = since;
+        self.since_time =
+            since.map(|at| at.to_zoned(time_zone.clone()).strftime("%H:%M").to_string());
         self.away_for = away_for;
+        // SINCE YOU LEFT's rows on the glance page are lines.
+        self.rebuild_keeping_choice(|board| board.since = since);
+    }
+
+    /// Makes `change` to what the lines come from and builds them again,
+    /// keeping the chosen line when it is still there, else its place.
+    /// Every change to the lines' sources goes through here, so a tap or
+    /// Enter never acts on a line the screen no longer draws.
+    fn rebuild_keeping_choice(&mut self, change: impl FnOnce(&mut Board)) {
+        let chosen = self.list.selected();
+        let chosen_id = chosen.and_then(|index| self.find_line_id(index));
+        change(self);
+        self.rebuild_lines();
+        let same_line = chosen_id.and_then(|id| self.find_line_by_id(&id));
+        let last = self.lines.len().saturating_sub(1);
+        let place = same_line.unwrap_or_else(|| chosen.unwrap_or(0).min(last));
+        self.list.select((!self.lines.is_empty()).then_some(place));
     }
 
     /// Marks the board as reading, until the next `show_reading`.
@@ -318,7 +388,9 @@ impl Board {
     /// Draws the open page over the whole frame. That page is a details
     /// page, the clean dialog, the open view or the glance page.
     pub(crate) fn render(&mut self, frame: &mut Frame) {
+        let was_wide = self.area.width >= WIDE_COLUMNS;
         self.area = frame.area();
+        self.fold_idle_to_width(was_wide);
         if let Page::Details(details) | Page::Cleaned(details) = &mut self.page {
             draw::draw_details(frame, details);
             return;
@@ -328,9 +400,32 @@ impl Board {
             return;
         }
         match self.view {
-            None => glance::draw_glance(frame, self.area, &self.build_glance()),
+            None => {
+                let scroll = glance::draw_glance(frame, self.area, &self.build_glance());
+                self.glance_scroll = scroll;
+            }
             Some(panel) => self.draw_view(frame, panel),
         }
+    }
+
+    /// Opens IDLE when the screen grows to `WIDE_COLUMNS` columns and
+    /// folds it when it shrinks below, since only the full screen has
+    /// room for its rows. A tap on its heading still folds or opens it
+    /// until the width crosses again.
+    fn fold_idle_to_width(&mut self, was_wide: bool) {
+        let is_wide = self.area.width >= WIDE_COLUMNS;
+        if is_wide == was_wide {
+            return;
+        }
+        // The glance page's lines also change with the width, since it
+        // shows more rows from `WIDE_COLUMNS` on.
+        self.rebuild_keeping_choice(|board| {
+            if is_wide {
+                board.open.insert(Group::Idle);
+            } else {
+                board.open.remove(&Group::Idle);
+            }
+        });
     }
 
     /// Returns every element the open page holds, top first, as the
@@ -344,8 +439,8 @@ impl Board {
         }
         match self.view {
             None => glance::build_glance_elements(self.area, &self.build_glance()),
-            Some(Panel::Queue) => {
-                draw::build_list_elements(&self.build_list_screen(), self.area, &self.list)
+            Some(panel @ (Panel::Waiting | Panel::Active | Panel::Review)) => {
+                draw::build_list_elements(&self.build_list_screen(panel), self.area, &self.list)
             }
             Some(panel) => self.build_view_elements(panel),
         }
@@ -396,54 +491,101 @@ impl Board {
             queue: self.queue.as_ref(),
             status: &self.status,
             since: self.since,
+            since_time: self.since_time.as_deref(),
             away_for: self.away_for,
+            chosen: self.list.selected(),
+            scroll: self.glance_scroll,
             color: self.color,
         }
     }
 
-    /// Returns a view's breadcrumb, such as `< away`, with the count of
-    /// new events after it on the away view.
+    /// Returns page 2's or page 4's breadcrumb, such as
+    /// `< 2 SINCE YOU LEFT AT 19:07  7 cards`. Page 2 says `newest` in
+    /// place of the time and count when no visit time was saved.
     fn format_view_title(&self, panel: Panel) -> String {
-        match (panel, &self.queue) {
-            (Panel::Away, Some(queue)) => {
-                let count = self.select_away_events(queue).len();
-                format!("< away  {}", away::describe_new_count(self.since, count))
+        let title = draw::format_page_title(panel);
+        if panel != Panel::Since {
+            return title;
+        }
+        match (&self.since_time, &self.queue) {
+            (Some(time), Some(queue)) => {
+                let count = since::group_events_by_card(self.select_away_events(queue)).len();
+                let cards = if count == 1 { "card" } else { "cards" };
+                format!("{title} AT {time}  {count} {cards}")
             }
-            _ => format!("< {}", panel.slug()),
+            _ => format!("{title}  newest"),
         }
     }
 
-    /// Returns the events the away view and block show.
+    /// Returns the events SINCE YOU LEFT shows.
     fn select_away_events<'a>(&self, queue: &'a Queue) -> &'a [away::AwayEvent] {
         away::find_events_since(&queue.events, self.since)
     }
 
-    /// Returns the lines of the away, next or machine view, `width`
-    /// columns wide. The queue and sessions views draw lists of their
-    /// own.
-    fn format_view_lines(&self, panel: Panel, width: usize) -> Vec<PanelText> {
+    /// Returns page 2's lines, `width` columns wide, each with the row
+    /// id of the card it names. A card row, such as
+    /// `> DEMO-KB-001 Faster search  report`, ends in its newest event's
+    /// word, and an open one in its event count above a line per event,
+    /// such as `   10:40 report`.
+    fn format_since_lines(&self, width: usize) -> Vec<(PanelText, Option<String>)> {
         let Some(queue) = &self.queue else {
             return Vec::new();
         };
-        match panel {
-            Panel::Away => panels::format_away_lines(self.select_away_events(queue), width),
-            Panel::Next => panels::format_next_lines(&self.groups, queue.no_hub, usize::MAX, width),
-            Panel::Machine => panels::format_machine_lines(&queue.gauges, &queue.feed, width),
-            Panel::Queue | Panel::Sessions => Vec::new(),
+        let make_text = |is_heading, text: String, time: Option<&str>, word: &str| {
+            let text = sessions::fit(&text, width);
+            PanelText {
+                is_heading,
+                is_high: false,
+                is_ok: false,
+                colored: Some(draw::build_event_line(&text, time, word, self.color)),
+                text,
+            }
+        };
+        let mut lines = Vec::new();
+        for row in since::group_events_by_card(self.select_away_events(queue)) {
+            let id = row.format_row_id();
+            let is_open = self.open_cards.contains(&id);
+            let (mark, end) = if is_open {
+                let count = row.events.len();
+                let events = if count == 1 { "event" } else { "events" };
+                ("v", format!("{count} {events}"))
+            } else {
+                (">", since::describe_event(row.events[0]).to_owned())
+            };
+            let name = format!("{mark} {}", row.describe_card(&queue.cards));
+            let text = glance::join_row_end(&name, &end, width);
+            lines.push((make_text(true, text, None, &end), Some(id)));
+            if is_open {
+                lines.extend(row.events.iter().map(|event| {
+                    let word = since::describe_event(event);
+                    let text = format!("   {} {word}", event.time);
+                    (make_text(false, text, Some(&event.time), word), None)
+                }));
+            }
         }
+        lines
     }
 
-    /// Draws `panel`'s view over the whole frame, with the breadcrumb on
-    /// top, the view's lines, and the bottom hint.
+    /// Returns page 4's fault and gauge rows, `width` columns wide.
+    fn format_machine_rows(&self, width: usize) -> Vec<PanelText> {
+        self.queue.as_ref().map_or_else(Vec::new, |queue| {
+            panels::format_machine_lines(&queue.problems, &queue.gauges, queue.no_hub, width)
+        })
+    }
+
+    /// Draws `panel`'s page over the whole frame. Pages 1, 3 and 5 are
+    /// lists. Pages 2 and 4 have the breadcrumb on top and the bottom
+    /// hint, with page 4's fault and gauge rows above its sessions.
     fn draw_view(&mut self, frame: &mut Frame, panel: Panel) {
-        if panel == Panel::Queue {
+        if let Panel::Waiting | Panel::Active | Panel::Review = panel {
             // Built field by field, since `self.list` is borrowed
             // mutably beside it.
             let screen = ListScreen {
+                panel,
                 groups: &self.groups,
                 lines: &self.lines,
+                queue: self.queue.as_ref(),
                 status: &self.status,
-                prs: self.queue.as_ref().and_then(|queue| queue.prs),
                 color: self.color,
             };
             draw::draw_list(frame, self.area, &screen, &mut self.list);
@@ -459,50 +601,73 @@ impl Board {
             Paragraph::new(draw::format_view_hint(&self.status)).style(draw::pick_dim_style()),
             hint,
         );
-        if panel == Panel::Sessions {
-            let rows = self.format_session_rows(usize::from(body.width));
+        if panel == Panel::Machine {
+            let machine = self.format_machine_rows(usize::from(body.width));
+            let [top, below] = split_rows_off_top(body, machine.len());
+            panels::draw_panel_text(frame, top, &machine, 0, self.color);
+            let rows = self.format_session_rows(usize::from(below.width));
             self.session_list.select(self.find_chosen_line(&rows));
             sessions::draw_sessions(
                 frame,
-                body,
+                below,
                 &rows,
                 self.chosen_session.as_deref(),
                 &mut self.session_list,
             );
             return;
         }
-        let lines = self.format_view_lines(panel, usize::from(body.width));
+        let (lines, _): (Vec<PanelText>, Vec<_>) = self
+            .format_since_lines(usize::from(body.width))
+            .into_iter()
+            .unzip();
         // Stop the scroll where the last line shows at the bottom.
         let last_top = lines.len().saturating_sub(usize::from(body.height));
         self.scroll = self.scroll.min(last_top);
         panels::draw_panel_text(frame, body, &lines, self.scroll, self.color);
     }
 
-    /// Returns the elements of a view other than the queue's, as
-    /// `draw_view` drew them.
+    /// Returns the elements of page 2 or page 4, as `draw_view` drew
+    /// them. A page 2 card row taps `unfold` or `fold`.
     fn build_view_elements(&self, panel: Panel) -> Vec<Element> {
         let [title, body, hint] = draw::split_screen(self.area);
         let mut elements = vec![draw::build_back_element(
             &self.format_view_title(panel),
             title,
         )];
-        if panel == Panel::Sessions {
-            let rows = self.format_session_rows(usize::from(body.width));
+        if panel == Panel::Machine {
+            let machine = self.format_machine_rows(usize::from(body.width));
+            let [top, below] = split_rows_off_top(body, machine.len());
+            elements.extend(panels::build_text_elements(panel, &machine, top, 0));
+            let rows = self.format_session_rows(usize::from(below.width));
             let sessions = self.queue.as_ref().map_or(&[][..], |queue| &queue.sessions);
             elements.extend(sessions::build_session_elements(
                 &rows,
                 sessions,
-                body,
+                below,
                 &self.session_list,
                 self.chosen_session.as_deref(),
+                self.show_done,
             ));
         } else {
-            let lines = self.format_view_lines(panel, usize::from(body.width));
-            elements.extend(panels::build_text_elements(
-                panel,
-                &lines,
-                body,
-                self.scroll,
+            let (lines, ids): (Vec<PanelText>, Vec<Option<String>>) = self
+                .format_since_lines(usize::from(body.width))
+                .into_iter()
+                .unzip();
+            let texts = panels::build_text_elements(panel, &lines, body, self.scroll);
+            elements.extend(texts.into_iter().zip(ids).enumerate().map(
+                |(number, (element, id))| match id {
+                    Some(id) => Element {
+                        kind: Kind::Heading,
+                        tap: Some(if self.open_cards.contains(&id) {
+                            "fold"
+                        } else {
+                            "unfold"
+                        }),
+                        action: Action::Toggle(number),
+                        ..element
+                    },
+                    None => element,
+                },
             ));
         }
         elements.push(draw::build_text_element(
@@ -520,17 +685,56 @@ impl Board {
         // The top line and the hint take two rows.
         let rows = self.area.height.saturating_sub(2);
         let rows = match (&self.page, self.view) {
-            // The jump bar takes the body's last row.
-            (Page::List, Some(Panel::Sessions)) => rows.saturating_sub(1),
+            // The fault and gauge rows sit on top, and the jump bar takes
+            // the body's last row.
+            (Page::List, Some(Panel::Machine)) => {
+                let machine = u16::try_from(self.format_machine_rows(0).len()).unwrap_or(rows);
+                rows.saturating_sub(machine + 1)
+            }
             _ => rows,
         };
         isize::try_from(rows).unwrap_or(1).max(1)
     }
 
-    /// Opens `panel`'s view over the glance page, at its top.
+    /// Opens `panel`'s page over the glance page, at its top, with its
+    /// first line chosen.
     fn open_view(&mut self, panel: Panel) {
+        if self.view.is_none() {
+            self.glance_choice = self
+                .list
+                .selected()
+                .and_then(|index| self.find_line_id(index));
+        }
         self.view = Some(panel);
         self.scroll = 0;
+        self.rebuild_lines();
+        self.list = ListState::default();
+        self.list.select((!self.lines.is_empty()).then_some(0));
+    }
+
+    /// Goes back to the glance page, with the line chosen there before
+    /// the view opened chosen again, else its first line.
+    fn close_view(&mut self) {
+        self.view = None;
+        self.rebuild_lines();
+        let place = self
+            .glance_choice
+            .take()
+            .and_then(|id| self.find_line_by_id(&id));
+        self.list = ListState::default();
+        self.list
+            .select((!self.lines.is_empty()).then_some(place.unwrap_or(0)));
+    }
+
+    /// Opens `panel`'s page with every row its glance block holds shown,
+    /// its groups open and past `GROUP_LIMIT`, so the rows the block's
+    /// fold row sums up show on it. On page 3 that opens IDLE. They stay
+    /// shown when the page opens again, as after `+ N more` on a page.
+    fn open_view_with_block_rows(&mut self, panel: Panel) {
+        let groups = glance::list_block_groups(panel);
+        self.open.extend(groups);
+        self.shown_in_full.extend(groups);
+        self.open_view(panel);
     }
 
     /// Opens the help page of the open view, or of the glance page.
@@ -574,9 +778,12 @@ impl Board {
         }
         match key.code {
             KeyCode::Tab => {
-                match self.view.map_or(Some(Panel::Away), Panel::find_next_panel) {
+                match self
+                    .view
+                    .map_or(Some(Panel::Waiting), Panel::find_next_panel)
+                {
                     Some(panel) => self.open_view(panel),
-                    None => self.view = None,
+                    None => self.close_view(),
                 }
                 return Step::Stay;
             }
@@ -593,18 +800,18 @@ impl Board {
                 return Step::Stay;
             }
             KeyCode::Char('q') | KeyCode::Esc if self.view.is_some() => {
-                self.view = None;
+                self.close_view();
                 return Step::Stay;
             }
             KeyCode::Char('q') => return Step::Quit,
             _ => {}
         }
         match self.view {
-            // The glance page does not scroll, and Esc on it does
-            // nothing, since a phone's Esc is easy to hit by mistake.
-            None => return Step::Stay,
-            Some(Panel::Queue) => {}
-            Some(Panel::Away | Panel::Next | Panel::Machine) => {
+            // The glance page picks its lines as the list pages do. Esc
+            // on it does nothing, since a phone's Esc is easy to hit by
+            // mistake.
+            None | Some(Panel::Waiting | Panel::Active | Panel::Review) => {}
+            Some(Panel::Since) => {
                 match key.code {
                     KeyCode::Char('j') | KeyCode::Down => self.scroll(1),
                     KeyCode::Char('k') | KeyCode::Up => self.scroll(-1),
@@ -614,7 +821,7 @@ impl Board {
                 };
                 return Step::Stay;
             }
-            Some(Panel::Sessions) => {
+            Some(Panel::Machine) => {
                 return match key.code {
                     KeyCode::Char('j') | KeyCode::Down => self.move_session(1),
                     KeyCode::Char('k') | KeyCode::Up => self.move_session(-1),
@@ -630,6 +837,8 @@ impl Board {
             KeyCode::Char('k') | KeyCode::Up => self.move_choice(-1),
             KeyCode::PageDown => self.move_choice(page_size),
             KeyCode::PageUp => self.move_choice(-page_size),
+            KeyCode::Char('h') | KeyCode::Left if self.view.is_none() => self.move_across(-1),
+            KeyCode::Char('l') | KeyCode::Right if self.view.is_none() => self.move_across(1),
             KeyCode::Enter | KeyCode::Char(' ') => {
                 if let Some(index) = self.list.selected() {
                     return self.activate(index);
@@ -640,10 +849,10 @@ impl Board {
         Step::Stay
     }
 
-    /// Acts on the element under a tap. A block opens its view, a
-    /// breadcrumb goes back, a count jumps to its group, a queue line
-    /// acts as Enter does, a session row only chooses, and the bar
-    /// jumps. Any tap on another page goes back to the list.
+    /// Acts on the element under a tap. A breadcrumb goes back, a list
+    /// or glance line acts as Enter does, a page 2 card row or page 4's
+    /// fold row folds or unfolds, a session row only chooses, and the
+    /// bar jumps. Any tap on another page goes back to the list.
     fn tap(&mut self, column: u16, row: u16) -> Step {
         if let Page::Details(_) | Page::Cleaned(_) | Page::Confirm(_) = self.page {
             self.page = Page::List;
@@ -653,11 +862,11 @@ impl Board {
         let action =
             elements::find_element_at(&elements, column, row).map(|element| element.action);
         match action {
-            Some(Action::Jump(group)) => {
-                self.jump_to(group);
+            Some(Action::Line(index)) => self.activate(index),
+            Some(Action::Toggle(line)) => {
+                self.toggle_row(line);
                 Step::Stay
             }
-            Some(Action::Line(index)) => self.activate(index),
             Some(Action::Choose(index)) => {
                 self.choose_session(index);
                 Step::Stay
@@ -672,7 +881,7 @@ impl Board {
                 Step::Stay
             }
             Some(Action::Back) => {
-                self.view = None;
+                self.close_view();
                 Step::Stay
             }
             Some(Action::None) | None => Step::Stay,
@@ -680,10 +889,17 @@ impl Board {
     }
 
     /// Chooses the line at `index` and acts on it. A heading folds or
-    /// opens, `+ N more` shows the rest, and an item opens its details.
+    /// opens, `+ N more` shows the rest, an item or its detail line
+    /// opens its details, and `then: review` opens page 5. On the
+    /// glance page a block's heading, a fault row or a SINCE YOU LEFT
+    /// row opens its page, and a fold row opens its page with the rows
+    /// it sums up shown.
     fn activate(&mut self, index: usize) -> Step {
+        let Some(&line) = self.lines.get(index) else {
+            return Step::Stay;
+        };
         self.list.select(Some(index));
-        match self.lines[index] {
+        match line {
             Line::Heading { group, .. } => {
                 if !self.open.remove(&group) {
                     self.open.insert(group);
@@ -696,8 +912,48 @@ impl Board {
                 self.rebuild_lines();
                 Step::Stay
             }
-            Line::Item { group, index } => self.open_details(group, index),
+            Line::Item { group, index } | Line::Detail { group, index } => {
+                self.open_details(group, index)
+            }
             Line::NoHub => Step::Stay,
+            Line::ThenReview => {
+                self.open_view(Panel::Review);
+                Step::Stay
+            }
+            Line::Block(panel) => {
+                self.open_view(panel);
+                Step::Stay
+            }
+            Line::Fault(_) => {
+                self.open_view(Panel::Machine);
+                Step::Stay
+            }
+            Line::Event(_) => {
+                self.open_view(Panel::Since);
+                Step::Stay
+            }
+            Line::Fold(panel) => {
+                self.open_view_with_block_rows(panel);
+                Step::Stay
+            }
+        }
+    }
+
+    /// Folds or unfolds the row at `line` of the open page, a page 2
+    /// card row or page 4's fold row.
+    fn toggle_row(&mut self, line: usize) {
+        match self.view {
+            Some(Panel::Since) => {
+                let row_id = self.format_since_lines(0).into_iter().nth(line);
+                let Some((_, Some(id))) = row_id else {
+                    return;
+                };
+                if !self.open_cards.remove(&id) {
+                    self.open_cards.insert(id);
+                }
+            }
+            Some(Panel::Machine) => self.show_done = !self.show_done,
+            _ => {}
         }
     }
 
@@ -728,19 +984,6 @@ impl Board {
         step
     }
 
-    /// Opens `group`, chooses its heading and puts it on the list's
-    /// first line.
-    fn jump_to(&mut self, group: Group) {
-        self.open.insert(group);
-        self.rebuild_lines();
-        let is_heading =
-            |line: &Line| matches!(line, Line::Heading { group: each, .. } if *each == group);
-        if let Some(index) = self.lines.iter().position(is_heading) {
-            self.list.select(Some(index));
-            *self.list.offset_mut() = index;
-        }
-    }
-
     /// Moves the choice `steps` lines down, or up when negative,
     /// stopping at the first and last line.
     fn move_choice(&mut self, steps: isize) {
@@ -752,19 +995,28 @@ impl Board {
             .select(Some(current.saturating_add_signed(steps).min(last)));
     }
 
-    /// Moves the choice on the queue or the sessions view, scrolls the
-    /// away, next or machine view, or scrolls a details or clean output
-    /// page. The glance page does not scroll.
+    /// Moves the glance page's choice to the nearest line in the column
+    /// `step` columns over. It does nothing with one column.
+    fn move_across(&mut self, step: isize) {
+        if let Some(place) = glance::find_line_across(self.area, &self.build_glance(), step) {
+            self.list.select(Some(place));
+        }
+    }
+
+    /// Moves the choice on the glance page, a list page or page 4's
+    /// sessions, scrolls page 2, or scrolls a details or clean output
+    /// page.
     fn scroll(&mut self, steps: isize) -> Step {
         match &mut self.page {
             Page::List => match self.view {
-                None => {}
-                Some(Panel::Queue) => self.move_choice(steps),
-                Some(Panel::Sessions) => {
+                None | Some(Panel::Waiting | Panel::Active | Panel::Review) => {
+                    self.move_choice(steps);
+                }
+                Some(Panel::Machine) => {
                     self.move_session(steps);
                 }
-                // `draw_view` stops the scroll at the view's end.
-                Some(Panel::Away | Panel::Next | Panel::Machine) => {
+                // `draw_view` stops the scroll at the page's end.
+                Some(Panel::Since) => {
                     self.scroll = self.scroll.saturating_add_signed(steps);
                 }
             },
@@ -878,7 +1130,7 @@ impl Board {
         let Some(queue) = &self.queue else {
             return Step::Stay;
         };
-        let order = sessions::order_shown_sessions(&queue.sessions);
+        let order = sessions::order_shown_sessions(&queue.sessions, self.show_done);
         let Some(last) = order.len().checked_sub(1) else {
             return Step::Stay;
         };
@@ -911,7 +1163,7 @@ impl Board {
     /// Returns the sessions panel's lines, `width` columns wide.
     fn format_session_rows(&self, width: usize) -> Vec<sessions::PanelLine> {
         self.queue.as_ref().map_or_else(Vec::new, |queue| {
-            sessions::format_session_lines(&queue.sessions, width)
+            sessions::format_session_lines(&queue.sessions, width, self.show_done)
         })
     }
 
@@ -925,33 +1177,62 @@ impl Board {
         })
     }
 
-    /// Lists each group's heading, then its first `GROUP_LIMIT` items
-    /// and a `+ N more` line when it is open. An open Needs you says
-    /// that no hub runs when none did at the read.
+    /// Lists the open page's groups in `Panel::list_groups` order, each
+    /// as its heading, then its first `GROUP_LIMIT` items, each with its
+    /// detail line, and a `+ N more` line when it is open. Page 1 has
+    /// no heading, since its breadcrumb names its one group, and it is
+    /// always open. WAITING ON YOU says that no hub runs when none did
+    /// at the read. Page 1 ends in `then: review N cards` when IN
+    /// REVIEW holds a card. The glance page's lines are the rows it
+    /// draws at the last drawn width, as `glance::list_glance_lines`
+    /// lists them.
     fn rebuild_lines(&mut self) {
+        if self.view.is_none() {
+            self.lines = glance::list_glance_lines(self.area, &self.build_glance());
+            return;
+        }
         let no_hub = self.queue.as_ref().is_some_and(|queue| queue.no_hub);
+        let page_groups = self.view.map_or(&[][..], Panel::list_groups);
         let mut lines = Vec::new();
-        for (group, items) in &self.groups {
-            let is_open = self.open.contains(group);
-            lines.push(Line::Heading {
-                group: *group,
-                is_open,
-            });
-            if !is_open {
+        for group in page_groups {
+            let Some((_, items)) = self.groups.iter().find(|(each, _)| each == group) else {
                 continue;
+            };
+            let on_page_one = self.view == Some(Panel::Waiting);
+            if !on_page_one {
+                let is_open = self.open.contains(group);
+                lines.push(Line::Heading {
+                    group: *group,
+                    is_open,
+                });
+                if !is_open {
+                    continue;
+                }
             }
             if *group == Group::NeedsYou && no_hub {
                 lines.push(Line::NoHub);
             }
+            let limit = match group {
+                Group::NeedsYou | Group::InReview => LONG_GROUP_LIMIT,
+                _ => GROUP_LIMIT,
+            };
             let shown = if self.shown_in_full.contains(group) {
                 items.len()
             } else {
-                items.len().min(GROUP_LIMIT)
+                items.len().min(limit)
             };
-            lines.extend((0..shown).map(|index| Line::Item {
-                group: *group,
-                index,
-            }));
+            for (index, item) in items.iter().enumerate().take(shown) {
+                lines.push(Line::Item {
+                    group: *group,
+                    index,
+                });
+                if item.detail.is_some() {
+                    lines.push(Line::Detail {
+                        group: *group,
+                        index,
+                    });
+                }
+            }
             if shown < items.len() {
                 lines.push(Line::More {
                     group: *group,
@@ -959,16 +1240,24 @@ impl Board {
                 });
             }
         }
+        let has_review = self
+            .groups
+            .iter()
+            .any(|(group, items)| *group == Group::InReview && !items.is_empty());
+        if self.view == Some(Panel::Waiting) && has_review {
+            lines.push(Line::ThenReview);
+        }
         self.lines = lines;
     }
 
-    /// Returns what the queue view draws from.
-    fn build_list_screen(&self) -> ListScreen<'_> {
+    /// Returns what list page `panel` draws from.
+    fn build_list_screen(&self, panel: Panel) -> ListScreen<'_> {
         ListScreen {
+            panel,
             groups: &self.groups,
             lines: &self.lines,
+            queue: self.queue.as_ref(),
             status: &self.status,
-            prs: self.queue.as_ref().and_then(|queue| queue.prs),
             color: self.color,
         }
     }
@@ -991,9 +1280,35 @@ impl Board {
                 group,
                 self.find_item(group, index)?.id.clone(),
             )),
+            Line::Detail { group, index } => Some(LineId::Detail(
+                group,
+                self.find_item(group, index)?.id.clone(),
+            )),
             Line::NoHub => Some(LineId::NoHub),
+            Line::ThenReview => Some(LineId::ThenReview),
+            Line::Block(panel) => Some(LineId::Block(panel)),
+            Line::Fold(panel) => Some(LineId::Fold(panel)),
+            Line::Fault(number) => Some(LineId::Fault(number)),
+            Line::Event(number) => {
+                let queue = self.queue.as_ref()?;
+                let rows = since::group_events_by_card(self.select_away_events(queue));
+                Some(LineId::Event(rows.get(number)?.format_row_id()))
+            }
         }
     }
+
+    /// Returns the place of the line that `id` names, or `None` when no
+    /// line does.
+    fn find_line_by_id(&self, id: &LineId) -> Option<usize> {
+        (0..self.lines.len()).find(|&index| self.find_line_id(index).as_ref() == Some(id))
+    }
+}
+
+/// Returns `area` split into its top `rows` rows and the rest, which
+/// keeps at least one row.
+fn split_rows_off_top(area: Rect, rows: usize) -> [Rect; 2] {
+    let rows = u16::try_from(rows).unwrap_or(u16::MAX);
+    Layout::vertical([Constraint::Length(rows), Constraint::Min(1)]).areas(area)
 }
 
 #[cfg(test)]
@@ -1004,9 +1319,12 @@ pub(super) mod tests {
 
     use crossterm::event::{MouseButton, MouseEvent};
     use jiff::civil::date;
+    use ratatui::buffer::Buffer;
+    use ratatui::style::Color;
 
     use crate::board::away::AwayEvent;
-    use crate::board::machine::{FeedLine, Gauges, Usage};
+    use crate::board::machine::{Gauges, Usage};
+    use crate::board::pull_requests::{CheckResult, PullRequestLine};
     use crate::board::queue::{CardLine, SessionLine, SessionRow};
     use crate::external::cards::Stage;
     use crate::shared::lifecycle::{KeptReason, Lifecycle};
@@ -1017,17 +1335,12 @@ pub(super) mod tests {
     /// worker of DEMO-KB-003, one card ready to start and one the user
     /// has not refined. Its sessions fill every session group, one
     /// waiting on the hub and one to park. Its watch gauge is
-    /// past 90%, its feed holds two reports, and AWAY has those and a
-    /// `notes.md` line, the newest at `10:40`.
+    /// past 90%, and its events are two reports and a `notes.md` line,
+    /// the newest at `10:40`. It has no pull request list and no board
+    /// limits.
     pub(crate) fn make_sample_queue() -> Queue {
         let make_session = |name: &str, state, why: &str, stage, tokens| {
             SessionRow::new(name.to_owned(), state, why.to_owned(), stage, tokens)
-        };
-        let make_report = |at: &str, unread, name: &str| FeedLine {
-            at: at.to_owned(),
-            stamp: format!("2026-11-15T{at}:00Z").parse().unwrap(),
-            unread,
-            name: name.to_owned(),
         };
         let make_event = |time: &str, text: &str| AwayEvent {
             at: format!("2026-11-15T{time}:00Z").parse().unwrap(),
@@ -1168,10 +1481,6 @@ pub(super) mod tests {
                     limit: 100_000_000,
                 }),
             },
-            feed: vec![
-                make_report("10:40", true, "api-build"),
-                make_report("10:12", false, "docs-fix"),
-            ],
             events: vec![
                 make_event("10:40", "api-build reported"),
                 make_event("10:31", "launched card-sync on DEMO-KB-002"),
@@ -1181,7 +1490,8 @@ pub(super) mod tests {
             run: Some(PathBuf::from("/runs/sample")),
             notes: [("DEMO-KB-010".parse().unwrap(), reviewed_note)].into(),
             problems: Vec::new(),
-            prs: None,
+            pull_requests: None,
+            board: None,
         }
     }
 
@@ -1194,13 +1504,22 @@ pub(super) mod tests {
         board
     }
 
-    /// Returns `make_sample_board` with the queue view open, drawn once at
-    /// 40x16.
-    pub(crate) fn make_queue_board() -> Board {
+    /// Returns `make_sample_board` with page 3, ACTIVE, open, drawn once
+    /// at 40x16.
+    pub(crate) fn make_active_board() -> Board {
         let mut board = make_sample_board();
-        board.handle_input(&press(KeyCode::Char('2')));
+        board.handle_input(&press(KeyCode::Char('3')));
         board.render_lines(40, 16);
         board
+    }
+
+    /// Returns `make_sample_board` with page `digit` open, drawn once at
+    /// 40x16.
+    fn open_sample_page(digit: char) -> (Board, Vec<String>) {
+        let mut board = make_sample_board();
+        board.handle_input(&press(KeyCode::Char(digit)));
+        let lines = board.render_lines(40, 16);
+        (board, lines)
     }
 
     /// A key press with no modifier.
@@ -1220,43 +1539,44 @@ pub(super) mod tests {
         })
     }
 
-    /// The user asked the board three things. What happened while they
-    /// were away? What is in the queue, and does it run now? What comes
-    /// next? The phone's first screen, 40 by 16, must answer all
-    /// three with no key pressed. A block cut off, or a queue row without
-    /// its status word, leaves one question open. A line about a card
-    /// starts with its card key, such as `DEMO-KB-001`, so the user
-    /// can tell which plan goes with the card.
+    /// The phone's first screen, 40 by 16, must show with no key
+    /// pressed what waits on the user, what happened since the last
+    /// visit, what is at work and what is in review, in that order,
+    /// with each block's key. A fault comes first, so the user sees a
+    /// stopped watcher before trusting the rows below it. A block cut
+    /// off, or a fold row that miscounts, hides work from the user.
     #[test]
-    fn render_lines_glance_answers_three_questions() {
+    fn render_lines_glance_shows_faults_then_blocks() {
+        let mut queue = make_sample_queue();
+        queue.problems = vec!["hub watcher stopped".to_owned()];
         let mut board = Board::new(false);
-        board.show_reading(Ok(make_sample_queue()));
+        board.show_reading(Ok(queue));
 
         let lines = board.render_lines(40, 16);
 
         let expected = [
             "read 10:42 0.6s",
-            "AWAY  newest                         [1]",
-            " 10:40 api-build reported",
-            " 10:31 DEMO-KB-002 launched card-sync o~",
-            " 10:12 docs-fix reported",
-            "QUEUE  1 run · 2 you · 1 idle        [2]",
-            " you  DEMO-KB-001 Q1 Deploy toni~ Demo",
-            " you  blocked-fix  needs you      worker",
-            " run  DEMO-KB-001 Faster search   Demo",
-            " idle DEMO-KB-002 Board for the ~ Demo",
-            " rev  DEMO-KB-010 Retry a failed~ Demo",
-            "NEXT                                 [3]",
-            " you: answer DEMO-KB-001 Q1 Deploy toni~",
-            " then: review 1 card",
-            " hub: start DEMO-KB-020 Sort ready cards",
-            "? help  4 sessions  5 machine  q quit",
+            "! hub watcher stopped",
+            "WAITING ON YOU  2                    [1]",
+            " blocked-fix                     see tab",
+            " DEMO-KB-001 Faster search        answer",
+            "",
+            "SINCE YOU LEFT  newest               [2]",
+            " 10:40 hub                        report",
+            "   + 1 other",
+            "ACTIVE  5 · 1 working                [3]",
+            " DEMO-KB-001 Faster search",
+            " DEMO-KB-004 Lint every Dockerfile in t~",
+            "   + 3 more, none at work",
+            "IN REVIEW  1                         [5]",
+            "",
+            "4 sessions and machine            ? help",
         ];
         assert_eq!(lines, expected);
     }
 
-    /// AWAY must show only what came after the user's last visit, and the
-    /// top line how long they were away. Older events listed as new would
+    /// SINCE YOU LEFT must show only what came after the user's last
+    /// visit, with the visit's time. Older events listed as new would
     /// bury the news under what the user already read.
     #[test]
     fn render_lines_glance_shows_events_since_visit() {
@@ -1264,68 +1584,379 @@ pub(super) mod tests {
         board.show_reading(Ok(make_sample_queue()));
         let since = "2026-11-15T10:31:00Z".parse().ok();
 
-        board.show_visit(since, Some(SignedDuration::from_mins(89)));
+        board.show_visit(since, Some(SignedDuration::from_mins(89)), &TimeZone::UTC);
         let lines = board.render_lines(40, 16);
 
-        assert_eq!(lines[0], "away 1h29m · read 10:42 0.6s");
-        assert_eq!(lines[1], "AWAY  1 new                          [1]");
-        assert_eq!(lines[2], " 10:40 api-build reported");
-        assert_eq!(lines[3], "");
+        assert_eq!(
+            lines[5..7],
+            [
+                "SINCE YOU LEFT AT 10:31  1 card      [2]",
+                " 10:40 hub                        report",
+            ]
+        );
     }
 
     /// A phone in landscape, or a pane split in two, can leave the board
-    /// 10 rows. AWAY and NEXT must give up rows before QUEUE, which
-    /// holds what waits on the user, and each block must keep its
-    /// heading so a tap can open it.
+    /// 10 rows. WAITING ON YOU comes first, so it keeps its rows and the
+    /// blocks below it are cut. A layout that cut WAITING ON YOU would
+    /// hide the questions the user opened the board for.
     #[test]
-    fn render_lines_short_glance_keeps_queue_rows() {
+    fn render_lines_short_glance_keeps_waiting_rows() {
         let mut board = make_sample_board();
 
         let lines = board.render_lines(40, 10);
 
         let expected = [
             "read 10:42 0.6s",
-            "AWAY  newest                         [1]",
-            "   + 3 more",
-            "QUEUE  1 run · 2 you · 1 idle        [2]",
-            " you  DEMO-KB-001 Q1 Deploy toni~ Demo",
-            " you  blocked-fix  needs you      worker",
-            "   + 3 more",
-            "NEXT                                 [3]",
-            "   + 3 more",
-            "? help  4 sessions  5 machine  q quit",
+            "WAITING ON YOU  2                    [1]",
+            " blocked-fix                     see tab",
+            " DEMO-KB-001 Faster search        answer",
+            "",
+            "SINCE YOU LEFT  newest               [2]",
+            " 10:40 hub                        report",
+            "   + 1 other",
+            "ACTIVE  5 · 1 working                [3]",
+            "4 sessions and machine            ? help",
         ];
         assert_eq!(lines, expected);
     }
 
-    /// A block shows only the rows that fit, so the rest must be one tap
-    /// away. A tap on the block's `+ N more` line opens it full screen
-    /// under a breadcrumb, and a tap on the breadcrumb comes back to the
-    /// same glance page. Without the way back, a phone user is stuck in
-    /// the view.
+    /// Returns `make_sample_queue` with a fold row in two blocks.
+    /// WAITING ON YOU hides an auto run's hub and one question not asked
+    /// today. SINCE YOU LEFT hides a report, a new worker and a finished
+    /// card.
+    fn make_fold_queue() -> Queue {
+        let mut queue = make_sample_queue();
+        queue.questions[0].asked_on = Some(queue.read_on);
+        let make_question = |key: &str, asked_on| OpenQuestion {
+            key: key.parse().unwrap(),
+            project: "Demo".to_owned(),
+            number: 1,
+            title: "Ship it?".to_owned(),
+            lines: Vec::new(),
+            sessions: Vec::new(),
+            asked_on,
+        };
+        let today = Some(queue.read_on);
+        let added = [
+            make_question("DEMO-KB-004", today),
+            make_question("DEMO-KB-005", today),
+            make_question("DEMO-KB-020", None),
+        ];
+        queue.questions.extend(added);
+        queue.waiting = vec![SessionLine {
+            name: "auto-hub-24".to_owned(),
+            why: "needs you".to_owned(),
+            card: None,
+        }];
+        let make_event = |time: &str, text: &str| AwayEvent {
+            at: format!("2026-11-15T{time}:00Z").parse().unwrap(),
+            time: time.to_owned(),
+            text: text.to_owned(),
+        };
+        queue.events = vec![
+            make_event("10:40", "demo-kb-001-build reported"),
+            make_event("10:35", "demo-kb-002-build reported"),
+            make_event(
+                "10:30",
+                "started demo-kb-004-build (p_1) from /h/handoff.md",
+            ),
+            make_event("10:20", "parked demo-kb-005-build (DEMO-KB-005 in-review)"),
+        ];
+        queue
+    }
+
+    /// WAITING ON YOU's fold row must name what it hides, an auto
+    /// run's hub by its run and a question not asked today as old.
+    /// A bare count tells the user neither which run waits nor whether
+    /// the hidden questions are new.
+    #[test]
+    fn render_lines_glance_fold_names_hidden_rows() {
+        let mut board = Board::new(false);
+        board.show_reading(Ok(make_fold_queue()));
+
+        let lines = board.render_lines(40, 16);
+
+        assert_eq!(lines[5], "   + run 24 hub and 1 old question");
+    }
+
+    /// Draws `board` at 40x16 and returns its cells, styles included.
+    fn render_cells(board: &mut Board) -> Buffer {
+        let mut terminal = Terminal::new(TestBackend::new(40, 16)).unwrap();
+        terminal.draw(|frame| board.render(frame)).unwrap();
+        terminal.backend().buffer().clone()
+    }
+
+    /// Returns the color and dimness of the first cell of `words`, on
+    /// the first row of `cells` that holds them.
+    fn find_words_style(cells: &Buffer, words: &str) -> (Option<Color>, bool) {
+        let style = find_words_cell_style(cells, words);
+        (style.fg, style.add_modifier.contains(Modifier::DIM))
+    }
+
+    /// Returns the style of the first cell of `words`, on the first row
+    /// of `cells` that holds them.
+    fn find_words_cell_style(cells: &Buffer, words: &str) -> Style {
+        for row in 0..cells.area.height {
+            let line: String = (0..cells.area.width)
+                .map(|column| cells[(column, row)].symbol())
+                .collect();
+            if let Some(start) = line.find(words) {
+                let column = u16::try_from(line[..start].chars().count()).unwrap();
+                return cells[(column, row)].style();
+            }
+        }
+        panic!("no row holds {words:?}");
+    }
+
+    /// With color on, the fold rows' kind words must take the colors
+    /// their rows use, yellow for old questions, cyan for new workers
+    /// and green for finished cards. The `+`, the run's name and
+    /// `report` stay dim. A fold row all in dim hides a waiting old
+    /// question or a new worker among the counts the user skims past.
+    #[test]
+    fn render_fold_rows_color_kinds_dim_rest() {
+        let mut board = Board::new(true);
+        board.show_reading(Ok(make_fold_queue()));
+
+        let cells = render_cells(&mut board);
+
+        // The first two find the `+` of WAITING ON YOU's fold row, then
+        // the `r` of the plain words after it.
+        let styles = [
+            "+ run 24 hub",
+            "run 24 hub",
+            "1 old question",
+            "1 report",
+            "1 new worker",
+            "1 finished",
+        ]
+        .map(|words| find_words_style(&cells, words));
+        assert_eq!(
+            styles,
+            [
+                (Color::Reset, true),
+                (Color::Reset, true),
+                (Color::Yellow, false),
+                (Color::Reset, true),
+                (Color::Cyan, false),
+                (Color::Green, false),
+            ]
+            .map(|(color, is_dim)| (Some(color), is_dim))
+        );
+    }
+
+    /// With color off, the kind words that color would mark must stay
+    /// dim like the rest of their fold row. Drawn plain, they would make
+    /// a fold row look like a full row the user must read.
+    #[test]
+    fn render_fold_rows_dim_when_color_off() {
+        let mut board = Board::new(false);
+        board.show_reading(Ok(make_fold_queue()));
+
+        let cells = render_cells(&mut board);
+
+        let styles = ["1 old question", "1 new worker", "1 finished"]
+            .map(|words| find_words_style(&cells, words));
+        assert_eq!(styles, [(Some(Color::Reset), true); 3]);
+    }
+
+    /// A block shows only a few rows, so the rest must be one tap away.
+    /// A tap on the block's heading opens its page under a breadcrumb,
+    /// and a tap on the breadcrumb comes back to the same first screen.
+    /// Without the way back, a phone user is stuck on the page.
     #[test]
     fn handle_input_block_tap_opens_breadcrumb_closes() {
-        let mut board = Board::new(false);
-        board.show_reading(Ok(make_many_questions_queue()));
+        let mut board = make_sample_board();
         let glance = board.render_lines(40, 16);
 
-        board.handle_input(&tap_on(&glance, "+ 5 more"));
+        board.handle_input(&tap_on(&glance, "ACTIVE"));
         let opened = board.render_lines(40, 16);
-        board.handle_input(&tap_on(&opened, "< queue"));
+        board.handle_input(&tap_on(&opened, "< 3 ACTIVE"));
         let back = board.render_lines(40, 16);
 
-        assert_eq!(glance[10], "   + 5 more");
-        assert_eq!(opened[0], "< queue  1 run · 6 you · 1 idle");
+        assert_eq!(opened[0], "< 3 ACTIVE  5 · 1 working");
         assert_eq!(back, glance);
     }
 
-    /// An agent learns what to open from the elements, not the screen.
-    /// The rows a glance block cuts must be listed, hidden, with the tap
-    /// on the block that shows them, or the agent never reads them.
+    /// Returns the id of the element the 40x16 dump marks `chosen`, or
+    /// an empty string when none is.
+    fn read_chosen_id(board: &mut Board) -> String {
+        read_chosen_id_at(board, 40, 16)
+    }
+
+    /// The id of the chosen element at `columns` by `rows`.
+    fn read_chosen_id_at(board: &mut Board, columns: u16, rows: u16) -> String {
+        let dump = board.dump(columns, rows, None);
+        dump.elements
+            .into_iter()
+            .find(|element| element.chosen)
+            .map_or_else(String::new, |element| element.id)
+    }
+
+    /// j, k and the arrow keys move the first screen's choice one row
+    /// at a time, as on the pages, past the blank line between blocks.
+    /// A key that stuck, or stopped on the blank line, would leave a
+    /// user with no mouse unable to reach the next block's rows.
     #[test]
-    fn dump_glance_lists_cut_rows_with_block_tap() {
+    fn handle_input_j_k_move_glance_choice() {
+        let mut board = make_sample_board();
+        let (j, k) = (KeyCode::Char('j'), KeyCode::Char('k'));
+
+        let mut chosen = Vec::new();
+        for code in [j, KeyCode::Down, j, k, KeyCode::Up] {
+            board.handle_input(&press(code));
+            chosen.push(read_chosen_id(&mut board));
+        }
+
+        let expected = [
+            "waiting:0",
+            "waiting:1",
+            "block:since",
+            "waiting:1",
+            "waiting:0",
+        ];
+        assert_eq!(chosen, expected);
+    }
+
+    /// When fault rows push the last block below a 40x16 screen, the
+    /// first screen scrolls so the chosen row shows, drawn reversed as
+    /// on the pages. Without it the user moves the choice onto a row
+    /// they cannot see, and Enter acts on it blind.
+    #[test]
+    fn render_glance_scrolls_to_chosen_row_reversed() {
+        let mut queue = make_sample_queue();
+        queue.problems = ["one", "two", "three"]
+            .map(|words| format!("fault {words}"))
+            .to_vec();
         let mut board = Board::new(false);
-        board.show_reading(Ok(make_many_questions_queue()));
+        board.show_reading(Ok(queue));
+        board.render_lines(40, 16);
+
+        board.handle_input(&press(KeyCode::PageDown));
+        let cells = render_cells(&mut board);
+
+        let style = find_words_cell_style(&cells, "IN REVIEW");
+        assert!(style.add_modifier.contains(Modifier::REVERSED));
+    }
+
+    /// Esc from a page comes back to the first screen with the row the
+    /// user picked there still chosen. Without it every visit to a page
+    /// sends the choice back to the top.
+    #[test]
+    fn handle_input_esc_restores_glance_choice() {
+        let mut board = make_sample_board();
+        board.handle_input(&press(KeyCode::Char('j')));
+        board.handle_input(&press(KeyCode::Char('j')));
+
+        board.handle_input(&press(KeyCode::Char('3')));
+        board.handle_input(&press(KeyCode::Esc));
+
+        assert_eq!(read_chosen_id(&mut board), "waiting:1");
+    }
+
+    /// From 100 columns h, l and the left and right arrows move the
+    /// choice to the nearest row in the other column, and below 100
+    /// they do nothing. Without them a keyboard user crosses from
+    /// WAITING ON YOU to ACTIVE only by paging through every row.
+    #[test]
+    fn handle_input_h_l_cross_wide_columns() {
+        let mut board = make_sample_board();
+        board.handle_input(&press(KeyCode::Char('j')));
+        let before = read_chosen_id_at(&mut board, 40, 16);
+        board.handle_input(&press(KeyCode::Char('l')));
+        let phone = read_chosen_id_at(&mut board, 40, 16);
+        board.render_lines(100, 24);
+
+        let mut chosen = Vec::new();
+        for code in [
+            KeyCode::Char('l'),
+            KeyCode::Right,
+            KeyCode::Char('h'),
+            KeyCode::Left,
+        ] {
+            board.handle_input(&press(code));
+            chosen.push(read_chosen_id_at(&mut board, 100, 24));
+        }
+
+        assert_eq!(phone, before);
+        assert_eq!(chosen, ["active:0", "active:0", "waiting:0", "waiting:0"]);
+    }
+
+    /// From 100 columns a tap on a row in either column opens that
+    /// row's details. A tap finds its line by its place in the left
+    /// column then the right, so a wrong order would open another card.
+    #[test]
+    fn handle_input_wide_tap_opens_tapped_row() {
+        let mut board = make_sample_board();
+        let glance = board.render_lines(100, 24);
+
+        board.handle_input(&tap_on(&glance, "blocked-fix"));
+        let left = board.render_lines(100, 24);
+        board.handle_input(&press(KeyCode::Esc));
+        board.handle_input(&tap_on(&glance, "DEMO-KB-004"));
+        let right = board.render_lines(100, 24);
+
+        assert_eq!(left[1], "blocked-fix waits on you: needs you");
+        assert_eq!(right[1], "Lint every Dockerfile in the repository");
+    }
+
+    /// A new visit time can drop SINCE YOU LEFT's rows from above the
+    /// chosen row. The choice must stay on the row the user picked, or
+    /// Enter would act on whichever row slid into its place.
+    #[test]
+    fn show_visit_keeps_choice_when_rows_drop() {
+        let mut board = make_sample_board();
+        let visit = |time: &str| format!("2026-11-15T{time}:00Z").parse().ok();
+        board.show_visit(visit("10:31"), None, &TimeZone::UTC);
+        for _ in 0..20 {
+            if read_chosen_id(&mut board) == "block:active" {
+                break;
+            }
+            board.handle_input(&press(KeyCode::Char('j')));
+        }
+        assert_eq!(read_chosen_id(&mut board), "block:active");
+
+        board.show_visit(visit("11:00"), None, &TimeZone::UTC);
+
+        assert_eq!(read_chosen_id(&mut board), "block:active");
+    }
+
+    /// Enter on ACTIVE's `+ N more` row opens page 3 with the rows it
+    /// sums up shown, so IDLE opens. Without it the idle cards the
+    /// first screen folds stay out of a keyboard user's reach.
+    #[test]
+    fn handle_input_enter_on_fold_opens_idle() {
+        let mut board = make_sample_board();
+        for _ in 0..20 {
+            if read_chosen_id(&mut board) == "more:active" {
+                break;
+            }
+            board.handle_input(&press(KeyCode::Char('j')));
+        }
+        assert_eq!(read_chosen_id(&mut board), "more:active");
+
+        board.handle_input(&press(KeyCode::Enter));
+        let lines = board.render_lines(40, 16);
+
+        assert_eq!(lines[0], "< 3 ACTIVE  5 · 1 working");
+        assert_eq!(
+            lines[6..9],
+            [
+                "v IDLE 2",
+                " idle DEMO-KB-002 Board for the~ Demo",
+                " you  DEMO-KB-003 Trim the buil~ Demo",
+            ]
+        );
+    }
+
+    /// An agent learns what to open from the elements, not the screen.
+    /// The rows a fold row sums up must be listed, hidden, with the key
+    /// of the page that shows them, or the agent never reads them.
+    #[test]
+    fn dump_glance_lists_folded_rows_with_key() {
+        let mut board = Board::new(false);
+        board.show_reading(Ok(make_sample_queue()));
 
         let dump = board.dump(40, 16, None);
 
@@ -1334,53 +1965,66 @@ pub(super) mod tests {
             .iter()
             .filter_map(|element| {
                 let hiding = element.hiding.as_ref()?;
-                Some((element.text.as_str(), hiding.show.as_str()))
+                Some((element.id.as_str(), hiding.show.as_str()))
             })
             .collect();
         let expected = [
-            (" you  DEMO-KB-001 Q5 Question 4?  Demo", "tap block:queue"),
-            (
-                " you  blocked-fix  needs you      worker",
-                "tap block:queue",
-            ),
-            (" run  DEMO-KB-001 Faster search   Demo", "tap block:queue"),
-            (" idle DEMO-KB-002 Board for the ~ Demo", "tap block:queue"),
-            (" rev  DEMO-KB-010 Retry a failed~ Demo", "tap block:queue"),
+            ("since:1", "press 2"),
+            ("active:2", "press 3"),
+            ("active:3", "press 3"),
+            ("active:4", "press 3"),
+            ("review:0", "press 5"),
         ];
         assert_eq!(hidden, expected);
     }
 
-    /// The user reads the board on a phone, 40 by 16. What needs the
-    /// user comes first, then cards in progress or needing the user's
-    /// review, a few rows each, while cards not yet started stay
-    /// folded. Each row's status word tells whether a worker runs on
-    /// it now or waits on the user. A row cut without `~`, a wrong
-    /// word, or a group out of order hides what the user looks for.
+    /// The user reads page 3 on a phone, 40 by 16. The cards at work
+    /// come first, then those with no worker, while idle cards and
+    /// drafts stay folded. A card whose worker waits on the user is
+    /// idle, since no worker is at work on it. A row cut without
+    /// `~`, a wrong word, or a group out of order hides what the user
+    /// looks for.
     #[test]
     fn render_lines_groups_folds_and_cuts_rows() {
-        let mut board = make_queue_board();
+        let mut board = make_active_board();
 
         let lines = board.render_lines(40, 16);
 
         let expected = [
-            "< queue  1 run · 2 you · 1 idle",
-            "v Needs you 2",
-            " you  DEMO-KB-001 Q1 Deploy toni~ Demo",
-            " you  blocked-fix  needs you      worker",
-            "v Active 5",
-            " run  DEMO-KB-001 Faster search   Demo",
-            " idle DEMO-KB-002 Board for the ~ Demo",
-            " you  DEMO-KB-003 Trim the build~ Demo",
-            " none DEMO-KB-004 Lint every Doc~ Demo",
-            "   + 1 more",
-            "v In review 1",
-            " rev  DEMO-KB-010 Retry a failed~ Demo",
-            "> Todo 1",
-            "> Draft 1",
+            "< 3 ACTIVE  5 · 1 working",
+            "v WORKING 1",
+            " run  DEMO-KB-001 Faster search  Demo",
+            "v NO WORKER 2",
+            " none DEMO-KB-004 Lint every Do~ Demo",
+            " none DEMO-KB-005 Rotate the ba~ Demo",
+            "> IDLE 2",
+            "v UP NEXT 1",
+            " none DEMO-KB-020 Sort ready ca~ Demo",
+            "> DRAFT 1",
+            "",
+            "",
+            "",
+            "",
             "",
             "esc back  ? help  read 10:42 0.6s",
         ];
         assert_eq!(lines, expected);
+    }
+
+    /// The full screen has room for idle cards, so IDLE must open
+    /// when the board grows to 100 columns, and a tap on its heading
+    /// must still fold it there. Without this the user on a wide
+    /// screen opens IDLE by hand each time, or loses the fold.
+    #[test]
+    fn render_lines_wide_opens_idle_keeps_taps() {
+        let mut board = make_active_board();
+
+        let wide = board.render_lines(100, 24);
+        board.handle_input(&tap_on(&wide, "v IDLE"));
+        let tapped = board.render_lines(100, 24);
+
+        assert!(wide.iter().any(|line| line == "v IDLE 2"));
+        assert!(tapped.iter().any(|line| line == "> IDLE 2"));
     }
 
     /// A tap is the user's main input on a phone. A tap on a heading
@@ -1388,65 +2032,43 @@ pub(super) mod tests {
     /// the rest, or the cards past the first four cannot be reached.
     #[test]
     fn handle_input_taps_fold_and_show_more() {
-        let mut board = make_queue_board();
-        let lines = board.render_lines(40, 16);
+        let (mut board, lines) = draw_active_page(make_many_ready_queue(), 16);
 
-        board.handle_input(&tap_on(&lines, "v Active"));
+        board.handle_input(&tap_on(&lines, "v WORKING"));
         let folded = board.render_lines(40, 16);
-        board.handle_input(&tap_on(&folded, "> Active"));
+        board.handle_input(&tap_on(&folded, "> WORKING"));
         let opened = board.render_lines(40, 16);
         board.handle_input(&tap_on(&opened, "+ 1 more"));
         let in_full = board.render_lines(40, 16);
 
-        assert_eq!(folded[4..6], ["> Active 5", "v In review 1"]);
+        assert_eq!(folded[1..3], ["> WORKING 1", "v NO WORKER 2"]);
         assert_eq!(opened, lines);
-        assert_eq!(in_full[9], " none DEMO-KB-005 Rotate the bac~ Demo");
-        assert_eq!(in_full[10], "v In review 1");
+        assert_eq!(in_full[12], " none DEMO-KB-024 Ready card 24  Demo");
     }
 
-    /// `make_sample_queue` with four more questions, so Needs you fills a
-    /// short screen and the cards in work start below it. The glance
-    /// page's QUEUE block at 40x16 cuts five rows.
-    fn make_many_questions_queue() -> Queue {
+    /// `make_sample_queue` with four more cards ready to start, so UP
+    /// NEXT holds five and page 3 at 40x16 shows four with `+ 1 more`.
+    fn make_many_ready_queue() -> Queue {
         let mut queue = make_sample_queue();
-        queue.questions.extend((1..=4).map(|number| OpenQuestion {
-            key: "DEMO-KB-001".parse().unwrap(),
+        queue.cards.extend((21..=24).map(|number| CardLine {
+            key: format!("DEMO-KB-0{number}").parse().unwrap(),
+            stage: Stage::Todo,
             project: "Demo".to_owned(),
-            // The sample queue's question is already Q1.
-            number: number + 1,
-            title: format!("Question {number}?"),
-            lines: Vec::new(),
-            sessions: Vec::new(),
-            asked_on: None,
+            title: format!("Ready card {number}"),
+            workers: Vec::new(),
         }));
         queue
     }
 
-    /// Returns a board that shows `queue` with the queue view open,
-    /// drawn once at 40 by `rows`.
-    fn draw_short_queue_view(queue: Queue, rows: u16) -> (Board, Vec<String>) {
+    /// Returns a board that shows `queue` with page 3 open, drawn once
+    /// at 40 by `rows`.
+    fn draw_active_page(queue: Queue, rows: u16) -> (Board, Vec<String>) {
         let mut board = Board::new(false);
         board.show_reading(Ok(queue));
         board.render_lines(40, rows);
-        board.handle_input(&press(KeyCode::Char('2')));
+        board.handle_input(&press(KeyCode::Char('3')));
         let lines = board.render_lines(40, rows);
         (board, lines)
-    }
-
-    /// Each count on the top line jumps to its group. With many
-    /// questions, the cards in work start below the first screen, so the
-    /// tap must scroll their group into view, or the user never sees what
-    /// runs.
-    #[test]
-    fn handle_input_count_tap_shows_its_group() {
-        let (mut board, lines) = draw_short_queue_view(make_many_questions_queue(), 8);
-
-        board.handle_input(&tap_on(&lines, "1 run"));
-        let jumped = board.render_lines(40, 8);
-
-        assert!(!lines.iter().any(|line| line.contains("Active")));
-        assert!(jumped.iter().any(|line| line == "v Active 5"));
-        assert!(jumped.iter().any(|line| line.contains("Faster search")));
     }
 
     /// A tap on a scrolled list must open the row drawn under the
@@ -1454,14 +2076,15 @@ pub(super) mod tests {
     /// different card than the one they tapped.
     #[test]
     fn handle_input_scrolled_tap_opens_drawn_row() {
-        let (mut board, lines) = draw_short_queue_view(make_many_questions_queue(), 8);
-        board.handle_input(&tap_on(&lines, "1 run"));
+        let (mut board, _) = draw_active_page(make_sample_queue(), 8);
+        board.handle_input(&press(KeyCode::PageDown));
         let scrolled = board.render_lines(40, 8);
 
-        board.handle_input(&tap_on(&scrolled, "Faster search"));
+        board.handle_input(&tap_on(&scrolled, "DEMO-KB-005"));
         let details = board.render_lines(40, 8);
 
-        assert_eq!(details[1], "Faster search");
+        assert_eq!(scrolled[1], " run  DEMO-KB-001 Faster search  Demo");
+        assert_eq!(details[1], "Rotate the backup keys");
     }
 
     /// The row cuts a card to one line, so its details page is where
@@ -1470,10 +2093,9 @@ pub(super) mod tests {
     /// page must not read the note again and make the user wait.
     #[test]
     fn handle_input_tap_shows_details_without_reading() {
-        let mut board = make_queue_board();
-        let lines = board.render_lines(40, 16);
+        let (mut board, lines) = open_sample_page('5');
 
-        let step = board.handle_input(&tap_on(&lines, "Retry a failed"));
+        let step = board.handle_input(&tap_on(&lines, "DEMO-KB-010"));
         let details = board.render_lines(40, 16);
 
         assert_eq!(step, Step::Stay);
@@ -1498,8 +2120,7 @@ pub(super) mod tests {
     /// started never show their criteria.
     #[test]
     fn handle_input_unread_card_loads_its_note() {
-        let mut board = make_queue_board();
-        let lines = board.render_lines(40, 16);
+        let (mut board, lines) = open_sample_page('3');
         let key: CardKey = "DEMO-KB-001".parse().unwrap();
         let note = CardNote {
             title: "Faster search".to_owned(),
@@ -1525,13 +2146,14 @@ pub(super) mod tests {
     /// the screen, and a tap finds its element by place. An element
     /// whose id, place or words differ from the drawn row sends an
     /// agent's tap to another row, or shows it words the user never
-    /// sees. Glance pages 10, 6 and 4 rows high cut blocks down to their
-    /// heading or less, which once put QUEUE's elements over NEXT.
+    /// sees. First screens 10, 6 and 4 rows high cut blocks down to
+    /// their heading or less, which once put one block's elements over
+    /// the next block.
     #[test]
     fn dump_lists_ids_and_places_as_drawn() {
-        let mut board = make_queue_board();
+        let mut board = make_active_board();
         let list = board.dump(40, 16, None);
-        board.handle_input(&tap_on(&list.lines, "Retry a failed"));
+        board.handle_input(&tap_on(&list.lines, "Faster search"));
         let details = board.dump(40, 16, None);
         let short_glances = [10, 6, 4].map(|rows| make_sample_board().dump(40, rows, None));
 
@@ -1543,21 +2165,14 @@ pub(super) mod tests {
             .collect();
         let expected = [
             "back",
-            "count:run",
-            "count:you",
-            "count:idle",
-            "group:needs-you",
-            "question:DEMO-KB-001 Q1",
-            "session:blocked-fix",
-            "group:active",
+            "group:working",
             "card:DEMO-KB-001",
-            "card:DEMO-KB-002",
-            "card:DEMO-KB-003",
+            "group:no-worker",
             "card:DEMO-KB-004",
-            "more:active",
-            "group:in-review",
-            "card:DEMO-KB-010",
+            "card:DEMO-KB-005",
+            "group:idle",
             "group:todo",
+            "card:DEMO-KB-020",
             "group:draft",
             "hint",
         ];
@@ -1582,7 +2197,7 @@ pub(super) mod tests {
     /// still reports that it opened everything.
     #[test]
     fn dump_lists_hidden_cards_with_show_steps() {
-        let mut board = make_queue_board();
+        let (mut board, _) = draw_active_page(make_many_ready_queue(), 16);
 
         let dump = serde_json::to_value(board.dump(40, 16, None)).unwrap();
 
@@ -1602,8 +2217,14 @@ pub(super) mod tests {
             })
             .collect();
         let expected = [
-            ["more:active", "card:DEMO-KB-005", "more", "tap more:active"],
-            ["group:todo", "card:DEMO-KB-020", "fold", "tap group:todo"],
+            ["group:idle", "card:DEMO-KB-002", "fold", "tap group:idle"],
+            [
+                "card:DEMO-KB-002",
+                "card:DEMO-KB-003",
+                "fold",
+                "tap group:idle",
+            ],
+            ["more:todo", "card:DEMO-KB-024", "more", "tap more:todo"],
             ["group:draft", "card:OPS-KB-001", "fold", "tap group:draft"],
         ];
         assert_eq!(hidden, expected);
@@ -1620,8 +2241,8 @@ pub(super) mod tests {
     /// sends an agent's steps away from the row forever.
     #[test]
     fn dump_names_scroll_toward_hidden_rows() {
-        let (mut board, lines) = draw_short_queue_view(make_sample_queue(), 5);
-        board.handle_input(&tap_on(&lines, "1 run"));
+        let (mut board, _) = draw_active_page(make_sample_queue(), 5);
+        board.handle_input(&press(KeyCode::PageDown));
 
         let dump = board.dump(40, 5, None);
 
@@ -1630,11 +2251,7 @@ pub(super) mod tests {
             let hiding = element.and_then(|element| element.hiding.as_ref()).unwrap();
             (hiding.hidden_by.word(), hiding.show.as_str())
         };
-        assert_eq!(
-            read_hiding("question:DEMO-KB-001 Q1"),
-            ("scroll", "press pageup")
-        );
-        assert_eq!(read_hiding("card:DEMO-KB-005"), ("more", "press pagedown"));
+        assert_eq!(read_hiding("group:working"), ("scroll", "press pageup"));
         assert_eq!(read_hiding("group:draft"), ("scroll", "press pagedown"));
         assert_eq!(read_hiding("card:OPS-KB-001"), ("fold", "press pagedown"));
     }
@@ -1657,8 +2274,8 @@ pub(super) mod tests {
             top_line: &'static str,
         }
         let glance_top = "read 10:42 0.6s";
-        let queue_top = "< queue  1 run · 2 you · 1 idle";
-        let details: &[KeyCode] = &[KeyCode::Char('2'), KeyCode::Char('j'), KeyCode::Enter];
+        let active_top = "< 3 ACTIVE  5 · 1 working";
+        let details: &[KeyCode] = &[KeyCode::Char('3'), KeyCode::Char('j'), KeyCode::Enter];
         let ctrl_c = Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
         let tap = Event::Mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
@@ -1669,10 +2286,10 @@ pub(super) mod tests {
         let cases = [
             Case {
                 name: "ctrl-c-on-view",
-                reach: &[KeyCode::Char('2')],
+                reach: &[KeyCode::Char('3')],
                 input: ctrl_c,
                 expected: Step::Quit,
-                top_line: queue_top,
+                top_line: active_top,
             },
             Case {
                 name: "q-on-glance",
@@ -1690,14 +2307,14 @@ pub(super) mod tests {
             },
             Case {
                 name: "q-on-view",
-                reach: &[KeyCode::Char('2')],
+                reach: &[KeyCode::Char('3')],
                 input: press(KeyCode::Char('q')),
                 expected: Step::Stay,
                 top_line: glance_top,
             },
             Case {
                 name: "esc-on-view",
-                reach: &[KeyCode::Char('2')],
+                reach: &[KeyCode::Char('3')],
                 input: press(KeyCode::Esc),
                 expected: Step::Stay,
                 top_line: glance_top,
@@ -1707,21 +2324,21 @@ pub(super) mod tests {
                 reach: details,
                 input: press(KeyCode::Char('q')),
                 expected: Step::Stay,
-                top_line: queue_top,
+                top_line: active_top,
             },
             Case {
                 name: "esc-on-details",
                 reach: details,
                 input: press(KeyCode::Esc),
                 expected: Step::Stay,
-                top_line: queue_top,
+                top_line: active_top,
             },
             Case {
                 name: "tap-on-details",
                 reach: details,
                 input: tap,
                 expected: Step::Stay,
-                top_line: queue_top,
+                top_line: active_top,
             },
         ];
 
@@ -1744,27 +2361,64 @@ pub(super) mod tests {
     /// press of Enter would open another item.
     #[test]
     fn show_reading_keeps_the_chosen_row() {
-        let mut board = make_queue_board();
-        let lines = board.render_lines(40, 16);
-        board.handle_input(&tap_on(&lines, "blocked-fix"));
+        let (mut board, lines) = open_sample_page('1');
+        board.handle_input(&tap_on(&lines, "DEMO-KB-001"));
         board.handle_input(&press(KeyCode::Esc));
-        let answered = Queue {
-            questions: Vec::new(),
+        let tab_closed = Queue {
+            waiting: Vec::new(),
             ..make_sample_queue()
         };
 
-        board.show_reading(Ok(answered));
+        board.show_reading(Ok(tab_closed));
         board.handle_input(&press(KeyCode::Enter));
         let details = board.render_lines(40, 16);
 
-        assert_eq!(details[1], "blocked-fix waits on you: needs you");
+        assert_eq!(details[1], "Deploy tonight?");
     }
 
-    /// Keys 1 to 5 open each view full screen, under a breadcrumb that
-    /// names it. A key that missed a view would hide the sessions or
+    /// Page 1 shows each waiting row's question, or why its tab waits,
+    /// on the line below the row. A lost line hides what the user must
+    /// answer.
+    #[test]
+    fn render_lines_puts_details_under_waiting_rows() {
+        let (_, lines) = open_sample_page('1');
+
+        assert!(lines[1].contains("blocked-fix"));
+        assert_eq!(lines[2], "   needs you");
+        assert!(lines[3].contains("DEMO-KB-001"));
+        assert_eq!(lines[4], "   undated: Deploy tonight?");
+    }
+
+    /// Page 1 ends in a `then: review` line, and a tap on it opens
+    /// page 5. A dead last line strands a phone user on page 1.
+    #[test]
+    fn handle_input_then_line_opens_review_page() {
+        let (mut board, lines) = open_sample_page('1');
+
+        board.handle_input(&tap_on(&lines, "then: review"));
+        let review = board.render_lines(40, 16);
+
+        assert_eq!(review[0], "< 5 IN REVIEW AND PULL REQUESTS");
+    }
+
+    /// A tap on page 4's fold row shows the kept, safe-to-close and
+    /// parked sessions. A dead tap leaves them out of reach on a phone.
+    #[test]
+    fn handle_input_fold_tap_shows_done_sessions() {
+        let (mut board, lines) = open_sample_page('4');
+
+        board.handle_input(&tap_on(&lines, "> KEPT"));
+        let opened = board.render_lines(40, 16);
+
+        assert!(opened.iter().any(|line| line == "KEPT 1"));
+        assert!(opened.iter().any(|line| line.starts_with("docs-fix ")));
+    }
+
+    /// Keys 1 to 5 open each page full screen, under a breadcrumb that
+    /// names it. A key that missed a page would hide the sessions or
     /// gauges from a phone user, who has no wide screen to see them on.
     #[test]
-    fn handle_input_digits_open_each_view() {
+    fn handle_input_digits_open_each_page() {
         let mut board = make_sample_board();
         let mut tops = Vec::new();
 
@@ -1774,11 +2428,11 @@ pub(super) mod tests {
         }
 
         let expected = [
-            "< away  newest",
-            "< queue  1 run · 2 you · 1 idle",
-            "< next",
-            "< sessions",
-            "< machine",
+            "< 1 WAITING ON YOU  2",
+            "< 2 SINCE YOU LEFT  newest",
+            "< 3 ACTIVE  5 · 1 working",
+            "< 4 SESSIONS AND MACHINE",
+            "< 5 IN REVIEW AND PULL REQUESTS",
         ];
         assert_eq!(tops, expected);
     }
@@ -1789,37 +2443,129 @@ pub(super) mod tests {
     /// new user lost.
     #[test]
     fn handle_input_question_mark_opens_view_help() {
-        let mut board = make_queue_board();
+        let mut board = make_active_board();
 
         board.handle_input(&press(KeyCode::Char('?')));
         let help = board.render_lines(40, 16);
         board.handle_input(&press(KeyCode::Esc));
         let back = board.render_lines(40, 16);
 
-        assert_eq!(help[..2], ["< back", "QUEUE"]);
-        assert_eq!(back[0], "< queue  1 run · 2 you · 1 idle");
+        assert_eq!(help[..2], ["< back", "ACTIVE"]);
+        assert_eq!(back[0], "< 3 ACTIVE  5 · 1 working");
     }
 
-    /// From 100 columns the three blocks sit side by side, with two
-    /// blank columns and a `│` between them. A block drawn over another
-    /// would hide what the user opened a wide screen to see.
+    /// Page 2 shows one row per card, named by its newest event, so a
+    /// card's other events are one tap away. A row that did not open
+    /// would hide what happened while the user was away, and one that
+    /// did not fold again would push the other cards off a phone.
     #[test]
-    fn render_lines_blocks_side_by_side_when_wide() {
+    fn handle_input_since_tap_toggles_events() {
+        let (mut board, folded) = open_sample_page('2');
+
+        board.handle_input(&tap_on(&folded, "> hub"));
+        let opened = board.render_lines(40, 16);
+        board.handle_input(&tap_on(&opened, "v hub"));
+        let refolded = board.render_lines(40, 16);
+
+        assert_eq!(folded[1], "> hub                             report");
+        assert_eq!(
+            opened[1..4],
+            [
+                "v hub                           2 events",
+                "   10:40 report",
+                "   10:12 report",
+            ]
+        );
+        assert_eq!(refolded, folded);
+    }
+
+    /// Page 5 draws a card's pull request on the line under the card,
+    /// with its check result, when the card's `prs:` link names it. The
+    /// user reads there whether a card in review can merge.
+    #[test]
+    fn render_lines_review_page_shows_card_pr() {
+        let mut queue = make_sample_queue();
+        queue.pull_requests = Some(vec![PullRequestLine {
+            name_with_owner: "demo/app".to_owned(),
+            number: 301,
+            title: "Retry uploads".to_owned(),
+            check: CheckResult::Pass,
+        }]);
+        let mut board = Board::new(false);
+        board.show_reading(Ok(queue));
+        board.render_lines(40, 16);
+
+        board.handle_input(&press(KeyCode::Char('5')));
+        let lines = board.render_lines(40, 16);
+
+        assert_eq!(
+            lines[1..4],
+            [
+                "v IN REVIEW 1",
+                " rev  DEMO-KB-010 Retry a faile~ Demo",
+                "   Demo #301 pass",
+            ]
+        );
+    }
+
+    /// From 100 columns WAITING ON YOU sits left of ACTIVE, with a `│`
+    /// between them. A block drawn over another would hide what the
+    /// user opened a wide screen to see.
+    #[test]
+    fn render_lines_wide_glance_shows_two_columns() {
         let mut board = make_sample_board();
 
         let lines = board.render_lines(120, 16);
 
-        let headings: Vec<&str> = lines[1].split(" │ ").map(str::trim_end).collect();
+        // Each column's words, with the padding between them dropped.
+        let read_columns = |line: &str| -> Vec<String> {
+            line.split(" │ ")
+                .map(|column| column.split_whitespace().collect::<Vec<_>>().join(" "))
+                .collect()
+        };
         assert_eq!(
-            headings,
-            [
-                "AWAY  newest                       [1]",
-                "QUEUE  1 run · 2 you · 1 idle      [2]",
-                "NEXT                               [3]",
-            ]
+            read_columns(&lines[1]),
+            ["WAITING ON YOU 2 [1]", "ACTIVE 5 · 1 working [3]"]
         );
-        assert!(lines[2].starts_with(" 10:40 api-build reported "));
-        assert!(lines[2].ends_with(" │  you: answer DEMO-KB-001 Q1 Deploy to~"));
+        assert_eq!(
+            read_columns(&lines[2]),
+            ["blocked-fix see tab", "DEMO-KB-001 Faster search"]
+        );
+    }
+
+    /// From 100 columns the bottom line lists every page's key. Without
+    /// it a user on a wide screen must open help to learn the keys.
+    #[test]
+    fn render_lines_wide_hint_lists_every_key() {
+        let mut board = make_sample_board();
+
+        let lines = board.render_lines(120, 16);
+
+        assert_eq!(
+            lines[15],
+            "1 waiting  2 since  3 active  4 sessions and machine  5 review  ? help  q quit"
+        );
+    }
+
+    /// From 100 columns each WAITING ON YOU and ACTIVE row has a dim
+    /// line below it, the question or why the tab waits, and the card's
+    /// newest event. Without it the user opens each page to see why a
+    /// row is there.
+    #[test]
+    fn render_lines_wide_glance_shows_detail_lines() {
+        let mut queue = make_sample_queue();
+        queue.events[1].text = "started demo-kb-001-build (p_1) from /h/handoff.md".to_owned();
+        let mut board = Board::new(false);
+        board.show_reading(Ok(queue));
+
+        let lines = board.render_lines(120, 16);
+
+        let columns: Vec<String> = lines[3]
+            .split(" │ ")
+            .map(|column| column.split_whitespace().collect::<Vec<_>>().join(" "))
+            .collect();
+        assert!(lines[3].starts_with("   "));
+        assert_eq!(columns, ["needs you", "10:31: new worker"]);
     }
 
     /// A read can move rows under a finger, so a tap on a session row
@@ -1832,14 +2578,14 @@ pub(super) mod tests {
         board.handle_input(&press(KeyCode::Char('4')));
         let before = board.render_lines(40, 16);
 
-        let row_tap = board.handle_input(&tap_on(&before, "docs-fix"));
+        let row_tap = board.handle_input(&tap_on(&before, "card-sync"));
         let chosen = board.render_lines(40, 16);
         let bar_tap = board.handle_input(&tap_on(&chosen, "-> jump"));
 
         assert_eq!(before[14], "tap a session to choose it");
         assert_eq!(row_tap, Step::Stay);
-        assert_eq!(chosen[14], "-> jump to docs-fix");
-        assert_eq!(bar_tap, Step::Jump("docs-fix".to_owned()));
+        assert_eq!(chosen[14], "-> jump to card-sync");
+        assert_eq!(bar_tap, Step::Jump("card-sync".to_owned()));
     }
 
     /// A held key repeats faster than `REST`, so Enter right after
@@ -1868,9 +2614,9 @@ pub(super) mod tests {
         let mut board = make_sample_board();
         board.handle_input(&press(KeyCode::Char('4')));
         let before = board.render_lines(40, 16);
-        board.handle_input(&tap_on(&before, "docs-fix"));
+        board.handle_input(&tap_on(&before, "card-sync"));
         let mut later = make_sample_queue();
-        later.sessions.retain(|row| row.name != "docs-fix");
+        later.sessions.retain(|row| row.name != "card-sync");
 
         board.show_reading(Ok(later));
         let after = board.render_lines(40, 16);
