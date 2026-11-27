@@ -10,6 +10,7 @@ use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use super::elements::{Action, Element, HiddenBy, Kind, Place};
 use super::groups::{self, Group, Item, Status};
+use super::pull_requests::PrCount;
 use super::queue::NO_HUB;
 use super::view::{Details, Line};
 
@@ -35,6 +36,7 @@ pub(super) struct ListScreen<'a> {
     pub lines: &'a [Line],
     /// The bottom line's end, such as `read 10:42 0.6s`.
     pub status: &'a str,
+    pub prs: Option<PrCount>,
     pub color: bool,
 }
 
@@ -408,8 +410,7 @@ fn format_count_line(groups: &[(Group, Vec<Item>)], color: bool) -> TextLine<'st
         if index > 0 {
             spans.push(Span::raw(COUNT_GAP));
         }
-        let style = if color { bold.fg(status.color()) } else { bold };
-        spans.push(Span::styled(text, style));
+        spans.push(Span::styled(text, pick_status_style(status, color)));
     }
     TextLine::from(spans)
 }
@@ -424,8 +425,16 @@ fn format_list_line(screen: &ListScreen<'_>, line: Line, width: usize) -> TextLi
                 .find(|(each, _)| *each == group)
                 .map_or(0, |(_, items)| items.len());
             let arrow = if is_open { "v" } else { ">" };
-            let text = format!("{arrow} {} {count}", group.title());
-            TextLine::styled(text, pick_heading_style(group, screen.color))
+            let bold = Style::new().add_modifier(Modifier::BOLD);
+            let mut spans = vec![
+                Span::styled(arrow, pick_dim_style()),
+                Span::styled(format!(" {} ", group.title()), bold),
+                Span::styled(count.to_string(), pick_count_style(group, screen.color)),
+            ];
+            if group == Group::InReview {
+                spans.extend(format_pr_spans(screen.prs, screen.color));
+            }
+            TextLine::from(spans)
         }
         Line::More { hidden, .. } => {
             TextLine::styled(format!("   + {hidden} more"), pick_dim_style())
@@ -445,22 +454,33 @@ fn format_list_line(screen: &ListScreen<'_>, line: Line, width: usize) -> TextLi
     }
 }
 
+/// Returns the In review heading's end, such as ` · 3 PRs, 1 failing`,
+/// or nothing without the `prs` tool's list.
+fn format_pr_spans(prs: Option<PrCount>, color: bool) -> Vec<Span<'static>> {
+    let Some(prs) = prs else {
+        return Vec::new();
+    };
+    let noun = if prs.open == 1 { "PR" } else { "PRs" };
+    let mut spans = vec![Span::raw(format!("{COUNT_GAP}{} {noun}", prs.open))];
+    if prs.failing > 0 {
+        let style = pick_status_style(Status::Problem, color);
+        spans.push(Span::raw(", "));
+        spans.push(Span::styled(format!("{} failing", prs.failing), style));
+    }
+    spans
+}
+
 /// Returns an item's line, such as ` rev  Retry failed u~ DevEnv`. The
 /// line holds its status word, its words cut to fit with `~`, and its
 /// tag in the last `TAG_WIDTH` columns.
 pub(super) fn format_item_line(item: &Item, width: usize, color: bool) -> TextLine<'static> {
     let room = width.saturating_sub(Status::WIDTH + 3 + TAG_WIDTH);
     let tag: String = item.tag.chars().take(TAG_WIDTH).collect();
-    let status_style = match item.status {
-        Status::None => pick_dim_style(),
-        status if color => Style::new().fg(status.color()),
-        _ => Style::new(),
-    };
     TextLine::from(vec![
         Span::raw(" "),
         Span::styled(
             format!("{:<width$}", item.status.word(), width = Status::WIDTH),
-            status_style,
+            pick_status_style(item.status, color),
         ),
         Span::raw(" "),
         Span::raw(format!("{:room$}", fit_text(&item.text, room))),
@@ -477,14 +497,23 @@ fn fit_text(text: &str, room: usize) -> String {
     text.to_owned()
 }
 
-/// Returns the bold style of a heading or count, in its group's color
-/// unless `color` is false.
-fn pick_heading_style(group: Group, color: bool) -> Style {
-    let style = Style::new().add_modifier(Modifier::BOLD);
-    if color {
-        style.fg(group.color())
-    } else {
-        style
+/// Returns a status word's style, dim for `idle` and otherwise in the
+/// word's color unless `color` is false.
+fn pick_status_style(status: Status, color: bool) -> Style {
+    match status {
+        Status::Idle => pick_dim_style(),
+        status if color => Style::new().fg(status.color()),
+        _ => Style::new(),
+    }
+}
+
+/// Returns the style of a group heading's count, dim for Draft and
+/// otherwise in the group's color unless `color` is false.
+fn pick_count_style(group: Group, color: bool) -> Style {
+    match group {
+        Group::Draft => pick_dim_style(),
+        group if color => Style::new().fg(group.color()),
+        _ => Style::new(),
     }
 }
 

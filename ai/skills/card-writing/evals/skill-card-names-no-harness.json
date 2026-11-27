@@ -1,0 +1,18 @@
+{
+  "id": "skill-card-names-no-harness",
+  "source": "the user's correction to a card about shared agent skills that named the harnesses that run agents",
+  "rule": "Write the proposed card",
+  "correction": true,
+  "prompt": "Use the card-writing skill. You draft one build card. The work adds a shared agent skill, log-review, that helps the user review long run logs; the user runs it from both OpenCode and Claude Code. The user gave you no words for the title, Context or criteria. Write the card's title, its Context section and its Acceptance Criteria section. Run no commands; answer in text.",
+  "pass": ["log", "acceptance criteria"],
+  "fail": [
+    "(?i)(?:^|\\n)\\s*(?:-|\\d+\\.)\\s[^\\n]{0,140}\\b(?:opencode|claude code)\\b",
+    "(?i)\\b(?:title|context)\\b[^\\n]{0,120}\\b(?:opencode|claude code)\\b"
+  ],
+  "judge": [
+    "Do the card's title, Context and criteria leave out every program that runs agents, such as OpenCode and Claude Code? The words 'skill' and 'agent' alone are fine.",
+    "Does the answer tell the user that the card text is its own wording, for the user to replace or approve?"
+  ],
+  "good": "Title: Add the log review skill (my wording)\n\n## Context\n- Reading a long run log by hand is slow and hides repeated failures. (my wording)\n\n## Acceptance Criteria\n- [ ] The skill summarizes the failures in a sample run log. (my wording)\n- [ ] The user tried it on a real run log. (my wording)\n\nThe title, Context and criteria are my wording, for you to replace or approve.",
+  "bad": "Title: Add the log review skill\n\n## Context\n- Reading a long run log by hand is slow.\n\n## Acceptance Criteria\n- [ ] The skill loads in OpenCode, and the same review works in Claude Code.\n- [ ] It summarizes the failures in a sample run log."
+}

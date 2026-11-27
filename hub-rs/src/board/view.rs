@@ -224,6 +224,14 @@ impl Board {
         self.list.select((!self.lines.is_empty()).then_some(place));
     }
 
+    /// Shows a read a board saved before, with its time on top, until
+    /// this board's first read replaces it.
+    pub(crate) fn show_saved_reading(&mut self, queue: Queue) {
+        let saved_at = queue.read_at.clone();
+        self.show_reading(Ok(queue));
+        self.status = format!("saved {saved_at} · reading");
+    }
+
     /// Shows the events after `since` in AWAY, and `away_for`, how long
     /// the user was away, on the glance page's top line. With `since`
     /// `None`, AWAY shows the newest events.
@@ -266,13 +274,12 @@ impl Board {
             return;
         }
         details.reading = None;
-        let card = self
-            .queue
-            .iter()
-            .flat_map(|queue| &queue.cards)
-            .find(|card| card.key == *key);
-        if let Some(card) = card {
-            details.lines = groups::describe_card(card, note.as_ref().ok());
+        let found = self.queue.iter().find_map(|queue| {
+            let card = queue.cards.iter().find(|card| card.key == *key)?;
+            Some((card, &queue.sessions))
+        });
+        if let Some((card, sessions)) = found {
+            details.lines = groups::describe_card(card, sessions, note.as_ref().ok());
         }
         if let Err(reason) = note {
             details
@@ -436,6 +443,7 @@ impl Board {
                 groups: &self.groups,
                 lines: &self.lines,
                 status: &self.status,
+                prs: self.queue.as_ref().and_then(|queue| queue.prs),
                 color: self.color,
             };
             draw::draw_list(frame, self.area, &screen, &mut self.list);
@@ -960,6 +968,7 @@ impl Board {
             groups: &self.groups,
             lines: &self.lines,
             status: &self.status,
+            prs: self.queue.as_ref().and_then(|queue| queue.prs),
             color: self.color,
         }
     }
@@ -994,6 +1003,7 @@ pub(super) mod tests {
     use std::time::Duration;
 
     use crossterm::event::{MouseButton, MouseEvent};
+    use jiff::civil::date;
 
     use crate::board::away::AwayEvent;
     use crate::board::machine::{FeedLine, Gauges, Usage};
@@ -1041,6 +1051,7 @@ pub(super) mod tests {
         };
         Queue {
             read_at: "10:42".to_owned(),
+            read_on: date(2026, 11, 15),
             took: Duration::from_millis(600),
             cards: vec![
                 make_card(
@@ -1170,6 +1181,7 @@ pub(super) mod tests {
             run: Some(PathBuf::from("/runs/sample")),
             notes: [("DEMO-KB-010".parse().unwrap(), reviewed_note)].into(),
             problems: Vec::new(),
+            prs: None,
         }
     }
 
@@ -1917,6 +1929,8 @@ pub(super) mod tests {
         queue.sessions.extend((1..=15).map(|number| SessionRow {
             name: format!("old-{number:02}"),
             state: Lifecycle::ToClose,
+            working: false,
+            status: None,
             why: "card done".to_owned(),
             stage: Some(Stage::Done),
             context_tokens: None,
@@ -2017,6 +2031,8 @@ pub(super) mod tests {
         later.sessions.push(SessionRow {
             name: "late-close".to_owned(),
             state: Lifecycle::ToClose,
+            working: false,
+            status: None,
             why: "card done".to_owned(),
             stage: Some(Stage::Done),
             context_tokens: None,

@@ -12,6 +12,7 @@ use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +25,7 @@ const REVIEW_FILE: &str = "review.json";
 const LOCK_FILE: &str = "review.json.lock";
 const TEMP_FILE: &str = "review.json.tmp";
 const UNREADABLE_FILE: &str = "review.json.unreadable";
+const ARCHIVE_FOLDER: &str = "archive";
 const WAITING_LIST_FILE: &str = "waiting-list.json";
 const WAITING_LIST_LOCK_FILE: &str = "waiting-list.json.lock";
 const WAITING_LIST_TEMP_FILE: &str = "waiting-list.json.tmp";
@@ -69,6 +71,9 @@ pub(crate) fn add_list(
         add_list_after_user_notes(&root, review_session, list)?;
         review_session.lists.len()
     } else {
+        if let Some(replaced) = &lock.review_session {
+            copy_to_archive(replaced)?;
+        }
         // Past the refusal above, there is no Review Session or only a done or dismissed one.
         lock.review_session = Some(ReviewSession {
             status: ReviewStatus::WaitingForUserFeedback,
@@ -79,7 +84,7 @@ pub(crate) fn add_list(
         });
         1
     };
-    lock.save()?;
+    lock.save_review_session()?;
     Ok(list_number)
 }
 
@@ -134,7 +139,7 @@ pub fn dismiss(dir: &Path) -> Result<(), Error> {
         });
     };
     review_session.status = ReviewStatus::Dismissed;
-    lock.save()?;
+    lock.save_review_session()?;
     // The review is dismissed already, so a list that cannot be saved only keeps removed worktrees longer.
     let _ = change_waiting_list(dir, |_, _| {});
     Ok(())
@@ -158,7 +163,7 @@ pub fn restore(dir: &Path) -> Result<(), Error> {
         });
     };
     review_session.status = ReviewStatus::WaitingForUserFeedback;
-    lock.save()?;
+    lock.save_review_session()?;
     // The status is saved by now, so a waiting-list error must not read as nothing restored.
     add_to_waiting_list(dir).map_err(|error| Error {
         code: error.code,
@@ -195,7 +200,7 @@ pub fn save_user_feedback(
         review_session.write_error = None;
     }
     let status = review_session.status;
-    lock.save()?;
+    lock.save_review_session()?;
     if status == ReviewStatus::UserNotesWaiting {
         // Saving first means a failed change to the waiting list loses no User Feedback.
         // The Review Session's lock is still held, so the worktree stays listed for the
@@ -223,7 +228,7 @@ pub(crate) fn remove_user_note(
         review_session.feedback.remove(&shown_request.id);
     }
     let status = review_session.status;
-    lock.save()?;
+    lock.save_review_session()?;
     Ok(status)
 }
 
@@ -324,10 +329,11 @@ impl ReviewSessionLock {
 
     /// Saves through a temporary file, so a crash leaves the old file whole.
     /// Saves nothing when there is no Review Session.
-    pub fn save(&self) -> Result<(), Error> {
+    pub fn save_review_session(&self) -> Result<(), Error> {
         let Some(review_session) = &self.review_session else {
             return Ok(());
         };
+        copy_to_archive(review_session)?;
         let path = self.folder.join(REVIEW_FILE);
         let mut text =
             serde_json::to_vec_pretty(review_session).map_err(|error| save_error(&path, error))?;
@@ -599,6 +605,38 @@ fn find_free_unreadable_path(folder: &Path) -> PathBuf {
     path
 }
 
+fn copy_to_archive(review_session: &ReviewSession) -> Result<(), Error> {
+    let origin = &review_session.origin;
+    let mut text = serde_json::to_vec_pretty(review_session)
+        .map_err(|error| save_error(Path::new(&origin.repo), error))?;
+    text.push(b'\n');
+    write_archive_copy(&origin.repo, &origin.branch, &text)
+}
+
+pub(crate) fn write_archive_copy(repo: &str, branch: &str, text: &[u8]) -> Result<(), Error> {
+    let folder = find_archive_folder()?
+        .join(repo)
+        .join(branch.replace('/', "-"));
+    fs::create_dir_all(&folder).map_err(|error| save_error(&folder, error))?;
+    let mut time = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    loop {
+        let path = folder.join(format!("{time}.json"));
+        match File::options().write(true).create_new(true).open(&path) {
+            Ok(mut file) => {
+                return file
+                    .write_all(text)
+                    .and_then(|()| file.sync_all())
+                    .map_err(|error| save_error(&path, error));
+            }
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => time += 1,
+            Err(error) => return Err(save_error(&path, error)),
+        }
+    }
+}
+
 fn write_and_sync(path: &Path, contents: &[u8]) -> io::Result<()> {
     let mut file = File::create(path)?;
     file.write_all(contents)?;
@@ -794,9 +832,7 @@ fn is_removed_worktree(worktree: &Path) -> bool {
     !worktree.exists() && worktree.parent().is_some_and(Path::exists)
 }
 
-/// Returns `$XDG_STATE_HOME/pde/comment-review`, or
-/// `~/.local/state/pde/comment-review` without it.
-fn find_waiting_list_folder() -> Result<PathBuf, Error> {
+pub(crate) fn find_waiting_list_folder() -> Result<PathBuf, Error> {
     if cfg!(feature = "test-util") {
         // Failing here stops a test that forgot its folder from changing the user's list.
         let folder = TEST_WAITING_LIST_FOLDER.get().expect(
@@ -805,6 +841,10 @@ fn find_waiting_list_folder() -> Result<PathBuf, Error> {
         return Ok(folder.clone());
     }
     Ok(find_pde_state_folder()?.join("comment-review"))
+}
+
+fn find_archive_folder() -> Result<PathBuf, Error> {
+    Ok(find_waiting_list_folder()?.join(ARCHIVE_FOLDER))
 }
 
 /// Returns `$XDG_STATE_HOME/pde`, or `~/.local/state/pde` without it. The

@@ -7,6 +7,8 @@
 
 use std::collections::BTreeSet;
 
+use serde::{Deserialize, Serialize};
+
 use super::messages::MessageCounts;
 use super::parking::ParkedRecord;
 use crate::external::cards::{CardKey, Stage};
@@ -25,7 +27,7 @@ const KANBAN_HUB_WORD: &str = "kanban";
 /// One session's place in its life. Each `match` on it must name
 /// every state. Code that forgets to handle a new state then fails to
 /// build.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum Lifecycle {
     Working,
     WaitsOnHub,
@@ -66,7 +68,7 @@ impl Lifecycle {
 }
 
 /// Why a finished session stays open.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum KeptReason {
     UnsavedFiles,
     Unpushed,

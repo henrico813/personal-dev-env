@@ -273,7 +273,7 @@ impl TryFrom<String> for CardKey {
 }
 
 /// A card's stage, in board order.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Stage {
     Draft,
     Todo,

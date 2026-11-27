@@ -27,6 +27,10 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    #[cfg(not(feature = "test-util"))]
+    if let Some(home) = std::env::var_os("HOME") {
+        let _ = glimmer::shared::older_reviews::archive_older_reviews(Path::new(&home));
+    }
     // The command line works on the folder it runs in.
     let dir = Path::new(".");
     let reply = match command {
