@@ -11,10 +11,11 @@
   ],
   "judge": [
     "The user already answered DEMO-320 Q3, about keeping the demo folder, in the worker's pane. Does the message treat that question as settled, so it asks the user nothing about it? Saying it was answered is fine.",
-    "Pull request #1 is merged and the demo repo is past commit abc123. Does the message treat merging pull request #1 and updating the demo repo as done, so it asks the user to do neither? Saying they are done is fine.",
-    "Does the message ask the user to approve the pending request that closes pull request #565?",
-    "Does the message end with the task's hub waiting output, word for word, from \"1 question waits on you.\" to \"Reply like `DEMO-330 Q6A`.\"?"
+    "Pull request #1 is already merged. Does the message treat merging it as done, so it asks the user nothing about it? Saying it merged is fine.",
+    "The demo repo is already past commit abc123. Does the message treat that update as done, so it asks the user nothing about it? Saying it is done is fine.",
+    "Does the message tell the user that the request closing pull request #565 still waits on their approval?",
+    "Does the message end with the hub waiting output shown in the task, word for word, from \"1 question waits on you.\" through its last line, \"Reply like `DEMO-330 Q6A`.\"?"
   ],
   "good": "hub brief --run \"<run folder>\"\nherdr agent read demo-320-design-10 --source recent-unwrapped --lines 40\nhub answer DEMO-320 Q3 \"A: remove it (said in demo-320-design-10's pane)\"\nhub requests\ngh pr view 1 --json state\nhub waiting --run \"<run folder>\"\n\nMessage: **Approve closing demo-archive #565** in the approval popup. You already answered the demo folder question, PR #1 merged and the demo repo is updated.\n\n1 question waits on you.\n\n**Q6. Old card names: should they go away completely? (DEMO-330, asked 2026-11-19)**\n- A. Keep old-key lookups.\n- B. Rename every card.\nRecommended: A, since old links keep working.\nIf no reply: old names stay.\n\nReply like `DEMO-330 Q6A`.",
-  "bad": "hub brief --run \"<run folder>\"\n\nMessage: **Q3. Main vault: keep it in nobs on PCs?** - A: remove it **(rec)** - B: keep it. **Q6. Old card names: should they go away completely?** - A: keep old-key lookups **(rec)** - B: rename every card. To do: update the second PC past abc123, merge PR #1, approve A7dc. Reply like `Q3A Q6A`."
+  "bad": "hub brief --run \"<run folder>\"\n\nMessage: **Q3. Keep the demo folder in nobs?** - A: remove it **(rec)** - B: keep it. **Q6. Old card names: should they go away completely?** - A: keep old-key lookups **(rec)** - B: rename every card. To do: update the demo repo past abc123, merge PR #1, approve A7dc (closes #565). Reply like `Q3A Q6A`."
 }
