@@ -1,21 +1,20 @@
-//! Draws the board's queue view and details page, and lists the
-//! elements each holds, drawn or hidden. Read `draw_list` and
+//! Draws the list pages 1, 3 and 5 and the details page, and lists
+//! the elements each holds, drawn or hidden. Read `draw_list` and
 //! `build_list_elements` first.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line as TextLine, Span};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use super::elements::{Action, Element, HiddenBy, Kind, Place};
-use super::groups::{self, Group, Item, Status};
-use super::pull_requests::PrCount;
-use super::queue::NO_HUB;
+use super::groups::{Group, Item, Status, Target};
+use super::panels::Panel;
+use super::pull_requests::CheckResult;
+use super::queue::{NO_HUB, Queue};
 use super::view::{Details, Line};
-
-/// The queue view's breadcrumb, which a tap on goes back.
-const QUEUE_BACK: &str = "< queue";
+use crate::external::cards::BoardCounts;
 
 /// The space after the breadcrumb.
 const BACK_GAP: &str = "  ";
@@ -27,20 +26,25 @@ const COUNT_GAP: &str = " · ";
 const BACK_HINT: &str = "tap or q to go back";
 
 /// The most columns an item's tag takes, so tags line up. A longer tag
-/// is cut without a `~`, as the demo cuts `Homelab` to `Homela`.
-const TAG_WIDTH: usize = 6;
+/// is cut without a `~`; 7 keeps `see tab` and labels such as `Demo`
+/// whole.
+const TAG_WIDTH: usize = 7;
 
-/// What the queue view shows.
+/// What a list page shows.
 pub(super) struct ListScreen<'a> {
+    /// Page 1, 3 or 5, which names the breadcrumb.
+    pub panel: Panel,
     pub groups: &'a [(Group, Vec<Item>)],
     pub lines: &'a [Line],
+    /// The read the counts come from, or `None` before the first read.
+    pub queue: Option<&'a Queue>,
     /// The bottom line's end, such as `read 10:42 0.6s`.
     pub status: &'a str,
-    pub prs: Option<PrCount>,
     pub color: bool,
 }
 
-/// Draws the breadcrumb and counts on top, the list of groups, and the
+/// Draws the breadcrumb and counts on top, such as
+/// `< 3 ACTIVE  23, max 8 · 2 working`, the page's groups, and the
 /// bottom line in `area`. The list scrolls so the chosen line in `list`
 /// shows.
 pub(super) fn draw_list(
@@ -50,15 +54,14 @@ pub(super) fn draw_list(
     list: &mut ListState,
 ) {
     let [top, middle, bottom] = split_screen(area);
-    frame.render_widget(format_count_line(screen.groups, screen.color), top);
+    frame.render_widget(format_breadcrumb_line(screen), top);
     let width = usize::from(middle.width);
     let items: Vec<ListItem> = screen
         .lines
         .iter()
         .map(|line| ListItem::new(format_list_line(screen, *line, width)))
         .collect();
-    let list_widget =
-        List::new(items).highlight_style(Style::new().add_modifier(Modifier::REVERSED));
+    let list_widget = List::new(items).highlight_style(pick_chosen_style());
     frame.render_stateful_widget(list_widget, middle, list);
     frame.render_widget(
         Paragraph::new(format_view_hint(screen.status)).style(pick_dim_style()),
@@ -85,7 +88,7 @@ pub(super) fn draw_details(frame: &mut Frame, details: &mut Details) {
     frame.render_widget(Paragraph::new(BACK_HINT).style(pick_dim_style()), bottom);
 }
 
-/// Returns the queue view's elements as `draw_list` drew them in
+/// Returns a list page's elements as `draw_list` drew them in
 /// `area`, with `list` scrolled and chosen as the last draw left it.
 /// Rows scrolled off come too, hidden, and so do the cards of a folded
 /// group or behind `+ N more`, which come right after that line.
@@ -95,29 +98,7 @@ pub(super) fn build_list_elements(
     list: &ListState,
 ) -> Vec<Element> {
     let [top, middle, bottom] = split_screen(area);
-    let mut elements = vec![build_back_element(QUEUE_BACK, top)];
-    let mut column = top.x + measure_width(QUEUE_BACK) + measure_width(BACK_GAP);
-    for (group, status, text) in count_parts(screen.groups) {
-        let width = measure_width(&text);
-        elements.push(Element {
-            id: format!("count:{}", status.word()),
-            kind: Kind::Count,
-            text,
-            place: Some(Place {
-                column,
-                row: top.y,
-                width,
-            }),
-            tap: Some("jump"),
-            chosen: false,
-            hidden: false,
-            hiding: None,
-            action: Action::Jump(group),
-        });
-        column = column
-            .saturating_add(width)
-            .saturating_add(measure_width(COUNT_GAP));
-    }
+    let mut elements = vec![build_back_element(&format_page_title(screen.panel), top)];
     let width = usize::from(middle.width);
     for (index, line) in screen.lines.iter().enumerate() {
         let (id, kind, tap) = describe_line(screen.groups, *line);
@@ -179,14 +160,20 @@ pub(super) fn build_list_elements(
     elements
 }
 
+/// Returns the style of the chosen line, which the list pages and the
+/// glance page draw across its whole row.
+pub(super) fn pick_chosen_style() -> Style {
+    Style::new().add_modifier(Modifier::REVERSED)
+}
+
 /// Returns a view's bottom line, such as
 /// `esc back  ? help  read 10:42 0.6s`, with the board's `status` last.
 pub(super) fn format_view_hint(status: &str) -> String {
     format!("esc back  ? help  {status}")
 }
 
-/// Returns the element of a view's breadcrumb, such as `< queue`, on
-/// `area`'s first row. A tap on it goes back to the glance page.
+/// Returns the element of a view's breadcrumb, such as `< 3 ACTIVE`,
+/// on `area`'s first row. A tap on it goes back to the glance page.
 pub(super) fn build_back_element(text: &str, area: Rect) -> Element {
     Element {
         kind: Kind::Back,
@@ -290,7 +277,7 @@ fn build_hidden_items(
             let element = Element {
                 id: format_item_id(item),
                 kind: Kind::Item,
-                text: join_line_text(&format_item_line(item, width, screen.color)),
+                text: join_line_text(&format_group_row(group, item, width, screen.color)),
                 place: None,
                 tap: Some("open"),
                 chosen: false,
@@ -327,8 +314,8 @@ fn select_shown_detail_lines(details: &Details, middle: Rect) -> Vec<String> {
 }
 
 /// Returns a list line's element id, kind and what a tap on it does,
-/// if anything.
-fn describe_line(
+/// if anything. The glance page takes its tap words from here too.
+pub(super) fn describe_line(
     groups: &[(Group, Vec<Item>)],
     line: Line,
 ) -> (String, Kind, Option<&'static str>) {
@@ -348,7 +335,22 @@ fn describe_line(
                 .map_or_else(String::new, format_item_id);
             (id, Kind::Item, Some("open"))
         }
+        Line::Detail { group, index } => {
+            let id = find_group_items(groups, group)
+                .get(index)
+                .map_or_else(String::new, |item| {
+                    format!("detail:{}", format_item_id(item))
+                });
+            (id, Kind::Item, Some("open"))
+        }
         Line::NoHub => ("no-hub".to_owned(), Kind::Text, None),
+        Line::ThenReview => ("then:review".to_owned(), Kind::Text, Some("open")),
+        // The glance page names these lines and picks their kinds
+        // itself, and takes only the tap word from here.
+        Line::Fold(_) => (String::new(), Kind::More, Some("show all")),
+        Line::Block(_) | Line::Fault(_) | Line::Event(_) => {
+            (String::new(), Kind::Text, Some("open"))
+        }
     }
 }
 
@@ -382,35 +384,110 @@ pub(super) fn join_line_text(line: &TextLine<'_>) -> String {
     text.trim_end().to_owned()
 }
 
-/// Returns the QUEUE counts, such as `2 run`, each with its status
-/// and the group a tap on it jumps to. None before the first read.
-fn count_parts(groups: &[(Group, Vec<Item>)]) -> Vec<(Group, Status, String)> {
-    groups::count_statuses(groups)
-        .into_iter()
-        .map(|(status, count, group)| (group, status, format!("{count} {}", status.word())))
-        .collect()
+/// Returns a page's breadcrumb, such as `< 3 ACTIVE`.
+pub(super) fn format_page_title(panel: Panel) -> String {
+    format!("< {} {}", panel.number(), panel.as_title())
 }
 
-/// Returns the QUEUE counts as one text, such as `2 run · 1 you`, or
-/// none before the first read.
-pub(super) fn count_words(groups: &[(Group, Vec<Item>)]) -> String {
-    let parts: Vec<String> = count_parts(groups)
+/// Returns the ACTIVE counts, such as `23, max 8 · 2 working`, which
+/// the glance block and page 3 show. The count turns yellow over the
+/// limit, and `max` is left out when `card board` gave no limits.
+pub(super) fn format_active_spans(
+    groups: &[(Group, Vec<Item>)],
+    board: Option<&BoardCounts>,
+    color: bool,
+) -> Vec<Span<'static>> {
+    let active: usize = [Group::Working, Group::NoWorker, Group::Idle]
         .into_iter()
-        .map(|(_, _, text)| text)
-        .collect();
-    parts.join(COUNT_GAP)
+        .map(|group| find_group_items(groups, group).len())
+        .sum();
+    let working = find_group_items(groups, Group::Working).len();
+    let mut spans = format_limit_spans(active, board.map(|board| board.active_limit), color);
+    spans.push(Span::raw(COUNT_GAP));
+    spans.push(Span::styled(
+        format!("{working} working"),
+        pick_color_style(Color::Cyan, color),
+    ));
+    spans
 }
 
-/// Returns the queue view's top line, such as
-/// `< queue  2 run · 1 you · 1 idle`.
-fn format_count_line(groups: &[(Group, Vec<Item>)], color: bool) -> TextLine<'static> {
+/// Returns the IN REVIEW counts, such as `7, max 6 · 1 PR fails`,
+/// which the glance block shows. The PR part needs the `prs` tool's
+/// list and at least one failing check.
+pub(super) fn format_review_spans(
+    groups: &[(Group, Vec<Item>)],
+    queue: Option<&Queue>,
+    color: bool,
+) -> Vec<Span<'static>> {
+    let count = find_group_items(groups, Group::InReview).len();
+    let limit = queue
+        .and_then(|queue| queue.board.as_ref())
+        .map(|board| board.in_review_limit);
+    let mut spans = format_limit_spans(count, limit, color);
+    let failing = count_failing_prs(queue);
+    if failing > 0 {
+        spans.push(Span::raw(COUNT_GAP));
+        spans.push(Span::styled(
+            match failing {
+                1 => "1 PR fails".to_owned(),
+                _ => format!("{failing} PRs fail"),
+            },
+            pick_status_style(Status::Problem, color),
+        ));
+    }
+    spans
+}
+
+/// Returns `count` with its limit, such as `23, max 8`, the count
+/// yellow when over, or the count alone without a limit.
+fn format_limit_spans(count: usize, limit: Option<u32>, color: bool) -> Vec<Span<'static>> {
+    let Some(limit) = limit else {
+        return vec![Span::raw(count.to_string())];
+    };
+    let is_over = u32::try_from(count).map_or(true, |count| count > limit);
+    let style = if is_over {
+        pick_color_style(Color::Yellow, color)
+    } else {
+        Style::new()
+    };
+    vec![
+        Span::styled(count.to_string(), style),
+        Span::raw(format!(", max {limit}")),
+    ]
+}
+
+/// Returns how many listed pull requests fail a check, 0 without the
+/// `prs` tool's list.
+fn count_failing_prs(queue: Option<&Queue>) -> usize {
+    queue
+        .and_then(|queue| queue.pull_requests.as_deref())
+        .unwrap_or_default()
+        .iter()
+        .filter(|pr| pr.check == CheckResult::Fails)
+        .count()
+}
+
+/// Returns a list page's top line, its breadcrumb and then page 1's
+/// waiting count or page 3's ACTIVE counts.
+fn format_breadcrumb_line(screen: &ListScreen<'_>) -> TextLine<'static> {
     let bold = Style::new().add_modifier(Modifier::BOLD);
-    let mut spans = vec![Span::styled(QUEUE_BACK, bold), Span::raw(BACK_GAP)];
-    for (index, (_, status, text)) in count_parts(groups).into_iter().enumerate() {
-        if index > 0 {
-            spans.push(Span::raw(COUNT_GAP));
-        }
-        spans.push(Span::styled(text, pick_status_style(status, color)));
+    let mut spans = vec![
+        Span::styled(format_page_title(screen.panel), bold),
+        Span::raw(BACK_GAP),
+    ];
+    match screen.panel {
+        Panel::Waiting => spans.push(Span::styled(
+            find_group_items(screen.groups, Group::NeedsYou)
+                .len()
+                .to_string(),
+            pick_count_style(Group::NeedsYou, screen.color),
+        )),
+        Panel::Active => spans.extend(format_active_spans(
+            screen.groups,
+            screen.queue.and_then(|queue| queue.board.as_ref()),
+            screen.color,
+        )),
+        Panel::Since | Panel::Machine | Panel::Review => {}
     }
     TextLine::from(spans)
 }
@@ -423,7 +500,16 @@ fn format_list_line(screen: &ListScreen<'_>, line: Line, width: usize) -> TextLi
                 .groups
                 .iter()
                 .find(|(each, _)| *each == group)
-                .map_or(0, |(_, items)| items.len());
+                .map_or(0, |(_, items)| {
+                    // The `+ N pass, no card` row stands for N pull requests.
+                    items
+                        .iter()
+                        .map(|item| match item.target {
+                            Target::PassingPrs(folded) => folded,
+                            _ => 1,
+                        })
+                        .sum()
+                });
             let arrow = if is_open { "v" } else { ">" };
             let bold = Style::new().add_modifier(Modifier::BOLD);
             let mut spans = vec![
@@ -431,8 +517,10 @@ fn format_list_line(screen: &ListScreen<'_>, line: Line, width: usize) -> TextLi
                 Span::styled(format!(" {} ", group.title()), bold),
                 Span::styled(count.to_string(), pick_count_style(group, screen.color)),
             ];
-            if group == Group::InReview {
-                spans.extend(format_pr_spans(screen.prs, screen.color));
+            match group {
+                Group::InReview => spans.extend(format_review_limit_spans(screen)),
+                Group::OtherPrs => spans.extend(format_failing_spans(screen)),
+                _ => {}
             }
             TextLine::from(spans)
         }
@@ -447,27 +535,77 @@ fn format_list_line(screen: &ListScreen<'_>, line: Line, width: usize) -> TextLi
                 .find(|(each, _)| *each == group)
                 .and_then(|(_, items)| items.get(index));
             match item {
-                Some(item) => format_item_line(item, width, screen.color),
+                Some(item) => format_group_row(group, item, width, screen.color),
                 None => TextLine::default(),
             }
         }
+        Line::Detail { group, index } => {
+            let item = find_group_items(screen.groups, group).get(index);
+            let detail = item
+                .and_then(|item| item.detail.as_deref())
+                .unwrap_or_default();
+            let text = fit_text(&format!("   {detail}"), width);
+            // A question's detail starts with its age, such as
+            // `3 days old, +1 question: Deploy tonight?`.
+            let age_end = detail.find([',', ':']).map(|end| end + 3);
+            match (item.map(|item| item.tag.as_str()), age_end) {
+                (Some("answer"), Some(end)) if end <= text.len() => {
+                    let (age, rest) = text.split_at(end);
+                    TextLine::from(vec![
+                        Span::styled(
+                            age.to_owned(),
+                            pick_color_style(Color::Yellow, screen.color),
+                        ),
+                        Span::raw(rest.to_owned()),
+                    ])
+                }
+                _ => TextLine::raw(text),
+            }
+        }
+        Line::ThenReview => {
+            let count = find_group_items(screen.groups, Group::InReview).len();
+            let noun = if count == 1 { "card" } else { "cards" };
+            let text = format!(" then: review {count} {noun}");
+            let key = "[5]";
+            let room = width.saturating_sub(key.len());
+            TextLine::from(vec![
+                Span::raw(format!("{:room$}", fit_text(&text, room))),
+                Span::styled(key, pick_dim_style()),
+            ])
+        }
+        // These lines are the glance page's own, and it draws them with
+        // `glance::draw_glance`, so they never reach a list page.
+        Line::Block(_) | Line::Fold(_) | Line::Fault(_) | Line::Event(_) => TextLine::default(),
     }
 }
 
-/// Returns the In review heading's end, such as ` · 3 PRs, 1 failing`,
-/// or nothing without the `prs` tool's list.
-fn format_pr_spans(prs: Option<PrCount>, color: bool) -> Vec<Span<'static>> {
-    let Some(prs) = prs else {
-        return Vec::new();
-    };
-    let noun = if prs.open == 1 { "PR" } else { "PRs" };
-    let mut spans = vec![Span::raw(format!("{COUNT_GAP}{} {noun}", prs.open))];
-    if prs.failing > 0 {
-        let style = pick_status_style(Status::Problem, color);
-        spans.push(Span::raw(", "));
-        spans.push(Span::styled(format!("{} failing", prs.failing), style));
+/// Returns the IN REVIEW heading's limit, such as `, max 6`, the count
+/// before it being drawn already.
+fn format_review_limit_spans(screen: &ListScreen<'_>) -> Vec<Span<'static>> {
+    match screen.queue.and_then(|queue| queue.board.as_ref()) {
+        Some(board) => vec![Span::raw(format!(", max {}", board.in_review_limit))],
+        None => Vec::new(),
     }
-    spans
+}
+
+/// Returns the OTHER PULL REQUESTS heading's end, such as
+/// ` · 1 failing`, or nothing when none of its rows fails. A failing PR
+/// shown under its card is not counted here.
+fn format_failing_spans(screen: &ListScreen<'_>) -> Vec<Span<'static>> {
+    let failing = find_group_items(screen.groups, Group::OtherPrs)
+        .iter()
+        .filter(|item| item.status == Status::Problem)
+        .count();
+    if failing == 0 {
+        return Vec::new();
+    }
+    vec![
+        Span::raw(COUNT_GAP),
+        Span::styled(
+            format!("{failing} failing"),
+            pick_status_style(Status::Problem, screen.color),
+        ),
+    ]
 }
 
 /// Returns an item's line, such as ` rev  Retry failed u~ DevEnv`. The
@@ -484,8 +622,92 @@ pub(super) fn format_item_line(item: &Item, width: usize, color: bool) -> TextLi
         ),
         Span::raw(" "),
         Span::raw(format!("{:room$}", fit_text(&item.text, room))),
-        Span::styled(format!(" {tag}"), pick_dim_style()),
+        Span::styled(format!(" {tag}"), pick_tag_style(&item.tag, color)),
     ])
+}
+
+/// Returns `item`'s row in `group`. An OTHER PULL REQUESTS row has no
+/// status word, since `!`, `run` and `rev` name faults, workers and
+/// cards, and ends in its check word. Its `+ N pass, no card` row is
+/// dim, like a fold row.
+fn format_group_row(group: Group, item: &Item, width: usize, color: bool) -> TextLine<'static> {
+    match (group, &item.target) {
+        (Group::OtherPrs, Target::PassingPrs(_)) => TextLine::styled(
+            fit_text(&format!("   {}", item.text), width),
+            pick_dim_style(),
+        ),
+        (Group::OtherPrs, _) => format_glance_row(&item.text, &item.tag, width, color),
+        _ => format_item_line(item, width, color),
+    }
+}
+
+/// Returns a first-screen row, such as
+/// ` DEMO-KB-001 Faster search        answer`, with no status word. The
+/// words are cut to fit with `~`, and a `tag` that is not empty ends
+/// the row.
+pub(super) fn format_glance_row(
+    item_text: &str,
+    tag: &str,
+    width: usize,
+    color: bool,
+) -> TextLine<'static> {
+    let text = format!(" {item_text}");
+    if tag.is_empty() {
+        return TextLine::raw(fit_text(&text, width));
+    }
+    let room = width.saturating_sub(tag.chars().count() + 1);
+    TextLine::from(vec![
+        Span::raw(format!("{:room$}", fit_text(&text, room))),
+        Span::styled(format!(" {tag}"), pick_tag_style(tag, color)),
+    ])
+}
+
+/// Returns a tag's style. `answer` and `see tab` are magenta, a pull
+/// request's `fails` red and `pass` green. Other tags, such as a
+/// project label, keep the default color.
+fn pick_tag_style(tag: &str, color: bool) -> Style {
+    match tag {
+        "answer" | "see tab" => pick_color_style(Color::Magenta, color),
+        "fails" => pick_color_style(Color::Red, color),
+        "pass" => pick_color_style(Color::Green, color),
+        _ => Style::new(),
+    }
+}
+
+/// Returns `text` with its first `time` dim and its `word` at the end
+/// in the word's color, such as
+/// ` 10:40 DEMO-KB-001 Faster search  finished`. A part that `text`
+/// lacks, such as a word cut off, stays plain.
+pub(super) fn build_event_line(
+    text: &str,
+    time: Option<&str>,
+    word: &str,
+    color: bool,
+) -> TextLine<'static> {
+    let (rest, end) = text
+        .strip_suffix(word)
+        .map_or((text, ""), |rest| (rest, word));
+    let mut spans = Vec::new();
+    match time.and_then(|time| Some((rest.find(time)?, time))) {
+        Some((start, time)) => {
+            spans.push(Span::raw(rest[..start].to_owned()));
+            spans.push(Span::styled(time.to_owned(), pick_dim_style()));
+            spans.push(Span::raw(rest[start + time.len()..].to_owned()));
+        }
+        None => spans.push(Span::raw(rest.to_owned())),
+    }
+    spans.push(Span::styled(end.to_owned(), pick_event_style(word, color)));
+    TextLine::from(spans)
+}
+
+/// Returns an event word's style, green for `finished`, cyan for
+/// `new worker` and plain for others.
+pub(super) fn pick_event_style(word: &str, color: bool) -> Style {
+    match word {
+        "finished" => pick_color_style(Color::Green, color),
+        "new worker" => pick_color_style(Color::Cyan, color),
+        _ => Style::new(),
+    }
 }
 
 /// Cuts `text` to `room` columns, ending a cut text with `~`.
@@ -499,21 +721,29 @@ fn fit_text(text: &str, room: usize) -> String {
 
 /// Returns a status word's style, dim for `idle` and otherwise in the
 /// word's color unless `color` is false.
-fn pick_status_style(status: Status, color: bool) -> Style {
+pub(super) fn pick_status_style(status: Status, color: bool) -> Style {
     match status {
         Status::Idle => pick_dim_style(),
-        status if color => Style::new().fg(status.color()),
-        _ => Style::new(),
+        status => pick_color_style(status.color(), color),
     }
 }
 
-/// Returns the style of a group heading's count, dim for Draft and
-/// otherwise in the group's color unless `color` is false.
-fn pick_count_style(group: Group, color: bool) -> Style {
+/// Returns the style of a group heading's count, dim for IDLE and
+/// DRAFT and otherwise in the group's color unless `color` is false.
+pub(super) fn pick_count_style(group: Group, color: bool) -> Style {
     match group {
-        Group::Draft => pick_dim_style(),
-        group if color => Style::new().fg(group.color()),
-        _ => Style::new(),
+        Group::Idle | Group::Draft => pick_dim_style(),
+        group => pick_color_style(group.color(), color),
+    }
+}
+
+/// Returns the style that draws in `fg`, or the terminal's own colors
+/// when `color` is false.
+pub(super) fn pick_color_style(fg: Color, color: bool) -> Style {
+    if color {
+        Style::new().fg(fg)
+    } else {
+        Style::new()
     }
 }
 

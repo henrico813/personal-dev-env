@@ -296,9 +296,11 @@ jobs:
     defaults:
       run:
         working-directory: kanban
-    # card.py needs tomllib, which Python 3.11 added.
+    # card.py needs tomllib, which Python 3.11 added. GOTOOLCHAIN is
+    # pinned for the same reason as the planner job.
     env:
       UV_PYTHON: "3.11"
+      GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -310,3 +312,15 @@ jobs:
           uvx ruff@0.17.6 format --check .
       - name: test on Python 3.11
         run: uvx pytest
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.10'
+          cache-dependency-path: kanban/go.sum
+      - name: install golangci-lint
+        run: make init
+      - name: check Go
+        run: make check
+      - name: test the Go card
+        run: |
+          go build -o "$RUNNER_TEMP/card" .
+          CARD_UNDER_TEST="$RUNNER_TEMP/card" uvx pytest

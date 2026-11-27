@@ -5,7 +5,9 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 import tomllib
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -19,6 +21,15 @@ NEW_KEY = "PDEV-001"
 TODAY = "2026-11-07"
 REPO = Path(__file__).resolve().parents[1]
 RULES_FILE = REPO / "chezmoi/dot_config/pde/names.toml"
+# The program under test, such as the path to a Go build of card. By
+# default it is card.py beside this file, run on the Python that runs pytest.
+CARD_UNDER_TEST = os.environ.get("CARD_UNDER_TEST", "")
+CARD_PROGRAM = shlex.split(CARD_UNDER_TEST) or [
+    sys.executable,
+    str(Path(__file__).resolve().parent / "card.py"),
+]
+# The function the run_card fixture returns, called as run_card("list").
+RunCard = Callable[..., subprocess.CompletedProcess[str]]
 # Names every reader of the rules file must make and read alike.
 CASES = tomllib.loads((REPO / "testdata/names/cases.toml").read_text())
 # A card as the user might leave it after editing in Obsidian. The
@@ -101,7 +112,7 @@ topics:
   - "[[DevEnv]]"
 ---
 
-# {KEY} Fix some work
+# {KEY} Fix some bugs
 ---
 
 ## Context
@@ -147,7 +158,7 @@ topics:
   - "[[DevEnv]]"
 ---
 
-# {KEY} Fix some work
+# {KEY} Fix some bugs
 ---
 
 ## Context
@@ -209,25 +220,84 @@ Ask about the cold bucket.
 """
 
 
-class FixedDate(date):
-    """A date whose today() is always TODAY."""
+# A card as card new writes it, with the fields write_card fills in.
+CARD_TEMPLATE = """---
+tags:
+  - "#Kanban"
+type: card
+stage: {stage}
+stage_date: {stage_date}
+template_version: 2
+project: DevEnv
+kind: build
+date_created: 2026-11-01
+plans: []
+prs:{prs}
+sessions:{sessions}
+topics:
+  - "[[DevEnv]]"
+---
 
-    @classmethod
-    def today(cls) -> "FixedDate":
-        """Return TODAY."""
-        return cls.fromisoformat(TODAY)
+# {key} {title}
+---
+
+## Context
+---
+
+## Acceptance Criteria
+---
+
+## Open Questions
+---
+
+## Decisions
+---
+
+## Notes
+---
+
+## Log
+---
+
+- 2026-11-01 {stage}: by user
+
+## Appendix
+---
+"""
 
 
 @pytest.fixture
-def projects(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A Projects folder holding a DevEnv project with the code PDEV."""
-    monkeypatch.setattr(card, "STATE_DIR", tmp_path / "state")
-    monkeypatch.setattr(card, "date", FixedDate)
-    monkeypatch.delenv("HERDR_PANE_ID", raising=False)
-    folder = tmp_path / "Projects" / "DevEnv"
+def bin_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A folder first on PATH, for the fake nobs, herdr and gh card runs."""
+    folder = tmp_path / "bin"
+    folder.mkdir()
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+    return folder
+
+
+@pytest.fixture
+def projects(
+    tmp_path: Path,
+    bin_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    """A vault's Projects folder holding a DevEnv project with the code PDEV.
+
+    A fake nobs names the vault. HOME and CARD_TODAY give card a scratch
+    state folder and the date TODAY.
+    """
+    vault = tmp_path / "vault"
+    folder = vault / "500 Zettelkasten/Projects/DevEnv"
     folder.mkdir(parents=True)
     (folder / "AGENTS.md").write_text("Project code: `PDEV`\n")
-    return tmp_path / "Projects"
+    nobs = bin_dir / "nobs"
+    vault_path = shlex.quote(str(vault))
+    nobs.write_text(f"#!/bin/sh\nprintf '%s\\n' {vault_path}\n")
+    nobs.chmod(0o755)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("CARD_TODAY", TODAY)
+    monkeypatch.delenv("HERDR_PANE_ID", raising=False)
+    return folder.parent
 
 
 @pytest.fixture(autouse=True)
@@ -240,9 +310,33 @@ def rules_file(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PDE_NAMES_FILE", str(RULES_FILE))
 
 
-def run_card(projects: Path, *argv: str) -> int:
-    """Run the card command and return its exit code."""
-    return card.main(list(argv), projects)
+@pytest.fixture(autouse=True)
+def skip_other_version(request: pytest.FixtureRequest) -> None:
+    """Skip a test marked for the card version that is not under test."""
+    if CARD_UNDER_TEST and request.node.get_closest_marker("python_card"):
+        pytest.skip("Python card only")
+    if not CARD_UNDER_TEST and request.node.get_closest_marker("go_card"):
+        pytest.skip("checks the Go card only")
+
+
+@pytest.fixture
+def run_card(projects: Path) -> RunCard:
+    """Return a function that runs card under test on the scratch vault.
+
+    It needs projects, which sets up the vault and the environment card
+    reads. For example, run_card("move", KEY, "todo").returncode.
+    """
+
+    def run(*argv: str) -> subprocess.CompletedProcess[str]:
+        """Run card with ``argv`` and capture its output as text."""
+        return subprocess.run(
+            [*CARD_PROGRAM, *argv],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    return run
 
 
 def write_card(
@@ -251,19 +345,23 @@ def write_card(
     stage: str,
     criteria: str = "",
     stage_date: str = "2026-11-06",
-    title: str = "Fix some work",
+    title: str = "Fix some bugs",
+    sessions: tuple[str, ...] = (),
+    prs: tuple[str, ...] = (),
 ) -> Path:
-    """Write a card note at a stage, with optional criteria and title."""
-    text = card.render_card(
+    """Write a card note at a stage, with optional criteria and title.
+
+    ``sessions`` and ``prs`` fill those fields, such as
+    ``sessions=("opencode ses_abc",)``.
+    """
+    text = CARD_TEMPLATE.format(
         key=key,
         title=title,
-        project="DevEnv",
-        kind="build",
-        today="2026-11-01",
         stage=stage,
-        log_entry=f"{stage}: by user",
+        stage_date=stage_date,
+        prs=format_list_field(prs),
+        sessions=format_list_field(sessions),
     )
-    text = card.set_field(text, "stage_date", stage_date)
     if criteria:
         text = text.replace(
             "## Open Questions",
@@ -274,11 +372,44 @@ def write_card(
     return path
 
 
-def read_log(text: str) -> str:
-    """Return a card's Log text, where card adds each new line."""
-    return card.read_section(text, "Log") or ""
+def format_list_field(items: tuple[str, ...]) -> str:
+    """Return a list field's value as card writes it after the colon.
+
+    For example, ``" []"`` for no items, or
+    ``'\\n  - "opencode ses_abc"'`` per item.
+    """
+    if not items:
+        return " []"
+    return "".join(f'\n  - "{item}"' for item in items)
 
 
+def read_section(text: str, name: str) -> str:
+    """Return a card's text under the ``## name`` heading and its ``---``.
+
+    It stops at the next ``#`` or ``##`` heading, as card does, so a new
+    card's Log reads ``"\\n- 2026-11-01 todo: by user\\n"``.
+    """
+    lines = text.split("\n")
+    rest = lines[lines.index(f"## {name}") + 2 :]
+    end = next(
+        (i for i, line in enumerate(rest) if re.match(r"#{1,2} ", line)),
+        len(rest),
+    )
+    return "\n".join(rest[:end])
+
+
+def add_log_lines(path: Path, *entries: str) -> None:
+    """Add Log lines dated TODAY after a card's first one, as card move does.
+
+    For example, ``add_log_lines(path, "blocked: by hub. docs review")``
+    adds ``- 2026-11-07 blocked: by hub. docs review``.
+    """
+    lines = "".join(f"\n- {TODAY} {entry}" for entry in entries)
+    text = path.read_text()
+    path.write_text(text.replace("\n\n## Appendix", f"{lines}\n\n## Appendix"))
+
+
+@pytest.mark.cmd_new
 class TestNew:
     """Making a card picks its key from the cards and plans of its code."""
 
@@ -308,6 +439,7 @@ class TestNew:
     def test_new_key_follows_highest_project_number(
         self,
         projects: Path,
+        run_card: RunCard,
         files: list[str],
         name: str,
     ) -> None:
@@ -323,8 +455,7 @@ class TestNew:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("")
 
-        code = run_card(
-            projects,
+        result = run_card(
             "new",
             "DevEnv",
             "Fix hub files drift",
@@ -332,18 +463,21 @@ class TestNew:
             "user",
         )
 
-        assert code == 0
+        assert result.returncode == 0
         assert (projects / "DevEnv" / name).exists()
 
-    def test_new_writes_version_2_layout(self, projects: Path) -> None:
+    def test_new_writes_version_2_layout(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
         """card new writes the seven sections in order, as version 2.
 
         Agents and the hub find a card's parts by these headings. A
         section out of order, or a Log line below the Appendix, would send
         them to the wrong text.
         """
-        code = run_card(
-            projects,
+        result = run_card(
             "new",
             "DevEnv",
             "Retry failed uploads",
@@ -351,7 +485,7 @@ class TestNew:
             "user",
         )
 
-        assert code == 0
+        assert result.returncode == 0
         path = projects / "DevEnv" / f"{NEW_KEY} Retry failed uploads.md"
         text = path.read_text()
         assert re.findall(r"^## (.*)$", text, re.M) == [
@@ -364,9 +498,13 @@ class TestNew:
             "Appendix",
         ]
         assert "template_version: 2\n" in text
-        assert read_log(text).strip() == f"- {TODAY} draft: by user"
+        assert read_section(text, "Log").strip() == f"- {TODAY} draft: by user"
 
-    def test_new_adopt_logs_adoption_at_stage(self, projects: Path) -> None:
+    def test_new_adopt_logs_adoption_at_stage(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
         """Adopted work starts in its stage with an adoption Log line.
 
         Sessions already building for days come onto the board without
@@ -374,8 +512,7 @@ class TestNew:
         adoption the user asked for, and stage_date must date it so
         the in-review queue sorts it.
         """
-        code = run_card(
-            projects,
+        result = run_card(
             "new",
             "DevEnv",
             "Old work",
@@ -388,23 +525,26 @@ class TestNew:
             "general-staff",
         )
 
-        assert code == 0
+        assert result.returncode == 0
         text = (projects / "DevEnv" / f"{NEW_KEY} Old work.md").read_text()
         assert f"stage: in-review\nstage_date: {TODAY}\n" in text
-        assert read_log(text).endswith(
+        assert read_section(text, "Log").endswith(
             f"- {TODAY} in-review: adopted by general-staff for the user."
             " PR #450 open\n",
         )
 
-    def test_new_adopt_refuses_without_user(self, projects: Path) -> None:
+    def test_new_adopt_refuses_without_user(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
         """Adopting work fails, and writes no card, without --user.
 
         Adoption skips the criteria check and the stage limits. If an
         agent could adopt on its own, work would reach active with no
         test of when it is done.
         """
-        code = run_card(
-            projects,
+        result = run_card(
             "new",
             "DevEnv",
             "Old work",
@@ -414,12 +554,14 @@ class TestNew:
             "general-staff",
         )
 
-        assert code == 1
+        assert result.returncode == 1
         assert not list((projects / "DevEnv").glob("PDEV-*"))
 
+    @pytest.mark.cmd_check
     def test_new_from_copies_fields_and_sections(
         self,
         projects: Path,
+        run_card: RunCard,
         tmp_path: Path,
     ) -> None:
         """A --from file gives the card its title, type, kind and sections.
@@ -432,8 +574,7 @@ class TestNew:
         card_file = tmp_path / "card.md"
         card_file.write_text(CARD_FILE)
 
-        code = run_card(
-            projects,
+        result = run_card(
             "new",
             "DevEnv",
             "--from",
@@ -442,17 +583,17 @@ class TestNew:
             "user",
         )
 
-        assert code == 0
+        assert result.returncode == 0
         path = projects / "DevEnv" / f"{NEW_KEY} Retry failed uploads.md"
         text = path.read_text()
         assert "kind: research\n" in text
-        assert card.read_section(text, "Context") == (
+        assert read_section(text, "Context") == (
             "\n- Uploads fail on a slow link.\n"
         )
-        assert card.read_section(text, card.CRITERIA) == (
+        assert read_section(text, "Acceptance Criteria") == (
             "\n- [ ] A failed upload retries.\n"
         )
-        assert run_card(projects, "check") == 0
+        assert run_card("check").returncode == 0
 
     @pytest.mark.parametrize(
         ("file_text", "args"),
@@ -478,6 +619,11 @@ class TestNew:
                 id="unknown-kind",
             ),
             pytest.param(
+                CARD_FILE.replace("kind: research", "kind:\n  - research"),
+                ["--from", "FILE"],
+                id="kind-list",
+            ),
+            pytest.param(
                 CARD_FILE,
                 ["Other title", "--from", "FILE"],
                 id="title-and-file",
@@ -494,6 +640,7 @@ class TestNew:
     def test_new_from_refusal_writes_no_card(
         self,
         projects: Path,
+        run_card: RunCard,
         tmp_path: Path,
         file_text: str | None,
         args: list[str],
@@ -512,12 +659,13 @@ class TestNew:
             card_file.write_text(file_text)
         args = [str(card_file) if arg == "FILE" else arg for arg in args]
 
-        code = run_card(projects, "new", "DevEnv", *args, "--by", "user")
+        result = run_card("new", "DevEnv", *args, "--by", "user")
 
-        assert code == 1
+        assert result.returncode == 1
         assert not list((projects / "DevEnv").glob("PDEV-*"))
 
 
+@pytest.mark.cmd_move
 class TestMove:
     """Moves follow the stage table, and only the user makes some moves."""
 
@@ -571,6 +719,7 @@ class TestMove:
     def test_move_refuses_and_leaves_card_unchanged(
         self,
         projects: Path,
+        run_card: RunCard,
         stage: str,
         target: str,
         flags: list[str],
@@ -583,8 +732,7 @@ class TestMove:
         path = write_card(projects, KEY, stage, criteria)
         before = path.read_text()
 
-        code = run_card(
-            projects,
+        result = run_card(
             "move",
             KEY,
             target,
@@ -593,18 +741,21 @@ class TestMove:
             "general-staff",
         )
 
-        assert code == 1
+        assert result.returncode == 1
         assert path.read_text() == before
 
-    def test_move_releases_draft_and_logs_agent(self, projects: Path) -> None:
+    def test_move_releases_draft_and_logs_agent(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
         """A draft moved to todo logs the agent who moved it.
 
         The user reads the Log to see which agent released a card.
         """
         path = write_card(projects, KEY, "draft", "- [ ] Done.")
 
-        code = run_card(
-            projects,
+        result = run_card(
             "move",
             KEY,
             "todo",
@@ -614,10 +765,10 @@ class TestMove:
             "hub",
         )
 
-        assert code == 0
+        assert result.returncode == 0
         text = path.read_text()
         assert f"stage: todo\nstage_date: {TODAY}\n" in text
-        assert read_log(text).endswith(
+        assert read_section(text, "Log").endswith(
             f"- {TODAY} todo: by hub. Clear enough\n",
         )
 
@@ -631,7 +782,7 @@ class TestMove:
     def test_move_logs_each_move_of_chain(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
         source: str,
         target: str,
         steps: list[str],
@@ -645,8 +796,7 @@ class TestMove:
         """
         path = write_card(projects, KEY, source, "- [ ] Done.")
 
-        code = run_card(
-            projects,
+        result = run_card(
             "move",
             KEY,
             target,
@@ -657,14 +807,14 @@ class TestMove:
             "hub",
         )
 
-        assert code == 0
+        assert result.returncode == 0
         text = path.read_text()
         assert f"stage: {target}\nstage_date: {TODAY}\n" in text
-        assert read_log(text).endswith(
+        assert read_section(text, "Log").endswith(
             f"- {TODAY} {steps[0]}: by hub for the user\n"
             f"- {TODAY} {steps[1]}: by hub for the user. Looks good\n",
         )
-        assert capsys.readouterr().out == f"{KEY} {steps[0]}\n{KEY} {target}\n"
+        assert result.stdout == f"{KEY} {steps[0]}\n{KEY} {target}\n"
 
     @pytest.mark.parametrize(
         ("source", "target", "hint"),
@@ -695,7 +845,7 @@ class TestMove:
     def test_move_refusal_names_the_next_move(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
         source: str,
         target: str,
         hint: str,
@@ -709,15 +859,16 @@ class TestMove:
         path = write_card(projects, KEY, source, "- [ ] Done.")
         before = path.read_text()
 
-        code = run_card(projects, "move", KEY, target, "--by", "hub")
+        result = run_card("move", KEY, target, "--by", "hub")
 
-        assert code == 1
+        assert result.returncode == 1
         assert path.read_text() == before
-        assert capsys.readouterr().err == f"card: {hint}\n"
+        assert result.stderr == f"card: {hint}\n"
 
     def test_move_pauses_active_card_without_criteria(
         self,
         projects: Path,
+        run_card: RunCard,
     ) -> None:
         """The staff agent can pause active work, even with no criteria.
 
@@ -727,8 +878,7 @@ class TestMove:
         """
         path = write_card(projects, KEY, "active")
 
-        code = run_card(
-            projects,
+        result = run_card(
             "move",
             KEY,
             "todo",
@@ -738,10 +888,14 @@ class TestMove:
             "general-staff",
         )
 
-        assert code == 0
+        assert result.returncode == 0
         assert "stage: todo\n" in path.read_text()
 
-    def test_move_refuses_without_author(self, projects: Path) -> None:
+    def test_move_refuses_without_author(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
         """A move with no --by and no Herdr agent name fails.
 
         The Log is the only record of who made a move. A guessed name
@@ -750,22 +904,51 @@ class TestMove:
         path = write_card(projects, KEY, "active")
         before = path.read_text()
 
-        code = run_card(projects, "move", KEY, "in-review")
+        result = run_card("move", KEY, "in-review")
 
-        assert code == 1
+        assert result.returncode == 1
         assert path.read_text() == before
+
+    def test_move_logs_herdr_agent_without_by(
+        self,
+        projects: Path,
+        run_card: RunCard,
+        herdr_agents: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A move with no --by logs the Herdr agent in this pane.
+
+        Without --by, card takes the author from the agent whose pane_id
+        is HERDR_PANE_ID. Taking another pane's agent would credit the
+        wrong agent with the move in the Log.
+        """
+        monkeypatch.setenv("HERDR_PANE_ID", "w4X:p2")
+        herdr_agents.write_text(
+            format_agent_list(
+                {"name": "worker-1", "pane_id": "w4X:p1"},
+                {"name": "worker-2", "pane_id": "w4X:p2"},
+            ),
+        )
+        path = write_card(projects, KEY, "active")
+
+        result = run_card("move", KEY, "in-review")
+
+        assert result.returncode == 0
+        assert read_section(path.read_text(), "Log").endswith(
+            f"- {TODAY} in-review: by worker-2\n",
+        )
 
     @pytest.mark.parametrize(
         ("source", "target", "limit"),
         [
-            pytest.param("todo", "active", card.ACTIVE_LIMIT, id="start"),
+            pytest.param("todo", "active", 8, id="start"),
             pytest.param(
                 "active",
                 "in-review",
-                card.REVIEW_LIMIT,
+                6,
                 id="in-review",
             ),
-            pytest.param("todo", "in-review", card.REVIEW_LIMIT, id="chain"),
+            pytest.param("todo", "in-review", 6, id="chain"),
         ],
     )
     @pytest.mark.parametrize(
@@ -778,6 +961,7 @@ class TestMove:
     def test_move_into_full_stage_needs_user(
         self,
         projects: Path,
+        run_card: RunCard,
         source: str,
         target: str,
         limit: int,
@@ -796,8 +980,7 @@ class TestMove:
             write_card(projects, f"PDEV-KB-{number:03d}", target)
         path = write_card(projects, KEY, source, "- [ ] Done.")
 
-        code = run_card(
-            projects,
+        result = run_card(
             "move",
             KEY,
             target,
@@ -806,23 +989,26 @@ class TestMove:
             "general-staff",
         )
 
-        assert code == (0 if moved else 1)
+        assert result.returncode == (0 if moved else 1)
         stage = target if moved else source
         assert f"stage: {stage}\n" in path.read_text()
 
-    def test_review_limit_skips_blocked_cards(self, projects: Path) -> None:
+    def test_review_limit_skips_blocked_cards(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
         """Blocked cards leave the in-review places free.
 
         Pull requests that wait on another team's reviewers used to
         fill review, so the user's own plans and questions could not
         reach them. Counting blocked cards would bring that back.
         """
-        for number in range(2, 2 + card.REVIEW_LIMIT):
+        for number in range(2, 2 + 6):
             write_card(projects, f"PDEV-KB-{number:03d}", "blocked")
         path = write_card(projects, KEY, "active")
 
-        code = run_card(
-            projects,
+        result = run_card(
             "move",
             KEY,
             "in-review",
@@ -830,28 +1016,22 @@ class TestMove:
             "general-staff",
         )
 
-        assert code == 0
+        assert result.returncode == 0
         assert "stage: in-review\n" in path.read_text()
 
 
 @pytest.fixture
-def fake_herdr(projects: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def fake_herdr(
+    projects: Path,
+    herdr_agents: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A herdr that reports agent worker-1 in session opencode ses_abc."""
     # Needs projects first, since projects clears HERDR_PANE_ID.
     monkeypatch.setenv("HERDR_PANE_ID", "w4X:p2")
-    herdr_answer = (
+    herdr_agents.write_text(
         '{"result": {"agent": {"name": "worker-1", "agent": "opencode",'
-        ' "agent_session": {"value": "ses_abc"}}}}'
-    )
-    monkeypatch.setattr(
-        card.subprocess,
-        "run",
-        lambda command, **kwargs: subprocess.CompletedProcess(
-            command,
-            0,
-            herdr_answer,
-            "",
-        ),
+        ' "agent_session": {"value": "ses_abc"}}}}',
     )
 
 
@@ -859,7 +1039,12 @@ def fake_herdr(projects: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 class TestSessions:
     """A card records the Herdr sessions that worked on it."""
 
-    def test_link_session_records_entry_once(self, projects: Path) -> None:
+    @pytest.mark.cmd_link
+    def test_link_session_records_entry_once(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
         """Linking a session twice gives one sessions entry and one Log line.
 
         The staff agent finds a card's workers through sessions after a
@@ -868,14 +1053,14 @@ class TestSessions:
         """
         path = write_card(projects, KEY, "active")
 
-        first = run_card(projects, "link", KEY, "--session")
-        second = run_card(projects, "link", KEY, "--session")
+        first = run_card("link", KEY, "--session")
+        second = run_card("link", KEY, "--session")
 
-        assert (first, second) == (0, 0)
+        assert (first.returncode, second.returncode) == (0, 0)
         text = path.read_text()
         assert 'prs: []\nsessions:\n  - "opencode ses_abc"\ntopics:' in text
         assert text.count("session: worker-1 (opencode ses_abc)") == 1
-        assert read_log(text).endswith(
+        assert read_section(text, "Log").endswith(
             f"- {TODAY} session: worker-1 (opencode ses_abc)\n",
         )
 
@@ -887,25 +1072,28 @@ class TestSessions:
                 ["move", NEW_KEY, "active"],
                 "active: by user",
                 id="start",
+                marks=pytest.mark.cmd_move,
             ),
             pytest.param(
                 "",
                 [
                     "new",
                     "DevEnv",
-                    "Fix some work",
+                    "Fix some bugs",
                     "--adopt",
                     "active",
                     "--user",
                 ],
                 "active: adopted by user for the user",
                 id="adopt",
+                marks=pytest.mark.cmd_new,
             ),
         ],
     )
     def test_start_with_session_records_entry(
         self,
         projects: Path,
+        run_card: RunCard,
         stage: str,
         argv: list[str],
         stage_line: str,
@@ -920,21 +1108,22 @@ class TestSessions:
         if stage:
             write_card(projects, NEW_KEY, stage, "- [ ] Done.")
 
-        code = run_card(projects, *argv, "--session", "--by", "user")
+        result = run_card(*argv, "--session", "--by", "user")
 
-        assert code == 0
-        path = projects / "DevEnv" / f"{NEW_KEY} Fix some work.md"
+        assert result.returncode == 0
+        path = projects / "DevEnv" / f"{NEW_KEY} Fix some bugs.md"
         text = path.read_text()
         assert 'sessions:\n  - "opencode ses_abc"\n' in text
-        assert read_log(text).endswith(
+        assert read_section(text, "Log").endswith(
             f"- {TODAY} {stage_line}\n"
             f"- {TODAY} session: worker-1 (opencode ses_abc)\n",
         )
 
+    @pytest.mark.cmd_link
     def test_link_refuses_session_on_other_card(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """A session another card holds is refused, naming that card.
 
@@ -944,23 +1133,23 @@ class TestSessions:
         with card note instead.
         """
         write_card(projects, "PDEV-KB-001", "active")
-        run_card(projects, "link", "PDEV-KB-001", "--session")
+        run_card("link", "PDEV-KB-001", "--session")
         other = write_card(projects, "PDEV-KB-002", "active")
         before = other.read_text()
-        capsys.readouterr()
 
-        code = run_card(projects, "link", "PDEV-KB-002", "--session")
+        result = run_card("link", "PDEV-KB-002", "--session")
 
-        assert code == 1
-        err = capsys.readouterr().err
+        assert result.returncode == 1
+        err = result.stderr
         assert "session ID already on PDEV-KB-001" in err
         assert "run card note PDEV-KB-002 TEXT" in err
         assert other.read_text() == before
 
+    @pytest.mark.cmd_link
     def test_link_allows_session_card_already_holds(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """Relinking a session this card holds passes, even if another has it.
 
@@ -969,27 +1158,27 @@ class TestSessions:
         card also holds.
         """
         for key in ("PDEV-KB-001", "PDEV-KB-002"):
-            path = write_card(projects, key, "active")
-            text = card.set_field(
-                path.read_text(),
-                "sessions",
-                ["opencode ses_abc"],
+            path = write_card(
+                projects,
+                key,
+                "active",
+                sessions=("opencode ses_abc",),
             )
-            path.write_text(text)
         before = path.read_text()
 
-        code = run_card(projects, "link", "PDEV-KB-002", "--session")
+        result = run_card("link", "PDEV-KB-002", "--session")
 
-        assert code == 0
-        assert capsys.readouterr().out == (
+        assert result.returncode == 0
+        assert result.stdout == (
             "PDEV-KB-002 sessions: opencode ses_abc (already)\n"
         )
         assert path.read_text() == before
 
+    @pytest.mark.cmd_check
     def test_check_reports_session_on_two_cards(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card check names both cards that hold one session.
 
@@ -998,26 +1187,26 @@ class TestSessions:
         finds it.
         """
         for key in ("PDEV-KB-001", "PDEV-KB-002"):
-            path = write_card(projects, key, "active")
-            text = card.set_field(
-                path.read_text(),
-                "sessions",
-                ["opencode ses_abc"],
+            path = write_card(
+                projects,
+                key,
+                "active",
+                sessions=("opencode ses_abc",),
             )
-            path.write_text(text)
 
-        code = run_card(projects, "check")
+        result = run_card("check")
 
-        assert code == 1
-        assert capsys.readouterr().out == (
+        assert result.returncode == 1
+        assert result.stdout == (
             "PDEV-KB-002 session also on PDEV-KB-001: opencode ses_abc\n"
             "1 problems in 2 cards\n"
         )
 
+    @pytest.mark.cmd_check
     def test_check_json_keeps_whole_problem_lines(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card check --json gives each problem uncut, and still exits 1.
 
@@ -1027,15 +1216,12 @@ class TestSessions:
         """
         session = "opencode ses_e4dc27c20ffeJkm3JZ8dwLh7rW"
         for key in ("PDEV-KB-001", "PDEV-KB-002"):
-            path = write_card(projects, key, "active")
-            path.write_text(
-                card.set_field(path.read_text(), "sessions", [session]),
-            )
+            write_card(projects, key, "active", sessions=(session,))
 
-        code = run_card(projects, "check", "--json")
+        result = run_card("check", "--json")
 
-        assert code == 1
-        assert json.loads(capsys.readouterr().out) == {
+        assert result.returncode == 1
+        assert json.loads(result.stdout) == {
             "cards": 2,
             "problems": [
                 f"PDEV-KB-002 session also on PDEV-KB-001: {session}",
@@ -1078,9 +1264,11 @@ class TestEdit:
             ),
         ],
     )
+    @pytest.mark.cmd_edit
     def test_edit_changes_item_n_and_logs(
         self,
         projects: Path,
+        run_card: RunCard,
         item_args: list[str],
         criteria: str,
         note: str,
@@ -1101,8 +1289,7 @@ class TestEdit:
             ),
         )
 
-        code = run_card(
-            projects,
+        result = run_card(
             "edit",
             KEY,
             "Acceptance Criteria",
@@ -1111,17 +1298,18 @@ class TestEdit:
             "kanban-rollout-2",
         )
 
-        assert code == 0
+        assert result.returncode == 0
         text = path.read_text()
         assert f"---\n\n{criteria}\n## Open Questions" in text
-        assert read_log(text).endswith(
+        assert read_section(text, "Log").endswith(
             f"- {TODAY} note (kanban-rollout-2): {note}\n",
         )
 
+    @pytest.mark.cmd_show
     def test_show_section_numbers_items_for_edit(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """The numbers card show prints are the ones card edit takes.
 
@@ -1137,11 +1325,16 @@ class TestEdit:
             ),
         )
 
-        code = run_card(projects, "show", KEY, "--section", card.CRITERIA)
+        result = run_card(
+            "show",
+            KEY,
+            "--section",
+            "Acceptance Criteria",
+        )
 
-        assert code == 0
-        assert capsys.readouterr().out == (
-            f"## {card.CRITERIA}\n"
+        assert result.returncode == 0
+        assert result.stdout == (
+            "## Acceptance Criteria\n"
             "1. - [ ] First.\n  more words\n2. - [ ] Second.\n"
         )
 
@@ -1161,7 +1354,12 @@ def write_questions(projects: Path, items: str) -> Path:
 class TestOpenQuestions:
     """Open Questions items keep their Q numbers until they are answered."""
 
-    def test_add_numbers_and_dates_new_question(self, projects: Path) -> None:
+    @pytest.mark.cmd_add
+    def test_add_numbers_and_dates_new_question(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
         """card add gives a question the next number and today's date.
 
         The user answers by Q number, so two items with one number, or
@@ -1173,16 +1371,15 @@ class TestOpenQuestions:
             "- Q2 asked 2026-11-01: Old?\n- Typed by hand?\n",
         )
 
-        code = run_card(
-            projects,
+        result = run_card(
             "add",
             KEY,
             "Open Questions",
             "New?\n  - A. Yes\n  Recommended: A",
         )
 
-        assert code == 0
-        assert card.read_section(path.read_text(), "Open Questions") == (
+        assert result.returncode == 0
+        assert read_section(path.read_text(), "Open Questions") == (
             "\n- Q2 asked 2026-11-01: Old?\n"
             "- Q3: Typed by hand?\n"
             f"- Q4 asked {TODAY}: New?\n"
@@ -1220,9 +1417,11 @@ class TestOpenQuestions:
             ),
         ],
     )
+    @pytest.mark.cmd_edit
     def test_edit_by_q_number_keeps_numbers(
         self,
         projects: Path,
+        run_card: RunCard,
         item: str,
         change: list[str],
         left: str,
@@ -1241,8 +1440,7 @@ class TestOpenQuestions:
             "- Q2 asked 2026-11-02: Second?\n",
         )
 
-        code = run_card(
-            projects,
+        result = run_card(
             "edit",
             KEY,
             "Open Questions",
@@ -1252,13 +1450,15 @@ class TestOpenQuestions:
             "hub",
         )
 
-        assert code == 0
-        section = card.read_section(path.read_text(), "Open Questions")
+        assert result.returncode == 0
+        section = read_section(path.read_text(), "Open Questions")
         assert section == f"\n{left}"
 
+    @pytest.mark.cmd_add
     def test_add_skips_numbers_of_answered_questions(
         self,
         projects: Path,
+        run_card: RunCard,
     ) -> None:
         """card add never gives a new question an answered question's number.
 
@@ -1271,27 +1471,27 @@ class TestOpenQuestions:
             "- Q1 asked 2026-11-01: First?\n- Typed by hand?\n",
         )
         run_card(
-            projects,
             "add",
             KEY,
             "Decisions",
             "Q2 asked 2026-11-02: Second?\n  Answer: A",
         )
 
-        code = run_card(projects, "add", KEY, "Open Questions", "Third?")
+        result = run_card("add", KEY, "Open Questions", "Third?")
 
-        assert code == 0
-        assert card.read_section(path.read_text(), "Open Questions") == (
+        assert result.returncode == 0
+        assert read_section(path.read_text(), "Open Questions") == (
             "\n"
             "- Q1 asked 2026-11-01: First?\n"
             "- Q3: Typed by hand?\n"
             f"- Q4 asked {TODAY}: Third?\n"
         )
 
+    @pytest.mark.cmd_edit
     def test_edit_refuses_unknown_q_number(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card edit Q5 fails, and changes nothing, when no item is Q5.
 
@@ -1302,8 +1502,7 @@ class TestOpenQuestions:
         path = write_questions(projects, items)
         before = path.read_text()
 
-        code = run_card(
-            projects,
+        result = run_card(
             "edit",
             KEY,
             "Open Questions",
@@ -1313,18 +1512,34 @@ class TestOpenQuestions:
             "hub",
         )
 
-        assert code == 1
-        assert "has no Q5" in capsys.readouterr().err
+        assert result.returncode == 1
+        assert "has no Q5" in result.stderr
         assert path.read_text() == before
 
 
+# The fields of each card in show, list and board --json, in order.
+CARD_REPLY_FIELDS = [
+    "key",
+    "title",
+    "stage",
+    "kind",
+    "project",
+    "stage_date",
+    "plans",
+    "prs",
+    "sessions",
+    "open_questions",
+]
+
+
+@pytest.mark.cmd_show
 class TestShow:
     """card show finds one card by its key."""
 
     def test_show_finds_card_beside_its_plan(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card show finds a card whose plan shares its key.
 
@@ -1335,15 +1550,15 @@ class TestShow:
         write_card(projects, "PDEV-005", "draft", title="Build the retries")
         (projects / "DevEnv" / "PDEV-005 Plan the retries.md").write_text(PLAN)
 
-        code = run_card(projects, "show", "pdev-005")
+        result = run_card("show", "pdev-005")
 
-        assert code == 0
-        assert "# PDEV-005 Build the retries\n" in capsys.readouterr().out
+        assert result.returncode == 0
+        assert "# PDEV-005 Build the retries\n" in result.stdout
 
     def test_show_finds_card_by_old_key(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card show finds a rekeyed card by the key it had before.
 
@@ -1352,17 +1567,22 @@ class TestShow:
         the way show does.
         """
         path = write_card(projects, "PDEV-411", "draft")
-        path.write_text(card.set_field(path.read_text(), "old_key", KEY))
+        path.write_text(
+            path.read_text().replace(
+                'topics:\n  - "[[DevEnv]]"\n',
+                f'topics:\n  - "[[DevEnv]]"\nold_key: {KEY}\n',
+            ),
+        )
 
-        code = run_card(projects, "show", "pdev-kb-001")
+        result = run_card("show", "pdev-kb-001")
 
-        assert code == 0
-        assert "# PDEV-411 Fix some work\n" in capsys.readouterr().out
+        assert result.returncode == 0
+        assert "# PDEV-411 Fix some bugs\n" in result.stdout
 
     def test_show_json_gives_section_and_fields(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card show --json --section gives the card's fields and that text.
 
@@ -1372,8 +1592,7 @@ class TestShow:
         """
         write_card(projects, KEY, "active", criteria="- [ ] Uploads retry.")
 
-        code = run_card(
-            projects,
+        result = run_card(
             "show",
             KEY,
             "--section",
@@ -1381,8 +1600,8 @@ class TestShow:
             "--json",
         )
 
-        assert code == 0
-        shown = json.loads(capsys.readouterr().out)
+        assert result.returncode == 0
+        shown = json.loads(result.stdout)
         assert (shown["key"], shown["stage"]) == (KEY, "active")
         assert shown["sections"] == {
             "Acceptance Criteria": "- [ ] Uploads retry.",
@@ -1391,7 +1610,7 @@ class TestShow:
     def test_show_json_numbers_every_question(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """Each Open Questions item gets a Q number, a date and its lines.
 
@@ -1417,12 +1636,11 @@ class TestShow:
                 "- Q12345678: Too big?\n",
             ),
         )
-        capsys.readouterr()
 
-        code = run_card(projects, "show", KEY, "--json")
+        result = run_card("show", KEY, "--json")
 
-        assert code == 0
-        assert json.loads(capsys.readouterr().out)["open_questions"] == [
+        assert result.returncode == 0
+        assert json.loads(result.stdout)["open_questions"] == [
             {
                 "number": 6,
                 "asked": None,
@@ -1455,14 +1673,106 @@ class TestShow:
             },
         ]
 
+    def test_show_json_writes_characters_unescaped(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """show --json writes line separators, &, <, > and é raw.
+
+        Python's JSON encoder writes them raw, and agents compare the bytes
+        of both versions' replies. An encoder that escapes them, as Go's
+        does by default for &, < and >, would make the same card read
+        differently.
+        """
+        path = write_card(projects, KEY, "active")
+        path.write_text(
+            path.read_text().replace(
+                "## Context\n---\n",
+                "## Context\n---\n\nOne\u2028two\u2029three & <caf\u00e9>\n",
+            ),
+        )
+
+        result = run_card("show", KEY, "--json")
+
+        assert result.returncode == 0
+        assert (
+            '"Context": "One\u2028two\u2029three & <caf\u00e9>"'
+            in result.stdout
+        )
+
+    @pytest.mark.cmd_list
+    def test_show_json_keeps_field_order(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """show and list --json print a card's fields in one fixed order.
+
+        Agents compare the bytes of both versions' replies. A swapped
+        field reads differently on the Go card.
+        """
+        write_card(projects, KEY, "todo")
+
+        shown = json.loads(run_card("show", KEY, "--json").stdout)
+        [listed] = json.loads(run_card("list", "--json").stdout)
+
+        assert list(shown) == [*CARD_REPLY_FIELDS, "sections"]
+        assert list(listed) == CARD_REPLY_FIELDS
+
+    def test_show_json_empty_lists_never_null(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """show --json prints [] for list fields a card lacks, never null.
+
+        Scripts loop over plans, prs and sessions. A null list, or a
+        missing field, breaks the loop on a card edited by hand.
+        """
+        path = write_card(projects, KEY, "todo")
+        text = path.read_text()
+        for line in ("plans: []\n", "prs: []\n", "sessions: []\n"):
+            text = text.replace(line, "")
+        path.write_text(text)
+
+        shown = json.loads(run_card("show", KEY, "--json").stdout)
+
+        assert shown["plans"] == shown["prs"] == shown["sessions"] == []
+
+    def test_stage_date_defaults_to_date_created(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """show --json gives date_created as stage_date when it has none.
+
+        The board counts days in a stage from stage_date. An empty
+        stage_date on a card with no stage_date line would read
+        differently on the Go card and count no days.
+        """
+        path = write_card(projects, KEY, "todo")
+        path.write_text(
+            path.read_text().replace("stage_date: 2026-11-06\n", ""),
+        )
+
+        shown = json.loads(run_card("show", KEY, "--json").stdout)
+
+        assert shown["stage_date"] == "2026-11-01"
+
 
 class TestReadParts:
     """card reads one part of a card, and its writes keep every part."""
 
+    @pytest.mark.cmd_outline
+    @pytest.mark.cmd_show
+    @pytest.mark.cmd_add
+    @pytest.mark.cmd_edit
+    @pytest.mark.cmd_note
     def test_full_card_reads_and_keeps_parts(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card reads each part of a full card, and its writes keep them.
 
@@ -1471,28 +1781,32 @@ class TestReadParts:
         A write that drops an Agent Notes part, or puts a Log line in the
         Appendix, garbles an agent's notes.
         """
-        path = projects / "DevEnv" / f"{KEY} Fix some work.md"
+        path = projects / "DevEnv" / f"{KEY} Fix some bugs.md"
         path.write_text(FULL_CARD)
 
         # Read the outline, each section and the JSON before any write.
-        run_card(projects, "outline", KEY)
-        outline = capsys.readouterr().out
-        sections = {}
-        for name in card.SECTIONS:
-            run_card(projects, "show", KEY, "--section", name)
-            sections[name] = capsys.readouterr().out
-        run_card(projects, "show", KEY, "--json")
-        shown = json.loads(capsys.readouterr().out)
+        outline = run_card("outline", KEY).stdout
+        sections = {
+            name: run_card("show", KEY, "--section", name).stdout
+            for name in (
+                "Context",
+                "Acceptance Criteria",
+                "Open Questions",
+                "Decisions",
+                "Notes",
+                "Log",
+                "Appendix",
+            )
+        }
+        shown = json.loads(run_card("show", KEY, "--json").stdout)
         # Add a criterion, edit a decision and add a Log note.
         run_card(
-            projects,
             "add",
             KEY,
             "Acceptance Criteria",
             "Retries back off.",
         )
         run_card(
-            projects,
             "edit",
             KEY,
             "Decisions",
@@ -1501,7 +1815,7 @@ class TestReadParts:
             "--by",
             "hub",
         )
-        run_card(projects, "note", KEY, "bucket picked", "--by", "hub")
+        run_card("note", KEY, "bucket picked", "--by", "hub")
 
         assert outline == (
             "21-25     ## Context\n"
@@ -1580,10 +1894,11 @@ class TestReadParts:
             )
         )
 
+    @pytest.mark.cmd_show
     def test_show_section_prints_hand_made_section(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card show --section prints a hand-made section, in any case.
 
@@ -1591,19 +1906,18 @@ class TestReadParts:
         only its own names or their exact case, an agent would have to
         read the whole card.
         """
-        (projects / "DevEnv" / f"{KEY} Fix some work.md").write_text(V1_CARD)
+        (projects / "DevEnv" / f"{KEY} Fix some bugs.md").write_text(V1_CARD)
 
-        code = run_card(projects, "show", KEY, "--section", "risks")
+        result = run_card("show", KEY, "--section", "risks")
 
-        assert code == 0
-        assert capsys.readouterr().out == (
-            "## Risks\n1. - The bucket may be full.\n"
-        )
+        assert result.returncode == 0
+        assert result.stdout == ("## Risks\n1. - The bucket may be full.\n")
 
+    @pytest.mark.cmd_show
     def test_show_section_rejects_unknown_name(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card show --section refuses a section name it does not know.
 
@@ -1613,20 +1927,21 @@ class TestReadParts:
         write_card(projects, KEY, "active")
         typo = "Acceptance Critera"
 
-        code = run_card(projects, "show", KEY, "--section", typo)
+        result = run_card("show", KEY, "--section", typo)
 
-        captured = capsys.readouterr()
-        assert code == 1
-        assert captured.out == ""
-        assert captured.err == f"card: {KEY} has no {typo} section\n"
+        assert result.returncode == 1
+        assert result.stdout == ""
+        assert result.stderr == f"card: {KEY} has no {typo} section\n"
 
 
+@pytest.mark.cmd_attach
 class TestAttach:
     """Attaching copies a file into the project and embeds it in Context."""
 
     def test_attach_copies_file_and_embeds_it(
         self,
         projects: Path,
+        run_card: RunCard,
         tmp_path: Path,
     ) -> None:
         """The file lands in attachments under the key, and Context shows it.
@@ -1639,12 +1954,12 @@ class TestAttach:
         photo = tmp_path / "photo.jpg"
         photo.write_bytes(b"made-up image bytes")
 
-        code = run_card(projects, "attach", KEY, str(photo))
+        result = run_card("attach", KEY, str(photo))
 
-        assert code == 0
+        assert result.returncode == 0
         attachment = projects / "DevEnv" / "attachments" / f"{KEY} photo.jpg"
         assert attachment.read_bytes() == b"made-up image bytes"
-        context = card.read_section(path.read_text(), "Context")
+        context = read_section(path.read_text(), "Context")
         assert context.rstrip().endswith(f"- ![[{KEY} photo.jpg]]")
 
     @pytest.mark.parametrize(
@@ -1657,6 +1972,7 @@ class TestAttach:
     def test_attach_without_file_leaves_vault_unchanged(
         self,
         projects: Path,
+        run_card: RunCard,
         tmp_path: Path,
         name: str,
     ) -> None:
@@ -1669,15 +1985,16 @@ class TestAttach:
         path = write_card(projects, KEY, "draft")
         before = path.read_text()
 
-        code = run_card(projects, "attach", KEY, str(tmp_path / name))
+        result = run_card("attach", KEY, str(tmp_path / name))
 
-        assert code == 1
+        assert result.returncode == 1
         assert path.read_text() == before
         assert not (projects / "DevEnv" / "attachments").exists()
 
     def test_attach_refuses_to_overwrite_existing_attachment(
         self,
         projects: Path,
+        run_card: RunCard,
         tmp_path: Path,
     ) -> None:
         """A second file with the same name keeps the first one intact.
@@ -1694,17 +2011,17 @@ class TestAttach:
         photo = tmp_path / "photo.jpg"
         photo.write_bytes(b"second photo")
 
-        code = run_card(projects, "attach", KEY, str(photo))
+        result = run_card("attach", KEY, str(photo))
 
-        assert code == 1
+        assert result.returncode == 1
         assert attachment.read_bytes() == b"first photo"
         assert path.read_text() == before
 
     def test_attach_removes_copy_when_update_fails(
         self,
         projects: Path,
+        run_card: RunCard,
         tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """When the card cannot be saved, only the new copy is removed.
 
@@ -1715,28 +2032,33 @@ class TestAttach:
         write_card(projects, KEY, "draft")
         photo = tmp_path / "photo.jpg"
         photo.write_bytes(b"made-up image bytes")
+        project_folder = projects / "DevEnv"
+        attachments = project_folder / "attachments"
+        attachments.mkdir()
+        # A read-only project folder lets the copy land in attachments but
+        # stops card from saving the note beside it.
+        project_folder.chmod(0o555)
 
-        def refuse_update(*args: object) -> bool:
-            """Fail as update_card does when the note keeps changing."""
-            raise card.CardError("changed twice while writing")
+        try:
+            result = run_card("attach", KEY, str(photo))
+        finally:
+            project_folder.chmod(0o755)
 
-        monkeypatch.setattr(card, "update_card", refuse_update)
-
-        code = run_card(projects, "attach", KEY, str(photo))
-
-        assert code == 1
-        attachment = projects / "DevEnv" / "attachments" / f"{KEY} photo.jpg"
-        assert not attachment.exists()
+        assert result.returncode == 1
+        assert not (attachments / f"{KEY} photo.jpg").exists()
+        assert list(attachments.iterdir()) == []
+        assert list(project_folder.glob(".*.tmp")) == []
         assert photo.read_bytes() == b"made-up image bytes"
 
 
 class TestList:
     """The list prints one line per card, for people and for scripts."""
 
+    @pytest.mark.cmd_list
     def test_list_tabs_keeps_whole_title(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """With --tabs, a long title stays whole and the project shows.
 
@@ -1745,19 +2067,19 @@ class TestList:
         screen, and a missing project leaves the row without its tag.
         """
         title = "Show subagent tokens and cost in the sidebar"
-        run_card(projects, "new", "DevEnv", title, "--by", "user")
-        capsys.readouterr()
+        write_card(projects, NEW_KEY, "draft", title=title)
 
-        code = run_card(projects, "list", "--tabs")
+        result = run_card("list", "--tabs")
 
-        assert code == 0
-        first_line = capsys.readouterr().out.splitlines()[0]
+        assert result.returncode == 0
+        first_line = result.stdout.splitlines()[0]
         assert first_line == f"{NEW_KEY}\tdraft\tbuild\tDevEnv\t{title}"
 
+    @pytest.mark.cmd_list
     def test_list_shows_both_shapes_without_plans(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card list shows old and new card keys, and not a plan's.
 
@@ -1769,19 +2091,20 @@ class TestList:
         write_card(projects, "PDEV-005", "draft", title="Build the retries")
         (projects / "DevEnv" / "PDEV-005 Plan the retries.md").write_text(PLAN)
 
-        code = run_card(projects, "list", "--tabs")
+        result = run_card("list", "--tabs")
 
-        assert code == 0
-        assert capsys.readouterr().out == (
+        assert result.returncode == 0
+        assert result.stdout == (
             "PDEV-005\tdraft\tbuild\tDevEnv\tBuild the retries\n"
-            "PDEV-KB-001\tdraft\tbuild\tDevEnv\tFix some work\n"
+            "PDEV-KB-001\tdraft\tbuild\tDevEnv\tFix some bugs\n"
             "2 cards\n"
         )
 
+    @pytest.mark.cmd_list
     def test_list_json_gives_whole_card_fields(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card list --json gives whole titles, sessions and question lists.
 
@@ -1790,16 +2113,18 @@ class TestList:
         would put the wrong state on the hub's board.
         """
         title = "Show subagent tokens and cost in the sidebar"
-        path = write_card(projects, KEY, "active", title=title)
-        path.write_text(
-            card.set_field(path.read_text(), "sessions", ["opencode ses_abc"]),
+        write_card(
+            projects,
+            KEY,
+            "active",
+            title=title,
+            sessions=("opencode ses_abc",),
         )
-        capsys.readouterr()
 
-        code = run_card(projects, "list", "--json")
+        result = run_card("list", "--json")
 
-        assert code == 0
-        assert json.loads(capsys.readouterr().out) == [
+        assert result.returncode == 0
+        assert json.loads(result.stdout) == [
             {
                 "key": KEY,
                 "title": title,
@@ -1814,14 +2139,86 @@ class TestList:
             },
         ]
 
+    @pytest.mark.cmd_list
+    @pytest.mark.parametrize(
+        ("option", "value", "expected"),
+        [
+            pytest.param("--stage", "todo", ["PDEV-005"], id="stage"),
+            pytest.param(
+                "--project",
+                "devenv",
+                [KEY, "PDEV-005"],
+                id="project-any-case",
+            ),
+            pytest.param("--kind", "research", ["PDEV-006"], id="kind"),
+        ],
+    )
+    def test_list_keeps_only_cards_matching_filter(
+        self,
+        projects: Path,
+        run_card: RunCard,
+        option: str,
+        value: str,
+        expected: list[str],
+    ) -> None:
+        """card list with one filter lists only the cards that match it.
+
+        Sweep and dream read one stage with list --stage, and the user
+        names a project in any case. A filter that keeps every card, or
+        drops one, hands them the wrong cards.
+        """
+        write_card(projects, KEY, "draft")
+        write_card(projects, "PDEV-005", "todo", title="Build the retries")
+        research = write_card(
+            projects,
+            "PDEV-006",
+            "draft",
+            title="Compare retry tools",
+        )
+        (projects / "Garden").mkdir()
+        moved = research.rename(projects / "Garden" / research.name)
+        moved.write_text(
+            moved.read_text().replace("kind: build", "kind: research"),
+        )
+
+        result = run_card("list", "--tabs", option, value)
+
+        assert result.returncode == 0
+        lines = result.stdout.splitlines()
+        assert [line.split("\t")[0] for line in lines[:-1]] == expected
+
+    @pytest.mark.cmd_list
+    def test_list_puts_unknown_stage_last(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """A card whose stage is not a known stage sorts after all others.
+
+        A hand-edited typo such as "someday" must not lift the card above
+        the cards the user acts on, at the top of the list.
+        """
+        write_card(projects, KEY, "someday")
+        write_card(projects, "PDEV-005", "dropped")
+
+        result = run_card("list", "--tabs")
+
+        assert result.returncode == 0
+        lines = result.stdout.splitlines()
+        assert [line.split("\t")[0] for line in lines[:-1]] == [
+            "PDEV-005",
+            KEY,
+        ]
+
 
 class TestBoard:
     """The board shows what waits on the user, oldest first."""
 
+    @pytest.mark.cmd_board
     def test_board_lists_in_review_oldest_first(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """In-review cards are listed by the day they entered in-review.
 
@@ -1841,18 +2238,19 @@ class TestBoard:
             stage_date="2026-11-01",
         )
 
-        code = run_card(projects, "board")
+        result = run_card("board")
 
-        assert code == 0
-        out = capsys.readouterr().out
+        assert result.returncode == 0
+        out = result.stdout
         assert out.index("PDEV-KB-002 2026-11-01") < out.index(
             "PDEV-KB-001 2026-11-05",
         )
 
+    @pytest.mark.cmd_board
     def test_board_prints_each_stage_limit(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """The board counts active and in-review against their own limits.
 
@@ -1863,22 +2261,23 @@ class TestBoard:
         write_card(projects, "PDEV-KB-002", "in-review")
         write_card(projects, "PDEV-KB-003", "in-review")
 
-        code = run_card(projects, "board")
+        result = run_card("board")
 
-        assert code == 0
-        assert "active 1 of 8, in-review 2 of 6\n" in capsys.readouterr().out
+        assert result.returncode == 0
+        assert "active 1 of 8, in-review 2 of 6\n" in result.stdout
 
+    @pytest.mark.cmd_board
     def test_board_prints_blocked_lines_hub_reads(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """The board prints the blocked lines the hub parses.
 
         hub brief reads the count line and the list, longest wait first
-        with days and the newest reason, and the user may read it out in
-        a standup. Changed words drop the cards from the brief, and an
-        old reason sends the user to chase the wrong team.
+        with days and the newest reason, and the user may read it aloud.
+        Changed words drop the cards from the brief, and an old reason
+        sends the user to chase the wrong blocker.
         """
         write_card(
             projects,
@@ -1886,31 +2285,24 @@ class TestBoard:
             "in-review",
             stage_date="2026-11-02",
         )
-        path = write_card(projects, "PDEV-KB-003", "in-review")
-        for target, why in [
-            ("blocked", ["--why", "docs team's review"]),
-            ("in-review", []),
-            ("blocked", ["--why", "platform team's review"]),
-        ]:
-            run_card(
-                projects,
-                "move",
-                "PDEV-KB-003",
-                target,
-                *why,
-                "--by",
-                "hub",
-            )
-        path.write_text(
-            card.set_field(path.read_text(), "stage_date", "2026-10-30"),
+        path = write_card(
+            projects,
+            "PDEV-KB-003",
+            "blocked",
+            stage_date="2026-10-30",
+        )
+        add_log_lines(
+            path,
+            "blocked: by hub. docs review",
+            "in-review: by hub",
+            "blocked: by hub. release review",
         )
         write_card(projects, "PDEV-KB-009", "blocked")
-        capsys.readouterr()
 
-        code = run_card(projects, "board")
+        result = run_card("board")
 
-        assert code == 0
-        assert capsys.readouterr().out == (
+        assert result.returncode == 0
+        assert result.stdout == (
             "draft 0  todo 0  active 0\n"
             "in-review 1  blocked 2\n"
             "done 0  dropped 0\n"
@@ -1919,58 +2311,348 @@ class TestBoard:
             "\n"
             "IN-REVIEW, oldest first (1)\n"
             "- PDEV-KB-001 2026-11-02\n"
-            "  Fix some work\n"
+            "  Fix some bugs\n"
             "\n"
             "BLOCKED, oldest first (2)\n"
             "- PDEV-KB-003 8 days\n"
-            "  Fix some work\n"
-            "  platform team's review\n"
+            "  Fix some bugs\n"
+            "  release review\n"
             "- PDEV-KB-009 1 day\n"
-            "  Fix some work\n"
+            "  Fix some bugs\n"
         )
 
+    @pytest.mark.cmd_board
     def test_board_json_gives_limits_and_waits(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card board --json gives the limits and each blocked card's wait.
 
         A script can then read the board without the text lines'
         wording. A missing limit, wait or reason would hide an over-full
-        stage or send the user to chase the wrong team.
+        stage or send the user to chase the wrong blocker.
         """
-        write_card(projects, "PDEV-KB-003", "in-review")
-        run_card(
-            projects,
-            "move",
-            "PDEV-KB-003",
-            "blocked",
-            "--why",
-            "platform team's review",
-            "--by",
-            "hub",
-        )
-        capsys.readouterr()
+        path = write_card(projects, "PDEV-KB-003", "blocked", stage_date=TODAY)
+        add_log_lines(path, "blocked: by hub. release review")
 
-        code = run_card(projects, "board", "--json")
+        result = run_card("board", "--json")
 
-        assert code == 0
-        board = json.loads(capsys.readouterr().out)
+        assert result.returncode == 0
+        board = json.loads(result.stdout)
         assert board["limits"] == {"active": 8, "in-review": 6}
         assert board["counts"]["blocked"] == 1
         [blocked] = board["blocked"]
         assert (blocked["key"], blocked["days"], blocked["reason"]) == (
             "PDEV-KB-003",
             0,
-            "platform team's review",
+            "release review",
+        )
+
+    @pytest.mark.cmd_board
+    def test_board_json_counts_unknown_stage_last(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """card board --json counts an unknown stage after the known ones.
+
+        A hand-edited typo such as "someday" must still count, or the
+        board shows fewer cards than the project holds and the typo
+        stays hidden.
+        """
+        write_card(projects, KEY, "someday")
+
+        result = run_card("board", "--json")
+
+        assert result.returncode == 0
+        counts = json.loads(result.stdout)["counts"]
+        assert list(counts.items())[-2:] == [("dropped", 0), ("someday", 1)]
+
+
+# Two criteria lines for card grep, the first too long for one 60-character
+# line.
+GREP_CRITERIA = (
+    "- [ ] Uploads retry after a timeout on a slow link.\n- [ ] Retry 3 times."
+)
+
+
+# The pattern the hub greps the Log for, to find cards that wait on the user.
+HUB_MARK_PATTERN = r"^- \d{4}-\d\d-\d\d (needs-you|answered): "
+
+
+@pytest.mark.cmd_grep
+class TestGrep:
+    """card grep finds lines across cards, for the hub and agents."""
+
+    def test_grep_prints_key_section_and_line(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """Each match prints its card key, section and line, then the count.
+
+        The hub splits these lines into card key, section and text, and
+        reads the count line last. A missing section, a line too wide
+        for 60 columns or a count of lines as cards would break that.
+        """
+        write_card(projects, "DEMO-002", "active", criteria=GREP_CRITERIA)
+        write_card(projects, KEY, "todo", title="Retry uploads")
+
+        result = run_card("grep", "retry")
+
+        assert result.returncode == 0
+        assert result.stdout == (
+            "DEMO-002 Acceptance Criteria: - [ ] Uploads retry after a t…\n"
+            "DEMO-002 Acceptance Criteria: - [ ] Retry 3 times.\n"
+            "PDEV-KB-001 Title: PDEV-KB-001 Retry uploads\n"
+            "3 matches in 2 cards\n"
+        )
+
+    def test_grep_section_limits_matches_to_it(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """grep --section Log finds the hub's marks in the Log only.
+
+        The hub runs this search to find cards that wait on the user. A
+        match in another section, such as a note that quotes a mark,
+        would flag a card that waits on no one.
+        """
+        path = write_card(projects, "DEMO-002", "active")
+        path.write_text(
+            path.read_text()
+            .replace(
+                "## Notes\n---\n",
+                "## Notes\n---\n\n- 2026-11-05 answered: quoted here\n",
+            )
+            .replace(
+                "by user\n\n## Appendix",
+                "by user\n- 2026-11-07 needs-you: by hub. Pick a model\n\n"
+                "## Appendix",
+            ),
+        )
+
+        result = run_card("grep", "--section", "Log", HUB_MARK_PATTERN)
+
+        assert result.returncode == 0
+        assert result.stdout == (
+            "DEMO-002 Log: - 2026-11-07 needs-you: by hub. Pick a model\n"
+            "1 matches in 1 cards\n"
+        )
+
+    def test_grep_text_exits_one_when_none(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """grep with no match prints the zero count and exits 1.
+
+        The hub reads exit 1 with empty stderr as no matches. Exit 0
+        would read as a match, and a message on stderr as a broken card.
+        """
+        write_card(projects, KEY, "todo")
+
+        result = run_card("grep", "--section", "Log", HUB_MARK_PATTERN)
+
+        assert (result.returncode, result.stderr) == (1, "")
+        assert result.stdout == "0 matches in 0 cards\n"
+
+
+@pytest.mark.go_card
+class TestGoOnlyReplies:
+    """The JSON forms and the rules file default only the Go card has."""
+
+    @pytest.mark.cmd_grep
+    def test_grep_json_lists_matches(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """grep --json gives each match's card key, section and whole line.
+
+        Agents read matches from this JSON instead of the text lines. A
+        line cut to 60 characters, or a count of lines as cards, would
+        hand them part of a criterion or a wrong number of cards.
+        """
+        write_card(projects, "DEMO-002", "active", criteria=GREP_CRITERIA)
+        write_card(projects, KEY, "todo", title="Retry uploads")
+
+        result = run_card("grep", "retry", "--json")
+
+        assert result.returncode == 0
+        long_line, short_line = GREP_CRITERIA.split("\n")
+        assert json.loads(result.stdout) == {
+            "matches": [
+                {
+                    "key": "DEMO-002",
+                    "section": "Acceptance Criteria",
+                    "line": long_line,
+                },
+                {
+                    "key": "DEMO-002",
+                    "section": "Acceptance Criteria",
+                    "line": short_line,
+                },
+                {
+                    "key": KEY,
+                    "section": "Title",
+                    "line": f"{KEY} Retry uploads",
+                },
+            ],
+            "match_count": 3,
+            "card_count": 2,
+        }
+
+    @pytest.mark.cmd_grep
+    def test_grep_json_exits_one_when_none(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """grep --json with no match prints empty results and exits 1.
+
+        The hub reads exit 1 with empty stderr as no matches, in either
+        form. Exit 0 would read as a match, and a message on stderr as a
+        broken card.
+        """
+        write_card(projects, KEY, "todo")
+
+        result = run_card("grep", "nowhere", "--json")
+
+        assert result.returncode == 1
+        assert result.stderr == ""
+        assert json.loads(result.stdout) == {
+            "matches": [],
+            "match_count": 0,
+            "card_count": 0,
+        }
+
+    @pytest.mark.cmd_outline
+    def test_outline_json_matches_text_ranges(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """outline --json gives the same headings and ranges as the text.
+
+        Agents read a part with sed -n from these line numbers. JSON
+        ranges that differ from the text form would hand them the wrong
+        lines, and a card with no headings must give a list, not null.
+        """
+        path = projects / "DevEnv" / f"{KEY} Fix some bugs.md"
+        path.write_text(FULL_CARD)
+        bare = projects / "DevEnv" / "DEMO-002 Bare card.md"
+        bare.write_text("---\ntype: card\nstage: todo\n---\n\n# Bare card\n")
+
+        text = run_card("outline", KEY).stdout
+        result = run_card("outline", KEY, "--json")
+        bare_result = run_card("outline", "DEMO-002", "--json")
+
+        assert result.returncode == 0
+        from_text = [
+            {
+                "heading": words,
+                "level": len(hashes),
+                "start": int(start),
+                "end": int(end),
+            }
+            for start, end, hashes, words in re.findall(
+                r"^(\d+)-(\d+) +(#+) (.*)$",
+                text,
+                re.MULTILINE,
+            )
+        ]
+        assert json.loads(result.stdout) == {"key": KEY, "headings": from_text}
+        assert from_text[0] == {
+            "heading": "Context",
+            "level": 2,
+            "start": 21,
+            "end": 25,
+        }
+        assert json.loads(bare_result.stdout)["headings"] == []
+
+    @pytest.mark.cmd_outline
+    def test_outline_json_trims_nbsp_from_heading(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """outline --json gives a heading's words without a trailing U+00A0.
+
+        Agents pass these words to show --section, which finds the section
+        past the no-break space a paste can leave. Kept, the words name no
+        section.
+        """
+        path = write_card(projects, KEY, "active")
+        path.write_text(
+            path.read_text().replace("## Context\n", "## Context\u00a0\n"),
+        )
+
+        result = run_card("outline", KEY, "--json")
+
+        assert result.returncode == 0
+        headings = json.loads(result.stdout)["headings"]
+        assert "Context" in [heading["heading"] for heading in headings]
+
+    @pytest.mark.cmd_name
+    def test_name_reads_rules_from_home_config(
+        self,
+        run_card: RunCard,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Without PDE_NAMES_FILE, card reads ~/.config/pde/names.toml.
+
+        The installer puts the rules there, and the Go card has no
+        checkout copy to fall back on. A wrong default would stop every
+        command on an installed computer.
+        """
+        monkeypatch.delenv("PDE_NAMES_FILE")
+        monkeypatch.setenv("HOME", str(tmp_path))
+        rules = tmp_path / ".config/pde/names.toml"
+        rules.parent.mkdir(parents=True)
+        rules.write_text(RULES_FILE.read_text())
+
+        result = run_card("name", "agent", "DEMO-KB-012", "build")
+
+        assert (result.returncode, result.stdout) == (0, "demo-kb-012-build\n")
+
+    @pytest.mark.cmd_name
+    def test_name_reports_missing_home_rules(
+        self,
+        run_card: RunCard,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """With no rules file at home, card names the path to fix.
+
+        The message keeps the ~ as the user would type it. A message
+        with no path, or an expanded one from another HOME, leaves the
+        user without the file to install.
+        """
+        monkeypatch.delenv("PDE_NAMES_FILE")
+        monkeypatch.setenv("HOME", str(tmp_path))
+
+        result = run_card("name", "agent", "DEMO-KB-012", "build")
+
+        assert result.returncode == 1
+        assert result.stderr == (
+            "card: no naming rules at ~/.config/pde/names.toml:"
+            " run pde-installer install\n"
         )
 
 
 class TestHandEditedCard:
     """Cards edited by hand in Obsidian keep working and keep the edits."""
 
-    def test_link_keeps_hand_edits_to_card(self, projects: Path) -> None:
+    @pytest.mark.cmd_link
+    def test_link_keeps_hand_edits_to_card(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
         """Linking a plan keeps the other fields exactly as written.
 
         The user edits cards in Obsidian. A tool that rewrote the
@@ -1980,16 +2662,21 @@ class TestHandEditedCard:
         path = projects / "DevEnv" / f"{KEY} Kanban demo.md"
         path.write_text(HAND_EDITED)
 
-        code = run_card(projects, "link", KEY, "PDEV-412 New plan")
+        result = run_card("link", KEY, "PDEV-412 New plan")
 
-        assert code == 0
+        assert result.returncode == 0
         assert path.read_text() == HAND_EDITED.replace(
             'plans: ["[[PDEV-400 Old plan]]"]\n',
             'plans:\n  - "[[PDEV-400 Old plan]]"\n'
             '  - "[[PDEV-412 New plan]]"\n',
         )
 
-    def test_move_reads_quoted_hand_edited_stage(self, projects: Path) -> None:
+    @pytest.mark.cmd_move
+    def test_move_reads_quoted_hand_edited_stage(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
         """A stage the user quoted by hand still counts as that stage.
 
         Obsidian's property editor and hand edits can quote values. A
@@ -1998,8 +2685,7 @@ class TestHandEditedCard:
         path = projects / "DevEnv" / f"{KEY} Kanban demo.md"
         path.write_text(HAND_EDITED)
 
-        code = run_card(
-            projects,
+        result = run_card(
             "move",
             KEY,
             "in-review",
@@ -2007,9 +2693,10 @@ class TestHandEditedCard:
             "general-staff",
         )
 
-        assert code == 0
+        assert result.returncode == 0
         assert "stage: in-review\n" in path.read_text()
 
+    @pytest.mark.python_card
     def test_update_card_keeps_concurrent_hand_edit(
         self,
         projects: Path,
@@ -2044,10 +2731,11 @@ class TestHandEditedCard:
         assert "Hand edit." in text
         assert text.endswith("- added by card\n")
 
+    @pytest.mark.cmd_check
     def test_check_reports_card_note_without_type(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card check names an old-shape card note that lost its type.
 
@@ -2059,18 +2747,19 @@ class TestHandEditedCard:
             f"# {KEY} Lost type\n",
         )
 
-        code = run_card(projects, "check")
+        result = run_card("check")
 
-        assert code == 1
-        assert capsys.readouterr().out == (
+        assert result.returncode == 1
+        assert result.stdout == (
             f"{KEY} Lost type.md has a card name but no type: card\n"
             "1 problems in 0 cards\n"
         )
 
+    @pytest.mark.cmd_check
     def test_check_reports_new_card_missing_type(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card check names a new-shape card that lost its type line.
 
@@ -2086,35 +2775,95 @@ class TestHandEditedCard:
         (folder / f"{NEW_KEY} Plan the retries.md").write_text(PLAN)
         (folder / f"{NEW_KEY} Old plan.md").write_text("# Old plan\n")
 
-        code = run_card(projects, "check")
+        result = run_card("check")
 
-        assert code == 1
-        assert capsys.readouterr().out == (
+        assert result.returncode == 1
+        assert result.stdout == (
             f"{NEW_KEY} Lost type.md has a card name but no type: card\n"
             "1 problems in 0 cards\n"
         )
 
+    @pytest.mark.cmd_check
+    def test_check_quotes_unknown_stage_and_kind(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """card check quotes an unknown stage or kind with escapes.
 
+        A hand edit can leave a tab, a no-break space or a quote in a
+        field. The hub and sweep parse these lines, so a raw tab would
+        split the line, and both versions must print the same bytes.
+        """
+        path = write_card(projects, KEY, "to\tdo\u00a0soon")
+        path.write_text(
+            path.read_text().replace("kind: build", "kind: user's"),
+        )
+
+        result = run_card("check")
+
+        assert result.returncode == 1
+        assert result.stdout == (
+            f"{KEY} unknown stage 'to\\tdo\\xa0soon'\n"
+            f'{KEY} unknown kind "user\'s"\n'
+            "2 problems in 1 cards\n"
+        )
+
+    @pytest.mark.cmd_show
+    def test_show_finds_heading_with_trailing_nbsp(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """A heading with a no-break space after it still names its section.
+
+        A paste into Obsidian can leave U+00A0 after a heading. Missed,
+        the section reads as empty, card check reports it missing and
+        the hub's grep labels its lines wrong.
+        """
+        path = write_card(projects, KEY, "active")
+        path.write_text(
+            path.read_text().replace(
+                "## Context\n---\n",
+                "## Context\u00a0\n---\n\nUploads fail on slow links.\n",
+            ),
+        )
+
+        result = run_card("show", KEY, "--section", "Context")
+
+        assert result.returncode == 0
+        assert "Uploads fail on slow links." in result.stdout
+
+
+# Version 1 cards are migrated before the Go card installs, so only the
+# Python card reads them.
+@pytest.mark.python_card
 class TestVersionOneCard:
     """Cards made before the version 2 layout keep working."""
 
-    def test_check_passes_without_new_sections(self, projects: Path) -> None:
+    @pytest.mark.cmd_check
+    def test_check_passes_without_new_sections(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
         """card check passes an old card that has no Notes or Appendix.
 
         Cards made before version 2 have neither section. If card check
         asked for them, it would flag every old card and hide the real
         problems.
         """
-        (projects / "DevEnv" / f"{KEY} Fix some work.md").write_text(V1_CARD)
+        (projects / "DevEnv" / f"{KEY} Fix some bugs.md").write_text(V1_CARD)
 
-        code = run_card(projects, "check")
+        result = run_card("check")
 
-        assert code == 0
+        assert result.returncode == 0
 
+    @pytest.mark.cmd_show
     def test_show_gives_old_cards_every_section(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card show gives an old card every section, empty when missing.
 
@@ -2122,15 +2871,14 @@ class TestVersionOneCard:
         An error or a missing entry for Notes or the Appendix would
         break them on every old card.
         """
-        (projects / "DevEnv" / f"{KEY} Fix some work.md").write_text(V1_CARD)
+        (projects / "DevEnv" / f"{KEY} Fix some bugs.md").write_text(V1_CARD)
 
-        section_code = run_card(projects, "show", KEY, "--section", "notes")
-        section_out = capsys.readouterr().out
-        json_code = run_card(projects, "show", KEY, "--json")
-        shown = json.loads(capsys.readouterr().out)
+        section = run_card("show", KEY, "--section", "notes")
+        whole = run_card("show", KEY, "--json")
+        shown = json.loads(whole.stdout)
 
-        assert (section_code, section_out) == (0, "## Notes\n\n")
-        assert json_code == 0
+        assert (section.returncode, section.stdout) == (0, "## Notes\n\n")
+        assert whole.returncode == 0
         assert shown["sections"] == {
             "Context": "",
             "Acceptance Criteria": "- [ ] Uploads retry.",
@@ -2142,20 +2890,29 @@ class TestVersionOneCard:
             "Risks": "- The bucket may be full.",
         }
 
-    def test_note_appends_exact_log_lines(self, projects: Path) -> None:
+    @pytest.mark.cmd_note
+    def test_note_appends_exact_log_lines(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
         """card note adds a dated Log line and keeps an old card whole.
 
         Agents and the hub record each step in these lines. The write
         must also keep the sections a user added by hand to an old card.
         """
-        path = projects / "DevEnv" / f"{KEY} Fix some work.md"
+        path = projects / "DevEnv" / f"{KEY} Fix some bugs.md"
         path.write_text(V1_CARD)
 
-        run_card(projects, "note", KEY, "bucket picked", "--by", "hub")
+        run_card("note", KEY, "bucket picked", "--by", "hub")
 
         assert path.read_text() == V1_CARD + (
             f"- {TODAY} note (hub): bucket picked\n"
         )
+
+
+# Indexed by rule ID, such as RULES["branch"]["make"].
+RULES = tomllib.loads(RULES_FILE.read_text())
 
 
 class TestNamingRules:
@@ -2168,8 +2925,10 @@ class TestNamingRules:
             for case in CASES["make"]
         ],
     )
+    @pytest.mark.cmd_name
     def test_make_name_round_trips_shared_cases(
         self,
+        run_card: RunCard,
         case: dict[str, Any],
     ) -> None:
         """Each rule makes the name the shared cases list and reads it back.
@@ -2179,12 +2938,14 @@ class TestNamingRules:
         made name its rule cannot read, so a rule that fails the round
         trip makes card name refuse every use of it.
         """
-        rule = card.find_rule(case["rule"])
+        make = RULES[case["rule"]]["make"]
+        values = [
+            case["fields"][field] for field in re.findall(r"{(\w+)", make)
+        ]
 
-        name = card.make_name(rule, case["fields"])
+        result = run_card("name", case["rule"], *values)
 
-        assert name == case["name"]
-        assert card.parse_name(rule, name) is not None
+        assert (result.returncode, result.stdout) == (0, f"{case['name']}\n")
 
     @pytest.mark.parametrize(
         "case",
@@ -2193,6 +2954,7 @@ class TestNamingRules:
             for case in CASES["parse"]
         ],
     )
+    @pytest.mark.python_card
     def test_parse_name_reads_shared_cases(self, case: dict[str, Any]) -> None:
         """Each rule reads the fields the shared cases list, or nothing.
 
@@ -2204,11 +2966,14 @@ class TestNamingRules:
 
         assert card.parse_name(rule, case["name"]) == case.get("fields")
 
+    # The Go card has no checkout copy of the rules file.
+    @pytest.mark.python_card
+    @pytest.mark.cmd_name
     def test_rules_file_defaults_to_checkout_copy(
         self,
+        run_card: RunCard,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """card reads its checkout's rules when PDE_NAMES_FILE is unset.
 
@@ -2219,14 +2984,15 @@ class TestNamingRules:
         monkeypatch.delenv("PDE_NAMES_FILE")
         monkeypatch.setenv("HOME", str(tmp_path))
 
-        code = card.main(["name", "agent", "PDEV-KB-012", "build"])
+        result = run_card("name", "agent", "PDEV-KB-012", "build")
 
-        assert code == 0
-        assert capsys.readouterr().out == "pdev-kb-012-build\n"
+        assert result.returncode == 0
+        assert result.stdout == "pdev-kb-012-build\n"
 
+    @pytest.mark.cmd_name
     def test_name_prints_branch_from_values(
         self,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card name fills fields in order, and the last takes the rest.
 
@@ -2235,14 +3001,15 @@ class TestNamingRules:
         print a branch the rule reads, so the fit check would not catch
         it.
         """
-        code = card.main(["name", "branch", "feat", "retry", "uploads"])
+        result = run_card("name", "branch", "feat", "retry", "uploads")
 
-        assert code == 0
-        assert capsys.readouterr().out == "feat/retry-uploads\n"
+        assert result.returncode == 0
+        assert result.stdout == "feat/retry-uploads\n"
 
+    @pytest.mark.cmd_name
     def test_name_refuses_value_rule_cannot_read(
         self,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card name refuses a name its own rule would not read back.
 
@@ -2250,14 +3017,15 @@ class TestNamingRules:
         name. A wrong branch type that still printed a name would make a
         branch pde-check-branch refuses, with no error from card.
         """
-        code = card.main(["name", "branch", "nope", "retry"])
+        result = run_card("name", "branch", "nope", "retry")
 
-        assert code == 1
-        assert capsys.readouterr().err.startswith(
+        assert result.returncode == 1
+        assert result.stderr.startswith(
             "card: nope/retry does not fit the branch rule",
         )
 
-    def test_template_embeds_rule_patterns(self) -> None:
+    @pytest.mark.cmd_template
+    def test_template_embeds_rule_patterns(self, run_card: RunCard) -> None:
         """The Obsidian template reads names with the rules file's patterns.
 
         Cards made in Obsidian and by card share one number series. A
@@ -2266,17 +3034,17 @@ class TestNamingRules:
         a template that kept one could not make a card at all. An
         unfilled ``_JSON`` placeholder would also fail only in Obsidian.
         """
-        text = card.render_template()
+        result = run_card("template")
 
+        text = result.stdout
+        assert result.returncode == 0
         assert "_JSON" not in text
         literals = re.findall(r'new RegExp\(("(?:[^"\\]|\\.)*")\)', text)
         patterns = [json.loads(literal) for literal in literals]
         assert not any("(?P<" in pattern for pattern in patterns)
-        assert [
-            re.compile(pattern.replace("(?<", "(?P<")) for pattern in patterns
-        ] == [
-            card.find_rule("card_file").parse,
-            card.find_rule("plan_file").parse,
+        assert [pattern.replace("(?<", "(?P<") for pattern in patterns] == [
+            RULES["card_file"]["parse"],
+            RULES["plan_file"]["parse"],
         ]
 
 
@@ -2338,8 +3106,10 @@ class TestTitleRules:
             pytest.param("Fix the #board rows", ["T4"], id="link-character"),
         ],
     )
+    @pytest.mark.cmd_new
     def test_check_title_fails_each_broken_rule(
         self,
+        run_card: RunCard,
         title: str,
         rules: list[str],
     ) -> None:
@@ -2349,14 +3119,16 @@ class TestTitleRules:
         labels on the board. A missed rule lets such a title back, and a
         rule that fires on a good title refuses an agent's good card.
         """
-        findings = card.check_title(title)
+        result = run_card("new", "DevEnv", title, "--by", "tester")
 
-        assert [finding.rule for finding in findings] == rules
+        assert re.findall(r"^  (T\d) ", result.stderr, re.M) == rules
+        assert result.returncode == (1 if rules else 0)
 
+    @pytest.mark.cmd_new
     def test_new_refuses_title_listing_every_finding(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card new writes no card for a failing title and lists each finding.
 
@@ -2364,8 +3136,7 @@ class TestTitleRules:
         every broken rule. A card written anyway would put the bad title
         on the board.
         """
-        code = run_card(
-            projects,
+        result = run_card(
             "new",
             "DevEnv",
             "uploads: retry after the network drops for a minute or two",
@@ -2373,9 +3144,9 @@ class TestTitleRules:
             "general-staff",
         )
 
-        assert code == 1
+        assert result.returncode == 1
         assert not list((projects / "DevEnv").glob("PDEV-*"))
-        assert capsys.readouterr().err == (
+        assert result.stderr == (
             "card: title refused:\n"
             "  T1 length: 58 characters, at most 50\n"
             '  T2 label: "uploads:"\n'
@@ -2384,18 +3155,17 @@ class TestTitleRules:
             ' "Retry failed uploads".\n'
         )
 
+    @pytest.mark.cmd_new
     def test_new_accepts_noun_title_without_type(
         self,
-        projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """An agent's card new takes any first word and needs no type.
 
         It prints only the card's name, so an agent that reads the
         output as the name gets nothing else.
         """
-        code = run_card(
-            projects,
+        result = run_card(
             "new",
             "DevEnv",
             "Hubs read the approval state",
@@ -2403,14 +3173,14 @@ class TestTitleRules:
             "general-staff",
         )
 
-        assert code == 0
-        assert capsys.readouterr().out == (
-            "PDEV-001 Hubs read the approval state\n"
-        )
+        assert result.returncode == 0
+        assert result.stdout == ("PDEV-001 Hubs read the approval state\n")
 
+    @pytest.mark.cmd_set
     def test_set_title_refuses_failing_title_unchanged(
         self,
         projects: Path,
+        run_card: RunCard,
     ) -> None:
         """card set refuses a failing title and leaves the note as it was.
 
@@ -2420,15 +3190,16 @@ class TestTitleRules:
         path = write_card(projects, KEY, "draft")
         before = path.read_text()
 
-        code = run_card(projects, "set", KEY, "title", "fix board rows.")
+        result = run_card("set", KEY, "title", "fix board rows.")
 
-        assert code == 1
+        assert result.returncode == 1
         assert path.read_text() == before
 
+    @pytest.mark.cmd_check
     def test_check_lists_open_cards_failing_titles(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """card check lists each failing rule of an open card's title.
 
@@ -2439,10 +3210,10 @@ class TestTitleRules:
         write_card(projects, "PDEV-KB-002", "done", title="Some work.")
         write_card(projects, "PDEV-KB-003", "active")
 
-        code = run_card(projects, "check")
+        result = run_card("check")
 
-        assert code == 1
-        assert capsys.readouterr().out == (
+        assert result.returncode == 1
+        assert result.stdout == (
             "PDEV-KB-001 T4 form: ends with a period\n1 problems in 3 cards\n"
         )
 
@@ -2460,10 +3231,11 @@ class TestTitleRules:
             pytest.param("draft", "active", [], "- [ ] Done.", id="chain"),
         ],
     )
+    @pytest.mark.cmd_move
     def test_move_to_todo_refuses_failing_title(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
         stage: str,
         target: str,
         flags: list[str],
@@ -2476,28 +3248,135 @@ class TestTitleRules:
         path = write_card(projects, KEY, stage, criteria, title="Some work.")
         before = path.read_text()
 
-        code = run_card(projects, "move", KEY, target, *flags, "--by", "hub")
+        result = run_card("move", KEY, target, *flags, "--by", "hub")
 
-        assert code == 1
+        assert result.returncode == 1
         assert path.read_text() == before
-        assert capsys.readouterr().err.startswith("card: title refused:\n")
+        assert result.stderr.startswith("card: title refused:\n")
+
+
+@pytest.mark.cmd_set
+class TestSet:
+    """card set changes a card's kind, or its title and file name."""
+
+    def test_set_title_renames_note_keeping_body(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """card set title renames the note and changes only its heading.
+
+        Links and card itself find a card by its file name, so a heading
+        changed without the rename leaves the two apart, and any other
+        change would lose the user's words.
+        """
+        path = write_card(projects, KEY, "draft")
+        before = path.read_text()
+
+        result = run_card("set", KEY, "title", "Sort the photo albums by date")
+
+        new_path = path.with_name(f"{KEY} Sort the photo albums by date.md")
+        assert result.returncode == 0
+        assert result.stdout == f"{KEY} Sort the photo albums by date\n"
+        assert not path.exists()
+        assert new_path.read_text() == before.replace(
+            f"# {KEY} Fix some bugs\n",
+            f"# {KEY} Sort the photo albums by date\n",
+        )
+
+    def test_set_title_refuses_name_already_taken(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """card set title refuses a file name another note already has.
+
+        The rename would replace that note, and its text would be lost on
+        every PC once sync runs.
+        """
+        path = write_card(projects, KEY, "draft")
+        taken = path.with_name(f"{KEY} Sort the photo albums by date.md")
+        taken.write_text("My own album notes.\n")
+        before = path.read_text()
+
+        result = run_card("set", KEY, "title", "Sort the photo albums by date")
+
+        assert result.returncode == 1
+        assert result.stderr == f"card: {taken.name} already exists\n"
+        assert path.read_text() == before
+        assert taken.read_text() == "My own album notes.\n"
+
+    def test_set_kind_writes_the_kind_field(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """card set kind writes the new kind into the frontmatter.
+
+        card list --kind reads this field, so a kind that is printed but
+        not written leaves the card out of that list.
+        """
+        path = write_card(projects, KEY, "draft")
+
+        result = run_card("set", KEY, "kind", "research")
+
+        assert result.returncode == 0
+        assert result.stdout == f"{KEY} kind research\n"
+        assert "\nkind: research\n" in path.read_text()
+
+
+@pytest.mark.cmd_delete
+class TestDelete:
+    """card delete removes a card note, only when the user asks."""
+
+    def test_delete_refuses_without_user(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """card delete without --user exits 2 and keeps the note.
+
+        A deleted note is gone from every PC once sync runs, so an agent
+        must not delete one unless the user asked.
+        """
+        path = write_card(projects, KEY, "draft")
+
+        result = run_card("delete", KEY)
+
+        assert result.returncode == 2
+        assert "the following arguments are required: --user" in result.stderr
+        assert path.exists()
+
+    def test_delete_removes_note_and_prints_name(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """card delete --user removes the card's note and prints its name.
+
+        The user asked for the card to go, and the printed name tells them
+        which note sync will remove from every PC.
+        """
+        path = write_card(projects, KEY, "draft")
+
+        result = run_card("delete", KEY, "--user")
+
+        assert result.returncode == 0
+        assert result.stdout == f"deleted {path.name}\n"
+        assert not path.exists()
 
 
 @pytest.fixture
-def herdr_agents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A herdr on PATH whose agent list is the returned JSON file.
+def herdr_agents(tmp_path: Path, bin_dir: Path) -> Path:
+    """A herdr on PATH that prints the returned JSON file for any command.
 
-    The file starts with no agents. A real program, unlike a patched
-    subprocess.run, leaves undo.sh free to run with sh.
+    The file starts with no agents, and fake_herdr puts one agent in it.
     """
     agents = tmp_path / "agents.json"
     agents.write_text('{"result": {"agents": []}}')
-    herdr = tmp_path / "bin" / "herdr"
-    herdr.parent.mkdir()
+    herdr = bin_dir / "herdr"
     herdr.write_text(f"#!/bin/sh\ncat {shlex.quote(str(agents))}\n")
     herdr.chmod(0o755)
-    path = f"{herdr.parent}{os.pathsep}{os.environ['PATH']}"
-    monkeypatch.setenv("PATH", path)
     return agents
 
 
@@ -2508,10 +3387,7 @@ def write_rekey_vault(projects: Path) -> None:
     PDEV-412. The first card has session ses_abc; the second links the
     first.
     """
-    first = write_card(projects, KEY, "draft")
-    first.write_text(
-        card.set_field(first.read_text(), "sessions", ["opencode ses_abc"]),
-    )
+    write_card(projects, KEY, "draft", sessions=("opencode ses_abc",))
     second = write_card(
         projects,
         "PDEV-KB-002",
@@ -2564,6 +3440,32 @@ def edit_before_write(monkeypatch: pytest.MonkeyPatch, note: Path) -> None:
     monkeypatch.setattr(card, "write_safely", write)
 
 
+def write_rekeyed(
+    projects: Path,
+    old_key: str,
+    new_key: str,
+    title: str,
+) -> None:
+    """Give a card its new key as a stopped rekey leaves it.
+
+    For example, ``PDEV-KB-001 Fix some bugs.md`` becomes
+    ``PDEV-411 Fix some bugs.md``, with the new heading and
+    ``old_key: PDEV-KB-001``.
+    """
+    old = projects / "DevEnv" / f"{old_key} {title}.md"
+    text = old.read_text().replace(
+        f"# {old_key} {title}\n",
+        f"# {new_key} {title}\n",
+    )
+    text = text.replace(
+        'topics:\n  - "[[DevEnv]]"\n',
+        f'topics:\n  - "[[DevEnv]]"\nold_key: {old_key}\n',
+    )
+    (projects / "DevEnv" / f"{new_key} {title}.md").write_text(text)
+    old.unlink()
+
+
+@pytest.mark.cmd_rekey
 @pytest.mark.usefixtures("herdr_agents")
 class TestRekey:
     """card rekey gives open cards with old keys new keys."""
@@ -2571,7 +3473,7 @@ class TestRekey:
     def test_dry_run_prints_keys_writes_nothing(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """Without --apply, rekey prints old and new keys and writes nothing.
 
@@ -2582,10 +3484,10 @@ class TestRekey:
         write_rekey_vault(projects)
         before = read_tree(projects)
 
-        code = run_card(projects, "rekey")
+        result = run_card("rekey")
 
-        assert code == 0
-        assert capsys.readouterr().out == (
+        assert result.returncode == 0
+        assert result.stdout == (
             "PDEV-KB-001 PDEV-411\n"
             "PDEV-KB-002 PDEV-412\n"
             "relink DevEnv/Links.md\n"
@@ -2594,7 +3496,11 @@ class TestRekey:
         )
         assert read_tree(projects) == before
 
-    def test_apply_renames_cards_keeping_old_key(self, projects: Path) -> None:
+    def test_apply_renames_cards_keeping_old_key(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
         """--apply renames open cards and writes old_key and the new heading.
 
         A card without old_key cannot be found by the key in its Log and in
@@ -2603,16 +3509,20 @@ class TestRekey:
         write_rekey_vault(projects)
         devenv = projects / "DevEnv"
 
-        code = run_card(projects, "rekey", "--apply", "--user")
+        result = run_card("rekey", "--apply", "--user")
 
-        assert code == 0
-        assert not (devenv / "PDEV-KB-001 Fix some work.md").exists()
-        text = (devenv / "PDEV-411 Fix some work.md").read_text()
+        assert result.returncode == 0
+        assert not (devenv / "PDEV-KB-001 Fix some bugs.md").exists()
+        text = (devenv / "PDEV-411 Fix some bugs.md").read_text()
         assert "\nold_key: PDEV-KB-001\n" in text
-        assert "\n# PDEV-411 Fix some work\n" in text
+        assert "\n# PDEV-411 Fix some bugs\n" in text
         assert (devenv / "PDEV-412 Retry failed uploads.md").exists()
 
-    def test_apply_relinks_only_open_cards(self, projects: Path) -> None:
+    def test_apply_relinks_only_open_cards(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
         """--apply points links to open cards at their new names.
 
         A link left on the old name breaks in Obsidian, also in a card that
@@ -2622,9 +3532,9 @@ class TestRekey:
         write_rekey_vault(projects)
         devenv = projects / "DevEnv"
 
-        code = run_card(projects, "rekey", "--apply", "--user")
+        result = run_card("rekey", "--apply", "--user")
 
-        assert code == 0
+        assert result.returncode == 0
         assert (devenv / "Links.md").read_text() == (
             "[[PDEV-411]], [[PDEV-412 Retry failed uploads|uploads]]"
             " and [[PDEV-KB-003 Old done work]]\n"
@@ -2635,7 +3545,7 @@ class TestRekey:
     def test_undo_script_restores_every_note(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """The printed undo.sh puts every renamed and relinked note back.
 
@@ -2644,16 +3554,82 @@ class TestRekey:
         """
         write_rekey_vault(projects)
         before = read_tree(projects)
-        run_card(projects, "rekey", "--apply", "--user")
+        result = run_card("rekey", "--apply", "--user")
 
-        undo = shlex.split(capsys.readouterr().out.splitlines()[-1])[-1]
+        undo = shlex.split(result.stdout.splitlines()[-1])[-1]
         subprocess.run(["sh", undo], check=True)
 
         assert read_tree(projects) == before
 
+    def test_stopped_apply_prints_undo_that_restores(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """A stopped --apply exits 1 with an undo line that restores all.
+
+        A folder rekey cannot write stops it after some notes changed.
+        Without the undo line, or with one that misses a note, the user
+        is left to fix a half-done rekey by hand.
+        """
+        if os.geteuid() == 0:
+            pytest.skip("root can write to a read-only folder")
+        write_rekey_vault(projects)
+        photos = projects / "Photos"
+        photos.mkdir()
+        (photos / "Album.md").write_text("See [[PDEV-KB-001]].\n")
+        before = read_tree(projects)
+
+        # Photos sorts after DevEnv, so the renames and DevEnv relinks go first.
+        photos.chmod(0o555)
+        try:
+            result = run_card("rekey", "--apply", "--user")
+        finally:
+            photos.chmod(0o755)
+
+        assert result.returncode == 1
+        assert "card: stopped at Album.md; " in result.stderr
+        assert (projects / "DevEnv" / "PDEV-411 Fix some bugs.md").exists()
+        undo_line = result.stdout.splitlines()[-1]
+        assert undo_line.startswith("undo (newest first): sh ")
+        subprocess.run(["sh", shlex.split(undo_line)[-1]], check=True)
+        assert read_tree(projects) == before
+
+    def test_apply_keeps_edit_made_during_herdr_call(
+        self,
+        projects: Path,
+        run_card: RunCard,
+        bin_dir: Path,
+        herdr_agents: Path,
+    ) -> None:
+        """--apply keeps a line the user saves while card waits on herdr.
+
+        rekey asks herdr for live workers after it reads the cards. Writing
+        the text it read before that call would drop the user's line
+        without notice.
+        """
+        write_rekey_vault(projects)
+        old = projects / "DevEnv" / f"{KEY} Fix some bugs.md"
+        later = int(old.stat().st_mtime) + 1
+        # A herdr that saves a line in the card, with a later time, first.
+        (bin_dir / "herdr").write_text(
+            "#!/bin/sh\n"
+            f"echo 'Saved by hand.' >> {shlex.quote(str(old))}\n"
+            f"touch -d @{later} {shlex.quote(str(old))}\n"
+            f"cat {shlex.quote(str(herdr_agents))}\n",
+        )
+
+        result = run_card("rekey", "--apply", "--user")
+
+        assert result.returncode == 0
+        renamed = projects / "DevEnv" / "PDEV-411 Fix some bugs.md"
+        assert renamed.read_text().endswith("\nSaved by hand.\n")
+
+    @pytest.mark.python_card
     def test_undo_after_stop_keeps_later_edits(
         self,
         projects: Path,
+        tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
@@ -2665,20 +3641,24 @@ class TestRekey:
         write_rekey_vault(projects)
         before = read_tree(projects)
         retry = "DevEnv/PDEV-KB-002 Retry failed uploads.md"
+        monkeypatch.setattr(card, "STATE_DIR", tmp_path / "state")
         edit_before_write(monkeypatch, projects / retry)
 
-        code = run_card(projects, "rekey", "--apply", "--user")
+        # Only an in-process patch can edit the note between rekey's read
+        # and its write, so this test calls card.main.
+        stopped = card.main(["rekey", "--apply", "--user"], projects)
         undo = shlex.split(capsys.readouterr().out.splitlines()[-1])[-1]
         subprocess.run(["sh", undo], check=True)
 
-        assert code == 1
+        assert stopped == 1
         edited = {**before, retry: before[retry] + b"edited\n"}
         assert read_tree(projects) == edited
 
+    @pytest.mark.cmd_new
     def test_second_apply_finishes_stopped_run(
         self,
         projects: Path,
-        monkeypatch: pytest.MonkeyPatch,
+        run_card: RunCard,
     ) -> None:
         """A second --apply after a stop renames the rest and fixes links.
 
@@ -2689,25 +3669,20 @@ class TestRekey:
         """
         write_rekey_vault(projects)
         devenv = projects / "DevEnv"
+        # A first --apply stopped here, since the user edited the second
+        # card while rekey wrote it.
+        write_rekeyed(projects, KEY, "PDEV-411", "Fix some bugs")
         retry = devenv / "PDEV-KB-002 Retry failed uploads.md"
-        edit_before_write(monkeypatch, retry)
-        first = run_card(projects, "rekey", "--apply", "--user")
-        run_card(
-            projects,
-            "new",
-            "DevEnv",
-            "Add a retry button",
-            "--by",
-            "user",
-        )
+        retry.write_text(retry.read_text() + "edited\n")
+        run_card("new", "DevEnv", "Add a retry button", "--by", "user")
 
-        code = run_card(projects, "rekey", "--apply", "--user")
+        result = run_card("rekey", "--apply", "--user")
 
-        assert (first, code) == (1, 0)
+        assert result.returncode == 0
         assert sorted(path.name for path in devenv.glob("PDEV-*")) == [
             "PDEV-410 Build the retries.md",
             "PDEV-410 Plan the retries.md",
-            "PDEV-411 Fix some work.md",
+            "PDEV-411 Fix some bugs.md",
             "PDEV-412 Add a retry button.md",
             "PDEV-413 Retry failed uploads.md",
             "PDEV-KB-003 Old done work.md",
@@ -2723,7 +3698,7 @@ class TestRekey:
     def test_second_apply_finishes_stopped_relink(
         self,
         projects: Path,
-        monkeypatch: pytest.MonkeyPatch,
+        run_card: RunCard,
     ) -> None:
         """A second --apply after a stop while relinking rewrites the links.
 
@@ -2733,13 +3708,21 @@ class TestRekey:
         reports success.
         """
         write_rekey_vault(projects)
+        # A first --apply renamed both cards, then stopped, since the user
+        # edited Links.md while rekey wrote it.
+        write_rekeyed(projects, KEY, "PDEV-411", "Fix some bugs")
+        write_rekeyed(
+            projects,
+            "PDEV-KB-002",
+            "PDEV-412",
+            "Retry failed uploads",
+        )
         links = projects / "DevEnv" / "Links.md"
-        edit_before_write(monkeypatch, links)
-        first = run_card(projects, "rekey", "--apply", "--user")
+        links.write_text(links.read_text() + "edited\n")
 
-        code = run_card(projects, "rekey", "--apply", "--user")
+        result = run_card("rekey", "--apply", "--user")
 
-        assert (first, code) == (1, 0)
+        assert result.returncode == 0
         assert links.read_text() == (
             "[[PDEV-411]], [[PDEV-412 Retry failed uploads|uploads]]"
             " and [[PDEV-KB-003 Old done work]]\n"
@@ -2825,8 +3808,8 @@ class TestRekey:
     def test_refuses_and_changes_nothing(
         self,
         projects: Path,
+        run_card: RunCard,
         herdr_agents: Path,
-        capsys: pytest.CaptureFixture[str],
         argv: list[str],
         herdr_output: str,
         notes: dict[str, str],
@@ -2846,10 +3829,10 @@ class TestRekey:
         herdr_agents.write_text(herdr_output)
         before = read_tree(projects)
 
-        code = run_card(projects, "rekey", *argv)
+        result = run_card("rekey", *argv)
 
-        assert code == 1
-        assert reason in capsys.readouterr().err
+        assert result.returncode == 1
+        assert reason in result.stderr
         assert read_tree(projects) == before
 
 
@@ -2858,7 +3841,7 @@ OTHER_PR = "https://github.com/me/repo/pull/8"
 
 
 @pytest.fixture
-def pr_states(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def pr_states(tmp_path: Path, bin_dir: Path) -> Path:
     """A gh on PATH that prints each PR's state from the returned file.
 
     Each line of the file is ``URL STATE``, and the file starts empty.
@@ -2867,24 +3850,17 @@ def pr_states(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """
     states = tmp_path / "pr-states.txt"
     states.write_text("")
-    gh = tmp_path / "gh-bin" / "gh"
-    gh.parent.mkdir()
+    gh = bin_dir / "gh"
     script = """#!/bin/sh
 awk -v url="$3" '$1 == url {print $2; found = 1} END {exit !found}' STATES \\
     || { echo "no pull request $3" >&2; exit 1; }
 """
     gh.write_text(script.replace("STATES", shlex.quote(str(states))))
     gh.chmod(0o755)
-    path = f"{gh.parent}{os.pathsep}{os.environ['PATH']}"
-    monkeypatch.setenv("PATH", path)
     return states
 
 
-def link_prs(path: Path, *urls: str) -> None:
-    """Set a card note's prs field to the URLs, as card link would."""
-    path.write_text(card.set_field(path.read_text(), "prs", list(urls)))
-
-
+@pytest.mark.cmd_merged
 @pytest.mark.usefixtures("pr_states")
 class TestMerged:
     """card merged moves the cards of a merged PR to done, or logs why not."""
@@ -2892,35 +3868,43 @@ class TestMerged:
     def test_moves_card_through_review_to_done(
         self,
         projects: Path,
+        run_card: RunCard,
         pr_states: Path,
-        capsys: pytest.CaptureFixture[str],
     ) -> None:
         """A merge moves an active card to done once all its PRs merged.
 
         The merge is the user's approval, so the Log shows the user's move
         through in-review and names the merged PR.
         """
-        path = write_card(projects, KEY, "active", "- [x] Done.")
-        link_prs(path, MERGED_PR, OTHER_PR)
+        path = write_card(
+            projects,
+            KEY,
+            "active",
+            "- [x] Done.",
+            prs=(
+                MERGED_PR,
+                OTHER_PR,
+            ),
+        )
         pr_states.write_text(f"{OTHER_PR} MERGED\n")
 
-        code = run_card(projects, "merged", MERGED_PR)
+        result = run_card("merged", MERGED_PR)
 
-        assert code == 0
+        assert result.returncode == 0
         text = path.read_text()
         assert f"stage: done\nstage_date: {TODAY}\n" in text
-        assert read_log(text).endswith(
+        assert read_section(text, "Log").endswith(
             f"- {TODAY} in-review: by card merged for the user\n"
             f"- {TODAY} done: by card merged for the user."
             f" {MERGED_PR} merged\n",
         )
-        out = capsys.readouterr().out
+        out = result.stdout
         assert out == f"{KEY} active -> in-review -> done\n"
 
     def test_matches_pr_in_any_spelling_only(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """A merge moves the card linking its PR and no card linking another.
 
@@ -2928,23 +3912,38 @@ class TestMerged:
         unfinished work. The argument and the card each spell the PR
         another way, and must still match.
         """
-        path = write_card(projects, KEY, "active", "- [x] Done.")
-        link_prs(path, "http://GitHub.com/Me/Repo/pull/7/files")
+        path = write_card(
+            projects,
+            KEY,
+            "active",
+            "- [x] Done.",
+            prs=("http://GitHub.com/Me/Repo/pull/7/files",),
+        )
         others = [
-            write_card(projects, "PDEV-KB-002", "active", "- [x] Done."),
-            write_card(projects, "PDEV-KB-003", "active", "- [x] Done."),
+            write_card(
+                projects,
+                "PDEV-KB-002",
+                "active",
+                "- [x] Done.",
+                prs=("https://github.com/me/repo/pull/70",),
+            ),
+            write_card(
+                projects,
+                "PDEV-KB-003",
+                "active",
+                "- [x] Done.",
+                prs=("https://github.com/me/other/pull/7",),
+            ),
         ]
-        link_prs(others[0], "https://github.com/me/repo/pull/70")
-        link_prs(others[1], "https://github.com/me/other/pull/7")
         before = [other.read_text() for other in others]
         spelled = "HTTPS://www.github.com/me/REPO/pull/7#x"
 
-        code = run_card(projects, "merged", spelled)
+        result = run_card("merged", spelled)
 
-        assert code == 0
+        assert result.returncode == 0
         assert "stage: done\n" in path.read_text()
         assert [other.read_text() for other in others] == before
-        out = capsys.readouterr().out
+        out = result.stdout
         assert out == f"{KEY} active -> in-review -> done\n"
 
     @pytest.mark.parametrize(
@@ -2979,8 +3978,8 @@ class TestMerged:
     def test_logs_why_card_stays(
         self,
         projects: Path,
+        run_card: RunCard,
         pr_states: Path,
-        capsys: pytest.CaptureFixture[str],
         criteria: str,
         states: str,
         reason: str,
@@ -2991,24 +3990,33 @@ class TestMerged:
         with no further check. The note tells the user what still holds
         the card.
         """
-        path = write_card(projects, KEY, "active", criteria)
-        link_prs(path, MERGED_PR, OTHER_PR)
+        path = write_card(
+            projects,
+            KEY,
+            "active",
+            criteria,
+            prs=(
+                MERGED_PR,
+                OTHER_PR,
+            ),
+        )
         pr_states.write_text(states)
 
-        code = run_card(projects, "merged", MERGED_PR)
+        result = run_card("merged", MERGED_PR)
 
-        assert code == 0
+        assert result.returncode == 0
         text = path.read_text()
         assert "stage: active\n" in text
-        assert read_log(text).endswith(
+        assert read_section(text, "Log").endswith(
             f"- {TODAY} note (card merged): {MERGED_PR} merged,"
             f" but the card stays active: {reason}\n",
         )
-        assert capsys.readouterr().out == f"{KEY} stays active: {reason}\n"
+        assert result.stdout == f"{KEY} stays active: {reason}\n"
 
     def test_rerun_logs_why_card_stays_once(
         self,
         projects: Path,
+        run_card: RunCard,
         pr_states: Path,
     ) -> None:
         """A second run for the same merge leaves a held card unchanged.
@@ -3016,21 +4024,29 @@ class TestMerged:
         A user reruns the command after a gh failure or a timeout, and each
         rerun would otherwise add the same note to every held card.
         """
-        path = write_card(projects, KEY, "active", "- [x] Done.")
-        link_prs(path, MERGED_PR, OTHER_PR)
+        path = write_card(
+            projects,
+            KEY,
+            "active",
+            "- [x] Done.",
+            prs=(
+                MERGED_PR,
+                OTHER_PR,
+            ),
+        )
         pr_states.write_text(f"{OTHER_PR} OPEN\n")
-        run_card(projects, "merged", MERGED_PR)
+        run_card("merged", MERGED_PR)
         before = path.read_text()
 
-        code = run_card(projects, "merged", MERGED_PR)
+        result = run_card("merged", MERGED_PR)
 
-        assert code == 0
+        assert result.returncode == 0
         assert path.read_text() == before
 
     def test_moves_other_cards_when_gh_fails(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
     ) -> None:
         """One card's gh failure still lets the next card move, and exits 1.
 
@@ -3039,25 +4055,38 @@ class TestMerged:
         hand.
         """
         # KEY sorts first, so its failure comes before the other card.
-        failing = write_card(projects, KEY, "active", "- [x] Done.")
-        link_prs(failing, MERGED_PR, OTHER_PR)
-        path = write_card(projects, "PDEV-KB-002", "active", "- [x] Done.")
-        link_prs(path, MERGED_PR)
+        failing = write_card(
+            projects,
+            KEY,
+            "active",
+            "- [x] Done.",
+            prs=(
+                MERGED_PR,
+                OTHER_PR,
+            ),
+        )
+        path = write_card(
+            projects,
+            "PDEV-KB-002",
+            "active",
+            "- [x] Done.",
+            prs=(MERGED_PR,),
+        )
         before = failing.read_text()
 
-        code = run_card(projects, "merged", MERGED_PR)
+        result = run_card("merged", MERGED_PR)
 
-        assert code == 1
+        assert result.returncode == 1
         assert failing.read_text() == before
         assert "stage: done\n" in path.read_text()
-        out = capsys.readouterr().out
+        out = result.stdout
         assert out == "PDEV-KB-002 active -> in-review -> done\n"
 
     @pytest.mark.parametrize("stage", ["done", "dropped"])
     def test_skips_done_or_dropped_exits_zero(
         self,
         projects: Path,
-        capsys: pytest.CaptureFixture[str],
+        run_card: RunCard,
         stage: str,
     ) -> None:
         """A merge that no open card links changes nothing and exits 0.
@@ -3065,12 +4094,335 @@ class TestMerged:
         A done card is final and a dropped one was given up, so a later
         merge must not write to either.
         """
-        path = write_card(projects, KEY, stage, "- [x] Done.")
-        link_prs(path, MERGED_PR)
+        path = write_card(
+            projects,
+            KEY,
+            stage,
+            "- [x] Done.",
+            prs=(MERGED_PR,),
+        )
         before = path.read_text()
 
-        code = run_card(projects, "merged", MERGED_PR)
+        result = run_card("merged", MERGED_PR)
 
-        assert code == 0
+        assert result.returncode == 0
         assert path.read_text() == before
-        assert capsys.readouterr().out == f"no open card links {MERGED_PR}\n"
+        assert result.stdout == f"no open card links {MERGED_PR}\n"
+
+
+@pytest.fixture
+def herdr_calls(tmp_path: Path, bin_dir: Path, herdr_agents: Path) -> Path:
+    """A file where the fake herdr writes each command it gets, one a line.
+
+    The herdr still prints the herdr_agents file for any command.
+    """
+    calls = tmp_path / "herdr-calls.txt"
+    (bin_dir / "herdr").write_text(
+        "#!/bin/sh\n"
+        f"printf '%s\\n' \"$*\" >> {shlex.quote(str(calls))}\n"
+        f"cat {shlex.quote(str(herdr_agents))}\n",
+    )
+    return calls
+
+
+class TestArgumentShapes:
+    """card reads each argument shape the hub and the skills type.
+
+    A second version of card must read them as card.py's parser does.
+    """
+
+    @pytest.mark.cmd_link
+    @pytest.mark.usefixtures("fake_herdr")
+    def test_session_value_after_flag_names_agent(
+        self,
+        projects: Path,
+        run_card: RunCard,
+        herdr_calls: Path,
+    ) -> None:
+        """--session AGENT asks Herdr for that agent, not this pane's.
+
+        The hub links a worker's session from its own pane this way.
+        Reading worker-1 as another argument would refuse the command or
+        record the hub's own session.
+        """
+        path = write_card(projects, KEY, "active")
+
+        result = run_card("link", KEY, "--session", "worker-1")
+
+        assert result.returncode == 0
+        assert herdr_calls.read_text() == "agent get worker-1\n"
+        assert 'sessions:\n  - "opencode ses_abc"\n' in path.read_text()
+
+    @pytest.mark.cmd_link
+    @pytest.mark.usefixtures("fake_herdr")
+    def test_session_alone_uses_this_pane(
+        self,
+        projects: Path,
+        run_card: RunCard,
+        herdr_calls: Path,
+    ) -> None:
+        """--session with no value asks Herdr for the agent in this pane.
+
+        card link --session with no AGENT records the agent in the current
+        pane. If the option needed a value, every worker's link would fail.
+        """
+        path = write_card(projects, KEY, "active")
+
+        result = run_card("link", KEY, "--session")
+
+        assert result.returncode == 0
+        assert herdr_calls.read_text() == "agent get w4X:p2\n"
+        assert 'sessions:\n  - "opencode ses_abc"\n' in path.read_text()
+
+    @pytest.mark.cmd_note
+    def test_options_between_positionals_work(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """An option may come before, between or after the positionals.
+
+        A parser that stops reading options at the first positional would
+        refuse some of these calls.
+        """
+        path = write_card(projects, KEY, "active")
+
+        results = [
+            run_card("note", "--by", "tester", KEY, "Done."),
+            run_card("note", KEY, "--by", "tester", "Done."),
+            run_card("note", KEY, "Done.", "--by", "tester"),
+        ]
+
+        assert [result.returncode for result in results] == [0, 0, 0]
+        assert read_section(path.read_text(), "Log").endswith(
+            f"- {TODAY} note (tester): Done.\n" * 3,
+        )
+
+    @pytest.mark.cmd_note
+    def test_double_dash_ends_options(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """Text after -- is logged as typed, even when it starts with a dash.
+
+        Without it, text such as "-x" would be read as an unknown option
+        and the note refused.
+        """
+        path = write_card(projects, KEY, "active")
+
+        result = run_card(
+            "note",
+            "--by",
+            "tester",
+            "--",
+            KEY,
+            "-x starts with a dash",
+        )
+
+        assert result.returncode == 0
+        assert read_section(path.read_text(), "Log").endswith(
+            f"- {TODAY} note (tester): -x starts with a dash\n",
+        )
+
+    @pytest.mark.cmd_note
+    @pytest.mark.parametrize(
+        "text",
+        [
+            pytest.param("--user was missing, retried", id="double-dash"),
+            pytest.param("-5", id="negative-number"),
+        ],
+    )
+    def test_note_logs_text_shaped_like_option(
+        self,
+        projects: Path,
+        run_card: RunCard,
+        text: str,
+    ) -> None:
+        """Note text shaped like an option is logged as typed, without --.
+
+        The Python card reads text that holds a space, or looks like a
+        negative number, as text. An agent's note such as "--user was
+        missing, retried" must not be refused as an unknown option.
+        """
+        path = write_card(projects, KEY, "active")
+
+        result = run_card("note", KEY, text, "--by", "tester")
+
+        assert result.returncode == 0
+        assert read_section(path.read_text(), "Log").endswith(
+            f"- {TODAY} note (tester): {text}\n",
+        )
+
+    @pytest.mark.cmd_move
+    def test_dashed_why_value_is_logged(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """A --why value that starts with "- " is logged as the reason.
+
+        The Python card reads it as the flag's value. Read as loose text,
+        it would leave --why without its reason and refuse the move.
+        """
+        path = write_card(projects, KEY, "active")
+
+        result = run_card(
+            "move",
+            KEY,
+            "blocked",
+            "--why",
+            "- waits on review",
+            "--by",
+            "hub",
+        )
+
+        assert result.returncode == 0
+        assert read_section(path.read_text(), "Log").endswith(
+            f"- {TODAY} blocked: by hub. - waits on review\n",
+        )
+
+    @pytest.mark.cmd_move
+    def test_stage_outside_list_exits_two(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """A move to a stage card does not know is a usage error.
+
+        Exit 2 tells the hub it typed the command wrong, not that card
+        refused the move. The card stays as it was.
+        """
+        path = write_card(projects, KEY, "todo")
+        before = path.read_text()
+
+        result = run_card("move", KEY, "nowhere", "--by", "tester")
+
+        assert result.returncode == 2
+        assert path.read_text() == before
+
+    @pytest.mark.cmd_edit
+    def test_edit_of_log_exits_two(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """card edit refuses the Log section as a usage error.
+
+        Only card writes the Log, so its lines stay a true record of each
+        move. The card stays as it was.
+        """
+        path = write_card(projects, KEY, "active")
+        before = path.read_text()
+
+        result = run_card("edit", KEY, "Log", "1", "x", "--by", "tester")
+
+        assert result.returncode == 2
+        assert path.read_text() == before
+
+    @pytest.mark.cmd_list
+    def test_unknown_option_exits_two(self, run_card: RunCard) -> None:
+        """An option card does not know is a usage error.
+
+        A mistyped option must stop the command, not run it without the
+        option. Exit 2 tells scripts the call was wrong, not the card.
+        """
+        result = run_card("list", "--nope")
+
+        assert result.returncode == 2
+        assert "--nope" in result.stderr
+
+
+class TestCardToday:
+    """CARD_TODAY fixes the date card writes, so tests can check it."""
+
+    @pytest.mark.cmd_move
+    def test_card_today_sets_both_dates(
+        self,
+        projects: Path,
+        run_card: RunCard,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A move under CARD_TODAY writes that date in stage_date and the Log.
+
+        Every other test expects TODAY in what card writes. If card used
+        the real date, those tests would pass or fail by the calendar.
+        """
+        monkeypatch.setenv("CARD_TODAY", "2026-03-02")
+        path = write_card(projects, KEY, "todo", "- [ ] Done.")
+
+        result = run_card("move", KEY, "active", "--by", "user")
+
+        assert result.returncode == 0
+        text = path.read_text()
+        assert "\nstage_date: 2026-03-02\n" in text
+        assert read_section(text, "Log").endswith(
+            "- 2026-03-02 active: by user\n",
+        )
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            pytest.param(
+                ("move", KEY, "active", "--by", "user"),
+                id="move",
+                marks=pytest.mark.cmd_move,
+            ),
+            pytest.param(
+                ("list",),
+                id="list-reads-no-date",
+                marks=pytest.mark.cmd_list,
+            ),
+        ],
+    )
+    def test_bad_card_today_is_card_error(
+        self,
+        projects: Path,
+        run_card: RunCard,
+        monkeypatch: pytest.MonkeyPatch,
+        argv: tuple[str, ...],
+    ) -> None:
+        """A CARD_TODAY that is not YYYY-MM-DD fails with a card error.
+
+        A typo in a test's date must stop card, so no test runs on the
+        real date. card reads it before any command runs, so even list,
+        which writes no date, refuses it. The card stays as it was.
+        """
+        monkeypatch.setenv("CARD_TODAY", "11/07")
+        path = write_card(projects, KEY, "todo", "- [ ] Done.")
+        before = path.read_text()
+
+        result = run_card(*argv)
+
+        assert result.returncode == 1
+        assert result.stderr.startswith("card: ")
+        assert "CARD_TODAY" in result.stderr
+        assert path.read_text() == before
+
+    @pytest.mark.cmd_note
+    def test_card_today_unset_uses_real_date(
+        self,
+        projects: Path,
+        run_card: RunCard,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Without CARD_TODAY, a note logs today's real date.
+
+        The installed card runs with CARD_TODAY unset, so the switch must
+        not change the date it writes there. The date is read before and
+        after the run, so a run across midnight still passes.
+        """
+        monkeypatch.delenv("CARD_TODAY")
+        path = write_card(projects, KEY, "active")
+
+        first_day = date.today().isoformat()
+        result = run_card("note", KEY, "Done.", "--by", "tester")
+        last_day = date.today().isoformat()
+
+        assert result.returncode == 0
+        assert read_section(path.read_text(), "Log").endswith(
+            (
+                f"- {first_day} note (tester): Done.\n",
+                f"- {last_day} note (tester): Done.\n",
+            ),
+        )

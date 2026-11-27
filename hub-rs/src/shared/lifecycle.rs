@@ -322,6 +322,14 @@ pub(crate) fn parse_kanban_hub_number(name: &str) -> Option<u64> {
         .map(|(_, number)| number)
 }
 
+/// Returns 24 for `auto-hub-24`, an auto run's hub, which carries its
+/// run's number, and `None` for any other kind of hub or name.
+pub(crate) fn parse_auto_hub_number(name: &str) -> Option<u64> {
+    split_hub_name(name)
+        .filter(|(word, _)| *word == AUTO_HUB_WORD)
+        .map(|(_, number)| number)
+}
+
 /// Splits a hub name such as `kanban-hub-13` into `kanban` and 13.
 fn split_hub_name(name: &str) -> Option<(&str, u64)> {
     if !is_hub_name(name) {

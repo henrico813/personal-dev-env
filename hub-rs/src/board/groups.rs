@@ -1,24 +1,33 @@
 //! Sorts a `Queue` into the board's groups, such as one for cards
-//! needing the user's review, and writes each row's words, its
-//! details page and the NEXT lines. Nothing here draws. Read
-//! `build_groups` and `describe_item` first.
+//! needing the user's review, and writes each row's words and its
+//! details page. Nothing here draws. Read `build_groups` and
+//! `describe_item` first.
+
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BTreeSet};
 
 use jiff::civil::Date;
 use ratatui::style::Color;
 
+use super::pull_requests::{CheckResult, PullRequestLine};
 use super::queue::{CardLine, Queue, SessionRow};
 use crate::external::cards::{CardKey, CardNote, OpenItem, Stage};
-use crate::shared::lifecycle::Lifecycle;
+use crate::shared::lifecycle::{self, Lifecycle};
 
-/// The board's groups, in screen order.
+/// The board's groups. `Panel::list_groups` gives each page's groups in
+/// screen order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum Group {
-    /// Faults, such as a stopped `hub watch`, then what the read could
-    /// not get, such as a failed `Cards::list_cards` call.
-    Problems,
     NeedsYou,
-    Active,
+    /// Active cards whose worker is at work.
+    Working,
+    NoWorker,
+    /// Active cards with a worker, none of them at work, such as one
+    /// that waits on the user.
+    Idle,
     InReview,
+    /// Open pull requests no IN REVIEW row shows.
+    OtherPrs,
     Blocked,
     Todo,
     Draft,
@@ -38,20 +47,23 @@ pub(super) enum Status {
     Rev,
     /// Its card has no worker session.
     None,
-    /// A source the read could not get.
+    /// Its pull request's check failed. Page 5 draws only the red
+    /// color, not the `!` word.
     Problem,
 }
 
 impl Group {
     pub(super) fn title(self) -> &'static str {
         match self {
-            Group::Problems => "Problems",
-            Group::Active => "Active",
-            Group::InReview => "In review",
-            Group::Blocked => "Blocked",
-            Group::NeedsYou => "Needs you",
-            Group::Todo => "Todo",
-            Group::Draft => "Draft",
+            Group::NeedsYou => "WAITING ON YOU",
+            Group::Working => "WORKING",
+            Group::NoWorker => "NO WORKER",
+            Group::Idle => "IDLE",
+            Group::InReview => "IN REVIEW",
+            Group::OtherPrs => "OTHER PULL REQUESTS",
+            Group::Blocked => "BLOCKED",
+            Group::Todo => "UP NEXT",
+            Group::Draft => "DRAFT",
         }
     }
 
@@ -59,11 +71,13 @@ impl Group {
     /// `group:in-review`.
     pub(super) fn slug(self) -> &'static str {
         match self {
-            Group::Problems => "problems",
-            Group::Active => "active",
-            Group::InReview => "in-review",
-            Group::Blocked => "blocked",
             Group::NeedsYou => "needs-you",
+            Group::Working => "working",
+            Group::NoWorker => "no-worker",
+            Group::Idle => "idle",
+            Group::InReview => "in-review",
+            Group::OtherPrs => "other-prs",
+            Group::Blocked => "blocked",
             Group::Todo => "todo",
             Group::Draft => "draft",
         }
@@ -71,15 +85,15 @@ impl Group {
 
     /// Returns the color of the group's count, one of the 16 colors the
     /// terminal's own theme sets or its default, so a phone app's theme
-    /// keeps them readable. Cyan means at work, and no group count
-    /// counts work, so none takes it.
+    /// keeps them readable. Cyan means at work, and yellow a card held
+    /// up. `draw` dims the IDLE and DRAFT counts.
     pub(super) fn color(self) -> Color {
         match self {
-            Group::Problems => Color::Red,
             Group::NeedsYou => Color::Magenta,
+            Group::Working => Color::Cyan,
             Group::InReview => Color::Green,
-            Group::Blocked => Color::Yellow,
-            Group::Active | Group::Todo | Group::Draft => Color::Reset,
+            Group::NoWorker | Group::Blocked => Color::Yellow,
+            Group::Idle | Group::OtherPrs | Group::Todo | Group::Draft => Color::Reset,
         }
     }
 }
@@ -127,8 +141,10 @@ pub(super) struct Item {
     /// `DEMO-KB-001 Faster search`.
     pub text: String,
     /// A short word for the row's right end, such as `DevEnv` for the
-    /// project folder of a card or of a question's card.
+    /// project folder of a card, or `answer` on a WAITING ON YOU row.
     pub tag: String,
+    /// The dim line under the row, such as `today: Deploy tonight?`.
+    pub detail: Option<String>,
     pub status: Status,
     pub target: Target,
 }
@@ -139,7 +155,11 @@ pub(super) enum Target {
     Card(usize),
     Question(usize),
     Session(usize),
-    Problem(usize),
+    /// A pull request in `Queue::pull_requests`.
+    PullRequest(usize),
+    /// The folded row of passing pull requests no card links, with how
+    /// many it folds.
+    PassingPrs(usize),
 }
 
 impl Target {
@@ -150,15 +170,14 @@ impl Target {
             Target::Card(_) => "card",
             Target::Question(_) => "question",
             Target::Session(_) => "session",
-            Target::Problem(_) => "problem",
+            Target::PullRequest(_) => "pr",
+            Target::PassingPrs(_) => "prs",
         }
     }
 }
 
-/// Returns every group with its items, in screen order. The
-/// `Problems` group shows only when it holds a row, and the
-/// group of cards waiting on people outside the team only when it
-/// holds a card.
+/// Returns every group with its items. The Blocked group shows only
+/// when it holds a card, since most boards have none.
 pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
     let list_cards_at = |stage: Stage| -> Vec<Item> {
         queue
@@ -169,160 +188,253 @@ pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
             .map(|(index, card)| build_card_item(index, card, &queue.sessions))
             .collect()
     };
-    let mut needs_you: Vec<Item> = queue
-        .questions
-        .iter()
-        .enumerate()
-        .map(|(index, question)| Item {
-            id: question.format_id(),
-            text: format!("{} {}", question.format_id(), question.title),
-            tag: question.project.clone(),
-            status: Status::You,
-            target: Target::Question(index),
-        })
-        .collect();
-    needs_you.extend(
-        queue
-            .waiting
-            .iter()
-            .enumerate()
-            .map(|(index, session)| Item {
-                id: session.name.clone(),
-                text: put_card_key_first(
-                    CardKey::find_in_name(&session.name).as_ref(),
-                    &format!("{}  {}", session.name, session.why),
-                ),
-                tag: "worker".to_owned(),
-                status: Status::You,
-                target: Target::Session(index),
-            }),
-    );
-    let problems: Vec<Item> = queue
-        .problems
-        .iter()
-        .enumerate()
-        .map(|(index, problem)| Item {
-            id: problem.clone(),
-            text: problem.clone(),
-            tag: String::new(),
-            status: Status::Problem,
-            target: Target::Problem(index),
-        })
-        .collect();
-
-    let mut groups = Vec::new();
-    if !problems.is_empty() {
-        groups.push((Group::Problems, problems));
+    let (mut working, mut no_worker, mut idle) = (Vec::new(), Vec::new(), Vec::new());
+    for item in list_cards_at(Stage::Active) {
+        match item.status {
+            Status::Run => working.push(item),
+            Status::None => no_worker.push(item),
+            // A worker that waits on the user is not at work. Its card
+            // already shows under WAITING ON YOU.
+            _ => idle.push(item),
+        }
     }
-    groups.extend([
-        (Group::NeedsYou, needs_you),
-        (Group::Active, list_cards_at(Stage::Active)),
-        (Group::InReview, list_cards_at(Stage::InReview)),
-        (Group::Blocked, list_cards_at(Stage::Blocked)),
+    let (in_review, other_prs) = list_review_items(queue, list_cards_at(Stage::InReview));
+    let mut groups = vec![
+        (Group::NeedsYou, list_waiting_items(queue)),
+        (Group::Working, working),
+        (Group::NoWorker, no_worker),
+        (Group::Idle, idle),
+        (Group::InReview, in_review),
+        (Group::OtherPrs, other_prs),
         (Group::Todo, list_cards_at(Stage::Todo)),
         (Group::Draft, list_cards_at(Stage::Draft)),
-    ]);
-    // Most boards have no card waiting on people outside the team,
-    // and a phone has few rows.
-    groups.retain(|(group, items)| *group != Group::Blocked || !items.is_empty());
+    ];
+    let blocked = list_cards_at(Stage::Blocked);
+    if !blocked.is_empty() {
+        groups.push((Group::Blocked, blocked));
+    }
     groups
 }
 
-/// The statuses the QUEUE heading counts, in its order.
-const COUNTED: [Status; 3] = [Status::Run, Status::You, Status::Idle];
-
-/// The lines of the NEXT block and view.
-#[derive(Debug, PartialEq, Eq)]
-pub(super) struct NextLines {
-    /// One `you:` line per row of Needs you, or one that says none.
-    pub you: Vec<String>,
-    /// The `then:` line, which counts the cards needing the user's
-    /// review.
-    pub then: String,
-    /// One `hub:` line per card ready to start, in the order
-    /// `Cards::list_cards` gives, or one that says none. The hub may
-    /// start another card first.
-    pub hub: Vec<String>,
+/// Returns the WAITING ON YOU rows, one per card, where the card's
+/// open questions and its waiting sessions share a row. A waiting
+/// session with no card key has a row of its own, named by its auto
+/// run, such as `Hub of auto run 24`, when it is that run's hub, else
+/// by its session name. Rows whose newest
+/// question was asked today come first, then `see tab` rows, then the
+/// older questions, newest first.
+///
+/// It builds the rows from `queue.questions` and `queue.waiting`.
+/// `read_open_questions` fills `queue.questions`, and `hub waiting`
+/// reads its questions through it too.
+pub(super) fn list_waiting_items(queue: &Queue) -> Vec<Item> {
+    // Each row's id, a card key or a session name, with the places of
+    // its questions and sessions in the queue.
+    let mut rows: BTreeMap<String, (Vec<usize>, Vec<usize>)> = BTreeMap::new();
+    for (index, question) in queue.questions.iter().enumerate() {
+        let id = question.key.as_str().to_owned();
+        rows.entry(id).or_default().0.push(index);
+    }
+    for (index, session) in queue.waiting.iter().enumerate() {
+        let id = CardKey::find_in_name(&session.name)
+            .map_or_else(|| session.name.clone(), |key| key.as_str().to_owned());
+        rows.entry(id).or_default().1.push(index);
+    }
+    let mut items: Vec<Item> = rows
+        .into_iter()
+        .map(|(id, (questions, sessions))| build_waiting_item(queue, id, &questions, &sessions))
+        .collect();
+    items.sort_by_key(|item| match item.target {
+        Target::Question(index) => {
+            let question = &queue.questions[index];
+            let rank = if question.asked_on == Some(queue.read_on) {
+                0
+            } else {
+                2
+            };
+            (rank, Reverse((question.asked_on, question.number)))
+        }
+        _ => (1, Reverse((None, 0))),
+    });
+    items
 }
 
-/// Returns the rows of the glance page's QUEUE block, which are what
-/// could not be read, what waits on the user, then cards that run,
-/// idle cards and cards needing the user's review. A card whose worker
-/// waits on the user is left out, since that worker is already a row
-/// of the `Needs you` group.
-pub(super) fn pick_glance_items(groups: &[(Group, Vec<Item>)]) -> Vec<(Group, &Item)> {
-    let order = [
-        Status::Problem,
-        Status::You,
-        Status::Run,
-        Status::Idle,
-        Status::Rev,
-    ];
-    let mut shown = Vec::new();
-    for status in order {
-        for (group, items) in groups {
-            if status == Status::You && *group != Group::NeedsYou {
-                continue;
-            }
-            let matching = items.iter().filter(|item| item.status == status);
-            shown.extend(matching.map(|item| (*group, item)));
+/// Returns one WAITING ON YOU row from the places in `queue` of a
+/// card's questions and waiting sessions, of which there is at least
+/// one. With two or more questions, the row shows the newest one with
+/// the oldest one's age and a count, such as
+/// `16 days old, +3 questions: Who updates the docs?`.
+fn build_waiting_item(queue: &Queue, id: String, questions: &[usize], sessions: &[usize]) -> Item {
+    let order_by_age = |index: &&usize| {
+        let question = &queue.questions[**index];
+        (question.asked_on, question.number)
+    };
+    let newest = questions.iter().max_by_key(order_by_age).copied();
+    let oldest = questions.iter().min_by_key(order_by_age).copied();
+    let title = queue
+        .cards
+        .iter()
+        .find(|card| card.key.as_str() == id)
+        .map(|card| card.title.as_str())
+        .or_else(|| newest.map(|index| queue.questions[index].title.as_str()))
+        .unwrap_or_default();
+    let text = match lifecycle::parse_auto_hub_number(&id) {
+        Some(run) => format!("Hub of auto run {run}"),
+        None => format!("{id} {title}").trim_end().to_owned(),
+    };
+    let (tag, detail, target) = match (newest, oldest) {
+        (Some(newest), Some(oldest)) => {
+            let age = format_question_age(queue.questions[oldest].asked_on, queue.read_on);
+            let title = &queue.questions[newest].title;
+            let detail = match questions.len() - 1 {
+                0 => format!("{age}: {title}"),
+                1 => format!("{age}, +1 question: {title}"),
+                more => format!("{age}, +{more} questions: {title}"),
+            };
+            ("answer", detail, Target::Question(newest))
+        }
+        _ => {
+            let first = sessions[0];
+            let why = queue.waiting[first].why.clone();
+            ("see tab", why, Target::Session(first))
+        }
+    };
+    Item {
+        id,
+        text,
+        tag: tag.to_owned(),
+        detail: Some(detail),
+        status: Status::You,
+        target,
+    }
+}
+
+/// Returns the IN REVIEW rows, each card with its pull request's line
+/// under it, and the OTHER PULL REQUESTS rows, failing first. A pull
+/// request belongs to a card only when the card's `prs:` link names it.
+/// Passing pull requests of no card fold into one last row.
+fn list_review_items(queue: &Queue, mut cards: Vec<Item>) -> (Vec<Item>, Vec<Item>) {
+    let pull_requests = list_pull_requests(queue);
+    let mut shown = BTreeSet::new();
+    for item in &mut cards {
+        let Target::Card(index) = item.target else {
+            continue;
+        };
+        let links = queue
+            .notes
+            .get(&queue.cards[index].key)
+            .map_or(&[][..], |note| note.prs.as_slice());
+        let found = links.iter().find_map(|link| {
+            pull_requests
+                .iter()
+                .position(|pull_request| pull_request.is_named_by(link))
+        });
+        if let Some(at) = found {
+            let pull_request = &pull_requests[at];
+            let line = format!(
+                "{} #{} {}",
+                find_project_label(queue, pull_request),
+                pull_request.number,
+                pull_request.check.as_word()
+            );
+            item.detail = Some(line.trim_end().to_owned());
+            shown.insert(at);
         }
     }
-    shown
-}
-
-/// Returns the QUEUE heading's counts, such as 2 for `Status::Run`,
-/// each with the group that holds its first row, where a tap on it
-/// jumps. A status with no row is left out.
-pub(super) fn count_statuses(groups: &[(Group, Vec<Item>)]) -> Vec<(Status, usize, Group)> {
-    let shown = pick_glance_items(groups);
-    COUNTED
+    let mut others: Vec<usize> = (0..pull_requests.len())
+        .filter(|at| !shown.contains(at))
+        .collect();
+    others.sort_by_key(|&at| pull_requests[at].check);
+    let (folded, listed): (Vec<usize>, Vec<usize>) = others
         .into_iter()
-        .filter_map(|status| {
-            let mut rows = shown.iter().filter(|(_, item)| item.status == status);
-            let (group, _) = rows.next()?;
-            Some((status, rows.count() + 1, *group))
-        })
-        .collect()
+        .partition(|&at| is_folded(queue, &pull_requests[at]));
+    let mut rows: Vec<Item> = listed
+        .into_iter()
+        .map(|at| build_pr_item(queue, pull_requests, at))
+        .collect();
+    if !folded.is_empty() {
+        let numbers: Vec<String> = folded
+            .iter()
+            .map(|&at| format!("#{}", pull_requests[at].number))
+            .collect();
+        rows.push(Item {
+            id: "passing-prs".to_owned(),
+            text: format!("+ {} pass, no card: {}", folded.len(), numbers.join(" ")),
+            tag: String::new(),
+            detail: None,
+            status: Status::Rev,
+            target: Target::PassingPrs(folded.len()),
+        });
+    }
+    (cards, rows)
 }
 
-/// Returns the NEXT lines from the groups. `no_hub` is true when no hub
-/// ran at the read.
-pub(super) fn write_next_lines(groups: &[(Group, Vec<Item>)], no_hub: bool) -> NextLines {
-    let find_items = |wanted: Group| {
-        groups
-            .iter()
-            .find(|(group, _)| *group == wanted)
-            .map_or(&[][..], |(_, items)| items)
-    };
-    let mut you: Vec<String> = find_items(Group::NeedsYou)
-        .iter()
-        .map(|item| match item.target {
-            Target::Question(_) => format!("you: answer {}", item.text),
-            _ => format!("you: {}", item.text),
+/// Returns an OTHER PULL REQUESTS row, such as
+/// `DevEnv #60 DEMO-KB-002 Faster board`, with its check word as the
+/// tag.
+/// Its status word takes the check's color, red for a failed check.
+fn build_pr_item(queue: &Queue, pull_requests: &[PullRequestLine], at: usize) -> Item {
+    let pull_request = &pull_requests[at];
+    let card = find_pr_card(queue, pull_request);
+    Item {
+        id: format!("{}#{}", pull_request.name_with_owner, pull_request.number),
+        text: format!(
+            "{} #{} {}",
+            find_project_label(queue, pull_request),
+            pull_request.number,
+            put_card_key_first(card, &pull_request.title)
+        ),
+        tag: pull_request.check.as_word().to_owned(),
+        detail: None,
+        status: match pull_request.check {
+            CheckResult::Fails => Status::Problem,
+            CheckResult::Running => Status::Run,
+            CheckResult::Pass | CheckResult::None => Status::Rev,
+        },
+        target: Target::PullRequest(at),
+    }
+}
+
+/// Returns the project label of a pull request's row, such as
+/// `DevEnv`, from a card whose `prs:` link names the same repository.
+/// The `prs` list names no project, so without such a card in
+/// `Queue::notes` the label is the repository name, such as `app`.
+fn find_project_label<'a>(queue: &'a Queue, pull_request: &'a PullRequestLine) -> &'a str {
+    queue
+        .notes
+        .values()
+        .find(|note| {
+            !note.project.is_empty()
+                && note
+                    .prs
+                    .iter()
+                    .any(|link| pull_request.shares_repo_with(link))
         })
-        .collect();
-    if you.is_empty() {
-        let none = if no_hub {
-            "no hub running"
-        } else {
-            "nothing waits on you"
-        };
-        you.push(format!("you: {none}"));
-    }
-    let then = match find_items(Group::InReview).len() {
-        0 => "then: no reviews".to_owned(),
-        1 => "then: review 1 card".to_owned(),
-        count => format!("then: review {count} cards"),
-    };
-    let mut hub: Vec<String> = find_items(Group::Todo)
+        .map_or_else(
+            || pull_request.find_repo_name(),
+            |note| note.project.as_str(),
+        )
+}
+
+/// Returns the pull requests the read got, empty without the `prs`
+/// list.
+fn list_pull_requests(queue: &Queue) -> &[PullRequestLine] {
+    queue.pull_requests.as_deref().unwrap_or_default()
+}
+
+/// Tells whether `pull_request` folds into the `+ N pass, no card` row.
+fn is_folded(queue: &Queue, pull_request: &PullRequestLine) -> bool {
+    pull_request.check == CheckResult::Pass && find_pr_card(queue, pull_request).is_none()
+}
+
+/// Returns the card whose `prs:` link names `pull_request`. Only the
+/// cards in `Queue::notes` are known.
+fn find_pr_card<'a>(queue: &'a Queue, pull_request: &PullRequestLine) -> Option<&'a CardKey> {
+    queue
+        .notes
         .iter()
-        .map(|item| format!("hub: start {}", item.text))
-        .collect();
-    if hub.is_empty() {
-        hub.push(format!("hub: no {} card", Stage::Todo.as_str()));
-    }
-    NextLines { you, then, hub }
+        .find(|(_, note)| note.prs.iter().any(|link| pull_request.is_named_by(link)))
+        .map(|(key, _)| key)
 }
 
 /// Returns the lines of an item's details page, not yet wrapped. A
@@ -350,7 +462,26 @@ pub(super) fn describe_item(queue: &Queue, target: Target, note: Option<&CardNot
             lines.extend(describe_worker_status(&queue.sessions, &session.name));
             lines
         }
-        Target::Problem(index) => vec![queue.problems[index].clone()],
+        Target::PullRequest(at) => {
+            let pull_request = &list_pull_requests(queue)[at];
+            let mut lines = vec![
+                pull_request.title.clone(),
+                format!(
+                    "{} #{}  {}",
+                    pull_request.name_with_owner,
+                    pull_request.number,
+                    pull_request.check.as_word()
+                ),
+            ];
+            let card = find_pr_card(queue, pull_request);
+            lines.extend(card.map(|key| format!("card {}", key.as_str())));
+            lines
+        }
+        Target::PassingPrs(_) => list_pull_requests(queue)
+            .iter()
+            .filter(|pull_request| is_folded(queue, pull_request))
+            .map(|pull_request| format!("#{} {}", pull_request.number, pull_request.title))
+            .collect(),
     }
 }
 
@@ -418,15 +549,32 @@ fn describe_worker_status(sessions: &[SessionRow], name: &str) -> Option<String>
 /// Returns how long ago a question was asked, in whole days, such as
 /// `asked 2 days ago`.
 fn describe_question_age(asked_on: Date, read_on: Date) -> String {
-    match asked_on
-        .until(read_on)
-        .map_or(0, |span| span.get_days())
-        .max(0)
-    {
+    match count_days_between(asked_on, read_on) {
         0 => "asked today".to_owned(),
         1 => "asked 1 day ago".to_owned(),
         days => format!("asked {days} days ago"),
     }
+}
+
+/// Returns a question's age on its WAITING ON YOU row, such as `today`,
+/// `2 days old` or `undated`.
+fn format_question_age(asked_on: Option<Date>, read_on: Date) -> String {
+    let Some(asked_on) = asked_on else {
+        return "undated".to_owned();
+    };
+    match count_days_between(asked_on, read_on) {
+        0 => "today".to_owned(),
+        1 => "1 day old".to_owned(),
+        days => format!("{days} days old"),
+    }
+}
+
+/// Returns the whole days from `asked_on` to `read_on`, never below 0.
+fn count_days_between(asked_on: Date, read_on: Date) -> i32 {
+    asked_on
+        .until(read_on)
+        .map_or(0, |span| span.get_days())
+        .max(0)
 }
 
 /// Returns a board line's words with the card key in front, such as
@@ -451,6 +599,7 @@ fn build_card_item(index: usize, card: &CardLine, sessions: &[SessionRow]) -> It
         id: card.key.as_str().to_owned(),
         text: put_card_key_first(Some(&card.key), &card.title),
         tag: card.project.clone(),
+        detail: None,
         status: decide_card_status(card, sessions),
         target: Target::Card(index),
     }
@@ -499,8 +648,11 @@ fn find_next_step(note: &CardNote) -> Option<String> {
 mod tests {
     use super::*;
 
-    use crate::board::queue::WorkerStatus;
+    use jiff::civil::date;
+
+    use crate::board::queue::{SessionLine, WorkerStatus};
     use crate::board::view::tests::make_sample_queue;
+    use crate::shared::questions::OpenQuestion;
 
     /// A card's open questions show under its title, with their Q
     /// numbers, so the user sees what waits and how to answer it
@@ -621,5 +773,125 @@ mod tests {
 
             assert_eq!(text, expected, "{words}");
         }
+    }
+
+    /// A card with a question and a waiting tab must take one WAITING
+    /// ON YOU row, or the user counts two things to do where there is
+    /// one. A tab with no question comes before older questions.
+    #[test]
+    fn list_waiting_items_merges_question_and_tab() {
+        let mut queue = make_sample_queue();
+        queue.waiting.push(SessionLine {
+            name: "demo-kb-001-build".to_owned(),
+            why: "needs you".to_owned(),
+            card: None,
+        });
+
+        let items = list_waiting_items(&queue);
+
+        let rows: Vec<(&str, &str, Option<&str>)> = items
+            .iter()
+            .map(|item| {
+                (
+                    item.text.as_str(),
+                    item.tag.as_str(),
+                    item.detail.as_deref(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                ("blocked-fix", "see tab", Some("needs you")),
+                (
+                    "DEMO-KB-001 Faster search",
+                    "answer",
+                    Some("undated: Deploy tonight?")
+                ),
+            ]
+        );
+    }
+
+    /// An auto run's hub has no card, so its row must name the run it
+    /// leads. A bare session name such as `auto-hub-24` makes the user
+    /// work out which run waits on them.
+    #[test]
+    fn list_waiting_items_names_auto_run_hub() {
+        let mut queue = make_sample_queue();
+        queue.waiting = vec![SessionLine {
+            name: "auto-hub-24".to_owned(),
+            why: "needs you".to_owned(),
+            card: None,
+        }];
+
+        let items = list_waiting_items(&queue);
+
+        let texts: Vec<&str> = items.iter().map(|item| item.text.as_str()).collect();
+        assert_eq!(texts, ["Hub of auto run 24", "DEMO-KB-001 Faster search"]);
+    }
+
+    /// A card with several questions keeps one row that says how many
+    /// more wait, how old the oldest is and what the newest asks, so
+    /// the user sees both the backlog and the next thing to answer.
+    #[test]
+    fn list_waiting_items_counts_extra_questions() {
+        let mut queue = make_sample_queue();
+        queue.questions[0].asked_on = Some(date(2026, 11, 12));
+        let make_question = |number, title: &str, day| OpenQuestion {
+            key: "DEMO-KB-001".parse().unwrap(),
+            project: "Demo".to_owned(),
+            number,
+            title: title.to_owned(),
+            lines: Vec::new(),
+            sessions: Vec::new(),
+            asked_on: Some(date(2026, 11, day)),
+        };
+        queue.questions.push(make_question(2, "Ship the fix?", 13));
+        queue.questions.push(make_question(3, "Tag a release?", 14));
+
+        let items = list_waiting_items(&queue);
+
+        let row = items.iter().find(|item| item.id == "DEMO-KB-001").unwrap();
+        assert_eq!(
+            row.detail.as_deref(),
+            Some("3 days old, +2 questions: Tag a release?")
+        );
+    }
+
+    /// Page 5 lists the pull requests of no card failing first and
+    /// folds the passing ones into one row, so a failing one is never
+    /// lost below them on a phone.
+    #[test]
+    fn build_groups_folds_passing_prs_after_failing() {
+        let mut queue = make_sample_queue();
+        let make_pr = |number, title: &str, check| PullRequestLine {
+            name_with_owner: "demo/app".to_owned(),
+            number,
+            title: title.to_owned(),
+            check,
+        };
+        queue.pull_requests = Some(vec![
+            make_pr(48, "Bump the linter", CheckResult::Pass),
+            make_pr(301, "Retry uploads", CheckResult::Fails),
+            make_pr(52, "Fix a typo", CheckResult::Pass),
+            make_pr(60, "Cache builds", CheckResult::Running),
+            make_pr(54, "Lint docs", CheckResult::Fails),
+        ]);
+
+        let groups = build_groups(&queue);
+
+        let (_, other_prs) = groups
+            .iter()
+            .find(|(group, _)| *group == Group::OtherPrs)
+            .unwrap();
+        let others: Vec<&str> = other_prs.iter().map(|item| item.text.as_str()).collect();
+        assert_eq!(
+            others,
+            [
+                "Demo #54 Lint docs",
+                "Demo #60 Cache builds",
+                "+ 2 pass, no card: #48 #52"
+            ]
+        );
     }
 }

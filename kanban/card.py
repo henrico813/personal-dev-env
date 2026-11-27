@@ -324,6 +324,8 @@ def main(argv: list[str], projects: Path | None = None) -> int:
     """
     args = build_parser().parse_args(argv)
     try:
+        # Refuse a bad CARD_TODAY before any command runs.
+        read_today()
         if args.command == "template":
             print(render_template(), end="")
             return 0
@@ -335,6 +337,24 @@ def main(argv: list[str], projects: Path | None = None) -> int:
     except CardError as error:
         print(f"card: {error}", file=sys.stderr)
         return 1
+
+
+def read_today() -> date:
+    """Return today's date, or the date CARD_TODAY names, such as 2026-11-07.
+
+    Tests set CARD_TODAY to fix every date card writes. An empty value
+    counts as unset. A value that is not YYYY-MM-DD raises CardError.
+    """
+    shown = os.environ.get("CARD_TODAY")
+    if not shown:
+        return date.today()
+    # fromisoformat alone also reads 20261107 and week dates.
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", shown):
+        try:
+            return date.fromisoformat(shown)
+        except ValueError:
+            pass
+    raise CardError(f"CARD_TODAY must be a YYYY-MM-DD date, not {shown}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -797,7 +817,7 @@ def create_card(
     name = BAD_NAME_CHARS_RE.sub("", new_card.title).strip()
     if not name:
         raise CardError("the title needs a letter or digit")
-    today = date.today().isoformat()
+    today = read_today().isoformat()
     with hold_lock(STATE_DIR / "new.lock"):
         number = str(find_next_number(projects, code))
         key = make_name(find_rule("card_key"), {"code": code, "n": number})
@@ -899,7 +919,7 @@ def run_board(args: argparse.Namespace, projects: Path) -> int:
     counts = {stage: 0 for stage in STAGES}
     for card in cards:
         counts[card.stage] = counts.get(card.stage, 0) + 1
-    today = date.today()
+    today = read_today()
     blocked = [
         (count_days_since(card.stage_date, today), card)
         for card in cards
@@ -1292,7 +1312,7 @@ def run_move(args: argparse.Namespace, projects: Path) -> int:
         raise CardError(f"--session goes with a move to {ACTIVE}")
     require_blocked_reason(args.stage, args.why)
     card = find_card(projects, args.key)
-    today = date.today().isoformat()
+    today = read_today().isoformat()
     author = f"by {find_author(args)}"
     session = None
     if args.session is not None:
@@ -1578,7 +1598,7 @@ def apply_merge_to_card(card: Card, merged: str, projects: Path) -> str:
     for url in list_card_prs(card.text):
         if url != merged and (state := read_pr_state(url)) != "MERGED":
             unmerged.append(f"{url} is {state.lower()}")
-    today = date.today().isoformat()
+    today = read_today().isoformat()
     author = "by card merged"
     line = ""
 
@@ -1696,7 +1716,7 @@ def run_note(args: argparse.Namespace, projects: Path) -> int:
         The exit code.
     """
     card = find_card(projects, args.key)
-    today = date.today().isoformat()
+    today = read_today().isoformat()
     entry = f"- {today} note ({find_author(args)}): {args.text}"
     update_card(card, lambda text: add_to_section(text, "Log", entry))
     print(f"{card.key} Log: {entry}")
@@ -1727,7 +1747,7 @@ def run_add(args: argparse.Namespace, projects: Path) -> int:
         if args.section == OPEN_QUESTIONS:
             text = stamp_question_numbers(text)
             number = find_highest_question_number(text) + 1
-            today = date.today().isoformat()
+            today = read_today().isoformat()
             entry = f"- Q{number} asked {today}: {args.text}"
         return add_to_section(text, args.section, entry)
 
@@ -1887,7 +1907,7 @@ def run_edit(args: argparse.Namespace, projects: Path) -> int:
     if args.text is not None and not split_item(args.text.strip())[1]:
         raise CardError("the new text is empty; use --remove")
     card = find_card(projects, args.key)
-    today = date.today().isoformat()
+    today = read_today().isoformat()
     author = find_author(args)
     questions = args.section == OPEN_QUESTIONS
     text = stamp_question_numbers(card.text) if questions else card.text
@@ -2123,7 +2143,7 @@ def run_link(args: argparse.Namespace, projects: Path) -> int:
                 f"session ID already on {holder.key}: {session.entry}."
                 f" To log work on {card.key}, run card note {card.key} TEXT.",
             )
-        today = date.today().isoformat()
+        today = read_today().isoformat()
         written = update_card(
             card,
             lambda text: add_session(text, today, session),

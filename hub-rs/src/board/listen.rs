@@ -190,7 +190,7 @@ mod tests {
 
     use crate::board::control::answer_sent_step;
     use crate::board::view::Step;
-    use crate::board::view::tests::make_queue_board;
+    use crate::board::view::tests::make_active_board;
 
     /// A state folder of its own under the system's temporary folder,
     /// removed on drop.
@@ -222,7 +222,7 @@ mod tests {
     fn send_step_reaches_board_and_returns_screen() {
         let temp = TempState::new("send-step");
         let (_listener, steps) = StepListener::start(&temp.path).unwrap();
-        let mut board = make_queue_board();
+        let mut board = make_active_board();
 
         // The agent sends a tap from another thread, as `--send` does
         // from another terminal.
@@ -251,9 +251,9 @@ mod tests {
     fn send_step_hidden_tap_fails_naming_show() {
         let temp = TempState::new("send-hidden-card");
         let (_listener, steps) = StepListener::start(&temp.path).unwrap();
-        let mut board = make_queue_board();
+        let mut board = make_active_board();
         let state_folder = temp.path.clone();
-        let agent = thread::spawn(move || send_step(&state_folder, "tap card:DEMO-KB-020"));
+        let agent = thread::spawn(move || send_step(&state_folder, "tap card:OPS-KB-001"));
 
         let sent = steps.recv_timeout(Duration::from_secs(5)).unwrap();
         let (_, reply) = answer_sent_step(&mut board, &sent.text, |_, _| Ok(true)).unwrap();
@@ -263,7 +263,7 @@ mod tests {
         assert_eq!(error.exit_code(), 2);
         assert_eq!(
             error.to_string(),
-            "card:DEMO-KB-020 is hidden by fold; send tap group:todo first"
+            "card:OPS-KB-001 is hidden by fold; send tap group:draft first"
         );
     }
 
