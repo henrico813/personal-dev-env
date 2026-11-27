@@ -118,6 +118,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"atomically activate managed fonts",
 				"refresh font cache",
 				"build and atomically activate planner",
+				"build and atomically activate card",
 				"build and atomically activate opencode-inline-shim",
 				"build and atomically activate vibe",
 				"build and atomically activate pde-gh",

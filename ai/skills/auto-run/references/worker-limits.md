@@ -148,6 +148,9 @@ skills of your current step again.
   `card note` at each milestone, one `card` call per shell call,
   since each writes to the vault on the network drive and can be
   slow.
+- For a `card` command or flag this file does not show, run
+  `card --help` or `card <command> --help` for its arguments or flags.
+  Do not guess; a wrong flag fails or writes the wrong card.
 - Write a question, a blocker or finished work with
   `hub report --run "<run folder>" <your agent name> <file>`, which
   replaces your old report whole. After a question, park that pull

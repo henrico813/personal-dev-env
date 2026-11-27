@@ -629,6 +629,19 @@ func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []bu
 			verifyArg: "help",
 		},
 		{
+			name:   "card",
+			source: filepath.Join(m.RepoRoot, "kanban"),
+			output: filepath.Join(stageRoot, "card"),
+			command: run.Command{
+				Name: goBinary,
+				Args: []string{
+					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "card"), ".",
+				},
+				Dir: filepath.Join(m.RepoRoot, "kanban"), Env: environment,
+			},
+			verifyArg: "--help",
+		},
+		{
 			name:   "opencode-inline-shim",
 			source: filepath.Join(m.RepoRoot, "nvim-plugins", "opencode-inline.nvim"),
 			output: filepath.Join(stageRoot, "opencode-inline-shim"),
@@ -909,7 +922,9 @@ func hashTree(root string) (string, error) {
 			return walkErr
 		}
 		if entry.IsDir() && path != root {
-			if entry.Name() == ".git" || entry.Name() == "target" {
+			// A pytest or ruff run in a checkout writes the last three, which must not rebuild every tool.
+			switch entry.Name() {
+			case ".git", "target", "__pycache__", ".pytest_cache", ".ruff_cache":
 				return filepath.SkipDir
 			}
 		}

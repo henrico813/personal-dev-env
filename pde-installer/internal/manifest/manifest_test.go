@@ -121,6 +121,7 @@ func TestEachProfileAddsRecordedItems(t *testing.T) {
 			adds: []string{
 				"gopls",
 				"lua-language-server",
+				"card",
 				"planner",
 				"pde-gh",
 				"pde-pr-approve",

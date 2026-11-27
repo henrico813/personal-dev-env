@@ -209,6 +209,9 @@ func TestOnlyPythonInputsTriggerRebuild(t *testing.T) {
 		{"build script", "skill-lessons/build.py", true},
 		{"bytecode cache", "skill-lessons/src/skill_lessons/__pycache__/cli.cpython-310.pyc", false},
 		{"test", "skill-lessons/tests/test_cli.py", false},
+		{"card bytecode cache", "kanban/__pycache__/test_card.cpython-311.pyc", false},
+		{"card test cache", "kanban/.pytest_cache/v/cache/lastfailed", false},
+		{"card lint cache", "kanban/.ruff_cache/0.9.0/1234", false},
 		{
 			name:    "source in a subfolder",
 			path:    "skill-lessons/src/skill_lessons/store/files.py",
@@ -419,7 +422,7 @@ func newCommittedManager(t *testing.T) (manager Manager, repoRoot, logPath strin
 func writeBuildSources(t *testing.T, repoRoot string) {
 	t.Helper()
 	for _, source := range []string{
-		"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev", "glimmer", "hub-rs", "prs",
+		"planner", "kanban", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev", "glimmer", "hub-rs", "prs",
 	} {
 		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
 	}
@@ -767,6 +770,7 @@ func assertBuildOutputs(t *testing.T, home string) {
 	t.Helper()
 	for name, tool := range map[string]string{
 		"planner":              "go",
+		"card":                 "go",
 		"opencode-inline-shim": "go",
 		"vibe":                 "cargo",
 		"pde-gh":               "go",

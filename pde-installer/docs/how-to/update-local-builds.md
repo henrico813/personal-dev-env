@@ -1,9 +1,9 @@
 # Update Local Builds
 
-The local backend builds repository applications: `planner`,
-`opencode-inline-shim`, `vibe`, `pde-gh` (also linked as `gh`,
-`pde-gh-guard` and `pde-gh-write`), `pde-pr-approve`, `glimmer`, `hub`,
-`skill-lessons`, `skill-fix` and `prs`.
+The local backend builds repository applications: `planner`, `card`
+(from `kanban/`), `opencode-inline-shim`, `vibe`, `pde-gh` (also linked
+as `gh`, `pde-gh-guard` and `pde-gh-write`), `pde-pr-approve`, `glimmer`,
+`hub`, `skill-lessons`, `skill-fix` and `prs`.
 `skill-lessons` and `skill-fix` each have a `build.py` that packs the tool into
 one file run by `/usr/bin/python3`. Client builds only these two, and terminal
 builds no local applications. Full also builds `pde-x-watch` from
@@ -36,7 +36,7 @@ deletes nothing.
 The installer hashes regular source files, excluding `.git` and `target`
 directories. For `skill-lessons` and `skill-fix` it hashes only `build.py` and
 the regular `.py` files under `src/`, so caches and tests do not count. It
-rebuilds all nine applications when inputs or managed Go and Rust toolchain
+rebuilds every application when inputs or managed Go and Rust toolchain
 versions change. A Python upgrade does not trigger a rebuild or a check; after
 upgrading `/usr/bin/python3`, run `skill-lessons --version` and
 `skill-fix --version` yourself.
