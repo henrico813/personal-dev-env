@@ -558,84 +558,183 @@ record, adds the session to its card and closes its tab. Prints
 
 ### board
 
-`hub board` opens on a glance page, sized for a 40x16 phone screen,
-with three blocks: AWAY, QUEUE and NEXT. Each block shows only the
-rows that fit and ends in `+ N more` when it holds more. Below 100
-columns the blocks stack, with AWAY and NEXT giving up rows before
-QUEUE; from 100 columns they sit side by side.
+`hub board` opens on its first screen, sized for a 40x16 phone
+screen. A red `!` row names each fault on top, then four blocks
+follow: WAITING ON YOU, SINCE YOU LEFT, ACTIVE and IN REVIEW. Each
+block's heading ends in the key of its page, such as `[3]`. Below
+100 columns the blocks stack and show 3, 1, 2 and 0 rows; from 100
+columns WAITING ON YOU and SINCE YOU LEFT sit left of ACTIVE and
+IN REVIEW, and show 6, 7, 2 and 6 rows. A block with more rows ends
+in a dim fold row that sums up the rest, such as
+`+ run 24 hub and 2 old questions`, `+ 1 report`,
+`+ 3 more, 1 at work` or `+ 2 more`. WAITING ON YOU's fold row names
+an auto run's hub by its run, and calls a question not asked today
+old. The top line says how long the user was away, then the
+board's status, such as `away 1h29m · read 10:42 0.6s`.
 
-- AWAY lists worker reports and the hubs' `notes.md` lines, newest
-  first, from after the time the board last saved. Its heading
-  counts them, such as `AWAY  3 new`, or says `newest` when no
-  board has saved a time yet. Once a time is saved, AWAY also
-  reads runs whose hub has ended, so what a hub did before it
-  ended still shows.
-- QUEUE shows what waits on the user first, then cards that run,
-  idle cards and cards in review. Each row starts with its status
-  word: `you` waits on the user, `run` a worker is at work on it,
-  `idle` it has a worker and none is at work, `rev` a pull
-  request to read. The queue view adds two more words: `none`,
-  a card with no worker, and `!`, a source the read could not
-  get. A card whose worker waits on the user is left out of the
-  block; that worker already shows there as a `you` row. The
-  heading counts what runs, waits and sits idle, such as
-  `1 run · 2 you · 1 idle`.
-- NEXT gives one `you:` line per question or session that waits on
-  the user, one `then:` line counting the cards in review, and one
-  `hub:` line per Todo card in `card list` order. The block shows
-  the first of each; the next view shows them all.
-- A line about a card starts with its card key, the ID at the start
-  of the card's name, such as `DEMO-KB-001`. So the QUEUE line
-  `run  Faster search` shows as `run  DEMO-KB-001 Faster search`.
-  An AWAY line is only text, with no card field. So the board takes
-  its card key from the first word that holds one, such as
-  `DEMO-KB-001` from the session name `demo-kb-001-build`. A QUEUE
-  line of a waiting session takes its card key from the session name
-  the same way. A line about no card, such as `hub: no hub running`,
-  gets no card key.
-- Keys 1 to 5 open full views, named away, queue, next, sessions
-  and machine, each under a `< name` breadcrumb. Tab steps through
-  the views and back to the glance page. A tap on a block or its
-  `+ N more` opens its view; a tap on the breadcrumb, Esc or q
-  goes back. r reads again, and q quits from the glance page.
-  Ctrl-C quits from anywhere. The board also reads again every 10
-  seconds. `NO_COLOR` turns colors off. The away, next and
-  machine views and any details page scroll with j, k, the page
-  keys or the wheel, and on a details page any tap, Enter, space,
-  q or Esc goes back.
-- The queue view lists the cards by group: Needs you, Active,
-  In review, Blocked, Todo and Draft. The cards come
-  from `card list`. Needs you holds each open question, as
-  `KEY Q3 TITLE`, oldest first as `hub waiting` lists them, and the
-  sessions that wait on the user,
-  from every hub on this machine that Herdr lists: each
+- A fault is `hub watcher stopped` while a hub runs and no
+  `hub watch` does, `auto run N stalled since ...` for a run
+  approved in the last 24 hours that has stalled, as `hub watch`
+  tells the phone, or a source the read could not get.
+- WAITING ON YOU shows one row per card that waits on the user,
+  with its open questions and waiting sessions on that one row. Its
+  tag is `answer` when the card has an open question, and `see tab`
+  when only a worker waits in its tab. The questions are the ones
+  `hub waiting` lists. Rows with a question asked today come first,
+  then `see tab` rows, then older questions, newest first. A
+  waiting session with no card key has its own row,
+  `Hub of auto run 24` for an auto run's hub, else its session name.
+  The heading counts the rows. With no hub running, the block shows
+  `no hub running`.
+- SINCE YOU LEFT shows one row per card that changed after the time
+  the board last saved, newest first, such as
+  ` 10:40 DEMO-KB-001 Faster search  report`. The row ends in its
+  newest event's word: `report` for a worker report, `new worker`
+  for a launch and `finished` for a parked worker. Any other event,
+  such as a closed session or the hub's own note, shows
+  its own text. Events that name an auto run's hub share a row named
+  `Hub of auto run 24`, and other events with no card share one
+  `hub` row.
+  The heading reads `SINCE YOU LEFT AT 19:07  7 cards`, or
+  `SINCE YOU LEFT  newest` when no board has saved a time yet. Once
+  a time is saved, the block also reads runs whose hub has ended,
+  so what a hub did before it ended still shows.
+- ACTIVE shows the active cards: those with a worker at work, then
+  those with no worker, then the idle ones. Its heading counts them
+  against the active limit from `card board`, then the cards at
+  work, such as `23, max 8 · 2 working`. The count turns yellow over
+  the limit, and `max` is left out when `card board` gave no limits.
+- From 100 columns each WAITING ON YOU row has a dim line below it
+  with its question or why its tab waits. Each ACTIVE row has one
+  with its card's newest event since your visit, such as
+  `19:43: new worker`. A row with neither has no such line.
+- IN REVIEW counts the cards in review the same way, then the pull
+  requests with a failed check, such as `7, max 6 · 1 PR fails`.
+  Below 100 columns it shows only its heading.
+- A row starts with its status word: `you` waits on the user, `run`
+  a worker is at work on it, `idle` it has a worker and none is at
+  work, `none` it has no worker and `rev` to review. Page 5's pull
+  request rows have no status word and end in their check word. A
+  worker is at work while Herdr shows it working, or for 30 minutes
+  after its `status-NAME.md` in a live hub's run folder last changed.
+  A card whose worker waits on the user is not at work, so ACTIVE and
+  page 3 list it with the idle cards. The first screen's
+  WAITING ON YOU and ACTIVE rows leave the status word out, and
+  ACTIVE rows also the project label.
+- A row about a card starts with its card key, the ID at the start
+  of the card's name, such as `DEMO-KB-001`. An event and a waiting
+  session have no card field, so the board takes the card key from
+  the first word that holds one, such as `DEMO-KB-001` from the
+  session name `demo-kb-001-build`.
+- Keys 1 to 5 open the pages, each under a breadcrumb such as
+  `< 3 ACTIVE`: 1 WAITING ON YOU, 2 SINCE YOU LEFT, 3 ACTIVE,
+  4 SESSIONS AND MACHINE and 5 IN REVIEW AND PULL REQUESTS. Tab steps
+  through the pages and back to the first screen. A tap on the
+  breadcrumb, Esc or q goes back, and the first screen chooses again
+  the row it had. ? opens the help of the first screen or of the open
+  page. r reads again, and q quits from the first screen. Ctrl-C
+  quits from anywhere. The board also reads again every 10 seconds.
+- The first screen picks rows as pages 1, 3 and 5 do: j, k, the
+  up and down arrows, the page keys or the wheel move the choice,
+  drawn reversed across the row, and Enter, space or a tap acts on
+  it. From 100 columns, h, l or the left and right arrows move the
+  choice to the nearest row in the other column. It starts on the
+  first row, and a column scrolls to keep the choice in view when
+  its rows do not fit, such as below fault rows. A WAITING ON YOU,
+  ACTIVE or IN REVIEW row, or its dim line, opens its details. A
+  block's heading opens its page, a fault row page 4 and a SINCE YOU
+  LEFT row page 2. A fold row opens its block's page with every row
+  the fold row sums up shown, so on page 3 IDLE opens. Those rows stay
+  shown when the page opens again, as after `+ N more` on a page.
+  Blank lines and a dim row such as `nothing new` cannot be chosen.
+  From 100 columns the choice runs down the left column, then the
+  right. A new read or visit time keeps the chosen row when it is
+  still there.
+- Below 100 columns the first screen's bottom line reads
+  `4 sessions and machine` with `? help` at its right end. From 100
+  columns it lists each page's key, help and quit:
+  `1 waiting  2 since  3 active  4 sessions and machine  5 review  ? help  q quit`.
+  On pages 1 to 5 the bottom line reads `esc back  ? help` and the
+  status. On a details page and a help page it reads
+  `tap or q to go back`.
+- `NO_COLOR` turns colors off. Each color means one thing: cyan at
+  work, magenta waits on you, green ready for review, passing,
+  finished or ok, yellow held up, such as Blocked, `none` or a
+  question's age, and red a problem. So the `answer` and `see tab`
+  tags are magenta, `fails` is red and `pass` green, and the event
+  words `new worker` and `finished` are cyan and green. `idle`, fold
+  marks, event times and the Idle and Draft counts are dim. Group
+  names are bold in the default color, and their counts take the
+  color. Page 4's session rows keep the default color.
+- Pages 1, 3 and 5 list cards by group. An open group shows four
+  rows, six in WAITING ON YOU and IN REVIEW, then `+ N more`. Page 1
+  has no group heading. A tap on a heading folds or opens it, and a
+  tap on a row opens its details. j, k, the arrow and page keys or
+  the wheel move the choice, and Enter or space acts on it.
+- Page 1 lists the WAITING ON YOU rows, each with a line below.
+  For a question that line gives the oldest question's age, how many
+  more there are and the newest question, such as
+  `16 days old, +3 questions: Who updates the docs?`; for a tab it
+  says why the worker waits. With a card in review, the page ends in
+  `then: review N cards`, which opens page 5. The rows come from
+  every hub on this machine that Herdr lists: each
   `~/.local/state/herdr-hub.*` folder whose hub `hub watch start`
-  named, auto runs included. Each question's tag is its card's
-  project, and its details page shows `KEY Q3, asked DATE`. A card's
-  details page lists its open questions under the title. With no hub
-  running, Needs you shows `no hub running`. It ignores `HUB_RUN`,
-  and the hidden `--run DIR` shows one run's sessions only. A Could
-  not read group shows on top when a read fails.
-  Todo, Draft and Blocked start folded, and Blocked shows only
-  when it holds a card. An open group shows four
-  rows, then `+ N more`. A tap on a heading folds or opens it, a
-  tap on a count opens its group and scrolls to it, and a tap on
-  a row opens its details. j, k, the arrow and page keys or the
-  wheel move the choice, and Enter or space acts on it.
-- The sessions view groups every session as `hub clean` decides:
-  NEEDS YOU, WORKING, KEPT, SAFE TO CLOSE and PARKED. Each row
-  shows the name, a context bar full at 150K tokens, the context
-  in thousands and why the session is in its group, such as
-  `unpushed review`. A why too long for the row goes on the line
-  below it. A tap on a row only chooses it; the bar at the bottom
-  then reads `-> jump to NAME`, and a tap on it shows that session
-  in Herdr. Enter also jumps, but only after 0.7 seconds with no
-  input, so a stray Enter after a tap does not jump. A failed jump
-  shows `jump failed: REASON` on the bottom line.
-- The machine view shows the file-watch slots in use (`WATCH`,
-  with `high` from 90%) and free disk (`DISK`), then the six
-  newest reports.
-- c, from the glance page or any view, lists the SAFE TO CLOSE
+  named, auto runs included. The board ignores `HUB_RUN`, and the
+  hidden `--run DIR` shows one run's sessions only.
+- Page 2 lists the SINCE YOU LEFT cards, such as
+  `> DEMO-KB-001 Faster search  report`. A tap on a row shows its
+  events, one line each with its time and word, such as
+  `   10:40 report`, and the row then ends in its event count. Another
+  tap hides them. j, k, the page keys or the wheel scroll the page.
+- Page 3 lists WORKING, NO WORKER, IDLE, BLOCKED, UP NEXT and DRAFT,
+  and its breadcrumb carries the ACTIVE counts. BLOCKED and DRAFT
+  start folded, and BLOCKED shows only when it holds a card. IDLE is
+  folded below 100 columns and open from 100, and a tap folds or
+  opens it until the width crosses 100 again.
+- Page 4 shows the faults as red `!` rows, or a green
+  `hub watcher ok` row when there is none. Then come the file-watch
+  slots in use (`WATCH`, with `high` from 90%), free disk (`DISK`)
+  and the sessions, grouped as `hub clean` decides: NEEDS YOU,
+  AT WORK OR WAITING ON THE HUB, then one fold row for the rest,
+  such as
+  `> KEPT 11 · SAFE TO CLOSE 3 · PARKED 18`. When it fits, the
+  AT WORK OR WAITING ON THE HUB heading also counts the sessions at
+  work, such as `AT WORK OR WAITING ON THE HUB 2 · 1 working`; at
+  40 columns it has no room. A tap on the fold row
+  shows or hides those three groups. Each session row shows the
+  name, a context bar full at 150K tokens, the context in thousands
+  and why the session is in its group, such as `unpushed review`. A
+  why too long for the row goes on the line below it. j, k, the
+  arrow and page keys move the choice. A tap on a row only chooses
+  it; the bar at the bottom then reads `-> jump to NAME`, and a tap
+  on it shows that session in Herdr. Enter also jumps, but only
+  after 0.7 seconds with no input, so a stray Enter after a tap does
+  not jump. A failed jump shows `jump failed: REASON` on the bottom
+  line.
+- Page 5 lists IN REVIEW, each card with its pull request's line
+  below it, such as `Demo #301 fails`, then OTHER PULL REQUESTS,
+  failing first, such as `Demo #60 DEMO-KB-002 Faster board` tagged
+  `fails`, `running` or `pass`. A pull request's label is the
+  project of a card the read got whose `prs:` link names the same
+  repository, else the repository name after `/`, such as `app`.
+  Passing pull requests of no card share one row, such as
+  `+ 2 pass, no card: #48 #52`. The pull requests come only from the
+  `prs` tool's cache, `~/.cache/prs/list.json`. One belongs to a card
+  only when the card's `prs:` link names the same repository and
+  number. The read gets a card's note only when a session, a parked
+  record or a report names the card. So a card that none of them
+  names shows no pull request line, and its pull request is listed
+  under OTHER PULL REQUESTS. The IN REVIEW heading adds its limit,
+  such as `, max 6`, and the OTHER PULL REQUESTS heading its failing
+  count, such as ` · 1 failing`.
+- A card's details page lists its open questions under the title,
+  and each worker's status line with its age, such as
+  `api-build 12m ago: tests pass`. A waiting session's page adds its
+  own status line. A question's page shows `KEY Q3, asked DATE` and
+  how many days ago it was asked. A details page scrolls with j, k,
+  the page keys or the wheel, and any tap, Enter, space, q or Esc
+  goes back.
+- c, from the first screen or any page, lists the SAFE TO CLOSE
   sessions, each marked `close` or `park`, and ends in `+ N more`
   when they do not fit. The list does not change while it is
   open. y, once the list has been open 1 second and no key came
@@ -646,15 +745,29 @@ QUEUE; from 100 columns they sit side by side.
 - A visit is one stretch of the user using the board, ended by
   10 quiet minutes with no key or tap. The board saves the time
   of the user's latest key or tap in
-  `~/.local/state/pde/hub/board-seen`, so the next board's AWAY
-  lists what came after that time. Taps while the user reads do
-  not start a new visit. The live board writes the file at most
-  once a minute, and once more as it quits. `--print`, `--dump`
-  and `--control` read that time but never write it, so an
+  `~/.local/state/pde/hub/board-seen`, so the next board's
+  SINCE YOU LEFT lists what came after that time. Taps while the
+  user reads do not start a new visit. The live board writes the
+  file at most once a minute, and once more as it quits. `--print`,
+  `--dump` and `--control` read that time but never write it, so an
   agent's look at the board does not hide news from the user.
+- The live board saves each read in
+  `~/.local/state/pde/hub/board-snapshot.json`. A new board draws
+  the saved read at once, with `saved HH:MM · reading` on top,
+  until its own first read lands. `--print`, `--dump` and
+  `--control` neither save nor load it.
 - `--print` prints one screen as text, and `--dump` prints its
   elements as one JSON line. Both draw a new board, starting on
-  the glance page, at `--size`, default 40x16.
+  the first screen, at `--size`, default 40x16.
+- The first screen's element ids are `status`, `fault:N`, and for
+  each block `block:SLUG` on its heading, `SLUG:N` on its rows and
+  `more:SLUG` on its fold row, where SLUG is `waiting`, `since`,
+  `active` or `review`. The chosen row is `chosen`, and a tap on a
+  row does what Enter on it does. The bottom line holds `open:SLUG`,
+  with `machine` for page 4, and `help`. A row the fold row sums up
+  comes hidden, with its page's key as the step that shows it, such
+  as `press 3`. A row scrolled off comes hidden with `press pageup` or
+  `press pagedown`, as on the list pages.
 - `--listen` shows the live board and also takes steps from
   `board.sock` in `~/.local/state/pde/hub`. From another
   terminal, `hub board --send 'STEP'` does one step on it and
@@ -671,7 +784,6 @@ QUEUE; from 100 columns they sit side by side.
 
 "Screens agents can see and tap" in the [README](../../README.md)
 describes the element JSON and the rules every such screen follows.
-
 ### auto
 
 The steps of an auto run, in order. Each takes `--run DIR`.

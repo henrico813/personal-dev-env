@@ -6,7 +6,10 @@ use std::process::Command;
 use std::sync::Barrier;
 use std::thread;
 
-use common::{TempFolder, commit_all, find_waiting_worktrees, run_git, use_test_waiting_list};
+use common::{
+    TempFolder, commit_all, find_waiting_worktrees, read_archive_copies, run_git,
+    use_test_waiting_list,
+};
 use glimmer::shared::ErrorCode;
 use glimmer::shared::git::find_worktree_git_folder;
 use glimmer::shared::review_session::{
@@ -321,6 +324,30 @@ fn user_notes_waiting_takes_worktree_off_list() {
         let listed = !find_waiting_worktrees(repo.path()).is_empty();
         assert_eq!(listed, listed_after_last, "{case}");
     }
+}
+
+/// Each `save_user_feedback` must leave its own archive copy, outside the worktree.
+/// Otherwise removing a worktree with any tool, or changing an answer, would lose the user's earlier answers.
+#[test]
+fn save_user_feedback_archives_each_version() {
+    let repo = make_repo();
+    let mut review_session = make_review_session("waiting_for_user_feedback", 1);
+    review_session["origin"]["repo"] = json!(repo.path().file_name().unwrap().to_str());
+    write_review_session(repo.path(), &review_session.to_string());
+    let request = load_requests(repo.path()).remove(0);
+    let answer = UserFeedback::Answer(UserAnswer::Keep);
+    save_user_feedback(repo.path(), &request, answer).unwrap();
+    let note = UserFeedback::Note(UserNote("Say which lock.".to_owned()));
+
+    save_user_feedback(repo.path(), &request, note).unwrap();
+
+    let feedback: Vec<Value> = read_archive_copies(repo.path())
+        .into_iter()
+        .map(|copy| copy["feedback"].clone())
+        .collect();
+    let keep = json!({"1": {"answer": "keep"}});
+    let note = json!({"1": {"note": "Say which lock."}});
+    assert_eq!(feedback, [keep, note]);
 }
 
 /// `read_waiting_list` must skip a worktree the user removed while its Review Session waited.

@@ -7,6 +7,8 @@
 
 use std::collections::BTreeSet;
 
+use serde::{Deserialize, Serialize};
+
 use super::messages::MessageCounts;
 use super::parking::ParkedRecord;
 use crate::external::cards::{CardKey, Stage};
@@ -25,7 +27,7 @@ const KANBAN_HUB_WORD: &str = "kanban";
 /// One session's place in its life. Each `match` on it must name
 /// every state. Code that forgets to handle a new state then fails to
 /// build.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum Lifecycle {
     Working,
     WaitsOnHub,
@@ -66,7 +68,7 @@ impl Lifecycle {
 }
 
 /// Why a finished session stays open.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum KeptReason {
     UnsavedFiles,
     Unpushed,
@@ -317,6 +319,14 @@ pub(crate) fn is_auto_hub(name: &str) -> bool {
 pub(crate) fn parse_kanban_hub_number(name: &str) -> Option<u64> {
     split_hub_name(name)
         .filter(|(word, _)| *word == KANBAN_HUB_WORD)
+        .map(|(_, number)| number)
+}
+
+/// Returns 24 for `auto-hub-24`, an auto run's hub, which carries its
+/// run's number, and `None` for any other kind of hub or name.
+pub(crate) fn parse_auto_hub_number(name: &str) -> Option<u64> {
+    split_hub_name(name)
+        .filter(|(word, _)| *word == AUTO_HUB_WORD)
         .map(|(_, number)| number)
 }
 

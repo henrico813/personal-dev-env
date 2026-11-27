@@ -8,6 +8,7 @@ use jiff::Timestamp;
 use jiff::civil::Date;
 use jiff::tz::TimeZone;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 
 use crate::external::cards::{CardError, CardKey, Cards, Stage};
 use crate::external::opencode::{OpenCodeDb, OpenCodeError};
@@ -28,7 +29,7 @@ pub(crate) const LISTED_STAGES: [Stage; 4] =
     [Stage::Todo, Stage::Active, Stage::InReview, Stage::Blocked];
 
 /// One Open Questions item that waits on the user.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct OpenQuestion {
     pub key: CardKey,
     /// The card's project, such as `DevEnv`.

@@ -734,8 +734,9 @@ impl Cards for InMemoryCards {
 /// temporary folder, which is also the runs folder that stands in for
 /// `~/.local/state`. The folder holds the run folder `run`; the state
 /// folder `state`, with its request folder `pr-write` and parked folder
-/// `hub/parked`; and the OpenCode database `opencode.db`. The request
-/// and parked folders do not exist until a test writes to them. A test that uses
+/// `hub/parked`; the OpenCode database `opencode.db`; and the `prs`
+/// tool's list `prs/list.json`. The request and parked folders and the
+/// list do not exist until a test writes to them. A test that uses
 /// it must not make another `TempFolder`. Its own `TempFolder` already
 /// holds the process lock, so a second one would wait for it forever.
 pub struct TestTools {
@@ -745,6 +746,7 @@ pub struct TestTools {
     pub own_pane: Option<String>,
     /// The hub's own session, as `OPENCODE_SESSION_ID` gives it.
     pub own_session: Option<String>,
+    pub pr_list: PathBuf,
     opencode: OpenCodeDb,
     requests: RequestFolder,
     parked: ParkedFolder,
@@ -764,6 +766,7 @@ impl TestTools {
             cards: InMemoryCards::default(),
             own_pane: None,
             own_session: None,
+            pr_list: folder.path().join("prs/list.json"),
             opencode: OpenCodeDb::new(folder.path().join("opencode.db")),
             requests: RequestFolder::new(state_folder.join("pr-write")),
             parked: ParkedFolder::new(state_folder.join("hub/parked")),
@@ -784,6 +787,7 @@ impl TestTools {
             own_session: self.own_session.as_deref(),
             state_folder: &self.state_folder,
             runs_folder: self.folder.path(),
+            pr_list: &self.pr_list,
             reopen_poll: Duration::ZERO,
         }
     }

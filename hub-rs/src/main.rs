@@ -99,6 +99,7 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
         own_session: env::var("OPENCODE_SESSION_ID").ok(),
         state_folder,
         runs_folder: local_state.clone(),
+        pr_list: find_pr_list(&home),
         reopen_poll: REOPEN_POLL,
     };
     let tools = owned_tools.lend();
@@ -390,6 +391,16 @@ fn find_request_folder(home: &Path) -> PathBuf {
         .filter(|folder| !folder.is_empty())
         .map_or_else(|| home.join(".local/state"), PathBuf::from);
     state_home.join("pde/pr-write")
+}
+
+/// Returns the list the `prs` tool caches. Like Go's
+/// `os.UserCacheDir`, which `prs` uses, it looks in `XDG_CACHE_HOME`
+/// when that is set and not empty, else in `~/.cache`.
+fn find_pr_list(home: &Path) -> PathBuf {
+    let cache_home = env::var_os("XDG_CACHE_HOME")
+        .filter(|folder| !folder.is_empty())
+        .map_or_else(|| home.join(".cache"), PathBuf::from);
+    cache_home.join("prs/list.json")
 }
 
 /// Returns the report text from FILE, or from standard input when FILE

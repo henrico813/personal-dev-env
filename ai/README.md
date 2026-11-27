@@ -24,6 +24,8 @@ local model jobs,
 `go-development`
 for Go code, `obsidian-zettel` for template-aligned vault notes,
 `obsidian-daily-note` for approved sections in today's daily note,
+`card-writing` for writing and reviewing the kanban cards the
+`card` command keeps,
 `python-development` for Python code, `rust-development` for Rust code,
 and `typescript-development` for JavaScript and TypeScript code.
 Shared workflow skills include `create-plan` for implementation proposals,

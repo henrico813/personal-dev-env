@@ -8,14 +8,12 @@ use std::process::Command;
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
+use serde::{Deserialize, Serialize};
 
 use crate::shared::run_folder::RunFolder;
 
-/// How many report files the machine view lists.
-pub(super) const FEED_LENGTH: usize = 6;
-
 /// One gauge's use against its limit, such as 116 of 128 watch slots.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Usage {
     pub used: u64,
     pub limit: u64,
@@ -23,7 +21,7 @@ pub(crate) struct Usage {
 
 /// What the gauges show, `None` where a read failed or the system has
 /// no such number, as on macOS for watch slots.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Gauges {
     /// inotify instances the user's processes hold, against the
     /// kernel's `max_user_instances`.
@@ -33,11 +31,12 @@ pub(crate) struct Gauges {
 }
 
 /// One report file in the feed.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct FeedLine {
     /// When the file last changed, such as `11:41`.
     pub at: String,
-    /// The same time in full, which AWAY compares with the last visit.
+    /// The same time in full, which SINCE YOU LEFT compares with the
+    /// last visit.
     pub stamp: Timestamp,
     /// True for a `report-NAME.md` the hub has not read yet.
     pub unread: bool,
@@ -185,8 +184,8 @@ Filesystem     1024-blocks      Used Available Capacity Mounted on
         );
     }
 
-    /// The feed shows what workers reported, and AWAY reads it for
-    /// what came since the last visit. It must come newest first, and a
+    /// The feed shows what workers reported, and SINCE YOU LEFT reads
+    /// it for what came since the last visit. It must come newest first, and a
     /// file that is no report, such as `notes.md`, must stay out, or the
     /// user reads stale news.
     #[test]

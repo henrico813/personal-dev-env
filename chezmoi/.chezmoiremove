@@ -22,6 +22,7 @@
 {{ if and (has "workstation" .pde.tiers) (not (has "development" .pde.tiers)) }}
 # Only full installs these, so client removes what a full install left.
 .agents/skills/auto-run
+.agents/skills/card-writing
 .agents/skills/cleanup-plan
 .agents/skills/code-documentation
 .agents/skills/comment-review

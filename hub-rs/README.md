@@ -36,7 +36,7 @@ these rules, so an agent sees and taps exactly what the user does.
   and scroll of its last draw. Each has an `id` that stays the same
   across reads, such as `card:DEMO-KB-007`, a `kind`, its `text` and
   `hidden`, and `tap` when a tap on it does something. `kind` is
-  `count`, `heading`, `item`, `more`, `back` or `text`. A drawn
+  `heading`, `item`, `more`, `back`, `bar` or `text`. A drawn
   element also has its `column`, `row` and `width`, and `chosen` is
   true on the row Enter acts on.
 - The list holds everything on the page, not only what fits. Rows

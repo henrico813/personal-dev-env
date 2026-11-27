@@ -1,18 +1,20 @@
 //! Runs `hub board`, a full-screen view of the user's cards,
 //! sessions and machine gauges, sized for a phone first. It opens on a
-//! glance page of what happened while the user was away, the queue and
-//! what comes next. Read `run_board` and `print_board` first,
-//! `control.rs` for the JSON that agents read, and `listen.rs` for the
-//! socket an agent drives the live board through.
+//! first screen of what waits on the user, what happened since the
+//! last visit, what is at work and what is in review. Read `run_board`
+//! and `print_board` first, `control.rs` for the JSON that agents read,
+//! and `listen.rs` for the socket an agent drives the live board
+//! through.
 //!
 //! Only the live board saves when the user last used it, in `seen.rs`.
 //! `--print`, `--dump` and `--control` read that time but never write
 //! it, so an agent's look at the board does not hide news from the
-//! user.
+//! user. The live board also saves each read, in `snapshot.rs`, and
+//! draws the last saved one while its first read runs.
 //!
 //! A second thread reads the hubs' state every 10 seconds, or at once
 //! when the user presses r. A read calls Herdr, `card` and OpenCode
-//! and takes about a second, so the keys and the mouse would freeze if
+//! and can take half a minute, so the keys and the mouse would freeze if
 //! the drawing thread waited for it. For the same reason, a details
 //! page reads its card's note on a thread of its own. The reading
 //! thread also runs a jump to a session and the clean pass after c
@@ -27,9 +29,12 @@ mod groups;
 mod listen;
 mod machine;
 mod panels;
+mod pull_requests;
 mod queue;
 mod seen;
 mod sessions;
+mod since;
+mod snapshot;
 mod terminal;
 mod view;
 
@@ -159,18 +164,29 @@ pub fn run_board(
     let (note_sender, notes) = mpsc::channel();
     let cards = tools.cards.clone();
     let mut visits = Visits::start(&tools.state_folder, Timestamp::now());
+    let saved = snapshot::load_snapshot(&tools.state_folder);
     // The thread is never joined, so q quits at once even while a read
     // runs. The thread ends at its next send or wait after the
     // channels close, or with the process.
+    let reader_time_zone = time_zone.clone();
     thread::spawn(move || {
-        read_until_closed(&tools, &hubs, &time_zone, &reply_sender, &job_receiver);
+        read_until_closed(
+            &tools,
+            &hubs,
+            &reader_time_zone,
+            &reply_sender,
+            &job_receiver,
+        );
     });
 
     // NO_COLOR set to any value but empty turns colors off, as
     // https://no-color.org asks.
     let color = std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty());
     let mut board = Board::new(color);
-    board.show_visit(visits.since(), visits.measure_time_away());
+    if let Some(queue) = saved {
+        board.show_saved_reading(queue);
+    }
+    board.show_visit(visits.since(), visits.measure_time_away(), &time_zone);
     let mut screen = Screen::start().map_err(wrap_terminal_error)?;
     screen.draw(&mut board).map_err(wrap_terminal_error)?;
     'board: while !stop.load(Ordering::Relaxed) {
@@ -206,7 +222,7 @@ pub fn run_board(
             // Steps an agent sends through `--listen` do not count as
             // the user's, and neither does a resize.
             if matches!(input, event::Event::Key(_) | event::Event::Mouse(_)) {
-                note_user_input(&mut visits, &mut board);
+                note_user_input(&mut visits, &mut board, &time_zone);
             }
             let step = board.handle_input(&input);
             if !follow_step(step, &mut board, &jobs, &cards, &note_sender) {
@@ -244,13 +260,13 @@ pub fn run_board(
     Ok(Outcome { lines })
 }
 
-/// Notes the user's key or tap in `visits`, shows a new visit's AWAY
-/// on `board`, and saves the time when it is due. A failed save shows
-/// on the board, which goes on.
-fn note_user_input(visits: &mut Visits, board: &mut Board) {
+/// Notes the user's key or tap in `visits`, shows a new visit's SINCE
+/// YOU LEFT on `board`, and saves the time when it is due. A failed
+/// save shows on the board, which goes on.
+fn note_user_input(visits: &mut Visits, board: &mut Board, time_zone: &TimeZone) {
     let now = Timestamp::now();
     if visits.note_input(now) {
-        board.show_visit(visits.since(), visits.measure_time_away());
+        board.show_visit(visits.since(), visits.measure_time_away(), time_zone);
     }
     if let Err(error) = visits.save_if_due(now) {
         board.show_status(format!("last use not saved: {error}"));
@@ -270,7 +286,7 @@ pub fn print_board(
     time_zone: &TimeZone,
     size: ScreenSize,
 ) -> Result<Outcome, HubError> {
-    let mut board = control::make_read_only_board(tools);
+    let mut board = control::make_read_only_board(tools, time_zone);
     board.show_reading(Ok(read_queue(tools, hubs, time_zone)?));
     Ok(Outcome {
         lines: board.render_lines(size.columns, size.rows),
@@ -336,7 +352,13 @@ fn read_until_closed(
 ) {
     let tools = tools.lend();
     loop {
-        let reading = read_queue(&tools, hubs, time_zone).map_err(|error| error.to_string());
+        let reading = read_queue(&tools, hubs, time_zone).map(|mut queue| {
+            if let Err(error) = snapshot::save_snapshot(tools.state_folder, &queue) {
+                queue.problems.push(format!("snapshot: {error}"));
+            }
+            queue
+        });
+        let reading = reading.map_err(|error| error.to_string());
         if replies.send(Reply::Reading(Box::new(reading))).is_err() {
             return;
         }

@@ -1,10 +1,11 @@
-//! Reads what happened in the hubs' run folders for the board's AWAY
-//! block, which lists worker reports and the hub's `notes.md` lines,
-//! each with its time. Read `read_events` first.
+//! Reads what happened in the hubs' run folders for the board's SINCE
+//! YOU LEFT block, which lists worker reports and the hub's `notes.md`
+//! lines, each with its time. Read `read_events` first.
 
 use jiff::Timestamp;
 use jiff::civil::{Date, Time};
 use jiff::tz::TimeZone;
+use serde::{Deserialize, Serialize};
 
 use super::machine::FeedLine;
 use crate::external::cards::CardKey;
@@ -12,7 +13,7 @@ use crate::shared::HubError;
 use crate::shared::run_folder::RunFolder;
 
 /// One thing that happened, such as a report or a `notes.md` line.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct AwayEvent {
     pub at: Timestamp,
     /// `at` in the board's time zone, such as `10:42`.
@@ -69,15 +70,6 @@ pub(crate) fn find_events_since(events: &[AwayEvent], since: Option<Timestamp>) 
     &events[..count]
 }
 
-/// Returns the words after `AWAY` in its heading, such as `3 new`, or
-/// `newest` when no time was saved and AWAY shows the newest events.
-pub(crate) fn describe_new_count(since: Option<Timestamp>, count: usize) -> String {
-    match since {
-        Some(_) => format!("{count} new"),
-        None => "newest".to_owned(),
-    }
-}
-
 /// Returns the `- HHMM TEXT` lines of a `notes.md`, each dated by the
 /// `## YYYY-MM-DD` heading above it. A line before any heading, or in
 /// another form, is left out.
@@ -123,10 +115,11 @@ mod tests {
 
     use std::fs;
 
-    /// AWAY tells the user what happened while they were away, so the
-    /// reports and the hub's notes must come in one list, newest first,
-    /// each at its own time. A note dated by the wrong heading, or a
-    /// stray line read as an event, puts the wrong news on top.
+    /// SINCE YOU LEFT tells the user what happened while they were
+    /// away, so the reports and the hub's notes must come in one list,
+    /// newest first, each at its own time. A note dated by the wrong
+    /// heading, or a stray line read as an event, puts the wrong news on
+    /// top.
     #[test]
     fn read_events_lists_reports_notes_newest_first() {
         let path = std::env::temp_dir().join(format!("hub-read-events-{}", std::process::id()));
