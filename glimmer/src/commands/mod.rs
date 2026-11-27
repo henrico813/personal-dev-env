@@ -1,7 +1,6 @@
 //! This module builds the `{status, result, error, next}` reply that the
 //! command line and MCP both give, from a step's plain Rust result. Read the
-//! `Reply::from_outcome(outcome)` and `list_commands()` functions to
-//! understand the module.
+//! `Reply::from_outcome(outcome)` function to understand the module.
 
 use std::path::Path;
 
@@ -16,6 +15,7 @@ use crate::steps::{NextStep, StepOutput};
 pub mod cli;
 pub mod dismiss;
 pub mod drop_gone_approvals;
+mod help_text;
 pub mod mcp;
 
 /// Holds the reply every MCP tool and CLI command gives.
@@ -81,78 +81,6 @@ impl Reply {
             error: Some(error),
         }
     }
-}
-
-/// Holds one command's names and its description for `help` and MCP.
-#[derive(Debug)]
-pub struct CommandInfo {
-    /// Shows the command with its arguments, such as `send-agent-suggestions FILE`.
-    pub cli_usage: &'static str,
-    /// Holds `None` for a command with no MCP tool, such as `help`.
-    pub mcp_name: Option<&'static str>,
-    pub description: &'static str,
-}
-
-/// Lists every command in the order `help` shows them. `help` and the MCP
-/// tool list both read it, so their words cannot disagree.
-pub fn list_commands() -> &'static [CommandInfo] {
-    &[
-        CommandInfo {
-            cli_usage: "check-comments [--base C]",
-            mcp_name: Some("check_comments"),
-            description: "Checks the agent's comments (step 2)",
-        },
-        CommandInfo {
-            cli_usage: "make-feedback-request-list [--base C] [--input FILE]",
-            mcp_name: Some("make_feedback_request_list"),
-            description: "Shows the list, saves nothing (step 3)",
-        },
-        CommandInfo {
-            cli_usage: "send-agent-suggestions FILE",
-            mcp_name: Some("send_agent_suggestions"),
-            description: "Saves suggestions, sends the list (step 5)",
-        },
-        CommandInfo {
-            cli_usage: "show-status",
-            mcp_name: Some("show_status"),
-            description: "Shows the status and next step (any time)",
-        },
-        CommandInfo {
-            cli_usage: "screen --popup|--tab",
-            mcp_name: None,
-            description: "Shows the Review Screen in Herdr",
-        },
-        CommandInfo {
-            cli_usage: "open [NAME]",
-            mcp_name: None,
-            description: "Shows branch NAME's review in a plain terminal",
-        },
-        CommandInfo {
-            cli_usage: "dismiss [NAME]",
-            mcp_name: None,
-            description: "Takes branch NAME's review off Ctrl+b e's list",
-        },
-        CommandInfo {
-            cli_usage: "restore [NAME]",
-            mcp_name: None,
-            description: "Puts a dismissed review back on the list",
-        },
-        CommandInfo {
-            cli_usage: "mcp",
-            mcp_name: None,
-            description: "Serves the four MCP tools",
-        },
-        CommandInfo {
-            cli_usage: "drop-gone-approvals",
-            mcp_name: None,
-            description: "Drops approvals whose code no worktree has",
-        },
-        CommandInfo {
-            cli_usage: "help",
-            mcp_name: None,
-            description: "Prints the commands; runs anywhere",
-        },
-    ]
 }
 
 /// Returns the commit that `base`, such as a branch name or a short hash,

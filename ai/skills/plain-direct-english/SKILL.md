@@ -66,8 +66,8 @@ python3 ~/.agents/skills/plain-direct-english/scripts/check_sentences.py draft.m
   two ways, show both readings and ask, rather than picking one.
 - Add no claim about code that you have not checked. When you cannot
   read the code a sentence describes, say the sentence is unchecked.
-- Never edit a comment the owner approved. Propose the rewrite through
-  `comment-review`, or in your reply when that skill is not installed.
+- Never edit a comment the user approved. Ask to change it as
+  `comment-review` says, or in your reply if it is not installed.
 - Rewrite only what the user asked about. A typo fix is just the fix.
 - When the user gives you wording for a comment, doc or PR text, use
   it as written. Change it only to fix a factual error, such as a
