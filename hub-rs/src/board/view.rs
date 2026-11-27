@@ -1497,73 +1497,11 @@ pub(super) mod tests {
         assert_eq!(lines, expected);
     }
 
-    /// WAITING ON YOU's fold row must name what it hides, an auto
-    /// run's hub by its run and a question not asked today as old.
-    /// A bare count tells the user neither which run waits nor whether
-    /// the hidden questions are new.
-    #[test]
-    fn render_lines_glance_fold_names_hidden_rows() {
-        let mut queue = make_sample_queue();
-        queue.questions[0].asked_on = Some(queue.read_on);
-        let make_question = |key: &str, asked_on| OpenQuestion {
-            key: key.parse().unwrap(),
-            project: "Demo".to_owned(),
-            number: 1,
-            title: "Ship it?".to_owned(),
-            lines: Vec::new(),
-            sessions: Vec::new(),
-            asked_on,
-        };
-        let today = Some(queue.read_on);
-        let added = [
-            make_question("DEMO-KB-004", today),
-            make_question("DEMO-KB-005", today),
-            make_question("DEMO-KB-020", None),
-        ];
-        queue.questions.extend(added);
-        queue.waiting = vec![SessionLine {
-            name: "auto-hub-24".to_owned(),
-            why: "needs you".to_owned(),
-            card: None,
-        }];
-        let mut board = Board::new(false);
-        board.show_reading(Ok(queue));
-
-        let lines = board.render_lines(40, 16);
-
-        assert_eq!(lines[5], "   + run 24 hub and 1 old question");
-    }
-
-    /// Draws `board` at 40x16 and returns its cells, styles included.
-    fn render_cells(board: &mut Board) -> Buffer {
-        let mut terminal = Terminal::new(TestBackend::new(40, 16)).unwrap();
-        terminal.draw(|frame| board.render(frame)).unwrap();
-        terminal.backend().buffer().clone()
-    }
-
-    /// Returns the color and dimness of the first cell of `words`, on
-    /// the first row of `cells` that holds them.
-    fn find_words_style(cells: &Buffer, words: &str) -> (Option<Color>, bool) {
-        for row in 0..cells.area.height {
-            let line: String = (0..cells.area.width)
-                .map(|column| cells[(column, row)].symbol())
-                .collect();
-            if let Some(start) = line.find(words) {
-                let column = u16::try_from(line[..start].chars().count()).unwrap();
-                let style = cells[(column, row)].style();
-                return (style.fg, style.add_modifier.contains(Modifier::DIM));
-            }
-        }
-        panic!("no row holds {words:?}");
-    }
-
-    /// The fold rows' kind words must take the colors their rows use,
-    /// yellow for old questions, cyan for new workers and green for
-    /// finished cards, with the `+` and plain words dim. A fold row all
-    /// in dim hides a waiting old question or a new worker among the
-    /// counts the user skims past.
-    #[test]
-    fn render_glance_fold_rows_color_kind_words() {
+    /// Returns `make_sample_queue` with a fold row in two blocks.
+    /// WAITING ON YOU hides an auto run's hub and one question not asked
+    /// today. SINCE YOU LEFT hides a report, a new worker and a finished
+    /// card.
+    fn make_fold_queue() -> Queue {
         let mut queue = make_sample_queue();
         queue.questions[0].asked_on = Some(queue.read_on);
         let make_question = |key: &str, asked_on| OpenQuestion {
@@ -1601,11 +1539,60 @@ pub(super) mod tests {
             ),
             make_event("10:20", "parked demo-kb-005-build (DEMO-KB-005 in-review)"),
         ];
+        queue
+    }
+
+    /// WAITING ON YOU's fold row must name what it hides, an auto
+    /// run's hub by its run and a question not asked today as old.
+    /// A bare count tells the user neither which run waits nor whether
+    /// the hidden questions are new.
+    #[test]
+    fn render_lines_glance_fold_names_hidden_rows() {
+        let mut board = Board::new(false);
+        board.show_reading(Ok(make_fold_queue()));
+
+        let lines = board.render_lines(40, 16);
+
+        assert_eq!(lines[5], "   + run 24 hub and 1 old question");
+    }
+
+    /// Draws `board` at 40x16 and returns its cells, styles included.
+    fn render_cells(board: &mut Board) -> Buffer {
+        let mut terminal = Terminal::new(TestBackend::new(40, 16)).unwrap();
+        terminal.draw(|frame| board.render(frame)).unwrap();
+        terminal.backend().buffer().clone()
+    }
+
+    /// Returns the color and dimness of the first cell of `words`, on
+    /// the first row of `cells` that holds them.
+    fn find_words_style(cells: &Buffer, words: &str) -> (Option<Color>, bool) {
+        for row in 0..cells.area.height {
+            let line: String = (0..cells.area.width)
+                .map(|column| cells[(column, row)].symbol())
+                .collect();
+            if let Some(start) = line.find(words) {
+                let column = u16::try_from(line[..start].chars().count()).unwrap();
+                let style = cells[(column, row)].style();
+                return (style.fg, style.add_modifier.contains(Modifier::DIM));
+            }
+        }
+        panic!("no row holds {words:?}");
+    }
+
+    /// With color on, the fold rows' kind words must take the colors
+    /// their rows use, yellow for old questions, cyan for new workers
+    /// and green for finished cards. The `+`, the run's name and
+    /// `report` stay dim. A fold row all in dim hides a waiting old
+    /// question or a new worker among the counts the user skims past.
+    #[test]
+    fn render_fold_rows_color_kinds_dim_rest() {
         let mut board = Board::new(true);
-        board.show_reading(Ok(queue));
+        board.show_reading(Ok(make_fold_queue()));
 
         let cells = render_cells(&mut board);
 
+        // The first two find the `+` of WAITING ON YOU's fold row, then
+        // the `r` of the plain words after it.
         let styles = [
             "+ run 24 hub",
             "run 24 hub",
@@ -1627,6 +1614,21 @@ pub(super) mod tests {
             ]
             .map(|(color, is_dim)| (Some(color), is_dim))
         );
+    }
+
+    /// With color off, the kind words that color would mark must stay
+    /// dim like the rest of their fold row. Drawn plain, they would make
+    /// a fold row look like a full row the user must read.
+    #[test]
+    fn render_fold_rows_dim_when_color_off() {
+        let mut board = Board::new(false);
+        board.show_reading(Ok(make_fold_queue()));
+
+        let cells = render_cells(&mut board);
+
+        let styles = ["1 old question", "1 new worker", "1 finished"]
+            .map(|words| find_words_style(&cells, words));
+        assert_eq!(styles, [(Some(Color::Reset), true); 3]);
     }
 
     /// A block shows only a few rows, so the rest must be one tap away.
