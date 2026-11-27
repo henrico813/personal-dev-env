@@ -5,6 +5,7 @@
 use jiff::Timestamp;
 use jiff::civil::{Date, Time};
 use jiff::tz::TimeZone;
+use serde::{Deserialize, Serialize};
 
 use super::machine::FeedLine;
 use crate::external::cards::CardKey;
@@ -12,7 +13,7 @@ use crate::shared::HubError;
 use crate::shared::run_folder::RunFolder;
 
 /// One thing that happened, such as a report or a `notes.md` line.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct AwayEvent {
     pub at: Timestamp,
     /// `at` in the board's time zone, such as `10:42`.

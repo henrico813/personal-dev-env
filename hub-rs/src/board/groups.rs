@@ -3,6 +3,7 @@
 //! details page and the NEXT lines. Nothing here draws. Read
 //! `build_groups` and `describe_item` first.
 
+use jiff::civil::Date;
 use ratatui::style::Color;
 
 use super::queue::{CardLine, Queue, SessionRow};
@@ -12,8 +13,8 @@ use crate::shared::lifecycle::Lifecycle;
 /// The board's groups, in screen order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum Group {
-    /// What the read could not get, such as a failed
-    /// `Cards::list_cards` call.
+    /// Faults, such as a stopped `hub watch`, then what the read could
+    /// not get, such as a failed `Cards::list_cards` call.
     Problems,
     NeedsYou,
     Active,
@@ -44,7 +45,7 @@ pub(super) enum Status {
 impl Group {
     pub(super) fn title(self) -> &'static str {
         match self {
-            Group::Problems => "Could not read",
+            Group::Problems => "Problems",
             Group::Active => "Active",
             Group::InReview => "In review",
             Group::Blocked => "Blocked",
@@ -58,7 +59,7 @@ impl Group {
     /// `group:in-review`.
     pub(super) fn slug(self) -> &'static str {
         match self {
-            Group::Problems => "could-not-read",
+            Group::Problems => "problems",
             Group::Active => "active",
             Group::InReview => "in-review",
             Group::Blocked => "blocked",
@@ -68,18 +69,17 @@ impl Group {
         }
     }
 
-    /// Returns one of the 16 colors the terminal's own theme sets, or
-    /// the terminal's default for Draft, so a phone app's theme keeps
-    /// them readable.
+    /// Returns the color of the group's count, one of the 16 colors the
+    /// terminal's own theme sets or its default, so a phone app's theme
+    /// keeps them readable. Cyan means at work, and no group count
+    /// counts work, so none takes it.
     pub(super) fn color(self) -> Color {
         match self {
             Group::Problems => Color::Red,
-            Group::Active => Color::Yellow,
-            Group::InReview => Color::Green,
-            Group::Blocked => Color::Cyan,
             Group::NeedsYou => Color::Magenta,
-            Group::Todo => Color::Blue,
-            Group::Draft => Color::Reset,
+            Group::InReview => Color::Green,
+            Group::Blocked => Color::Yellow,
+            Group::Active | Group::Todo | Group::Draft => Color::Reset,
         }
     }
 }
@@ -99,15 +99,16 @@ impl Status {
         }
     }
 
-    /// Returns the word's color, the same one its group has, or the
-    /// terminal's default for a row nobody works on.
+    /// Returns the word's color. Yellow marks a card held up with no
+    /// worker, as it marks the Blocked group.
     pub(super) fn color(self) -> Color {
         match self {
-            Status::You => Group::NeedsYou.color(),
-            Status::Run => Group::Active.color(),
-            Status::Rev => Group::InReview.color(),
-            Status::Problem => Group::Problems.color(),
-            Status::Idle | Status::None => Color::Reset,
+            Status::You => Color::Magenta,
+            Status::Run => Color::Cyan,
+            Status::Rev => Color::Green,
+            Status::None => Color::Yellow,
+            Status::Problem => Color::Red,
+            Status::Idle => Color::Reset,
         }
     }
 }
@@ -155,7 +156,7 @@ impl Target {
 }
 
 /// Returns every group with its items, in screen order. The
-/// `Could not read` group shows only when a read failed, and the
+/// `Problems` group shows only when it holds a row, and the
 /// group of cards waiting on people outside the team only when it
 /// holds a card.
 pub(super) fn build_groups(queue: &Queue) -> Vec<(Group, Vec<Item>)> {
@@ -329,14 +330,16 @@ pub(super) fn write_next_lines(groups: &[(Group, Vec<Item>)], no_hub: bool) -> N
 /// criteria, and shows the rest without it.
 pub(super) fn describe_item(queue: &Queue, target: Target, note: Option<&CardNote>) -> Vec<String> {
     match target {
-        Target::Card(index) => describe_card(&queue.cards[index], note),
+        Target::Card(index) => describe_card(&queue.cards[index], &queue.sessions, note),
         Target::Question(index) => {
             let question = &queue.questions[index];
-            let mut lines = vec![
-                question.title.clone(),
-                question.format_label(),
-                String::new(),
-            ];
+            let mut lines = vec![question.title.clone(), question.format_label()];
+            lines.extend(
+                question
+                    .asked_on
+                    .map(|asked_on| describe_question_age(asked_on, queue.read_on)),
+            );
+            lines.push(String::new());
             lines.extend(question.lines.iter().cloned());
             lines
         }
@@ -344,6 +347,7 @@ pub(super) fn describe_item(queue: &Queue, target: Target, note: Option<&CardNot
             let session = &queue.waiting[index];
             let mut lines = vec![format!("{} waits on you: {}", session.name, session.why)];
             lines.extend(session.card.iter().map(|card| format!("card {card}")));
+            lines.extend(describe_worker_status(&queue.sessions, &session.name));
             lines
         }
         Target::Problem(index) => vec![queue.problems[index].clone()],
@@ -351,9 +355,13 @@ pub(super) fn describe_item(queue: &Queue, target: Target, note: Option<&CardNot
 }
 
 /// Returns a card's details page lines, such as its title and open
-/// questions, then `DEMO-KB-001  in-review  Demo`, its workers, next
-/// step, PR links and criteria.
-pub(super) fn describe_card(card: &CardLine, note: Option<&CardNote>) -> Vec<String> {
+/// questions, then `DEMO-KB-001  in-review  Demo`, its workers and their
+/// status lines, next step, PR links and criteria.
+pub(super) fn describe_card(
+    card: &CardLine,
+    sessions: &[SessionRow],
+    note: Option<&CardNote>,
+) -> Vec<String> {
     let mut lines = vec![card.title.clone()];
     if let Some(note) = note {
         lines.extend(note.open_questions.iter().map(format_open_item));
@@ -372,6 +380,9 @@ pub(super) fn describe_card(card: &CardLine, note: Option<&CardNote>) -> Vec<Str
     } else {
         format!("by {}", card.workers.join(", "))
     });
+    for name in &card.workers {
+        lines.extend(describe_worker_status(sessions, name));
+    }
     let Some(note) = note else {
         return lines;
     };
@@ -390,6 +401,31 @@ fn format_open_item(item: &OpenItem) -> String {
     match item.asked {
         Some(date) => format!("Q{}, asked {date}: {}", item.number, item.text),
         None => format!("Q{}, undated: {}", item.number, item.text),
+    }
+}
+
+/// Returns a worker's status line with its age, such as
+/// `api-build 12m ago: tests pass`, or `None` with no status line.
+fn describe_worker_status(sessions: &[SessionRow], name: &str) -> Option<String> {
+    let status = sessions
+        .iter()
+        .find(|row| row.name == name)?
+        .status
+        .as_ref()?;
+    (!status.line.is_empty()).then(|| format!("{name} {} ago: {}", status.age, status.line))
+}
+
+/// Returns how long ago a question was asked, in whole days, such as
+/// `asked 2 days ago`.
+fn describe_question_age(asked_on: Date, read_on: Date) -> String {
+    match asked_on
+        .until(read_on)
+        .map_or(0, |span| span.get_days())
+        .max(0)
+    {
+        0 => "asked today".to_owned(),
+        1 => "asked 1 day ago".to_owned(),
+        days => format!("asked {days} days ago"),
     }
 }
 
@@ -420,23 +456,22 @@ fn build_card_item(index: usize, card: &CardLine, sessions: &[SessionRow]) -> It
     }
 }
 
-/// Returns a card's status from its workers' states. A worker that
+/// Returns a card's status from its worker sessions. A worker that
 /// waits on the user wins over one at work, and one at work wins over
 /// the card needing the user's review.
 fn decide_card_status(card: &CardLine, sessions: &[SessionRow]) -> Status {
-    let states: Vec<Lifecycle> = card
+    let rows: Vec<&SessionRow> = card
         .workers
         .iter()
         .filter_map(|name| sessions.iter().find(|row| row.name == *name))
-        .map(|row| row.state)
         .collect();
-    if states.contains(&Lifecycle::WaitsOnUser) {
+    if rows.iter().any(|row| row.state == Lifecycle::WaitsOnUser) {
         Status::You
-    } else if states.contains(&Lifecycle::Working) {
+    } else if rows.iter().any(|row| row.working) {
         Status::Run
     } else if card.stage == Stage::InReview {
         Status::Rev
-    } else if states.is_empty() {
+    } else if rows.is_empty() {
         Status::None
     } else {
         Status::Idle
@@ -464,6 +499,7 @@ fn find_next_step(note: &CardNote) -> Option<String> {
 mod tests {
     use super::*;
 
+    use crate::board::queue::WorkerStatus;
     use crate::board::view::tests::make_sample_queue;
 
     /// A card's open questions show under its title, with their Q
@@ -491,7 +527,7 @@ mod tests {
             ..CardNote::default()
         };
 
-        let lines = describe_card(card, Some(&note));
+        let lines = describe_card(card, &queue.sessions, Some(&note));
 
         assert_eq!(
             lines[..4],
@@ -529,7 +565,7 @@ mod tests {
     fn build_groups_marks_working_review_card_run() {
         let mut queue = make_sample_queue();
         let docs_fix = queue.sessions.iter_mut().find(|row| row.name == "docs-fix");
-        docs_fix.unwrap().state = Lifecycle::Working;
+        docs_fix.unwrap().working = true;
 
         let groups = build_groups(&queue);
 
@@ -538,6 +574,27 @@ mod tests {
             .find(|(group, _)| *group == Group::InReview)
             .unwrap();
         assert_eq!(in_review[0].status, Status::Run);
+    }
+
+    /// The user opens a card to see how far its work got. Its page must
+    /// show each worker's status line with its age, or the user has to
+    /// find the worker's pane to learn it.
+    #[test]
+    fn describe_card_shows_worker_status_line() {
+        let mut queue = make_sample_queue();
+        let api_build = queue
+            .sessions
+            .iter_mut()
+            .find(|row| row.name == "api-build");
+        api_build.unwrap().status = Some(WorkerStatus {
+            line: "search tests pass".to_owned(),
+            age: "12m".to_owned(),
+        });
+
+        let lines = describe_card(&queue.cards[0], &queue.sessions, None);
+
+        let expected = "api-build 12m ago: search tests pass".to_owned();
+        assert!(lines.contains(&expected), "{lines:?}");
     }
 
     /// An agent's question often starts with its card key already, such

@@ -1,0 +1,16 @@
+{
+  "id": "search-cards-before-drafting",
+  "source": "the user's correction when drafts were written before the open cards were searched",
+  "rule": "Search existing cards",
+  "correction": true,
+  "prompt": "Use the card-writing skill. A brief says: \"Turn the attached design note into four card drafts. Create nothing; the user reviews the drafts first.\" You have read the design note, and its four work items are clear. List the first three things you do next, in order, in at most 60 words. Run no commands; answer in text and name the commands you would run.",
+  "pass": ["card (grep|list)", "duplicate|existing|open"],
+  "fail": [
+    "(?i)\\b1[.):]\\s*(?:write|draft)\\w*\\b[^.!?\\n]{0,30}(?:card|note)"
+  ],
+  "judge": [
+    "In the order the answer lists, does it search the open cards with `card grep` and `card list` before it writes any of the four cards?"
+  ],
+  "good": "1. Search the open cards: `card grep` on the note's key words, then `card list --tabs` piped through awk for cards not `done` or `dropped`. 2. Read each match, so no card repeats an open one. 3. Write the four proposed cards from the note, and create nothing.",
+  "bad": "Next three steps:\n1. Draft the four cards from the design note. 2. Check each card's title and criteria. 3. Send the drafts for approval; nothing is created."
+}

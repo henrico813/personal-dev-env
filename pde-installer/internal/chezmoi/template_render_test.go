@@ -284,6 +284,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 	}
 	fullOnlyFiles := []string{
 		".agents/skills/auto-run",
+		".agents/skills/card-writing",
 		".agents/skills/cleanup-plan",
 		".agents/skills/code-documentation",
 		".agents/skills/comment-review",
