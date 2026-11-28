@@ -243,10 +243,10 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
             };
             reports::run_read(&tools, &run, &request, &now)
         }
-        Command::Report { run, name, file } => {
+        Command::Report { run, file } => {
             let run = find_run(run)?;
             let text = read_report_text(file.as_deref())?;
-            let mut outcome = reports::run_report(&run, name, &text)?;
+            let mut outcome = reports::run_report(&tools, &run, &text)?;
             outcome
                 .lines
                 .extend(restart_watch(&run, tools.state_folder));
@@ -301,7 +301,7 @@ fn run_command(cli: &Cli) -> Result<Outcome, HubError> {
             };
             launch::run_launch(&tools, &run, &request, &now)
         }
-        Command::Adopt { run, old } => handoff::run_adopt(&tools, &find_run(run)?, old, &now),
+        Command::Adopt { run, name } => handoff::run_adopt(&tools, &find_run(run)?, name, &now),
         Command::Clean { run, dry_run } => {
             clean::run_clean(&tools, &find_run(run)?, *dry_run, &now)
         }
@@ -404,15 +404,24 @@ fn find_pr_list(home: &Path) -> PathBuf {
 }
 
 /// Returns the report text from FILE, or from standard input when FILE
-/// is `-` or left out.
+/// is `-` or left out. A missing FILE with no `/` is most likely an
+/// agent name from the old `hub report NAME` form, and gets a usage
+/// error that says so.
 fn read_report_text(file: Option<&Path>) -> Result<String, HubError> {
     match file {
-        Some(path) if path != Path::new("-") => {
-            fs::read_to_string(path).map_err(|source| HubError::File {
+        Some(path) if path != Path::new("-") => fs::read_to_string(path).map_err(|source| {
+            let is_bare_word = !path.to_string_lossy().contains('/');
+            if source.kind() == io::ErrorKind::NotFound && is_bare_word {
+                return HubError::Usage(format!(
+                    "no file {}; hub report takes no name, so pass FILE or -",
+                    path.display()
+                ));
+            }
+            HubError::File {
                 path: path.to_owned(),
                 source,
-            })
-        }
+            }
+        }),
         _ => {
             let mut text = String::new();
             io::stdin()

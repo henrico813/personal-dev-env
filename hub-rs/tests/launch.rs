@@ -10,7 +10,9 @@ use hub::external::herdr::{Agent, AgentStatus, HerdrCode, Workspace};
 use hub::shared::HubError;
 use serde_json::json;
 
-use common::{OpenCodeRow, TestTools, make_agent, make_refusal, make_time, write_opencode_db};
+use common::{
+    OpenCodeRow, TestTools, make_agent, make_refusal, make_time, read_events, write_opencode_db,
+};
 
 /// The model a hub passes for its workers.
 const MODEL: &str = "github-copilot/claude-sonnet-5#high";
@@ -158,11 +160,12 @@ fn run_launch_activates_only_todo_cards() {
 }
 
 /// The started worker gets a prompt to read its handoff, the card gets
-/// the handoff note and the worker's session, and `notes.md` gets a
-/// line. Without them the worker starts without its brief, and the hub
-/// cannot find the work again after it hands off.
+/// the handoff note and the worker's session, `notes.md` gets a line,
+/// and the run's log records the worker for the watch. Without them the
+/// worker starts without its brief, the hub cannot find the work again
+/// after it hands off, and the watch never prods the worker.
 #[test]
-fn run_launch_prompts_worker_and_records_handoff() {
+fn run_launch_prompts_and_records_worker() {
     let (test_tools, handoff) = make_launch_tools();
 
     launch_worker(&test_tools, "demo-kb-007-impl", &handoff, None).unwrap();
@@ -180,14 +183,19 @@ fn run_launch_prompts_worker_and_records_handoff() {
     );
     let notes = fs::read_to_string(test_tools.run_path().join("notes.md")).unwrap();
     assert!(notes.contains("started demo-kb-007-impl ("));
+    let events = read_events(&test_tools.run_path());
+    assert_eq!(events[0]["event"], "worker_added");
+    assert_eq!(events[0]["name"], "demo-kb-007-impl");
 }
 
 /// A worker near its context limit starts its own successor. The
 /// successor opens in a new tab beside the worker, not by the sidebar
 /// rule, on the worker's model and effort, so the work goes on as it
 /// was. The worker's "needs you" mark goes, or `hub clean` keeps it
-/// open as waiting on the user after the successor took over, and the
-/// watch saves it as never to be asked or marked again.
+/// open as waiting on the user after the successor took over. The
+/// watch saves it as never to be asked or marked again. The
+/// successor's `worker_added` line names the caller, so the watch
+/// stops watching it, since its successor owes the report now.
 #[test]
 fn run_launch_successor_takes_over_from_caller() {
     let (mut test_tools, handoff) = make_launch_tools();
@@ -226,6 +234,10 @@ fn run_launch_successor_takes_over_from_caller() {
     let asks = fs::read_to_string(test_tools.state_folder().join("hub/handoff-asks.json")).unwrap();
     let asks: BTreeMap<String, u64> = serde_json::from_str(&asks).unwrap();
     assert_eq!(asks.get("ses_007"), Some(&u64::MAX));
+    assert_eq!(
+        read_events(&test_tools.run_path())[0]["after"],
+        "demo-kb-007-impl"
+    );
 }
 
 /// Each refusal comes before any tab, workspace, agent, card change or
@@ -353,14 +365,14 @@ fn run_launch_error_names_finished_steps() {
             herdr_failure: None,
             note_error: Some("card: vault is offline"),
             link_error: None,
-            done: "started demo-kb-007-impl, sent the handoff prompt",
+            done: "started demo-kb-007-impl, recorded the worker, sent the handoff prompt",
         },
         Case {
             name: "session-link-fails",
             herdr_failure: None,
             note_error: None,
             link_error: Some("card: no session yet"),
-            done: "started demo-kb-007-impl, sent the handoff prompt, added the card note",
+            done: "started demo-kb-007-impl, recorded the worker, sent the handoff prompt, added the card note",
         },
     ];
 

@@ -9,9 +9,9 @@
 
 use std::path::PathBuf;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
-use jiff::{SignedDuration, Zoned};
+use jiff::{SignedDuration, Timestamp, Zoned};
 use serde_json::json;
 
 use super::Outcome;
@@ -66,6 +66,12 @@ enum News {
     Blocked {
         name: String,
         state_seq: u64,
+    },
+    /// The watch's one prod for the report NAME owes since `since` went
+    /// unanswered.
+    ProdUnanswered {
+        name: String,
+        since: Timestamp,
     },
     NotSent {
         name: String,
@@ -198,7 +204,8 @@ fn check_for_news(
     at::hold_due_messages(run, &agents, now)?;
     // Read after the holds, so a timed message held in this check can
     // print its line in this check.
-    let memory = events::load_memory(run)?;
+    let mut memory = events::load_memory(run)?;
+    drop_answered_prods(run, &mut memory)?;
     // Delivery comes last, since an error after it would lose its
     // not-sent or unsure line.
     let reports = run.list_reports(now)?;
@@ -226,6 +233,23 @@ fn check_for_news(
         finished: mark.as_ref().map_or(&[], |mark| &mark.finished),
         old_send_files: &old_send_files,
     }))
+}
+
+/// Drops each unanswered prod whose worker has reported since. A report
+/// at or after the owed time answers the prod, the same rule as
+/// `find_owed_since` in the watch, so the two agree on what is owed.
+fn drop_answered_prods(run: &RunFolder, memory: &mut Memory) -> Result<(), HubError> {
+    let mut answered = Vec::new();
+    for (name, since) in &memory.unanswered {
+        let reported = run.find_newest_report_time(name)?;
+        if reported.is_some_and(|reported| reported >= SystemTime::from(*since)) {
+            answered.push(name.clone());
+        }
+    }
+    for name in answered {
+        memory.unanswered.remove(&name);
+    }
+    Ok(())
 }
 
 /// Tells whether the minute pass should run. It runs at most once a
@@ -362,10 +386,10 @@ fn forget_left_sessions(
 /// Picks the most urgent news in a fixed order, or `None` when nothing
 /// is new. A message that was not sent or is unsure comes first, since
 /// nothing prints it again. Then come an old hub's review start,
-/// reports, blocked states, timed messages held, the hub's own
-/// handoff, the board crossing its limit, finished sessions not listed
-/// yet, old hub message files not printed yet and older hubs left
-/// without a handoff.
+/// reports, blocked states, unanswered prods, timed messages held, the
+/// hub's own handoff, the board crossing its limit, finished sessions
+/// not listed yet, old hub message files not printed yet and older hubs
+/// left without a handoff.
 fn choose_news(facts: &NewsFacts<'_>) -> Option<News> {
     match facts.outcome {
         Some(SendOutcome::NotSent { name, reason }) => {
@@ -396,6 +420,17 @@ fn choose_news(facts: &NewsFacts<'_>) -> Option<News> {
         return Some(News::Blocked {
             name: agent.name.clone(),
             state_seq: agent.state_seq,
+        });
+    }
+    let memory = facts.memory;
+    let unanswered = memory
+        .unanswered
+        .iter()
+        .find(|(name, since)| memory.unanswered_told.get(*name) != Some(*since));
+    if let Some((name, since)) = unanswered {
+        return Some(News::ProdUnanswered {
+            name: name.clone(),
+            since: *since,
         });
     }
     if let Some((id, untold)) = facts.memory.timed_untold.first_key_value() {
@@ -501,6 +536,10 @@ fn record_news(news: &News) -> Option<EventKind> {
             name: name.clone(),
             state_seq: *state_seq,
         }),
+        News::ProdUnanswered { name, since } => Some(EventKind::UnansweredTold {
+            name: name.clone(),
+            since: *since,
+        }),
         News::Timed { id, .. } => Some(EventKind::TimedTold { id: id.clone() }),
         News::HubHandOff { session_id, .. } => Some(EventKind::HubContextTold {
             session: session_id.clone(),
@@ -560,6 +599,7 @@ fn format_news_line(news: &News, hub_tokens: Option<u64>) -> String {
         } => format!("missed report {name} {hub}"),
         News::Report { name, .. } => format!("report {name} {hub}"),
         News::Blocked { name, .. } => format!("blocked {name} {hub}"),
+        News::ProdUnanswered { name, .. } => format!("no report from {name} after a prod {hub}"),
         News::Timed { file, sessions, .. } => {
             let sessions = match sessions {
                 1 => "1 session".to_owned(),
@@ -605,6 +645,7 @@ fn format_news_json(news: &News, hub_tokens: Option<u64>, hub_warning: Option<&s
         } => ("missed_report", Some(name.clone()), None),
         News::Report { name, .. } => ("report", Some(name.clone()), None),
         News::Blocked { name, .. } => ("blocked", Some(name.clone()), None),
+        News::ProdUnanswered { name, .. } => ("prod_unanswered", Some(name.clone()), None),
         News::Timed { file, .. } => ("timed_message", None, Some(file.display().to_string())),
         News::NotSent { name, reason } => ("not_sent", Some(name.clone()), Some(reason.clone())),
         News::Unsure { name, reason } => ("unsure", Some(name.clone()), Some(reason.clone())),

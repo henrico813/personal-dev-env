@@ -71,22 +71,21 @@ A worker is a session that a hub started. You need two things:
    file, such as `/tmp/report-demo-001-impl.md`. Then send it:
 
    ```sh
-   hub report demo-001-impl /tmp/report-demo-001-impl.md
+   hub report /tmp/report-demo-001-impl.md
    ```
 
    For a short report, use standard input instead:
 
    ```sh
-   printf '%s\n' "Done: fixed the typo." "PR: #12" |
-     hub report demo-001-impl
+   printf '%s\n' "Done: fixed the typo." "PR: #12" | hub report
    ```
 
    - `report demo-001-impl written, 2 lines`: the hub has it. End
      your turn.
    - `hub: empty report; nothing written` with exit 3: the text was
      empty. Write the report and run the command again.
-   - `hub: Bad/Name is not an agent name` with exit 2: use your name
-     exactly as your prompt gives it.
+   - `hub: run this command in your own Herdr pane` with exit 3: run
+     it from your own session, where Herdr knows your name.
 
    `hub report` and `hub wait` may print one more line,
    `hub watch restarted`, when the watch had stopped. It needs

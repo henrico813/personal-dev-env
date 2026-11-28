@@ -8,6 +8,7 @@ use jiff::Zoned;
 use super::Outcome;
 use crate::external::cards::CardKey;
 use crate::shared::events::{self, Event, EventKind};
+use crate::shared::facts;
 use crate::shared::run_folder::RunFolder;
 use crate::shared::{AgentName, HubError, Tools};
 
@@ -102,15 +103,25 @@ pub fn run_read(
 }
 
 /// Writes a worker's report whole, so the hub never reads half of it.
-/// Empty text writes nothing and returns `HubError::NotDone`, so an
-/// empty standard input never blanks a real report.
-pub fn run_report(run: &RunFolder, name: &AgentName, text: &str) -> Result<Outcome, HubError> {
+/// The report takes the agent name Herdr gives the session that runs
+/// this command, as `facts::find_own_agent` finds it, so a worker
+/// cannot report under a wrong name.
+///
+/// # Errors
+///
+/// `HubError::NotDone` for empty text, which writes nothing, so an
+/// empty standard input never blanks a real report. The errors of
+/// `facts::find_own_agent`, and `HubError::NotDone` when Herdr's name
+/// is not an agent name.
+pub fn run_report(tools: &Tools<'_>, run: &RunFolder, text: &str) -> Result<Outcome, HubError> {
     if text.trim().is_empty() {
         return Err(HubError::NotDone(
             "empty report; nothing written".to_owned(),
         ));
     }
-    run.write_report(name, text)?;
+    let agent = facts::find_own_agent(tools, tools.own_session)?;
+    let name: AgentName = agent.name.parse().map_err(HubError::NotDone)?;
+    run.write_report(&name, text)?;
     Ok(Outcome::from_line(format!(
         "report {} written, {} lines",
         name.as_str(),

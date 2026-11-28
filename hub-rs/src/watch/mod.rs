@@ -2,8 +2,9 @@
 //! chat and watches every live run on this machine, and `hub wait`,
 //! which a worker uses to wait on a long job. Read `run_watch`, then
 //! `check_once`. The watch does only what the hub never does. It prods
-//! a worker that stalled or whose wait ended, and marks a blocked
-//! worker "needs you". A prod is a line
+//! a worker whose wait ended, and a worker of the run that stalled
+//! owing a report, once per owed report. It marks a blocked worker
+//! "needs you". A prod is a line
 //! the watch has Herdr type into a worker's pane. A report that waits 10 minutes with no
 //! `run_next` line goes back to the hub, as a line its next `run_next`
 //! call prints, and to the user's phone only when the hub is gone. It also
@@ -42,7 +43,6 @@ use std::time::{Duration, Instant, SystemTime};
 use jiff::{SignedDuration, Timestamp, Zoned};
 
 use crate::commands::{Outcome, auto, sidebar};
-use crate::external::cards::CardKey;
 use crate::external::herdr::{Agent, AgentStatus, HerdrCode, HerdrError};
 use crate::external::opencode::OpenCodeDb;
 use crate::shared::events::{self as hub_events, Event, EventKind, Memory};
@@ -51,13 +51,14 @@ use crate::shared::questions::read_open_questions;
 use crate::shared::run_folder::{self, RecordedHub, ReportedNames, RunFolder};
 use crate::shared::{HubError, Tools};
 use crate::shared::{facts, lifecycle};
-use events::{WatchEvent, WatchMemory, append_watch_event, load_watch_memory};
+use events::{STALL_WHY, WatchEvent, WatchMemory, append_watch_event, load_watch_memory};
 use wait::WaitFile;
 
 pub use phone::PhoneBackoff;
 
-/// How long a worker that owes a report sits idle before its prod. An
-/// ordinary pause between tool calls is far shorter.
+/// How long a worker that owes a report sits idle before its prod, and
+/// again after it before the hub hears of it. An ordinary pause between
+/// tool calls is far shorter.
 const STALL_AFTER: SignedDuration = SignedDuration::from_mins(10);
 
 /// How long a report waits with no `run_next` line before it counts as
@@ -198,7 +199,8 @@ pub(crate) struct HubRuns {
 /// A run whose log names its hub.
 struct WatchedRun {
     run: RunFolder,
-    /// The hub's memory, for announced reports and delivered messages.
+    /// The hub's memory, for announced reports, delivered messages, added
+    /// workers and unanswered prods.
     memory: Memory,
     /// What the watch itself did in this run.
     watch: WatchMemory,
@@ -214,16 +216,6 @@ struct RunWorkers {
     held: BTreeMap<String, MessageCounts>,
     /// The names whose wait in this run stays open.
     open_waits: BTreeSet<String>,
-}
-
-impl RunWorkers {
-    /// Tells whether NAME works for this run, because it reported in
-    /// it, got a message through it or waits in it.
-    fn has_worker(&self, memory: &Memory, name: &str) -> bool {
-        self.reported.any.contains(name)
-            || memory.last_delivered.contains_key(name)
-            || self.open_waits.contains(name)
-    }
 }
 
 /// Takes the watch lock, then runs `check_once` and passes on the last
@@ -301,12 +293,11 @@ pub fn run_watch(
 /// Runs one check of every run whose log names a hub, at `now`. It
 /// lists Herdr's agents once and reads each run, passing on missed
 /// reports. In each run whose hub runs, it prods workers whose wait
-/// ended. Then it checks each worker in the runs that claim it. It
-/// marks a claimed blocked worker "needs you" and prods a claimed
-/// stalled one, but only for a run whose hub runs. A run whose hub is
-/// gone still claims its workers, so no other run prods them. A worker
-/// that two runs claim gets at most one prod per Herdr state, and a
-/// wait open in either run keeps it from counting as stalled. Last, it
+/// ended. Then it checks each worker in the run that claims it, the
+/// last run whose `hub launch` or `hub adopt` added it. It marks a
+/// claimed blocked worker "needs you" and prods a claimed stalled one,
+/// but only while the claiming run's hub runs. A wait open in any run
+/// keeps a worker from counting as stalled. Last, it
 /// asks idle sessions past the handoff point to hand off, whether or
 /// not a run claims them, but only when every run log was read.
 /// Returns each failure, most of them led by their run folder, so one
@@ -379,19 +370,18 @@ pub fn check_once(
         .iter()
         .filter(|agent| !lifecycle::is_hub_name(&agent.name) && !hubs.contains(agent.name.as_str()))
     {
-        let mut claims: Vec<_> = read_runs
+        // A worker belongs to the run that added it last. Each run keeps
+        // its own prods, so two runs could each prod it once per report.
+        let claim = read_runs
             .iter()
-            .filter(|(watched, workers)| workers.has_worker(&watched.memory, &agent.name))
-            .collect();
-        // The herdr-hub skill names a card's worker after its card, and
-        // a new worker may not have reported yet. With no run claiming
-        // it, the first run whose hub runs checks it.
-        if claims.is_empty() && every_run_read && CardKey::find_in_name(&agent.name).is_some() {
-            claims.extend(read_runs.iter().find(|(watched, _)| watched.hub.is_some()));
-        }
-        if claims.is_empty() {
+            .filter_map(|(watched, workers)| {
+                let added = watched.memory.workers.get(&agent.name)?;
+                Some((added.at, watched, workers))
+            })
+            .max_by_key(|(added_at, _, _)| *added_at);
+        let Some((_, watched, workers)) = claim else {
             continue;
-        }
+        };
         if agent.status == AgentStatus::Blocked && !agent.marked {
             let marked = tools
                 .herdr
@@ -403,13 +393,13 @@ pub fn check_once(
         if !clock.has_stalled(agent, now.timestamp()) || open_waits.contains(agent.name.as_str()) {
             continue;
         }
-        for (watched, workers) in claims {
-            if watched.hub.is_none() {
-                continue;
-            }
-            if let Err(error) = prod_if_stalled(tools, watched, workers, agent, &mut prodded, now) {
-                failures.push(describe_run_failure(&watched.run, &error));
-            }
+        // A run whose hub is gone prods nobody, and no other run takes
+        // over its workers.
+        if watched.hub.is_none() {
+            continue;
+        }
+        if let Err(error) = prod_if_stalled(tools, watched, workers, agent, &mut prodded, now) {
+            failures.push(describe_run_failure(&watched.run, &error));
         }
     }
     // A run that could not be read may name a hub with no `-hub-N`
@@ -466,10 +456,12 @@ fn read_run_claims(watched: &WatchedRun) -> Result<RunWorkers, HubError> {
     })
 }
 
-/// Prods a worker the caller found idle long enough, unless it was
-/// prodded in this Herdr state, has an unread report or owes this run
-/// no report. The prod is recorded in the run's event log after Herdr
-/// took it.
+/// Prods a worker the caller found idle long enough, once for each
+/// report it owes the run. The prod is recorded in the run's event log
+/// after Herdr took it. A worker already prodded for the report it owes
+/// gets no second prod, and the hub may hear of it instead, as
+/// `record_unanswered_prod` says. Nothing happens while the worker has
+/// an unread report, owes none, or was prodded in this Herdr state.
 fn prod_if_stalled(
     tools: &Tools<'_>,
     watched: &WatchedRun,
@@ -478,15 +470,53 @@ fn prod_if_stalled(
     prodded: &mut BTreeSet<(String, u64)>,
     now: &Zoned,
 ) -> Result<(), HubError> {
-    let should_prod = !prodded.contains(&(agent.name.clone(), agent.state_seq))
-        && !workers.reported.unread.contains(&agent.name)
-        && is_report_owed(&watched.run, &watched.memory, &agent.name)?;
+    if workers.reported.unread.contains(&agent.name) {
+        return Ok(());
+    }
+    let Some(owed_since) = find_owed_since(&watched.run, &watched.memory, &agent.name)? else {
+        return Ok(());
+    };
+    // A stall prod sent after the report became due asked for it.
+    let last_prod = watched.watch.stall_prods.get(&agent.name).copied();
+    if let Some(prodded_at) = last_prod.filter(|prodded_at| *prodded_at >= owed_since) {
+        return record_unanswered_prod(watched, agent, owed_since, prodded_at, now);
+    }
+    if prodded.contains(&(agent.name.clone(), agent.state_seq)) {
+        return Ok(());
+    }
     let held_count = count_held(&workers.held, &agent.name);
-    if should_prod && prod_worker(tools, agent, held_count, STALL_PROD)? {
-        record_prod(&watched.run, agent, "stalled", now)?;
+    if prod_worker(tools, agent, held_count, STALL_PROD)? {
+        record_prod(&watched.run, agent, STALL_WHY, now)?;
         prodded.insert((agent.name.clone(), agent.state_seq));
     }
     Ok(())
+}
+
+/// Records a `prod_unanswered` event, which the next `run_next` call
+/// prints, once the worker's prod at `prodded_at` is 10 minutes old.
+/// The caller has already checked that the worker sat idle
+/// `STALL_AFTER` and still owes the report due since `owed_since`.
+/// Each unanswered prod is recorded once, so the hub hears of it once.
+fn record_unanswered_prod(
+    watched: &WatchedRun,
+    agent: &Agent,
+    owed_since: Timestamp,
+    prodded_at: Timestamp,
+    now: &Zoned,
+) -> Result<(), HubError> {
+    let has_waited = now.timestamp().duration_since(prodded_at) >= STALL_AFTER;
+    let was_recorded = watched.memory.unanswered.get(&agent.name) == Some(&owed_since);
+    if !has_waited || was_recorded {
+        return Ok(());
+    }
+    let unanswered = Event {
+        at: now.timestamp(),
+        kind: EventKind::ProdUnanswered {
+            name: agent.name.clone(),
+            since: owed_since,
+        },
+    };
+    hub_events::append_event(&watched.run, &unanswered)
 }
 
 /// Leads a failure with the run folder it came from, for the log.
@@ -567,17 +597,26 @@ fn count_held(held: &BTreeMap<String, MessageCounts>, name: &str) -> usize {
     held.get(name).map_or(0, |counts| counts.held)
 }
 
-/// Tells whether a worker owes the hub a report. It does when it never
-/// reported, or when a message reached it after its last report. A
-/// worker that reported and got nothing since waits on the hub.
-fn is_report_owed(run: &RunFolder, memory: &Memory, name: &str) -> Result<bool, HubError> {
-    let Some(reported) = run.find_newest_report_time(name)? else {
-        return Ok(true);
+/// Returns when the report NAME owes the run became due, or `None` when
+/// it owes none. A report becomes due when `hub launch` or `hub adopt`
+/// adds the worker, and again when a message reaches it. A report
+/// written since then pays it, as does one an adopted worker wrote
+/// before the adopt. A name the run never added owes none.
+fn find_owed_since(
+    run: &RunFolder,
+    memory: &Memory,
+    name: &str,
+) -> Result<Option<Timestamp>, HubError> {
+    let Some(added) = memory.workers.get(name) else {
+        return Ok(None);
     };
-    Ok(memory
-        .last_delivered
-        .get(name)
-        .is_some_and(|delivered| SystemTime::from(*delivered) > reported))
+    let owed_since = match memory.last_delivered.get(name) {
+        Some(delivered) => (*delivered).max(added.owed_from),
+        None => added.owed_from,
+    };
+    let reported = run.find_newest_report_time(name)?;
+    let is_paid = reported.is_some_and(|reported| reported >= SystemTime::from(owed_since));
+    Ok((!is_paid).then_some(owed_since))
 }
 
 /// Tells whether a held message would go to the worker now. It would
@@ -911,7 +950,7 @@ pub fn run_watch_start(
         pane_id: tools.own_pane.map(str::to_owned),
     };
     run.record_hub(&recorded)?;
-    let hub = find_hub_agent(tools, start.session_id.as_deref())?;
+    let hub = facts::find_own_agent(tools, start.session_id.as_deref())?;
     let started = WatchEvent::WatchStarted {
         hub: hub.name.clone(),
     };
@@ -969,33 +1008,4 @@ fn start_watch_process(state_folder: &Path, program: &Path) -> Result<(), String
     background::start_in_background(program, &args, &folder.join(LOG_FILE))
         .map(drop)
         .map_err(|error| error.to_string())
-}
-
-/// Returns the agent whose session is `session_id`, else the agent in
-/// this pane. OpenCode's background service can give its tool commands
-/// the `HERDR_PANE_ID` of another pane, but sets `OPENCODE_SESSION_ID`
-/// for each tool call.
-fn find_hub_agent(tools: &Tools<'_>, session_id: Option<&str>) -> Result<Agent, HubError> {
-    if let Some(session_id) = session_id {
-        let agents = tools.herdr.list_agents()?;
-        let own = agents
-            .into_iter()
-            .find(|agent| agent.session_id.as_deref() == Some(session_id));
-        if let Some(hub) = own {
-            return Ok(hub);
-        }
-    }
-    let Some(own_pane) = tools.own_pane else {
-        return Err(HubError::NotDone(
-            "run hub watch start in the hub's own Herdr pane".to_owned(),
-        ));
-    };
-    let hub = facts::read_named_hub_agent(tools, own_pane)?;
-    match (session_id, hub.session_id.as_deref()) {
-        (Some(wanted), Some(found)) if wanted != found => Err(HubError::NotDone(format!(
-            "HERDR_PANE_ID names {}, which runs another OpenCode session",
-            hub.name
-        ))),
-        _ => Ok(hub),
-    }
 }

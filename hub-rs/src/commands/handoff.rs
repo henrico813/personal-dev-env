@@ -1,7 +1,8 @@
 //! Runs `hub handoff`, which starts the next hub and checks its
 //! effort, and `hub adopt`, which takes over an older hub left open
-//! without a handoff. `start_due_review` starts the old hub's session
-//! review for `run_next` with `start_reviews` set. Read
+//! without a handoff, or records a worker the hub did not launch.
+//! `start_due_review` starts the old hub's session review for
+//! `run_next` with `start_reviews` set. Read
 //! `run_handoff` first. A hub once told the user the wrong effort
 //! because nothing checked it. `start_session` also starts the workers
 //! of `run_launch`.
@@ -12,8 +13,8 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
-use jiff::Zoned;
 use jiff::civil::Date;
+use jiff::{Timestamp, Zoned};
 
 use super::{Outcome, sidebar};
 use crate::external::herdr::{Agent, AgentStart, Herdr, HerdrError, NewPlace, PlaceIds};
@@ -163,26 +164,28 @@ pub fn run_handoff(
     Ok(Outcome { lines })
 }
 
-/// Makes this hub take over `old`, an older hub of the run that no
+/// Makes this hub take over `name`, an older hub of the run that no
 /// `run_handoff` named, or an auto hub whose run is over. Writes the
-/// handoff for `old`'s session review and records a `handoff` event,
-/// so `run_clean` closes `old` once it is idle and `run_next` with
-/// `start_reviews` set then starts the review. For an auto hub, the
-/// event also names its run folder when exactly one folder names it as
-/// hub, so `run_clean` can close that run's workspaces.
+/// handoff for the old hub's session review and records a `handoff`
+/// event, so `run_clean` closes the old hub once it is idle and
+/// `run_next` with `start_reviews` set then starts the review. For an
+/// auto hub, the event also names its run folder when exactly one
+/// folder names it as hub, so `run_clean` can close that run's
+/// workspaces.
 /// Then puts the hubs at the top of the sidebar, and a failure there
-/// adds a warning line, not an error.
+/// adds a warning line, not an error. When `name` is a worker, not a
+/// hub, it only records the worker, so the watch watches it.
 ///
 /// # Errors
 ///
 /// `HubError::NotDone` outside the hub's own pane, when `hub adopt`
-/// may not take over `old`, when an auto hub has written no end brief
-/// to this run folder, or when Herdr does not know
-/// `old`'s OpenCode session.
+/// may not take over the hub `name`, when an auto hub has written no
+/// end brief to this run folder, or when Herdr does not know the old
+/// hub's OpenCode session.
 pub fn run_adopt(
     tools: &Tools<'_>,
     run: &RunFolder,
-    old: &AgentName,
+    name: &AgentName,
     now: &Zoned,
 ) -> Result<Outcome, HubError> {
     let Some(own_pane) = tools.own_pane else {
@@ -191,8 +194,11 @@ pub fn run_adopt(
         ));
     };
     let hub = facts::read_named_hub_agent(tools, own_pane)?;
+    let old_hub = tools.herdr.get_agent(name.as_str())?;
+    if !lifecycle::is_hub_name(&old_hub.name) {
+        return add_worker(run, &old_hub.name, now);
+    }
     let memory = events::load_memory(run)?;
-    let old_hub = tools.herdr.get_agent(old.as_str())?;
     if !lifecycle::can_adopt_hub(&hub.name, &old_hub.name, &memory.handed_off) {
         return Err(HubError::NotDone(format!(
             "{} is not an auto hub or an older hub left without hub handoff",
@@ -253,6 +259,25 @@ pub fn run_adopt(
         outcome.lines.push(warning);
     }
     Ok(outcome)
+}
+
+/// Records NAME as a worker of the run, so the watch watches it. A
+/// report NAME wrote before the adopt still counts, so a worker that
+/// reported and waits on the hub gets no prod.
+fn add_worker(run: &RunFolder, name: &str, now: &Zoned) -> Result<Outcome, HubError> {
+    let reported = run.find_newest_report_time(name)?;
+    let added = Event {
+        at: now.timestamp(),
+        kind: EventKind::WorkerAdded {
+            name: name.to_owned(),
+            after: None,
+            owed_from: reported.and_then(|time| Timestamp::try_from(time).ok()),
+        },
+    };
+    events::append_event(run, &added)?;
+    Ok(Outcome::from_line(format!(
+        "adopted worker {name}; hub watch watches it now"
+    )))
 }
 
 /// Starts the session review of an old hub once its tab has closed,
