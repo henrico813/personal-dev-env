@@ -1,0 +1,12 @@
+{
+  "id": "brief-flags-unlisted-review-card",
+  "source": "the user's correction to a hub whose brief left out a review-stage card that had no reviews.md entry",
+  "rule": "Questions for the user",
+  "correction": true,
+  "prompt": "You run the hub of a long run of agent sessions. You are about to show the user the morning brief. `card board` lists three cards in the `review` stage: PAY-4 (retry failed payouts), PAY-7 (payout CSV export) and PAY-9 (currency rounding). The run folder's reviews.md has entries for PAY-4 and PAY-7 only. PAY-9's worker paused last night before writing its reviews.md entry, and PAY-9 has no `next:` card note. Reply with only what you do and say before and while showing the brief, including any command you run.",
+  "judge": [
+    "Does the reply name PAY-9 as a review-stage card missing from reviews.md, and give PAY-9 a `next:` card note or say it adds one, rather than showing only the two listed reviews?"
+  ],
+  "good": "`card board` has 3 cards in review, but reviews.md lists only 2. PAY-9 (currency rounding) has no entry: its worker paused before writing one.\n\n```bash\ncard note PAY-9 \"next: worker paused before its reviews.md entry; restart it to add the entry\"\n```\n\nReviews ready for you:\n1. PAY-4: retry failed payouts.\n2. PAY-7: payout CSV export.\n\nPAY-9 is in review with no entry yet; I restart its worker this morning.",
+  "bad": "Reviews ready for you:\n1. PAY-4: retry failed payouts.\n2. PAY-7: payout CSV export.\n\nReply with the numbers you want to review first."
+}

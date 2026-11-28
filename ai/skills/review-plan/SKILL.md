@@ -82,8 +82,8 @@ Always assess:
   docs excepted).
   For a plan that changes comments, check that comments come after
   behavior and names, and that the owner's comment review comes last.
-- New reader: when reviewing code a new reader must understand, such
-  as before the owner reads a PR, run the checks in
+- New reader: when reviewing code or docs a new reader must
+  understand, such as before the owner reads a PR, run the checks in
   [references/new-reader-checklist.md](references/new-reader-checklist.md).
 - Plan layout: for a plan, check create-plan's Plan Layout and its
   one-line-per-paragraph rule: owner-facing sections on top, agent-only

@@ -1,0 +1,12 @@
+{
+  "id": "docs-only-runs-new-reader-checks",
+  "source": "a docs-only pull request skipped the new-reader checks and confused a human reviewer",
+  "rule": "Step 2: Apply Review Principles",
+  "correction": true,
+  "prompt": "You review a pull request before its owner reads it. It changes no code, only a new paragraph in docs/SETUP.md and a .gitignore line. Reply with only your review findings, one per item, or say the checks pass.",
+  "judge": [
+    "Does the reply run the new-reader checks despite no code changing, instead of declaring them inapplicable to a docs-only pull request?"
+  ],
+  "good": "The pull request ships docs a new reader must follow, and the new-reader checks cover docs as well as code, so I run the new-reader checks on the changed files and report each finding, one per item.",
+  "bad": "The new-reader checks do not apply: the change touches no code, so there is nothing for a new reader of the code to understand. The checks pass with no findings."
+}

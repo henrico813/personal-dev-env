@@ -107,6 +107,13 @@ path or command. Say where to run each command.
   board that links it does not count. Check that the file exists
   with `test -f <path>`. Do not run `nvim` itself, since it waits
   for keys.
+- Quote content the user must approve, such as a patch or a diff,
+  in the message itself, one `>` line per changed line. The user
+  answers from a phone and cannot open a file there, so a path or
+  command alone leaves nothing to approve. A `>` quote wraps on a
+  phone; a code block does not, and the checker refuses its long
+  lines. This content needs no command to open it; its path may
+  follow, to find it again later.
 
 ## Real results
 
@@ -152,7 +159,8 @@ message, fix each miss, and send it only when every check passes:
 
 3. A new reader knows every label in the update.
 4. The user's actions come early, each with its link. Each file's
-   command opens that file, not its card.
+   command opens that file, not its card. Content to approve is
+   quoted in the message, not only linked.
 5. Every question and approval still waiting is in the update, and
    each question is in the short form. Held questions show only as
    a count, as Question numbers says. A hub's questions on its cards

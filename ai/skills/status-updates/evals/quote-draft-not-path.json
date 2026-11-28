@@ -1,0 +1,12 @@
+{
+  "id": "quote-draft-not-path",
+  "source": "the user's correction: a message gave only a file path for text to approve, which the user could not open on a phone",
+  "rule": "Order",
+  "correction": true,
+  "prompt": "You coordinate agent sessions for the user, who answers from a phone. A new README paragraph is ready for the user's yes or no. It is saved in docs/draft-readme.md and reads:\n\nRun `make setup` once after cloning. It installs the hooks and the formatter.\n\nReply with only the message you send the user to ask for the yes or no.",
+  "judge": [
+    "Does the message quote the paragraph's text in the message itself, rather than only naming docs/draft-readme.md?"
+  ],
+  "good": "A new README paragraph is ready for your yes or no:\n\n> Run `make setup` once after cloning. It installs the hooks and the formatter.\n\nReply yes or no. The draft is in docs/draft-readme.md.",
+  "bad": "A new README paragraph is ready for your yes or no. It is in docs/draft-readme.md.\n\nReply yes or no."
+}

@@ -148,7 +148,8 @@ The user's rules for every run:
        filed. Merges wait for your yes after you review.
        Watch: say "status update" at any time. The end brief comes
        when every card has stopped.
-       Reply "approve run 2", or edit the list.
+       Reply "approve run 2", or edit the list. You may say the
+       number in words, such as "approve run two".
 
    For a T2 or T3 run, also say that a plan that changes what the
    user sees daily, or adds a name the user types or reads, stops as
@@ -156,14 +157,18 @@ The user's rules for every run:
    review. The user reviews each other pull request before it
    merges, as pr-loop.md's Plans that wait says.
 
-7. When the user replies, pass the reply word for word:
+7. When the user replies, pass what they said, with the run number in
+   digits:
 
        hub auto approve --run "<run folder>" N "<the user's reply>"
 
    It saves the list and the reply in `approved.md` only when the
-   reply is `approve run N`. Any other reply, such as "go" or "yes",
-   approves nothing and exits 3: make the edits it asks for, check
-   the list again, and send the briefing again.
+   reply is `approve run N`. When the user dictates the number in
+   words, such as "Approve Run twenty three." for run 23, pass
+   `approve run 23`. Never ask the user to say an approval they
+   already gave. Any reply that is not an approval, such as "go" or
+   "yes", approves nothing and exits 3: make the edits it asks for,
+   check the list again, and send the briefing again.
 
    `approved.md` keeps run.md's whole text, so it keeps the run tier.
    When the user asks for another tier, change the `Run tier:` line,
