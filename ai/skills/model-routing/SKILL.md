@@ -16,6 +16,8 @@ Each agent job runs on the weakest model whose result you can trust.
 A local model costs no cloud tokens and still runs when cloud access
 fails. You cannot trust a local model's own report on a job, though.
 So a job goes to a local model only when a script checks its result.
+A `plan-draft` is the one exception: `planner check` checks its
+form, and a cloud reviewer checks the rest.
 
 Each job has a kind, such as `plan-review` or `local-read`.
 `routing.json` in this folder maps each kind to its reasoning level
@@ -88,6 +90,9 @@ kind:
 - strongest: `plan-write`, or `hub` and `orchestrator` for a session
   that directs others.
 
+`plan-draft` has no role, since the skill that starts a planner
+names it.
+
 ## Job kinds
 
 Each line says which jobs a kind covers. The table gives the models.
@@ -104,6 +109,17 @@ Each line says which jobs a kind covers. The table gives the models.
 - `research-read`: reading code or notes when no script checks the
   answer.
 - `plan-write`: writing a plan or a decision.
+- `plan-draft`: each planner of a plan's first version, when the
+  user asked for a local draft for this task or run. A long first
+  version may take several planners, each writing the next part.
+  Otherwise those planners are `plan-write`. The draft goes to
+  review only after `planner check`, which checks the plan's form,
+  passes on it. When it fails, give a new planner the errors, and
+  retry or move on as When the check fails says. The draft gets
+  the same review as any first version. Every later planner, such
+  as one for a revision or a fix round, is `plan-write`. Each local
+  revision round would cost a full cloud review, and in trials it
+  saved the strong planner little work.
 - `cheap-draft`: a long draft that a stronger model then checks, or
   sorting by meaning when the session reads each line.
 - `web-lookup`: a web lookup after the local model failed it, as Web
@@ -260,8 +276,8 @@ gives it, such as "not on this machine".
 
 ## Guardrails
 
-- A local model writes no plan, review, decision or pull request
-  text.
+- A local model writes no review, decision or pull request text.
+  It writes a plan only as a `plan-draft` job, as Job kinds says.
 - Never pick a model by hand. A job's model comes from the user, a
   rule such as one in `ai/AGENTS.md`, or the kind a skill names.
 - Never pass a weaker model as Claude Code's `--fallback-model`.
@@ -288,7 +304,8 @@ gives it, such as "not on this machine".
   in `done`. For an edit job or a reading or search job, its check
   script passed when you ran it.
 - You read the summary file or ran the check script yourself.
-- No local model wrote a plan, review, decision or pull request text.
+- No local model wrote a review, decision or pull request text, or
+  any plan version other than a `plan-draft` first version.
 
 ## References
 

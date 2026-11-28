@@ -104,6 +104,15 @@
     ],
     "claude": ["opus"]
   },
+  "plan-draft": {
+    "effort": "high",
+    "skills": [],
+    "opencode": [
+      ["goog/qwen3.8-flash", "goog/qwen3.8"],
+      ["claude-code/claude-opus-5-5", "github-copilot/claude-opus-5.5"]
+    ],
+    "claude": ["opus"]
+  },
   "cheap-draft": {
     "effort": "none",
     "skills": [],

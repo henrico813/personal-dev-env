@@ -52,7 +52,9 @@ that step.
 
 1. A planner on the `plan-write` model, as `model-routing` picks,
    writes the plan with `create-plan`. It marks each decision the
-   user made `user-decided`.
+   user made `user-decided`. When the user asks for a local draft,
+   pick this planner's model as a `plan-draft` job instead. Each
+   later planner stays `plan-write`, as `model-routing` says.
 2. Fresh agents review the plan with `review-plan`. Each fix round
    goes to a new planner, as the review step of "Steps" says.
 3. The user reviews the plan. Build nothing until they approve it.

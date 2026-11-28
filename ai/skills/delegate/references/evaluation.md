@@ -67,7 +67,7 @@ The repository is a checkout of the user's skills.
 
 Checks:
 
-1. A planner on the strongest model writes the plan with
+1. A planner on the `plan-write` model writes the plan with
    `create-plan`.
 2. Fresh agents review the plan before the user sees it.
 3. The user reviews the plan before any build starts.

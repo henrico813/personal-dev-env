@@ -106,9 +106,12 @@ goes to the hub through your report file.
 ### Subagents
 
 - Pick each subagent's model as `model-routing` says. Planners run
-  on the strongest model, since only it has the long context a large
-  plan needs. Reviewers run on the model pr-loop.md's Review tiers
-  gives for the pull request's tier.
+  as `plan-write` jobs. When one of the user's rules for this run
+  asks for local drafts, each planner of a plan's first version
+  runs as a `plan-draft` job instead, which starts on the local
+  model. Later planners stay `plan-write`, as `model-routing` says.
+  Reviewers run on the model pr-loop.md's Review tiers gives for the
+  pull request's tier.
 - Pull request text is yours or the review model's, never the cheap
   model's.
 - Every job a script checks goes to the local model first, as

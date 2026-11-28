@@ -127,9 +127,9 @@ script-checked jobs to the local model says.
    write why in the plan's notes. When a reviewer asks for changes,
    start a new planner with prompts.md's revision message, which
    names the plan, the review's report file and your decision on
-   each optional item. Then run the design check below on the
-   revised plan, give it its tier again, and follow Plans that wait
-   before you build.
+   each optional item, on the model worker-limits.md gives. Then run
+   the design check below on the revised plan, give it its tier
+   again, and follow Plans that wait before you build.
 3. **Build.** Write each plan step's commit message, then run
    build.md's build script. It commits each step's tree on the step
    before, starting at the plan's base, makes the pull request's
