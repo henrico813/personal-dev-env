@@ -15,8 +15,7 @@ const (
 	boardWidth = 40
 )
 
-// One card in JSON replies, with fields in the order scripts and the parity
-// check expect.
+// One card in JSON replies, with fields in the order scripts expect.
 type cardReply struct {
 	Key           string          `json:"key"`
 	Title         string          `json:"title"`

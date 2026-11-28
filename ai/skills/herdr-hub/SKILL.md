@@ -72,20 +72,19 @@ line names the active and in-review cards no session works on.
 
 Run `hub status` at the start and on each turn. Read its counts line
 and its `unread` line each time; never list the run folder. When you
-need a count or summary of a folder's contents that `hub status`
-does not cover, hand it to a worker as a `model-routing`
-`local-script` job, per Rules, instead of running `ls` directly.
-Before you tell the user a `flagged` session waits, read its newest
-lines with `herdr agent read`. A session with WHY `open question`
-waits on its card's question, so do not unflag it or list it as a
-second wait. When it handed off its card, close its tab once the
-session that took over runs. Any other `flagged` session that asks
-nothing is stale: run `hub unflag <name>`; leave it out. Tell the
-user what each `flagged` session waits on, and keep that in every later
-message until the session no longer waits on the user,
-as `status-updates` says. When such a session has never reported to
-you, run `hub adopt --run "<run folder>" <name>` at once and send it
-the new rules that Rules gives for a worker the user hands you.
+need a count or summary of a folder's contents that `hub status` does
+not cover, hand it to a worker as a `model-routing` `local-script` job,
+per Rules, instead of running `ls` directly. Before you tell the user a
+`flagged` session waits, read its newest lines with `herdr agent read`.
+A session with WHY `open question` waits on its card's question, so do
+not unflag it or list it as a second wait. When it handed off its card,
+close its tab once the session that took over runs. Any other `flagged`
+session that asks nothing is stale: run `hub unflag <name>`; leave it
+out. Tell the user what each `flagged` session waits on, and keep that
+in every later message until the session no longer waits on the user, as
+`status-updates` says. When such a session has never reported to you,
+run `hub adopt --run "<run folder>" <name>` at once and send it the new
+rules that Rules gives for a worker the user hands you.
 
 Before you send a worker new build work, check its CTX in `hub status`.
 Past 150k it hands off by `herdr-handoff` and reports its successor,
@@ -282,7 +281,9 @@ vault. A hub never reports to a hub on another machine.
 - Every session doing real work holds a card, even a short research
   card. A short chat holds none. A card is one piece of work, so
   sessions on the same work share one card, and its `sessions` list
-  keeps each of them.
+  keeps each of them. For a `card` command or flag this skill does not
+  show, run `card --help` or `card <command> --help` for its arguments
+  or flags. Do not guess; a wrong flag fails or writes the wrong card.
 - You may release a draft to `todo` once it has a `- [ ]` line under
   Acceptance Criteria and its title passes `card`'s title rules; a
   refused `card move` prints why. Never add criteria yourself to release
@@ -338,9 +339,8 @@ you make any card.
 
 - At the start, check that your agent's name ends in `-hub-<n>`,
   such as `kanban-hub-13`: a word for the run, then a number, 1 for
-  the run's first hub. `hub go` and `hub gather` find hubs by this
-  name. Follow
-  [references/sidebar-names.md](references/sidebar-names.md) when
+  the run's first hub. `hub go` and `hub gather` find hubs by this name.
+  Follow [references/sidebar-names.md](references/sidebar-names.md) when
   the name is wrong, or to place or rename a card's worker.
 - `hub handoff`, `hub adopt` and `hub auto now` move every hub's
   workspace on this machine to the top of the sidebar, as `hub gather`

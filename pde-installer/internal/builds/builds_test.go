@@ -209,6 +209,9 @@ func TestOnlyPythonInputsTriggerRebuild(t *testing.T) {
 		{"build script", "skill-lessons/build.py", true},
 		{"bytecode cache", "skill-lessons/src/skill_lessons/__pycache__/cli.cpython-310.pyc", false},
 		{"test", "skill-lessons/tests/test_cli.py", false},
+		{"card bytecode cache", "kanban/__pycache__/test_card.cpython-311.pyc", false},
+		{"card test cache", "kanban/.pytest_cache/v/cache/lastfailed", false},
+		{"card lint cache", "kanban/.ruff_cache/0.9.0/1234", false},
 		{
 			name:    "source in a subfolder",
 			path:    "skill-lessons/src/skill_lessons/store/files.py",
@@ -233,6 +236,37 @@ func TestOnlyPythonInputsTriggerRebuild(t *testing.T) {
 				t.Fatalf("rebuilt = %v, want %v", rebuilt, tt.rebuild)
 			}
 		})
+	}
+}
+
+// Card's build spec copies planner's, so its source path is easy to leave wrong.
+// A wrong path leaves card stale after kanban edits until another input changes.
+func TestCardSourceChangeTriggersRebuild(t *testing.T) {
+	manager, repoRoot, logPath := newCommittedManager(t)
+	before := readBuildLog(t, logPath)
+	writeBuildFile(t, filepath.Join(repoRoot, "kanban", "main.go"), "changed\n", 0o644)
+
+	journal, err := manager.Reconcile("full")
+
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if err := fsutil.CommitJournals(journal); err != nil {
+		t.Fatalf("CommitJournals() error = %v", err)
+	}
+	if readBuildLog(t, logPath) == before {
+		t.Fatal("a kanban source change did not rebuild card")
+	}
+}
+
+// Card's spec repeats the kanban path in source and Dir, so one is easy to
+// leave wrong. A wrong Dir builds another folder's package, so the install
+// fails or puts another tool in card's place.
+func TestCardBuildRunsInKanbanFolder(t *testing.T) {
+	_, _, logPath := newCommittedManager(t)
+
+	if log := readBuildLog(t, logPath); !strings.Contains(log, "go kanban\n") {
+		t.Fatalf("build log = %q, want a go build run in kanban", log)
 	}
 }
 
@@ -419,7 +453,7 @@ func newCommittedManager(t *testing.T) (manager Manager, repoRoot, logPath strin
 func writeBuildSources(t *testing.T, repoRoot string) {
 	t.Helper()
 	for _, source := range []string{
-		"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev", "glimmer", "hub-rs", "prs",
+		"planner", "kanban", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev", "glimmer", "hub-rs", "prs",
 	} {
 		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
 	}
@@ -475,10 +509,12 @@ chmod +x "$3"
 `, quoteForShell(logPath))
 }
 
+// Logs "go FOLDER" with the folder it runs in, and writes a fake binary
+// at the -o path.
 func makeGoFixture(logPath string) string {
 	return fmt.Sprintf(`#!/bin/sh
 set -eu
-printf '%%s\n' go >> %s
+printf 'go %%s\n' "${PWD##*/}" >> %s
 output=
 while [ "$#" -gt 0 ]; do
   if [ "$1" = -o ]; then
@@ -767,6 +803,7 @@ func assertBuildOutputs(t *testing.T, home string) {
 	t.Helper()
 	for name, tool := range map[string]string{
 		"planner":              "go",
+		"card":                 "go",
 		"opencode-inline-shim": "go",
 		"vibe":                 "cargo",
 		"pde-gh":               "go",

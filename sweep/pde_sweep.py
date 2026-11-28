@@ -598,9 +598,8 @@ def find_card_pr_urls(card_text: str) -> list[str]:
 def find_frontmatter_end(lines: list[str]) -> int:
     """Return the index of the line that closes the front matter.
 
-    It copies ``find_frontmatter_end`` in kanban/card.py, which sweep
-    cannot import, since card.py needs Python 3.11 and sweep runs on
-    3.10.
+    It copies ``findFrontmatterEnd`` in
+    kanban/internal/card/frontmatter.go, since sweep cannot import Go.
 
     Args:
         lines: The card text split into lines.

@@ -326,7 +326,9 @@ never lists of names or file contents.
 ## Record the handoff on its card
 
 When the work has a kanban card, record the handoff on the card with
-the `card` command:
+the `card` command. For a `card` command or flag this skill does not
+show, run `card --help` or `card <command> --help` for its arguments
+or flags. Do not guess; a wrong flag fails or writes the wrong card.
 
 - When a new session takes the work, once it works, add a Log note
   with the handoff file's path, then link the new session:

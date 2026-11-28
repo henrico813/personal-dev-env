@@ -5,14 +5,12 @@ import os
 import re
 import shlex
 import subprocess
-import sys
 import tomllib
 from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 from typing import Any
 
-import card
 import pytest
 
 KEY = "PDEV-KB-001"
@@ -21,13 +19,14 @@ NEW_KEY = "PDEV-001"
 TODAY = "2026-11-07"
 REPO = Path(__file__).resolve().parents[1]
 RULES_FILE = REPO / "chezmoi/dot_config/pde/names.toml"
-# The program under test, such as the path to a Go build of card. By
-# default it is card.py beside this file, run on the Python that runs pytest.
+# The program under test, such as the path to a Go build of card.
 CARD_UNDER_TEST = os.environ.get("CARD_UNDER_TEST", "")
-CARD_PROGRAM = shlex.split(CARD_UNDER_TEST) or [
-    sys.executable,
-    str(Path(__file__).resolve().parent / "card.py"),
-]
+if not CARD_UNDER_TEST:
+    pytest.exit(
+        "set CARD_UNDER_TEST to a Go build of card, such as:"
+        " go build -o DIR/card . && CARD_UNDER_TEST=DIR/card pytest",
+    )
+CARD_PROGRAM = shlex.split(CARD_UNDER_TEST)
 # The function the run_card fixture returns, called as run_card("list").
 RunCard = Callable[..., subprocess.CompletedProcess[str]]
 # Names every reader of the rules file must make and read alike.
@@ -308,15 +307,6 @@ def rules_file(monkeypatch: pytest.MonkeyPatch) -> None:
     installed on the computer running them.
     """
     monkeypatch.setenv("PDE_NAMES_FILE", str(RULES_FILE))
-
-
-@pytest.fixture(autouse=True)
-def skip_other_version(request: pytest.FixtureRequest) -> None:
-    """Skip a test marked for the card version that is not under test."""
-    if CARD_UNDER_TEST and request.node.get_closest_marker("python_card"):
-        pytest.skip("Python card only")
-    if not CARD_UNDER_TEST and request.node.get_closest_marker("go_card"):
-        pytest.skip("checks the Go card only")
 
 
 @pytest.fixture
@@ -1709,8 +1699,8 @@ class TestShow:
     ) -> None:
         """show and list --json print a card's fields in one fixed order.
 
-        Agents compare the bytes of both versions' replies. A swapped
-        field reads differently on the Go card.
+        card.md's JSON output section shows this order, and a reader who
+        diffs two replies would see a swapped field as a change.
         """
         write_card(projects, KEY, "todo")
 
@@ -1748,8 +1738,8 @@ class TestShow:
         """show --json gives date_created as stage_date when it has none.
 
         The board counts days in a stage from stage_date. An empty
-        stage_date on a card with no stage_date line would read
-        differently on the Go card and count no days.
+        stage_date on a card with no stage_date line would make the board
+        count no days.
         """
         path = write_card(projects, KEY, "todo")
         path.write_text(
@@ -1932,6 +1922,73 @@ class TestReadParts:
         assert result.returncode == 1
         assert result.stdout == ""
         assert result.stderr == f"card: {KEY} has no {typo} section\n"
+
+    @pytest.mark.cmd_outline
+    def test_outline_json_matches_text_ranges(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """outline --json gives the same headings and ranges as the text.
+
+        Agents read a part with sed -n from these line numbers. JSON
+        ranges that differ from the text form would hand them the wrong
+        lines, and a card with no headings must give a list, not null.
+        """
+        path = projects / "DevEnv" / f"{KEY} Fix some bugs.md"
+        path.write_text(FULL_CARD)
+        bare = projects / "DevEnv" / "DEMO-002 Bare card.md"
+        bare.write_text("---\ntype: card\nstage: todo\n---\n\n# Bare card\n")
+
+        text = run_card("outline", KEY).stdout
+        result = run_card("outline", KEY, "--json")
+        bare_result = run_card("outline", "DEMO-002", "--json")
+
+        assert result.returncode == 0
+        from_text = [
+            {
+                "heading": words,
+                "level": len(hashes),
+                "start": int(start),
+                "end": int(end),
+            }
+            for start, end, hashes, words in re.findall(
+                r"^(\d+)-(\d+) +(#+) (.*)$",
+                text,
+                re.MULTILINE,
+            )
+        ]
+        assert json.loads(result.stdout) == {"key": KEY, "headings": from_text}
+        assert from_text[0] == {
+            "heading": "Context",
+            "level": 2,
+            "start": 21,
+            "end": 25,
+        }
+        assert json.loads(bare_result.stdout)["headings"] == []
+
+    @pytest.mark.cmd_outline
+    def test_outline_json_trims_nbsp_from_heading(
+        self,
+        projects: Path,
+        run_card: RunCard,
+    ) -> None:
+        """outline --json gives a heading's words without a trailing U+00A0.
+
+        Agents pass these words to show --section, which finds the section
+        past the no-break space a paste can leave. Kept, the words name no
+        section.
+        """
+        path = write_card(projects, KEY, "active")
+        path.write_text(
+            path.read_text().replace("## Context\n", "## Context\u00a0\n"),
+        )
+
+        result = run_card("outline", KEY, "--json")
+
+        assert result.returncode == 0
+        headings = json.loads(result.stdout)["headings"]
+        assert "Context" in [heading["heading"] for heading in headings]
 
 
 @pytest.mark.cmd_attach
@@ -2459,12 +2516,6 @@ class TestGrep:
         assert (result.returncode, result.stderr) == (1, "")
         assert result.stdout == "0 matches in 0 cards\n"
 
-
-@pytest.mark.go_card
-class TestGoOnlyReplies:
-    """The JSON forms and the rules file default only the Go card has."""
-
-    @pytest.mark.cmd_grep
     def test_grep_json_lists_matches(
         self,
         projects: Path,
@@ -2505,7 +2556,6 @@ class TestGoOnlyReplies:
             "card_count": 2,
         }
 
-    @pytest.mark.cmd_grep
     def test_grep_json_exits_one_when_none(
         self,
         projects: Path,
@@ -2528,120 +2578,6 @@ class TestGoOnlyReplies:
             "match_count": 0,
             "card_count": 0,
         }
-
-    @pytest.mark.cmd_outline
-    def test_outline_json_matches_text_ranges(
-        self,
-        projects: Path,
-        run_card: RunCard,
-    ) -> None:
-        """outline --json gives the same headings and ranges as the text.
-
-        Agents read a part with sed -n from these line numbers. JSON
-        ranges that differ from the text form would hand them the wrong
-        lines, and a card with no headings must give a list, not null.
-        """
-        path = projects / "DevEnv" / f"{KEY} Fix some bugs.md"
-        path.write_text(FULL_CARD)
-        bare = projects / "DevEnv" / "DEMO-002 Bare card.md"
-        bare.write_text("---\ntype: card\nstage: todo\n---\n\n# Bare card\n")
-
-        text = run_card("outline", KEY).stdout
-        result = run_card("outline", KEY, "--json")
-        bare_result = run_card("outline", "DEMO-002", "--json")
-
-        assert result.returncode == 0
-        from_text = [
-            {
-                "heading": words,
-                "level": len(hashes),
-                "start": int(start),
-                "end": int(end),
-            }
-            for start, end, hashes, words in re.findall(
-                r"^(\d+)-(\d+) +(#+) (.*)$",
-                text,
-                re.MULTILINE,
-            )
-        ]
-        assert json.loads(result.stdout) == {"key": KEY, "headings": from_text}
-        assert from_text[0] == {
-            "heading": "Context",
-            "level": 2,
-            "start": 21,
-            "end": 25,
-        }
-        assert json.loads(bare_result.stdout)["headings"] == []
-
-    @pytest.mark.cmd_outline
-    def test_outline_json_trims_nbsp_from_heading(
-        self,
-        projects: Path,
-        run_card: RunCard,
-    ) -> None:
-        """outline --json gives a heading's words without a trailing U+00A0.
-
-        Agents pass these words to show --section, which finds the section
-        past the no-break space a paste can leave. Kept, the words name no
-        section.
-        """
-        path = write_card(projects, KEY, "active")
-        path.write_text(
-            path.read_text().replace("## Context\n", "## Context\u00a0\n"),
-        )
-
-        result = run_card("outline", KEY, "--json")
-
-        assert result.returncode == 0
-        headings = json.loads(result.stdout)["headings"]
-        assert "Context" in [heading["heading"] for heading in headings]
-
-    @pytest.mark.cmd_name
-    def test_name_reads_rules_from_home_config(
-        self,
-        run_card: RunCard,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """Without PDE_NAMES_FILE, card reads ~/.config/pde/names.toml.
-
-        The installer puts the rules there, and the Go card has no
-        checkout copy to fall back on. A wrong default would stop every
-        command on an installed computer.
-        """
-        monkeypatch.delenv("PDE_NAMES_FILE")
-        monkeypatch.setenv("HOME", str(tmp_path))
-        rules = tmp_path / ".config/pde/names.toml"
-        rules.parent.mkdir(parents=True)
-        rules.write_text(RULES_FILE.read_text())
-
-        result = run_card("name", "agent", "DEMO-KB-012", "build")
-
-        assert (result.returncode, result.stdout) == (0, "demo-kb-012-build\n")
-
-    @pytest.mark.cmd_name
-    def test_name_reports_missing_home_rules(
-        self,
-        run_card: RunCard,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """With no rules file at home, card names the path to fix.
-
-        The message keeps the ~ as the user would type it. A message
-        with no path, or an expanded one from another HOME, leaves the
-        user without the file to install.
-        """
-        monkeypatch.delenv("PDE_NAMES_FILE")
-        monkeypatch.setenv("HOME", str(tmp_path))
-
-        result = run_card("name", "agent", "DEMO-KB-012", "build")
-
-        assert result.returncode == 1
-        assert result.stderr == (
-            "card: no naming rules at ~/.config/pde/names.toml:"
-            " run pde-installer install\n"
-        )
 
 
 class TestHandEditedCard:
@@ -2695,41 +2631,6 @@ class TestHandEditedCard:
 
         assert result.returncode == 0
         assert "stage: in-review\n" in path.read_text()
-
-    @pytest.mark.python_card
-    def test_update_card_keeps_concurrent_hand_edit(
-        self,
-        projects: Path,
-    ) -> None:
-        """A save in Obsidian while card works survives card's change.
-
-        The user edits cards while agents run card. If card wrote over
-        a save made in between, the user's edit would be lost, and the
-        sync would copy the loss to every device.
-        """
-        path = write_card(projects, KEY, "draft")
-        saved = False
-
-        def change(text: str) -> str:
-            """Add a line, after the user saves an edit the first time."""
-            nonlocal saved
-            if not saved:
-                saved = True
-                path.write_text(
-                    text.replace(
-                        "## Open Questions",
-                        "Hand edit.\n\n## Open Questions",
-                    ),
-                )
-                # Some file systems keep coarse times, so force a change.
-                os.utime(path, ns=(1, 1))
-            return text + "- added by card\n"
-
-        card.update_card(card.load_card(path), change)
-
-        text = path.read_text()
-        assert "Hand edit." in text
-        assert text.endswith("- added by card\n")
 
     @pytest.mark.cmd_check
     def test_check_reports_card_note_without_type(
@@ -2793,7 +2694,7 @@ class TestHandEditedCard:
 
         A hand edit can leave a tab, a no-break space or a quote in a
         field. The hub and sweep parse these lines, so a raw tab would
-        split the line, and both versions must print the same bytes.
+        split the line.
         """
         path = write_card(projects, KEY, "to\tdo\u00a0soon")
         path.write_text(
@@ -2835,82 +2736,6 @@ class TestHandEditedCard:
         assert "Uploads fail on slow links." in result.stdout
 
 
-# Version 1 cards are migrated before the Go card installs, so only the
-# Python card reads them.
-@pytest.mark.python_card
-class TestVersionOneCard:
-    """Cards made before the version 2 layout keep working."""
-
-    @pytest.mark.cmd_check
-    def test_check_passes_without_new_sections(
-        self,
-        projects: Path,
-        run_card: RunCard,
-    ) -> None:
-        """card check passes an old card that has no Notes or Appendix.
-
-        Cards made before version 2 have neither section. If card check
-        asked for them, it would flag every old card and hide the real
-        problems.
-        """
-        (projects / "DevEnv" / f"{KEY} Fix some bugs.md").write_text(V1_CARD)
-
-        result = run_card("check")
-
-        assert result.returncode == 0
-
-    @pytest.mark.cmd_show
-    def test_show_gives_old_cards_every_section(
-        self,
-        projects: Path,
-        run_card: RunCard,
-    ) -> None:
-        """card show gives an old card every section, empty when missing.
-
-        Scripts read old cards through card show --json and --section.
-        An error or a missing entry for Notes or the Appendix would
-        break them on every old card.
-        """
-        (projects / "DevEnv" / f"{KEY} Fix some bugs.md").write_text(V1_CARD)
-
-        section = run_card("show", KEY, "--section", "notes")
-        whole = run_card("show", KEY, "--json")
-        shown = json.loads(whole.stdout)
-
-        assert (section.returncode, section.stdout) == (0, "## Notes\n\n")
-        assert whole.returncode == 0
-        assert shown["sections"] == {
-            "Context": "",
-            "Acceptance Criteria": "- [ ] Uploads retry.",
-            "Open Questions": "",
-            "Decisions": "",
-            "Notes": "",
-            "Log": "- 2026-11-01 active: by user",
-            "Appendix": "",
-            "Risks": "- The bucket may be full.",
-        }
-
-    @pytest.mark.cmd_note
-    def test_note_appends_exact_log_lines(
-        self,
-        projects: Path,
-        run_card: RunCard,
-    ) -> None:
-        """card note adds a dated Log line and keeps an old card whole.
-
-        Agents and the hub record each step in these lines. The write
-        must also keep the sections a user added by hand to an old card.
-        """
-        path = projects / "DevEnv" / f"{KEY} Fix some bugs.md"
-        path.write_text(V1_CARD)
-
-        run_card("note", KEY, "bucket picked", "--by", "hub")
-
-        assert path.read_text() == V1_CARD + (
-            f"- {TODAY} note (hub): bucket picked\n"
-        )
-
-
 # Indexed by rule ID, such as RULES["branch"]["make"].
 RULES = tomllib.loads(RULES_FILE.read_text())
 
@@ -2946,48 +2771,6 @@ class TestNamingRules:
         result = run_card("name", case["rule"], *values)
 
         assert (result.returncode, result.stdout) == (0, f"{case['name']}\n")
-
-    @pytest.mark.parametrize(
-        "case",
-        [
-            pytest.param(case, id=f"{case['rule']}-{case['name']}")
-            for case in CASES["parse"]
-        ],
-    )
-    @pytest.mark.python_card
-    def test_parse_name_reads_shared_cases(self, case: dict[str, Any]) -> None:
-        """Each rule reads the fields the shared cases list, or nothing.
-
-        card finds cards by reading their file names. Reading a plan or
-        research note as a card, or missing a card, would change the
-        list, the board and the next key.
-        """
-        rule = card.find_rule(case["rule"])
-
-        assert card.parse_name(rule, case["name"]) == case.get("fields")
-
-    # The Go card has no checkout copy of the rules file.
-    @pytest.mark.python_card
-    @pytest.mark.cmd_name
-    def test_rules_file_defaults_to_checkout_copy(
-        self,
-        run_card: RunCard,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """card reads its checkout's rules when PDE_NAMES_FILE is unset.
-
-        card changes with git pull, before the installer copies the
-        rules file. Reading the checkout's copy keeps card and the hub
-        board working in between, with rules that match card's code.
-        """
-        monkeypatch.delenv("PDE_NAMES_FILE")
-        monkeypatch.setenv("HOME", str(tmp_path))
-
-        result = run_card("name", "agent", "PDEV-KB-012", "build")
-
-        assert result.returncode == 0
-        assert result.stdout == "pdev-kb-012-build\n"
 
     @pytest.mark.cmd_name
     def test_name_prints_branch_from_values(
@@ -3046,6 +2829,53 @@ class TestNamingRules:
             RULES["card_file"]["parse"],
             RULES["plan_file"]["parse"],
         ]
+
+    @pytest.mark.cmd_name
+    def test_name_reads_rules_from_home_config(
+        self,
+        run_card: RunCard,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Without PDE_NAMES_FILE, card reads ~/.config/pde/names.toml.
+
+        The installer puts the rules there, and card has no checkout
+        copy to fall back on. A wrong default would stop every
+        command on an installed computer.
+        """
+        monkeypatch.delenv("PDE_NAMES_FILE")
+        monkeypatch.setenv("HOME", str(tmp_path))
+        rules = tmp_path / ".config/pde/names.toml"
+        rules.parent.mkdir(parents=True)
+        rules.write_text(RULES_FILE.read_text())
+
+        result = run_card("name", "agent", "DEMO-KB-012", "build")
+
+        assert (result.returncode, result.stdout) == (0, "demo-kb-012-build\n")
+
+    @pytest.mark.cmd_name
+    def test_name_reports_missing_home_rules(
+        self,
+        run_card: RunCard,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """With no rules file at home, card names the path to fix.
+
+        The message keeps the ~ as the user would type it. A message
+        with no path, or an expanded one from another HOME, leaves the
+        user without the file to install.
+        """
+        monkeypatch.delenv("PDE_NAMES_FILE")
+        monkeypatch.setenv("HOME", str(tmp_path))
+
+        result = run_card("name", "agent", "DEMO-KB-012", "build")
+
+        assert result.returncode == 1
+        assert result.stderr == (
+            "card: no naming rules at ~/.config/pde/names.toml:"
+            " run pde-installer install\n"
+        )
 
 
 class TestTitleRules:
@@ -3419,27 +3249,6 @@ def format_agent_list(*agents: dict[str, Any]) -> str:
     return json.dumps({"result": {"agents": list(agents)}})
 
 
-def edit_before_write(monkeypatch: pytest.MonkeyPatch, note: Path) -> None:
-    """Make rekey find one note edited by the user on its first write.
-
-    The real write_safely then refuses that write, since the note's
-    modified time moved on. Later writes go through.
-    """
-    real = card.write_safely
-
-    def write(path: Path, *args: Any) -> bool:
-        """Append a line before the note's first write, then write it."""
-        if path == note and not path.read_text().endswith("edited\n"):
-            with path.open("a") as handle:
-                handle.write("edited\n")
-            # A write within one clock tick of the read can keep the time.
-            stat = path.stat()
-            os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
-        return real(path, *args)
-
-    monkeypatch.setattr(card, "write_safely", write)
-
-
 def write_rekeyed(
     projects: Path,
     old_key: str,
@@ -3624,35 +3433,6 @@ class TestRekey:
         assert result.returncode == 0
         renamed = projects / "DevEnv" / "PDEV-411 Fix some bugs.md"
         assert renamed.read_text().endswith("\nSaved by hand.\n")
-
-    @pytest.mark.python_card
-    def test_undo_after_stop_keeps_later_edits(
-        self,
-        projects: Path,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        """After a stop, undo puts back only the notes rekey wrote.
-
-        The likeliest stop is the user editing a note during the run, and
-        undo must not copy the old note over that edit.
-        """
-        write_rekey_vault(projects)
-        before = read_tree(projects)
-        retry = "DevEnv/PDEV-KB-002 Retry failed uploads.md"
-        monkeypatch.setattr(card, "STATE_DIR", tmp_path / "state")
-        edit_before_write(monkeypatch, projects / retry)
-
-        # Only an in-process patch can edit the note between rekey's read
-        # and its write, so this test calls card.main.
-        stopped = card.main(["rekey", "--apply", "--user"], projects)
-        undo = shlex.split(capsys.readouterr().out.splitlines()[-1])[-1]
-        subprocess.run(["sh", undo], check=True)
-
-        assert stopped == 1
-        edited = {**before, retry: before[retry] + b"edited\n"}
-        assert read_tree(projects) == edited
 
     @pytest.mark.cmd_new
     def test_second_apply_finishes_stopped_run(

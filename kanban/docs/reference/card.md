@@ -1,7 +1,8 @@
 # card reference
 
 `card` keeps kanban cards as notes in the Obsidian vault. The code is
-`kanban/card.py`; `card --help` and `card COMMAND --help` print the
+the Go module in `kanban/`: `main.go`, `internal/cmd` and
+`internal/card`. `card --help` and `card COMMAND --help` print the
 same options.
 
 ## Where cards live
@@ -38,8 +39,8 @@ named vault. The shape of the key and the file name comes from the
 | `card list [--stage S] [--project P] [--kind K] [--tabs \| --json]` | Prints one line per card: card key, stage, kind and title, in stage order. A long line is cut to 60 characters. With `--tabs`, each line holds the card key, stage, kind, project folder and whole title, split by tabs, for scripts such as `dream`. With `--json`, see [JSON output](#json-output). |
 | `card board [--json]` | Prints the count per stage, active and in-review each against its limit, and the in-review cards by `stage_date`, oldest first. When a card is blocked, it also prints their count and the oldest wait, and lists them, longest wait first, with days waited and the reason. See [Board](#board). |
 | `card show KEY [--section S] [--json]` | Prints the whole card, or one section with its items numbered from 1. S is any `##` heading of the card in any case, such as `"open questions"`. A section from [Sections](#sections) that the card lacks prints its heading alone. |
-| `card outline KEY` | Prints each `##` and `###` heading with the lines its part covers. See [Sections](#sections). |
-| `card grep PATTERN [--section S] [--stage S] [--project P] [--kind K]` | Prints each line that matches a regular expression, in any case, as `KEY Section: line`. Exits 1 when nothing matches. |
+| `card outline KEY [--json]` | Prints each `##` and `###` heading with the lines its part covers. See [Sections](#sections). |
+| `card grep PATTERN [--section S] [--stage S] [--project P] [--kind K] [--json]` | Prints each line that matches a regular expression, in any case, as `KEY Section: line`. Patterns are Go regular expressions (RE2), which have no lookbehind or backreferences. Exits 1 when nothing matches. |
 | `card move KEY STAGE [--user] [--why TEXT]` | Moves a card, sets `stage_date` to today and adds a Log line. |
 | `card move KEY active --session [AGENT]` | Starts a card and records the worker's session in the same write. |
 | `card note KEY TEXT` | Adds a dated note to the Log. |
@@ -214,9 +215,9 @@ list appear only when a card is in the stage.
 ## JSON output
 ---
 
-`--json` on `card list`, `card show`, `card board` and
-`card check` prints indented JSON for scripts. Titles and
-problem lines are never cut, and exit codes stay the same.
+`--json` on `card list`, `card show`, `card board`, `card check`,
+`card grep` and `card outline` prints indented JSON for scripts.
+Titles and problem lines are never cut, and exit codes stay the same.
 
 Each card is an object like this:
 
@@ -253,6 +254,8 @@ without their indent.
 | `card show KEY --json` | One card object plus `sections`, which maps each section name to its text: the seven layout sections, then each other `##` heading of the card in file order. A section the card lacks maps to `""`. With `--section S`, `sections` holds only S. |
 | `card board --json` | `counts` per stage, `limits` for `active` and `in-review`, an `in-review` list of card objects oldest first, and a `blocked` list of card objects, longest wait first, each with `days` and `reason`. |
 | `card check --json` | `cards`, the number of cards read, and `problems`, one line per problem as the text prints it. |
+| `card grep PATTERN --json` | `matches`, a list of `key` (the card key), `section` and `line` for each matching line, then `match_count` and `card_count`. Still exits 1 when nothing matches. |
+| `card outline KEY --json` | `key`, the card key, and `headings`, a list of `heading`, `level`, `start` and `end` for each `##` and `###` heading, with the line range the text prints. |
 
 ## Open questions
 ---
@@ -362,13 +365,6 @@ part.
 Cards made with `template_version: 1` have no Notes or Appendix
 section. `card` reads a missing section as empty, and `card check`
 does not report it.
-Cards made before that layout have Why, Outcome and "Open questions"
-sections, hints between `%%` marks, and no `sessions` field.
-`kanban/migrate_sections.py` moves them to the version 1 layout; see
-its `--help`. A second run changes nothing.
-`kanban/migrate_version_2.py` then moves every card to version 2.
-It lists the cards it would change, and writes them only with
-`--apply --user`.
 
 ## Log lines
 ---
@@ -411,10 +407,8 @@ a key two cards share.
 ---
 
 `card` makes and reads names with the rules in `names.toml`. It reads
-`$PDE_NAMES_FILE` when set, else the copy in its own checkout,
-`chezmoi/dot_config/pde/names.toml`, so its code and rules match right
-after a `git pull`. Without that copy it reads
-`~/.config/pde/names.toml`, which `pde-installer install` puts there.
+`$PDE_NAMES_FILE` when set, else `~/.config/pde/names.toml`, which
+`pde-installer install` puts there.
 With no file, every command stops with
 `no naming rules at ~/.config/pde/names.toml: run pde-installer install`.
 

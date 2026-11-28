@@ -10,6 +10,7 @@
 .local/bin/pde-pr-approve
 .local/bin/prs
 .local/bin/pde-x-watch
+.local/bin/card
 {{ end }}
 {{ if has "workstation" .pde.tiers }}
 .config/opencode/plugins/pde-approval-session.js

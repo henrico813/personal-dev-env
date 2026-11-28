@@ -296,7 +296,7 @@ jobs:
     defaults:
       run:
         working-directory: kanban
-    # card.py needs tomllib, which Python 3.11 added. GOTOOLCHAIN is
+    # test_card.py needs tomllib, which Python 3.11 added. GOTOOLCHAIN is
     # pinned for the same reason as the planner job.
     env:
       UV_PYTHON: "3.11"
@@ -310,8 +310,6 @@ jobs:
         run: |
           uvx ruff@0.17.6 check .
           uvx ruff@0.17.6 format --check .
-      - name: test on Python 3.11
-        run: uvx pytest
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.10'

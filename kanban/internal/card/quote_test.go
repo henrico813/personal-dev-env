@@ -2,9 +2,9 @@ package card
 
 import "testing"
 
-// Log lines and frontmatter list items hold these quotes, and the parity
-// check compares them byte for byte with the Python card's. Each want is
-// what Python's json.dumps printed for the text.
+// Log lines and frontmatter list items hold these quotes, so new lines
+// must match the ones the Python card wrote. Each want is what Python's
+// json.dumps printed for the text.
 func TestQuoteASCIIMatchesPythonJSON(t *testing.T) {
 	tests := []struct {
 		name string

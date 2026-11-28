@@ -276,6 +276,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".local/bin/pde-pr-approve",
 		".local/bin/prs",
 		".local/bin/pde-x-watch",
+		".local/bin/card",
 	}
 	retiredAgentFiles := []string{
 		".config/opencode/plugins/pde-approval-session.js",

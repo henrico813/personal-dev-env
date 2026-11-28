@@ -121,6 +121,7 @@ func ListItems() []Item {
 			Owner:   NPM,
 			Tier:    profile.Workstation,
 		},
+		{Name: "card", Owner: Local, Tier: profile.Development},
 		{Name: "planner", Owner: Local, Tier: profile.Development}, {Name: "pde-gh", Owner: Local, Tier: profile.Development}, {Name: "pde-pr-approve", Owner: Local, Tier: profile.Development}, {Name: "opencode-inline-shim", Owner: Local, Tier: profile.Development},
 		{Name: "vibe", Owner: Local, Tier: profile.Development}, {Name: "blink.cmp", Owner: Local, Tier: profile.Development},
 		{Name: "glimmer", Owner: Local, Tier: profile.Development},
