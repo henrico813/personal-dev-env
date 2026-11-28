@@ -104,7 +104,7 @@ Write the message to a file, then send it:
 ```sh
 cat > /tmp/hub-demo/ask.md <<'EOF'
 Write two short lines about yourself. Send them with
-printf '%s\n' "line one" "line two" | hub report demo-docs
+printf '%s\n' "line one" "line two" | hub report
 using your own lines, then end your turn.
 EOF
 hub send demo-docs --file /tmp/hub-demo/ask.md
@@ -115,7 +115,7 @@ It prints `sent demo-docs`. When the worker is busy, it prints
 
 ## 6. Wait for the report
 
-The worker runs `hub report demo-docs`, which prints
+The worker runs `hub report`, which prints
 `report demo-docs written, 2 lines` in its pane. Wait for news:
 
 ```sh

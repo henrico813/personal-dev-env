@@ -3,9 +3,10 @@ mod common;
 use std::fs;
 
 use hub::commands::reports::{CardChoice, ReadRequest, run_note, run_read, run_report};
-use hub::shared::{AgentName, HubError};
+use hub::external::herdr::{Agent, AgentStatus};
+use hub::shared::HubError;
 
-use common::{TestTools, make_time, read_events};
+use common::{TestTools, make_agent, make_time, read_events};
 
 /// A `hub read` request for `name` with this note and card.
 fn make_read_request(name: &str, note: Option<&str>, card: CardChoice) -> ReadRequest {
@@ -223,22 +224,55 @@ fn run_note_stamps_time_and_day_heading() {
 }
 
 /// Workers write reports with `hub report` instead of their file
-/// tools. A report written under the wrong name never reaches the
-/// hub, and a wrong line count hides a cut-off report.
+/// tools. A report that keeps part of the old one misleads the hub,
+/// and a wrong line count hides a cut-off report.
 #[test]
 fn run_report_replaces_report_and_counts_lines() {
-    let test_tools = TestTools::new();
+    let mut test_tools = TestTools::new();
+    test_tools
+        .herdr
+        .agents
+        .push(make_agent("docs-fix", AgentStatus::Working));
+    test_tools.own_pane = Some("w1:docs-fix".to_owned());
     let report = test_tools.run_path().join("report-docs-fix.md");
     fs::write(&report, "Old report.\n").unwrap();
-    let name: AgentName = "docs-fix".parse().unwrap();
 
-    let outcome = run_report(&test_tools.run(), &name, "PR opened.\nChecks pass.\n").unwrap();
+    let outcome = run_report(
+        &test_tools.tools(),
+        &test_tools.run(),
+        "PR opened.\nChecks pass.\n",
+    )
+    .unwrap();
 
     assert_eq!(outcome.lines, ["report docs-fix written, 2 lines"]);
     assert_eq!(
         fs::read_to_string(&report).unwrap(),
         "PR opened.\nChecks pass.\n"
     );
+}
+
+/// A worker that typed another name wrote a report its hub never
+/// read, and the watch prodded it for days. The report takes the name
+/// of the session that runs `hub report`, found by its OpenCode
+/// session even when `HERDR_PANE_ID` names another pane.
+#[test]
+fn run_report_writes_under_own_agent_name() {
+    let mut test_tools = TestTools::new();
+    for (name, session) in [("docs-fix", "ses_docs"), ("other-worker", "ses_other")] {
+        test_tools.herdr.agents.push(Agent {
+            session_id: Some(session.to_owned()),
+            ..make_agent(name, AgentStatus::Working)
+        });
+    }
+    test_tools.own_pane = Some("w1:other-worker".to_owned());
+    test_tools.own_session = Some("ses_docs".to_owned());
+
+    run_report(&test_tools.tools(), &test_tools.run(), "PR opened.\n").unwrap();
+
+    let run_path = test_tools.run_path();
+    let report = fs::read_to_string(run_path.join("report-docs-fix.md")).unwrap();
+    assert_eq!(report, "PR opened.\n");
+    assert!(!run_path.join("report-other-worker.md").exists());
 }
 
 /// A worker that pipes nothing into `hub report` must not blank the
@@ -248,9 +282,8 @@ fn run_report_empty_text_writes_nothing() {
     let test_tools = TestTools::new();
     let report = test_tools.run_path().join("report-docs-fix.md");
     fs::write(&report, "PR opened.\n").unwrap();
-    let name: AgentName = "docs-fix".parse().unwrap();
 
-    let error = run_report(&test_tools.run(), &name, " \n").unwrap_err();
+    let error = run_report(&test_tools.tools(), &test_tools.run(), " \n").unwrap_err();
 
     assert!(matches!(error, HubError::NotDone(_)), "{error:?}");
     assert_eq!(fs::read_to_string(&report).unwrap(), "PR opened.\n");

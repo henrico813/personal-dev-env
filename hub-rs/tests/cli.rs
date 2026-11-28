@@ -534,15 +534,19 @@ fn hub_send_reads_message_from_file() {
 }
 
 /// Runs `hub report` with these arguments and `input` on standard
-/// input, with `HUB_RUN` set to `run`.
-fn run_hub_report(home: &Path, run: &Path, args: &[&str], input: &str) -> Output {
+/// input, with `HUB_RUN` set to `run`, in the pane `w4:p2` of the
+/// stand-in Herdr in `folder`.
+fn run_hub_report(folder: &Path, run: &Path, args: &[&str], input: &str) -> Output {
     // The child gets only these variables, so the user's own run folder
-    // is never reached.
+    // and Herdr are never reached.
     let mut child = Command::new(env!("CARGO_BIN_EXE_hub"))
         .arg("report")
         .args(args)
         .env_clear()
-        .env("HOME", home)
+        .env("PATH", format!("{}:/usr/bin:/bin", folder.display()))
+        .env("HOME", folder)
+        .env("HERDR_SOCKET_PATH", folder.join("herdr.sock"))
+        .env("HERDR_PANE_ID", "w4:p2")
         .env("HUB_RUN", run)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -558,24 +562,24 @@ fn run_hub_report(home: &Path, run: &Path, args: &[&str], input: &str) -> Output
     child.wait_with_output().unwrap()
 }
 
-/// Workers send a report as `hub report NAME FILE` or pipe it into
-/// `hub report NAME -`. When either way stops reaching the run folder,
-/// the worker's report never reaches its hub.
+/// Workers send a report as `hub report FILE` or pipe it into
+/// `hub report -`, and Herdr names the report after the pane's agent.
+/// When either way stops reaching the run folder, the worker's report
+/// never reaches its hub.
 #[test]
-fn hub_report_reads_named_file_and_stdin() {
+fn hub_report_reads_file_and_stdin() {
     let folder = TempFolder::new();
+    let agent = r#"{"result":{"agent":{"name":"docs-fix","agent":"opencode",
+        "agent_status":"working","pane_id":"w4:p2","workspace_id":"w4","tab_id":"w4:t2",
+        "focused":false,"state_change_seq":1288}}}"#;
+    folder.write_script("herdr", agent, "", 0);
     let run = folder.path().join("run");
     fs::create_dir(&run).unwrap();
     let file = folder.path().join("report.md");
     fs::write(&file, "From a file.\n").unwrap();
     let report = run.join("report-docs-fix.md");
 
-    let from_file = run_hub_report(
-        folder.path(),
-        &run,
-        &["docs-fix", file.to_str().unwrap()],
-        "",
-    );
+    let from_file = run_hub_report(folder.path(), &run, &[file.to_str().unwrap()], "");
 
     assert!(
         from_file.status.success(),
@@ -584,12 +588,7 @@ fn hub_report_reads_named_file_and_stdin() {
     );
     assert_eq!(fs::read_to_string(&report).unwrap(), "From a file.\n");
 
-    let from_stdin = run_hub_report(
-        folder.path(),
-        &run,
-        &["docs-fix", "-"],
-        "From standard input.\n",
-    );
+    let from_stdin = run_hub_report(folder.path(), &run, &["-"], "From standard input.\n");
 
     assert!(
         from_stdin.status.success(),
@@ -600,4 +599,45 @@ fn hub_report_reads_named_file_and_stdin() {
         fs::read_to_string(&report).unwrap(),
         "From standard input.\n"
     );
+}
+
+/// Running workers still have handoffs that run `hub report NAME` or
+/// `hub report NAME FILE`. Each old form must fail as wrong usage, so
+/// the worker can tell its command is out of date. A missing FILE that
+/// is a path still gets the plain file error, since a worker that
+/// mistyped a path would be misled by a hint about names.
+#[test]
+fn hub_report_explains_each_wrong_argument() {
+    let folder = TempFolder::new();
+    let run = folder.path().join("run");
+    fs::create_dir(&run).unwrap();
+    let file = folder.path().join("report.md");
+    fs::write(&file, "PR opened.\n").unwrap();
+    let missing = folder.path().join("missing.md");
+    let cases = [
+        ("old-name", vec!["docs-fix"], 2, "hub report takes no name"),
+        (
+            "old-name-and-file",
+            vec!["docs-fix", file.to_str().unwrap()],
+            2,
+            "unexpected argument",
+        ),
+        (
+            "missing-path",
+            vec![missing.to_str().unwrap()],
+            1,
+            "No such file",
+        ),
+    ];
+    for (case_name, args, expected_code, expected_error) in cases {
+        let output = run_hub_report(folder.path(), &run, &args, "PR opened.\n");
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(
+            output.status.code(),
+            Some(expected_code),
+            "{case_name}: {stderr}"
+        );
+        assert!(stderr.contains(expected_error), "{case_name}: {stderr}");
+    }
 }

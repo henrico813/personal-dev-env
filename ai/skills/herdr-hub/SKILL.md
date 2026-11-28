@@ -68,26 +68,23 @@ STATE says who must act: `working` needs nothing, `hub` waits on you,
 says what), `to-close` and `to-park` are finished and `hub clean` will
 close or park them, and `parked` has no tab but can reopen. CTX is the
 session's context size, `-` when it cannot be read. A last `no session:`
-line names the active and in-review cards no session works on. After the
-switch from the Python hub, it also prints an `old send file: <path>`
-line for each Python send file left in the run folder. Send again any
-message in it that still matters, with `hub send`, then delete the file.
+line names the active and in-review cards no session works on.
 
 Run `hub status` at the start and on each turn. Read its counts line
 and its `unread` line each time; never list the run folder. When you
-need a count or summary of a folder's contents that `hub status`
-does not cover, hand it to a worker as a `model-routing`
-`local-script` job, per Rules, instead of running `ls` directly.
-Before you tell the user a `flagged` session waits, read its newest
-lines with `herdr agent read`. A session with WHY `open question`
-waits on its card's question, so do not unflag it or list it as a second
-wait. When it handed off its card, close its tab once the session that
-took over runs. Any other `flagged` session that asks nothing is stale:
-run `hub unflag <name>`; leave it out. Tell the user what each `flagged`
-session waits on, and keep that in every later message until the session
-no longer waits on the user, as `status-updates` says. When such a
-session has never reported to you, bring it under the hub at once: send
-it the new rules that Rules gives for a worker the user hands you.
+need a count or summary of a folder's contents that `hub status` does
+not cover, hand it to a worker as a `model-routing` `local-script` job,
+per Rules, instead of running `ls` directly. Before you tell the user a
+`flagged` session waits, read its newest lines with `herdr agent read`.
+A session with WHY `open question` waits on its card's question, so do
+not unflag it or list it as a second wait. When it handed off its card,
+close its tab once the session that took over runs. Any other `flagged`
+session that asks nothing is stale: run `hub unflag <name>`; leave it
+out. Tell the user what each `flagged` session waits on, and keep that
+in every later message until the session no longer waits on the user, as
+`status-updates` says. When such a session has never reported to you,
+run `hub adopt --run "<run folder>" <name>` at once and send it the new
+rules that Rules gives for a worker the user hands you.
 
 Before you send a worker new build work, check its CTX in `hub status`.
 Past 150k it hands off by `herdr-handoff` and reports its successor,
@@ -98,11 +95,16 @@ Before you tell the user that a worker or subagent died, run
 `hub alive <session ID>` with its OpenCode session ID. Its line ends in
 `working`, `finished` or `stopped`. Report it dead only on `stopped`.
 
-When you hand work to a new session with `herdr-handoff`, its
-Coordination section names you as the one session it reports to,
-gives its report file, `<run folder>/report-<name>.md`, and names no
-other owner. Its template also tells the session to wait on a long
-job with `hub wait`. Workers never message each other.
+Write the handoff of a worker that reports to you as `herdr-handoff`
+says, with you as its one owner. Then start it with `hub launch`:
+
+    hub launch --run "<run folder>" <name> <handoff> --model <model>
+
+`<name>` is its agent name, `<handoff>` the handoff file and `<model>`
+the `model-routing` pick. `hub launch` opens its tab as Sidebar names
+says, starts the agent with `HUB_RUN` set, sends the handoff and
+records the worker for the watch. It reports to
+`<run folder>/report-<name>.md`. Workers never message each other.
 
 ## Wake on news
 
@@ -112,9 +114,12 @@ At the start, run this once in your own pane:
 
 It names you as the run's hub and starts `hub watch` when none runs
 on this machine. The watch runs outside every chat and never types
-into your pane. It prods a worker that sat idle 10 minutes owing a
-report and marks a blocked worker "needs you". When a report waits
-10 minutes with no `hub next` line, your next `hub next` prints it as
+into your pane. A worker that `hub launch` or `hub adopt` recorded
+owes a report from its start and from each message you send it. The
+watch prods such a worker once per report it owes, after 10 idle
+minutes: it types a reminder into the worker's own pane. It marks a
+blocked worker "needs you". When a report waits 10 minutes with no
+`hub next` line, your next `hub next` prints it as
 `missed report <name>`. Only when you are gone does the watch alert
 the user's phone. A worker that waits on a long job registers it with
 `hub wait` and ends its turn. The watch prods it when the job ends and
@@ -154,9 +159,11 @@ are off by default. Most lines end with your own context, such as
   `hub next` ran for 10 minutes before it, so keep one running.
 - `blocked <name>`: the session is in the `blocked` Herdr agent state,
   at an approval or question. Handle it as Waiting on the user says.
+  Each blocked state prints once, so it does not wake you again.
 - Any other line, such as `not sent`, `unsure` or
   `no hub handoff`: handle it as
   [references/hub-next-lines.md](references/hub-next-lines.md) says.
+  It also covers a session on another machine, which `hub next` misses.
 - `hand off now: hub at <N>k`: your context passed 150k. Hand off
   the hub now, as Hand off the hub says.
 - `to-close <names>: <why>; run hub clean`, or the same with `to-park`:
@@ -169,13 +176,6 @@ are off by default. Most lines end with your own context, such as
 Add any other line to `notes.md` with
 `hub note --run "<run folder>" "<line>"`, which stamps the time.
 Never write a `- HHMM` line by hand.
-
-It prints each blocked state once, so a session that stays blocked
-does not wake you again.
-
-A session on another machine, started with `herdr --machine`, is
-not seen by `hub next`. Follow
-[references/hub-next-lines.md](references/hub-next-lines.md) for it.
 
 ## Reports from sessions
 

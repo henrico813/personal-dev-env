@@ -128,6 +128,24 @@ pub(crate) enum EventKind {
     },
     /// A parked NAME started again in a new tab.
     Reopened { name: String, session: String },
+    /// `run_launch` started the worker NAME, or `run_adopt` took it on,
+    /// so the watch watches it and it owes a report. `after` is the
+    /// worker that started NAME as its successor, which the watch then
+    /// stops watching. `owed_from` is the newest report an adopted
+    /// worker wrote before the adopt, which still counts.
+    WorkerAdded {
+        name: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        after: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        owed_from: Option<Timestamp>,
+    },
+    /// The watch prodded NAME once for the report it owes since
+    /// `since`, and NAME sat idle 10 more minutes without it. The next
+    /// `run_next` call prints it.
+    ProdUnanswered { name: String, since: Timestamp },
+    /// `run_next` printed the unanswered prod of NAME for `since`.
+    UnansweredTold { name: String, since: Timestamp },
     /// The tidy pass closed NAME's tab `tab`, for `why`.
     Closed {
         name: String,
@@ -204,6 +222,23 @@ pub(crate) struct Memory {
     /// that hub, already named as left without a handoff. Each new hub
     /// hears once of every old hub still open.
     pub unadopted_seen: BTreeSet<(String, String)>,
+    /// Each worker the watch watches, by name.
+    pub workers: BTreeMap<String, AddedWorker>,
+    /// The `since` of each name's last unanswered prod.
+    pub unanswered: BTreeMap<String, Timestamp>,
+    /// The `since` of each name's last unanswered prod `run_next`
+    /// printed.
+    pub unanswered_told: BTreeMap<String, Timestamp>,
+}
+
+/// A worker that `run_launch` or `run_adopt` added to the run.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct AddedWorker {
+    /// When the run added it.
+    pub at: Timestamp,
+    /// When its first owed report starts counting. That is `at`, or
+    /// for an adopted worker its newest report before the adopt.
+    pub owed_from: Timestamp,
 }
 
 /// Adds one line to the log in a single write. Writes a newline first
@@ -322,6 +357,26 @@ fn fold_events(events: impl IntoIterator<Item = Event>) -> Memory {
             }
             EventKind::UnadoptedHubSeen { old, hub } => {
                 memory.unadopted_seen.insert((hub, old));
+            }
+            EventKind::WorkerAdded {
+                name,
+                after,
+                owed_from,
+            } => {
+                if let Some(after) = after {
+                    memory.workers.remove(&after);
+                }
+                let added = AddedWorker {
+                    at: event.at,
+                    owed_from: owed_from.unwrap_or(event.at),
+                };
+                memory.workers.insert(name, added);
+            }
+            EventKind::ProdUnanswered { name, since } => {
+                memory.unanswered.insert(name, since);
+            }
+            EventKind::UnansweredTold { name, since } => {
+                memory.unanswered_told.insert(name, since);
             }
             EventKind::Held { .. }
             | EventKind::Unsure { .. }

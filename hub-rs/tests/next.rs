@@ -176,6 +176,100 @@ fn run_next_prints_missed_report_once() {
     assert_eq!(second, "timeout (hub -)");
 }
 
+/// A worker that stays idle after the watch's one prod still owes its
+/// report, and only the hub can decide what to do. It hears of the
+/// prod once, since a line at every check would wake it every 5
+/// seconds.
+#[test]
+fn run_next_prints_unanswered_prod_once() {
+    let test_tools = TestTools::new();
+    let unanswered = json!({"at": "2026-11-12T08:30:00Z", "event": "prod_unanswered",
+        "name": "docs-fix", "since": "2026-11-12T08:00:00Z"});
+    fs::write(
+        test_tools.run_path().join("events.jsonl"),
+        format!("{unanswered}\n"),
+    )
+    .unwrap();
+
+    let first = check_once(&test_tools);
+    let second = check_once(&test_tools);
+
+    assert_eq!(first, "no report from docs-fix after a prod (hub -)");
+    assert_eq!(second, "timeout (hub -)");
+}
+
+/// A worker that ignores a second prod, for a later report it owes,
+/// must wake the hub again. Otherwise the hub never learns that the
+/// worker stalled a second time.
+#[test]
+fn run_next_prints_later_prod_again() {
+    let test_tools = TestTools::new();
+    let events = test_tools.run_path().join("events.jsonl");
+    let earlier = json!({"at": "2026-11-12T08:30:00Z", "event": "prod_unanswered",
+        "name": "docs-fix", "since": "2026-11-12T08:00:00Z"});
+    fs::write(&events, format!("{earlier}\n")).unwrap();
+    // The hub hears of the first prod here.
+    check_once(&test_tools);
+    let later = json!({"at": "2026-11-12T09:30:00Z", "event": "prod_unanswered",
+        "name": "docs-fix", "since": "2026-11-12T09:00:00Z"});
+    fs::write(&events, format!("{earlier}\n{later}\n")).unwrap();
+
+    let first = check_once(&test_tools);
+    let second = check_once(&test_tools);
+
+    assert_eq!(first, "no report from docs-fix after a prod (hub -)");
+    assert_eq!(second, "timeout (hub -)");
+}
+
+/// A worker that reports after the watch logged its unanswered prod
+/// has answered it. Telling the hub "no report" then would be false
+/// and could make it chase a worker that already finished.
+#[test]
+fn run_next_skips_prod_answered_by_report() {
+    let test_tools = TestTools::new();
+    let unanswered = json!({"at": "2026-11-12T08:30:00Z", "event": "prod_unanswered",
+        "name": "docs-fix", "since": "2026-11-12T08:00:00Z"});
+    fs::write(
+        test_tools.run_path().join("events.jsonl"),
+        format!("{unanswered}\n"),
+    )
+    .unwrap();
+    write_old_report(&test_tools, "docs-fix");
+
+    let first = check_once(&test_tools);
+    let second = check_once(&test_tools);
+
+    assert_eq!(first, "report docs-fix (hub -)");
+    assert_eq!(second, "timeout (hub -)");
+}
+
+/// A report from before the owed time does not answer the prod. A
+/// worker that reported, got new work and then ignored the prod still
+/// owes a report, and the hub must hear of it.
+#[test]
+fn run_next_prints_prod_after_older_report() {
+    let test_tools = TestTools::new();
+    write_old_report(&test_tools, "docs-fix");
+    // The hub has read the old report, so only the prod is news.
+    fs::rename(
+        test_tools.run_path().join("report-docs-fix.md"),
+        test_tools.run_path().join("report-docs-fix.0750.read"),
+    )
+    .unwrap();
+    let since = jiff::Timestamp::now();
+    let unanswered = json!({"at": since.to_string(), "event": "prod_unanswered",
+        "name": "docs-fix", "since": since.to_string()});
+    fs::write(
+        test_tools.run_path().join("events.jsonl"),
+        format!("{unanswered}\n"),
+    )
+    .unwrap();
+
+    let first = check_once(&test_tools);
+
+    assert_eq!(first, "no report from docs-fix after a prod (hub -)");
+}
+
 /// A session that stays blocked must wake the hub once, not every 5
 /// seconds, and must wake it again when it blocks a second time.
 #[test]

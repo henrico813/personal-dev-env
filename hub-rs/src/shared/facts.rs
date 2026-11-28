@@ -73,6 +73,44 @@ pub(crate) fn read_named_hub_agent(tools: &Tools<'_>, own_pane: &str) -> Result<
     Ok(agent)
 }
 
+/// Returns the agent that runs this command: the one whose OpenCode
+/// session is `session_id`, else the one in this pane. OpenCode's
+/// background service can give its tool commands the `HERDR_PANE_ID`
+/// of another pane, but sets `OPENCODE_SESSION_ID` for each tool call.
+///
+/// # Errors
+///
+/// `HubError::NotDone` outside Herdr, for a pane with no name, and when
+/// the pane runs another OpenCode session than `session_id`. Any Herdr
+/// error.
+pub(crate) fn find_own_agent(
+    tools: &Tools<'_>,
+    session_id: Option<&str>,
+) -> Result<Agent, HubError> {
+    if let Some(session_id) = session_id {
+        let agents = tools.herdr.list_agents()?;
+        let own = agents
+            .into_iter()
+            .find(|agent| agent.session_id.as_deref() == Some(session_id));
+        if let Some(agent) = own {
+            return Ok(agent);
+        }
+    }
+    let Some(own_pane) = tools.own_pane else {
+        return Err(HubError::NotDone(
+            "run this command in your own Herdr pane".to_owned(),
+        ));
+    };
+    let agent = read_named_hub_agent(tools, own_pane)?;
+    match (session_id, agent.session_id.as_deref()) {
+        (Some(wanted), Some(found)) if wanted != found => Err(HubError::NotDone(format!(
+            "HERDR_PANE_ID names {}, which runs another OpenCode session",
+            agent.name
+        ))),
+        _ => Ok(agent),
+    }
+}
+
 fn format_unnamed_pane_warning(pane: &str) -> String {
     format!("hub pane has no name -> herdr agent rename {pane} NAME")
 }

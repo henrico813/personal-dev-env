@@ -86,12 +86,12 @@ fn run_next_hub(test_tools: &TestTools, handoff: &Path) -> Result<Vec<String>, H
     .map(|outcome| outcome.lines)
 }
 
-/// Runs `hub adopt OLD`.
-fn adopt_hub(test_tools: &TestTools, old: &str) -> Result<Vec<String>, HubError> {
+/// Runs `hub adopt NAME`.
+fn adopt_session(test_tools: &TestTools, name: &str) -> Result<Vec<String>, HubError> {
     run_adopt(
         &test_tools.tools(),
         &test_tools.run(),
-        &old.parse().unwrap(),
+        &name.parse().unwrap(),
         &make_time("2026-11-11T22:14:00+00:00[UTC]"),
     )
     .map(|outcome| outcome.lines)
@@ -377,7 +377,7 @@ fn run_adopt_records_handoff_with_review() {
     ];
     test_tools.own_pane = Some("w1:kanban-hub-4".to_owned());
 
-    adopt_hub(&test_tools, "kanban-hub-3").unwrap();
+    adopt_session(&test_tools, "kanban-hub-3").unwrap();
 
     let events = read_events(&test_tools.run_path());
     assert_eq!(events.len(), 1);
@@ -408,7 +408,7 @@ fn run_adopt_refuses_newer_hub() {
     ];
     test_tools.own_pane = Some("w1:kanban-hub-3".to_owned());
 
-    let error = adopt_hub(&test_tools, "kanban-hub-4").unwrap_err();
+    let error = adopt_session(&test_tools, "kanban-hub-4").unwrap_err();
 
     assert!(matches!(error, HubError::NotDone(_)), "{error:?}");
     assert!(read_events(&test_tools.run_path()).is_empty());
@@ -431,13 +431,13 @@ fn run_adopt_needs_auto_hub_end_brief() {
     ];
     test_tools.own_pane = Some("w1:kanban-hub-4".to_owned());
 
-    let early = adopt_hub(&test_tools, "auto-hub-2");
+    let early = adopt_session(&test_tools, "auto-hub-2");
     fs::write(
         test_tools.run_path().join("report-auto-hub-2.1200.read"),
         "done",
     )
     .unwrap();
-    adopt_hub(&test_tools, "auto-hub-2").unwrap();
+    adopt_session(&test_tools, "auto-hub-2").unwrap();
 
     assert!(matches!(early, Err(HubError::NotDone(_))), "{early:?}");
     let events = read_events(&test_tools.run_path());
@@ -472,12 +472,34 @@ fn run_adopt_records_only_auto_hub_run() {
         let started = json!({"at": "2026-11-11T20:00:00Z", "event": "watch_started", "hub": old});
         fs::write(old_run.join("events.jsonl"), format!("{started}\n")).unwrap();
 
-        adopt_hub(&test_tools, old).unwrap();
+        adopt_session(&test_tools, old).unwrap();
 
         let events = read_events(&test_tools.run_path());
         let expected = records_run.then(|| old_run.to_str().unwrap());
         assert_eq!(events[0]["run"].as_str(), expected, "{old}");
     }
+}
+
+/// A worker the hub did not start with `hub launch`, such as one the
+/// user started by hand, is watched only once the hub adopts it.
+/// Adopting it records only the worker. A `handoff` event would make
+/// the tidy pass close the worker and start a review of it.
+#[test]
+fn run_adopt_records_worker_without_handoff() {
+    let mut test_tools = TestTools::new();
+    test_tools.herdr.agents = vec![
+        make_agent("kanban-hub-4", AgentStatus::Working),
+        make_agent("docs-fix", AgentStatus::Idle),
+    ];
+    test_tools.own_pane = Some("w1:kanban-hub-4".to_owned());
+
+    let lines = adopt_session(&test_tools, "docs-fix").unwrap();
+
+    assert_eq!(lines, ["adopted worker docs-fix; hub watch watches it now"]);
+    let events = read_events(&test_tools.run_path());
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["event"], "worker_added");
+    assert_eq!(events[0]["name"], "docs-fix");
 }
 
 /// A hub `kanban-hub-4` in its own pane that can adopt `kanban-hub-3`,
@@ -503,7 +525,7 @@ fn make_adopt_tools() -> TestTools {
 fn run_adopt_gathers_hubs_silently() {
     let test_tools = make_adopt_tools();
 
-    let lines = adopt_hub(&test_tools, "kanban-hub-3").unwrap();
+    let lines = adopt_session(&test_tools, "kanban-hub-3").unwrap();
 
     assert_eq!(
         *test_tools.herdr.moves.borrow(),
@@ -522,7 +544,7 @@ fn run_adopt_warns_when_gather_fails() {
         make_refusal(HerdrCode::Other(String::new())),
     );
 
-    let lines = adopt_hub(&test_tools, "kanban-hub-3").unwrap();
+    let lines = adopt_session(&test_tools, "kanban-hub-3").unwrap();
 
     assert!(lines[0].starts_with("adopted kanban-hub-3; "));
     assert_eq!(
